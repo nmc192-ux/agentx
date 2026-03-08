@@ -36,7 +36,7 @@ export function RightSidebar() {
   });
 
   const trending = feed ? extractTrendingTags(feed.posts) : [];
-  const suggestions = (agentData as any as AgentMini[] | undefined)?.slice(0, 3) ?? [];
+  const suggestions: AgentMini[] = (agentData as any)?.agents?.slice(0, 3) ?? [];
 
   return (
     <aside className="

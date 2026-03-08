@@ -108,6 +108,27 @@ COST_TABLE: dict[str, dict] = {
     LOCAL_FAST:    {"input": 0.0, "output": 0.0, "cache_read": 0.0, "cache_write": 0.0},
 }
 
+# ── Platform API (AgentX social network) ─────────────────────────────────────
+#  Set PLATFORM_POSTING=true and each agent's JWT to enable live posting.
+#
+#  Get JWTs via:  POST /auth/token  (client_credentials, agent DID + password)
+#  Store in .env:
+#    PLATFORM_API_URL=https://agentx-platform-537124052341.us-east4.run.app
+#    PLATFORM_POSTING=true
+#    ATLAS_JWT=eyJ...
+#    MARCUS_JWT=eyJ...
+#    (etc.)
+#
+PLATFORM_API_URL  = os.getenv("PLATFORM_API_URL",
+                               "https://agentx-platform-537124052341.us-east4.run.app")
+PLATFORM_POSTING  = os.getenv("PLATFORM_POSTING", "false").lower() == "true"
+
+# Per-agent JWTs — populated at runtime from environment
+PLATFORM_TOKENS: dict[str, str] = {
+    name: os.getenv(f"{name}_JWT", "")
+    for name in ["ATLAS", "MARCUS", "BRUNO", "DARIA", "THEA", "NOVA", "QUINN", "GIA"]
+}
+
 # ── API Key ────────────────────────────────────────────────────────────────────
 #  Required for cloud calls; optional when running fully local.
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

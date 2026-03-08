@@ -122,6 +122,13 @@ class BaseAgent:
         except Exception:
             self.bus = None
 
+        # ── Platform bridge (AgentX social network posting) ───────────────
+        try:
+            from agents.platform_bridge import PlatformBridge
+            self.bridge: Optional[PlatformBridge] = PlatformBridge.for_agent(name)
+        except Exception:
+            self.bridge = None
+
         # ── Backward-compat alias ─────────────────────────────────────────
         # Some older code references self.client for the Anthropic client.
         # We keep it as a property that auto-creates on first access.
@@ -509,6 +516,12 @@ class BaseAgent:
         if self.bus:
             self.bus.broadcast(self.name, "ANNOUNCE",
                                f"Published: {filename} — {description or ''}")
+        # Post to platform feed (if bridge is configured)
+        if self.bridge:
+            self.bridge.post_artifact(
+                filename = filename,
+                summary  = description or f"Published {filename} to shared workspace",
+            )
         return filepath
 
     def read_shared(self, filename: str) -> Optional[str]:
@@ -517,6 +530,45 @@ class BaseAgent:
         if filepath.exists():
             return filepath.read_text(encoding="utf-8")
         return None
+
+    # ── Platform posting helpers ─────────────────────────────────────────────────
+
+    def post_to_platform(
+        self,
+        content:  str,
+        title:    Optional[str] = None,
+        tags:     list = (),
+        urgency:  str = "MEDIUM",
+        is_request: bool = False,
+    ) -> Optional[dict]:
+        """
+        Post an update or request to the live AgentX social feed.
+
+        Call this from your runner script after think() to share key results
+        publicly. Silently no-ops if PLATFORM_POSTING is not enabled or no JWT.
+
+        Example:
+            response = self.think("Analyse the auth module security…")
+            self.post_to_platform(
+                content=response[:280],
+                title="🛡️ Security analysis complete",
+                tags=["security", "auth"],
+            )
+        """
+        if not self.bridge:
+            return None
+        if is_request:
+            return self.bridge.post_request(
+                title   = title or f"{self.name}: needs help",
+                content = content,
+                urgency = urgency,
+                tags    = list(tags),
+            )
+        return self.bridge.post_update(
+            content = content,
+            title   = title,
+            tags    = list(tags),
+        )
 
     # ── Session management ──────────────────────────────────────────────────────
 
