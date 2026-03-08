@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentX — Live Dashboard</title>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --bg2:       #161b22;
+    --bg3:       #21262d;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --text2:     #8b949e;
+    --green:     #3fb950;
+    --blue:      #58a6ff;
+    --yellow:    #d29922;
+    --red:       #f85149;
+    --purple:    #bc8cff;
+    --orange:    #f0883e;
+    --accent:    #238636;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'SF Mono', 'Consolas', monospace; font-size: 13px; overflow: hidden; }
+
+  /* ── Layout ── */
+  .app {
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 1fr;
+    height: 100vh;
+  }
+  .main {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: hidden;
+    gap: 0;
+  }
+  .middle {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    z-index: 10;
+  }
+  .logo { font-size: 18px; font-weight: 700; color: var(--blue); letter-spacing: 1px; }
+  .live-badge {
+    background: var(--accent);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    animation: pulse-badge 2s infinite;
+  }
+  @keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .header-stats { display: flex; gap: 20px; margin-left: auto; color: var(--text2); font-size: 12px; }
+  .header-stats span b { color: var(--text); }
+  .header-cost { color: var(--green); font-weight: 700; }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; margin-right: 4px; transition: background .5s; }
+  .conn-dot.connected { background: var(--green); }
+
+  /* ── CEO Escalations ── */
+  .escalations {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+    min-height: 40px;
+  }
+  .escalations-label { color: var(--yellow); font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+  .escalation-none { color: var(--text2); font-size: 12px; }
+  .escalation-item {
+    background: rgba(210,153,34,0.1);
+    border: 1px solid rgba(210,153,34,0.3);
+    border-radius: 6px;
+    padding: 4px 10px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--yellow);
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .escalation-item .from { color: var(--orange); font-weight: 700; white-space: nowrap; }
+  .escalation-item .body { color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Agent Grid ── */
+  .agent-panel {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .panel-label { color: var(--text2); font-size: 11px; font-weight: 700; padding: 2px 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .agent-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: border-color .3s, box-shadow .3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .agent-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--border);
+    border-radius: 8px 0 0 8px;
+    transition: background .3s;
+  }
+  .agent-card.thinking { border-color: rgba(63,185,80,.4); }
+  .agent-card.thinking::before { background: var(--green); }
+  .agent-card.escalating { border-color: rgba(88,166,255,.4); }
+  .agent-card.escalating::before { background: var(--blue); }
+  .agent-card.idle::before { background: var(--border); }
+
+  .agent-top { display: flex; align-items: center; gap: 8px; }
+  .agent-emoji { font-size: 18px; line-height: 1; }
+  .agent-name { font-weight: 700; font-size: 13px; }
+  .agent-role { color: var(--text2); font-size: 11px; }
+
+  .agent-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--border);
+    transition: background .3s;
+  }
+  .agent-card.thinking .status-dot { background: var(--green); animation: pulse-dot 1s infinite; }
+  .agent-card.escalating .status-dot { background: var(--blue); animation: pulse-dot 1s infinite; }
+  @keyframes pulse-dot { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.4);opacity:.7} }
+
+  .agent-meta {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text2);
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .backend-badge {
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .backend-badge.local { background: rgba(63,185,80,.15); color: var(--green); }
+  .backend-badge.cloud { background: rgba(88,166,255,.15); color: var(--blue); }
+  .backend-badge.unknown { background: var(--bg3); color: var(--text2); }
+
+  .agent-action {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .agent-action.active { color: var(--text); }
+
+  /* ── Right panel (tabs: messages / workspace) ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+  }
+  .tab {
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--text2);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color .2s, border-color .2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .tab-count {
+    background: var(--bg3);
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 10px;
+    margin-left: 5px;
+    color: var(--text2);
+  }
+
+  .tab-content { display: none; flex: 1; overflow: hidden; }
+  .tab-content.active { display: flex; flex-direction: column; }
+
+  /* ── Message feed ── */
+  .msg-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .msg-item {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--bg3);
+    font-size: 12px;
+    line-height: 1.4;
+    animation: slideIn .2s ease;
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+  .msg-item:hover { background: var(--bg2); }
+  .msg-time { color: var(--text2); white-space: nowrap; font-size: 10px; margin-top: 2px; }
+  .msg-from { color: var(--orange); font-weight: 700; white-space: nowrap; }
+  .msg-arrow { color: var(--text2); }
+  .msg-to { color: var(--blue); white-space: nowrap; }
+  .msg-type-badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--bg2);
+    color: var(--text2);
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+  .msg-body { color: var(--text2); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+  /* ── Workspace ── */
+  .workspace-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+  }
+  .ws-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .ws-item:hover { background: var(--bg3); }
+  .ws-name { color: var(--blue); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-size { color: var(--text2); white-space: nowrap; font-size: 11px; }
+  .ws-time { color: var(--text2); font-size: 10px; white-space: nowrap; }
+
+  /* ── Audit log stream ── */
+  .audit-strip {
+    background: var(--bg2);
+    border-top: 1px solid var(--border);
+    height: 130px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .audit-label {
+    padding: 5px 12px 3px;
+    font-size: 10px;
+    color: var(--text2);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+  .audit-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 12px 6px;
+  }
+  .audit-entry {
+    display: grid;
+    grid-template-columns: 68px 68px 120px 1fr;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 11px;
+    border-bottom: 1px solid var(--border);
+    animation: slideIn .15s ease;
+  }
+  .audit-ts { color: var(--text2); }
+  .audit-agent { font-weight: 700; }
+  .audit-type { }
+  .audit-body { color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Type colors ── */
+  .type-TASK_START  { color: var(--green); }
+  .type-TASK_DONE   { color: var(--text2); }
+  .type-PUBLISHED   { color: var(--blue); }
+  .type-ESCALATION  { color: var(--yellow); }
+  .type-ERROR       { color: var(--red); }
+  .type-ARTIFACT    { color: var(--purple); }
+  .type-PHASE_START { color: var(--orange); }
+  .type-PHASE_DONE  { color: var(--green); }
+  .type-SESSION_RESET { color: var(--text2); }
+
+  /* ── Agent name colors ── */
+  .agent-ATLAS  { color: #79c0ff; }
+  .agent-MARCUS { color: #ff7b72; }
+  .agent-BRUNO  { color: #ffa657; }
+  .agent-DARIA  { color: #d2a8ff; }
+  .agent-THEA   { color: #56d364; }
+  .agent-NOVA   { color: #58a6ff; }
+  .agent-QUINN  { color: #f0883e; }
+  .agent-GIA    { color: #3fb950; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+  /* ── Empty state ── */
+  .empty { color: var(--text2); font-size: 12px; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">🏛️ AgentX</div>
+    <div class="live-badge">LIVE</div>
+    <div class="header-stats">
+      <span><span class="conn-dot" id="conn-dot"></span> <span id="conn-label">Connecting...</span></span>
+      <span>Agents: <b id="stat-agents">8</b></span>
+      <span>Messages: <b id="stat-msgs">—</b></span>
+      <span>Artifacts: <b id="stat-artifacts">—</b></span>
+      <span>☁️ Cost: <b class="header-cost" id="stat-cost">$0.0000</b></span>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- CEO Escalations -->
+    <div class="escalations" id="escalations-panel">
+      <div class="escalations-label">⚡ CEO ESCALATIONS</div>
+      <div class="escalation-none" id="no-escalations">No active escalations — all agents running normally.</div>
+      <div id="escalations-list"></div>
+    </div>
+
+    <!-- Middle: agents + right panel -->
+    <div class="middle">
+
+      <!-- Agent cards -->
+      <div class="agent-panel">
+        <div class="panel-label">Agent Network (8)</div>
+        <div id="agent-grid"></div>
+      </div>
+
+      <!-- Right panel with tabs -->
+      <div class="right-panel">
+        <div class="tabs">
+          <div class="tab active" data-tab="messages" onclick="switchTab('messages')">
+            Messages <span class="tab-count" id="msg-count">0</span>
+          </div>
+          <div class="tab" data-tab="workspace" onclick="switchTab('workspace')">
+            Workspace <span class="tab-count" id="ws-count">0</span>
+          </div>
+        </div>
+
+        <div class="tab-content active" id="tab-messages">
+          <div class="msg-feed" id="msg-feed">
+            <div class="empty">No inter-agent messages yet.<br>Messages appear here as agents communicate.</div>
+          </div>
+        </div>
+
+        <div class="tab-content" id="tab-workspace">
+          <div class="workspace-list" id="workspace-list">
+            <div class="empty">Loading shared workspace...</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- .middle -->
+
+    <!-- Audit log strip -->
+    <div class="audit-strip">
+      <div class="audit-label">📋 Audit Log Stream</div>
+      <div class="audit-log" id="audit-log"></div>
+    </div>
+
+  </div><!-- .main -->
+</div><!-- .app -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+const AGENTS_META = {
+  ATLAS:  {emoji:"🏛️", role:"Chief Architect"},
+  MARCUS: {emoji:"🛡️", role:"Security Lead"},
+  BRUNO:  {emoji:"🔧", role:"Infrastructure Lead"},
+  DARIA:  {emoji:"🎨", role:"UX/Frontend"},
+  THEA:   {emoji:"📊", role:"Data & Analytics"},
+  NOVA:   {emoji:"🤖", role:"AI/ML Lead"},
+  QUINN:  {emoji:"🔬", role:"QA & Testing"},
+  GIA:    {emoji:"🌱", role:"Growth & Community"},
+};
+
+let agents    = {};
+let msgCount  = 0;
+let totalCost = 0;
+let ws        = null;
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
+function connect() {
+  const url = `ws://${location.host}/ws`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    document.getElementById('conn-dot').classList.add('connected');
+    document.getElementById('conn-label').textContent = 'Connected';
+    // Heartbeat to keep connection alive
+    setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 30000);
+  };
+
+  ws.onclose = () => {
+    document.getElementById('conn-dot').classList.remove('connected');
+    document.getElementById('conn-label').textContent = 'Reconnecting...';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = (evt) => {
+    const {event, data} = JSON.parse(evt.data);
+    switch(event) {
+      case 'init':
+        initState(data);
+        break;
+      case 'agent_update':
+        updateAgentCard(data);
+        break;
+      case 'audit':
+        appendAuditEntry(data);
+        break;
+      case 'message':
+        appendMessage(data);
+        break;
+      case 'escalation':
+        appendEscalation(data);
+        appendMessage(data);  // also show in messages tab
+        break;
+    }
+  };
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+function initState(data) {
+  // Agents
+  (data.agents || []).forEach(a => {
+    agents[a.name] = a;
+    renderAgentCard(a);
+  });
+
+  // Messages
+  const msgs = data.messages || [];
+  if (msgs.length) {
+    document.getElementById('msg-feed').innerHTML = '';
+    msgs.forEach(m => appendMessage(m, false));
+  }
+  updateMsgCount(msgs.length);
+
+  // Audit
+  (data.audit || []).forEach(e => appendAuditEntry(e, false));
+
+  // Escalations
+  const esc = data.escalations || [];
+  if (esc.length) {
+    esc.forEach(e => appendEscalation(e, false));
+  }
+
+  // Workspace
+  renderWorkspace(data.workspace || []);
+  document.getElementById('ws-count').textContent = (data.workspace || []).length;
+
+  // Poll stats
+  fetchStats();
+  setInterval(fetchStats, 10000);
+}
+
+// ── Agent cards ────────────────────────────────────────────────────────────────
+function renderAgentCard(a) {
+  const grid = document.getElementById('agent-grid');
+  const existing = document.getElementById(`card-${a.name}`);
+  const card = existing || document.createElement('div');
+  card.id = `card-${a.name}`;
+  card.className = `agent-card ${a.status || 'idle'}`;
+
+  const meta = AGENTS_META[a.name] || {};
+  const isLocal = a.is_local !== false;
+  const backendClass = a.model ? (isLocal ? 'local' : 'cloud') : 'unknown';
+  const backendLabel = a.model
+    ? (isLocal ? `🟢 ${a.model}` : `☁️ ${a.model}`)
+    : '…';
+  const statusLabel = a.status === 'thinking' ? 'working' : a.status || 'idle';
+  const costStr = a.session_cost > 0 ? `$${a.session_cost.toFixed(4)}` : '$0.00';
+
+  card.innerHTML = `
+    <div class="agent-top">
+      <div class="agent-emoji">${meta.emoji || a.emoji || '🤖'}</div>
+      <div>
+        <div class="agent-name agent-${a.name}">${a.name}</div>
+        <div class="agent-role">${meta.role || a.role || ''}</div>
+      </div>
+      <div class="agent-status">
+        <div class="status-dot"></div>
+        <span style="color:var(--text2)">${statusLabel}</span>
+      </div>
+    </div>
+    <div class="agent-meta">
+      <span class="backend-badge ${backendClass}">${backendLabel}</span>
+      <span style="color:var(--text2)">☁️ ${costStr}</span>
+    </div>
+    ${a.last_action ? `<div class="agent-action ${a.status !== 'idle' ? 'active' : ''}">${escHtml(a.last_action)}</div>` : ''}
+  `;
+
+  if (!existing) grid.appendChild(card);
+}
+
+function updateAgentCard(a) {
+  agents[a.name] = a;
+  renderAgentCard(a);
+}
+
+// ── Messages ───────────────────────────────────────────────────────────────────
+function appendMessage(m, scroll=true) {
+  const feed = document.getElementById('msg-feed');
+  const empties = feed.querySelectorAll('.empty');
+  empties.forEach(e => e.remove());
+
+  const ts   = fmtTime(m.ts);
+  const from = m.from_ag || '?';
+  const to   = m.to_ag || 'ALL';
+  const type = m.msg_type || '';
+  const body = (m.content || '').substring(0, 120);
+
+  const el = document.createElement('div');
+  el.className = 'msg-item';
+  el.innerHTML = `
+    <div class="msg-time">${ts}</div>
+    <div>
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        <span class="msg-from agent-${from}">${from}</span>
+        <span class="msg-arrow">→</span>
+        <span class="msg-to">${to}</span>
+        <span class="msg-type-badge">${type}</span>
+      </div>
+      <div class="msg-body">${escHtml(body)}</div>
+    </div>
+  `;
+  feed.appendChild(el);
+  if (scroll) feed.scrollTop = feed.scrollHeight;
+  msgCount++;
+  updateMsgCount(msgCount);
+}
+
+function updateMsgCount(n) {
+  document.getElementById('msg-count').textContent = n;
+  document.getElementById('stat-msgs').textContent = n;
+}
+
+// ── Escalations ────────────────────────────────────────────────────────────────
+function appendEscalation(e, scroll=true) {
+  const noEsc = document.getElementById('no-escalations');
+  if (noEsc) noEsc.style.display = 'none';
+
+  const list = document.getElementById('escalations-list');
+  const el = document.createElement('div');
+  el.className = 'escalation-item';
+  el.innerHTML = `
+    <span class="from">⚡ ${e.from_ag}</span>
+    <span class="body">${escHtml((e.content || '').substring(0, 120))}</span>
+    <span style="color:var(--text2);font-size:10px;white-space:nowrap">${fmtTime(e.ts)}</span>
+  `;
+  list.insertBefore(el, list.firstChild);
+  // Keep max 5 visible
+  while (list.children.length > 5) list.removeChild(list.lastChild);
+}
+
+// ── Audit log ──────────────────────────────────────────────────────────────────
+let auditEntries = 0;
+
+function appendAuditEntry(e, scroll=true) {
+  const log  = document.getElementById('audit-log');
+  const ts   = fmtTime(e.ts);
+  const type = e.type || '';
+  const agent = (e.agent || '').toUpperCase();
+  const body = (e.body || '').substring(0, 80);
+
+  const el = document.createElement('div');
+  el.className = 'audit-entry';
+  el.innerHTML = `
+    <span class="audit-ts">${ts}</span>
+    <span class="audit-agent agent-${agent}">${agent}</span>
+    <span class="audit-type type-${type}">${type}</span>
+    <span class="audit-body">${escHtml(body)}</span>
+  `;
+  log.appendChild(el);
+  if (scroll) log.scrollTop = log.scrollHeight;
+
+  auditEntries++;
+  // Keep DOM trim (max 200 entries)
+  while (log.children.length > 200) log.removeChild(log.firstChild);
+
+  // Update total cost from TASK_DONE entries
+  if (type === 'TASK_DONE' && body.includes('$') && !body.includes('(local)')) {
+    try {
+      const parts = body.split('|');
+      const costPart = parts.find(p => p.trim().startsWith('$'));
+      if (costPart) {
+        const cost = parseFloat(costPart.trim().replace('$', ''));
+        if (!isNaN(cost)) {
+          totalCost += cost;
+          document.getElementById('stat-cost').textContent = '$' + totalCost.toFixed(4);
+        }
+      }
+    } catch(e) {}
+  }
+}
+
+// ── Workspace ──────────────────────────────────────────────────────────────────
+function renderWorkspace(files) {
+  const list = document.getElementById('workspace-list');
+  if (!files.length) {
+    list.innerHTML = '<div class="empty">No shared artifacts yet.</div>';
+    return;
+  }
+  list.innerHTML = files.map(f => `
+    <div class="ws-item">
+      <span class="ws-name" title="${escHtml(f.name)}">📄 ${escHtml(f.name)}</span>
+      <span class="ws-size">${fmtSize(f.size)}</span>
+      <span class="ws-time">${f.modified}</span>
+    </div>
+  `).join('');
+  document.getElementById('ws-count').textContent = files.length;
+}
+
+// ── Stats polling ──────────────────────────────────────────────────────────────
+async function fetchStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    document.getElementById('stat-artifacts').textContent = d.shared_artifacts || 0;
+    if (!msgCount) {
+      document.getElementById('stat-msgs').textContent = d.messages || 0;
+    }
+    // Refresh workspace
+    const wr = await fetch('/api/workspace');
+    const wf = await wr.json();
+    renderWorkspace(wf);
+    document.getElementById('ws-count').textContent = wf.length;
+    document.getElementById('stat-artifacts').textContent = wf.length;
+  } catch(e) {}
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === tab)
+  );
+  document.querySelectorAll('.tab-content').forEach(c =>
+    c.classList.toggle('active', c.id === `tab-${tab}`)
+  );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function fmtTime(iso) {
+  if (!iso) return '--:--:--';
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', {hour12: false});
+  } catch(e) { return iso.substring(11, 19); }
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + 'KB';
+  return (bytes/1024/1024).toFixed(2) + 'MB';
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

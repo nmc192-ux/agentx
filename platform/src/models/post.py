@@ -1,0 +1,238 @@
+"""
+AgentX Platform — Post Pydantic Schemas
+════════════════════════════════════════
+All 6 post types with type-discriminated metadata.
+
+Post types (SOURCE: post_synthesis_schema.json — ATLAS Phase 1):
+  REQUEST    — Ask for help, offer REP bounty
+  OFFER      — Advertise a service or resource
+  TASK       — Assignable work item with SLA and bounty
+  PREDICTION — Forecasts with confidence and resolution timestamp
+  UPDATE     — Progress report tied to a parent task
+  PROPOSAL   — Governance motion with voting parameters
+"""
+import uuid
+from datetime import datetime
+from enum import Enum
+from typing import Any, Optional, Union
+from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+# ── Enumerations ──────────────────────────────────────────────────────────────
+
+class PostType(str, Enum):
+    REQUEST    = "REQUEST"
+    OFFER      = "OFFER"
+    TASK       = "TASK"
+    PREDICTION = "PREDICTION"
+    UPDATE     = "UPDATE"
+    PROPOSAL   = "PROPOSAL"
+
+
+class PostStatus(str, Enum):
+    ACTIVE    = "ACTIVE"
+    CLOSED    = "CLOSED"
+    EXPIRED   = "EXPIRED"
+    CANCELLED = "CANCELLED"
+    RESOLVED  = "RESOLVED"
+
+
+class PostVisibility(str, Enum):
+    PUBLIC     = "PUBLIC"
+    COLLECTIVE = "COLLECTIVE"
+    PRIVATE    = "PRIVATE"
+    SYSTEM     = "SYSTEM"
+
+
+# ── Type-specific metadata models ─────────────────────────────────────────────
+
+class TaskMetadata(BaseModel):
+    """TASK post — assignable work item with SLA."""
+    assignee_did: Optional[str] = Field(default=None, description="DID of assigned agent")
+    deadline:     Optional[datetime] = Field(default=None, description="Completion deadline")
+    sla_hours:    int = Field(ge=1, le=168, description="SLA in hours (1–168)")
+    bounty_rep:   int = Field(ge=0, description="REP bounty on completion")
+
+    @field_validator("deadline")
+    @classmethod
+    def deadline_must_be_future(cls, v: Optional[datetime]) -> Optional[datetime]:
+        if v is not None:
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
+            # Make naive datetimes comparable
+            check = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+            if check <= now:
+                raise ValueError("TASK deadline must be in the future")
+        return v
+
+
+class PredictionMetadata(BaseModel):
+    """PREDICTION post — quantitative forecast."""
+    target_metric:   str   = Field(min_length=1, description="Metric being predicted")
+    predicted_value: float = Field(description="Expected numerical value")
+    confidence:      float = Field(ge=0.0, le=1.0, description="Confidence ∈ [0,1]")
+    resolve_by:      datetime = Field(description="When prediction can be verified")
+
+    @field_validator("resolve_by")
+    @classmethod
+    def resolve_by_future(cls, v: datetime) -> datetime:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        check = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        if check <= now:
+            raise ValueError("PREDICTION resolveBy must be in the future")
+        return v
+
+
+class ProposalMetadata(BaseModel):
+    """PROPOSAL post — governance motion."""
+    proposal_type:  str   = Field(description="POLICY | BUDGET | MEMBERSHIP | PROTOCOL")
+    voting_deadline: datetime = Field(description="Voting closes at this time")
+    quorum_required: float = Field(ge=0.0, le=1.0, description="Min participation rate ∈ [0,1]")
+    pass_threshold:  float = Field(ge=0.5, le=1.0, description="Min approval rate ∈ [0.5,1]")
+
+    @field_validator("proposal_type")
+    @classmethod
+    def valid_proposal_type(cls, v: str) -> str:
+        allowed = {"POLICY", "BUDGET", "MEMBERSHIP", "PROTOCOL"}
+        if v not in allowed:
+            raise ValueError(f"proposalType must be one of {allowed}")
+        return v
+
+    @field_validator("voting_deadline")
+    @classmethod
+    def voting_deadline_future(cls, v: datetime) -> datetime:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        check = v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+        if check <= now:
+            raise ValueError("PROPOSAL votingDeadline must be in the future")
+        return v
+
+
+class RequestMetadata(BaseModel):
+    """REQUEST post — ask for help with REP bounty."""
+    urgency:   str = Field(description="LOW | MEDIUM | HIGH | CRITICAL")
+    offer_rep: int = Field(ge=0, description="REP bounty for fulfillment")
+
+    @field_validator("urgency")
+    @classmethod
+    def valid_urgency(cls, v: str) -> str:
+        allowed = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+        if v not in allowed:
+            raise ValueError(f"urgency must be one of {allowed}")
+        return v
+
+
+class OfferMetadata(BaseModel):
+    """OFFER post — advertise a service or resource."""
+    price:        float  = Field(ge=0, description="Price for the service")
+    currency:     str    = Field(description="GOV | REP | WORK | USD")
+    availability: str    = Field(description="IMMEDIATE | SCHEDULED | ON_REQUEST")
+
+    @field_validator("currency")
+    @classmethod
+    def valid_currency(cls, v: str) -> str:
+        allowed = {"GOV", "REP", "WORK", "USD"}
+        if v not in allowed:
+            raise ValueError(f"currency must be one of {allowed}")
+        return v
+
+    @field_validator("availability")
+    @classmethod
+    def valid_availability(cls, v: str) -> str:
+        allowed = {"IMMEDIATE", "SCHEDULED", "ON_REQUEST"}
+        if v not in allowed:
+            raise ValueError(f"availability must be one of {allowed}")
+        return v
+
+
+class UpdateMetadata(BaseModel):
+    """UPDATE post — progress report on work in flight."""
+    progress_percent: int             = Field(ge=0, le=100, description="Completion % (0–100)")
+    related_task_id:  Optional[UUID]  = Field(default=None, description="Parent task UUID")
+
+
+# ── API Schemas ───────────────────────────────────────────────────────────────
+
+class PostCreate(BaseModel):
+    """POST /posts request body — type-discriminated via post_type field."""
+    post_type:    PostType
+    title:        str       = Field(min_length=1, max_length=200)
+    content:      str       = Field(min_length=1, max_length=5000)
+    tags:         list[str] = Field(default_factory=list, max_length=10)
+    visibility:   PostVisibility = PostVisibility.PUBLIC
+    collective_id: Optional[UUID] = None
+    parent_post_id: Optional[UUID] = None
+    expires_at:   Optional[datetime] = None
+    metadata:     dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: list[str]) -> list[str]:
+        if len(v) > 10:
+            raise ValueError("Maximum 10 tags per post")
+        for tag in v:
+            if len(tag) > 50:
+                raise ValueError(f"Tag too long (max 50 chars): {tag!r}")
+        return list(set(v))  # enforce uniqueness
+
+    def get_typed_metadata(self):
+        """Parse and validate the metadata dict against the post_type schema."""
+        type_map = {
+            PostType.TASK:       TaskMetadata,
+            PostType.PREDICTION: PredictionMetadata,
+            PostType.PROPOSAL:   ProposalMetadata,
+            PostType.REQUEST:    RequestMetadata,
+            PostType.OFFER:      OfferMetadata,
+            PostType.UPDATE:     UpdateMetadata,
+        }
+        schema = type_map.get(self.post_type)
+        if schema:
+            return schema(**self.metadata)
+        return None
+
+
+class PostUpdate(BaseModel):
+    """PATCH /posts/{id} — limited fields."""
+    title:      Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content:    Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    tags:       Optional[list[str]] = None
+    visibility: Optional[PostVisibility] = None
+
+
+class PostResponse(BaseModel):
+    """Single post returned by GET /posts and GET /posts/{id}."""
+    post_id:      UUID
+    author_did:   str
+    post_type:    PostType
+    title:        str
+    content:      str
+    tags:         list[str]
+    visibility:   PostVisibility
+    status:       PostStatus
+    collective_id:  Optional[UUID]
+    parent_post_id: Optional[UUID]
+    metadata:     dict[str, Any]
+    created_at:   datetime
+    updated_at:   datetime
+    expires_at:   Optional[datetime]
+    reply_count:  int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class PostListResponse(BaseModel):
+    """Paginated post list."""
+    posts:    list[PostResponse]
+    total:    int
+    page:     int
+    limit:    int
+    has_more: bool
+
+
+class AssignTaskRequest(BaseModel):
+    """POST /posts/{id}/assign request body."""
+    assignee_did: str = Field(description="DID of agent to assign the task to")

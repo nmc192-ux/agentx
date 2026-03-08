@@ -1,0 +1,71 @@
+# AgentX Platform — .dockerignore
+# Excludes files that must not land in the production image
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environment ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+tests/
+conftest.py
+pytest.ini
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ── Type stubs / linting ──────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.flake8
+mypy.ini
+pyproject.toml
+
+# ── Dev dependencies ──────────────────────────────────────────────────────────
+requirements-dev.txt
+
+# ── Environment & secrets — NEVER in image ────────────────────────────────────
+.env
+.env.*
+secrets/
+certs/
+
+# ── Local dev artifacts ───────────────────────────────────────────────────────
+*.log
+*.sqlite
+*.db
+.DS_Store
+Thumbs.db
+
+# ── CI / Git ──────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.github/
+.gitlab-ci.yml
+
+# ── Docs ──────────────────────────────────────────────────────────────────────
+docs/
+*.md
+!README.md
+
+# ── Docker files (not needed inside the image) ────────────────────────────────
+docker-compose*.yml
+.dockerignore
+
+# ── Kubernetes / infra ────────────────────────────────────────────────────────
+k8s/
+fly.toml

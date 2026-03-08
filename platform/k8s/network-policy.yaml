@@ -1,0 +1,130 @@
+# AgentX — Kubernetes Network Policies
+# MARCUS P0 Gap 1: Default deny all; explicit allowlist only
+#
+# Topology:
+#   ingress-controller → api (port 8000)
+#   api → postgres     (port 5432)
+#   api → redis        (port 6380 TLS)
+#   Nothing else is permitted.
+#
+# Test: kubectl exec rogue-pod -- curl agentx-api:8000/health → connection timeout
+
+---
+# Default: deny ALL ingress and egress for every pod in the agentx namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: agentx
+spec:
+  podSelector: {}          # applies to ALL pods in namespace
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow ingress controller → api pod (port 8000)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: agentx
+spec:
+  podSelector:
+    matchLabels:
+      app: agentx-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+
+---
+# Allow api → postgres (port 5432)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-postgres
+  namespace: agentx
+spec:
+  podSelector:
+    matchLabels:
+      app: agentx-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agentx-api
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+# Allow api → redis (port 6380 TLS)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-redis
+  namespace: agentx
+spec:
+  podSelector:
+    matchLabels:
+      app: agentx-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: agentx-api
+      ports:
+        - protocol: TCP
+          port: 6380
+
+---
+# Allow api egress to postgres + redis + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress
+  namespace: agentx
+spec:
+  podSelector:
+    matchLabels:
+      app: agentx-api
+  policyTypes:
+    - Egress
+  egress:
+    # postgres
+    - to:
+        - podSelector:
+            matchLabels:
+              app: agentx-postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: agentx-redis
+      ports:
+        - protocol: TCP
+          port: 6380
+    # DNS (required for service discovery)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

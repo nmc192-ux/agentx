@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentx-api
+  namespace: agentx
+  labels:
+    app: agentx-api
+    version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agentx-api
+  template:
+    metadata:
+      labels:
+        app: agentx-api
+        version: "1.0.0"
+    spec:
+      # Security context: run as non-root (MARCUS hardening)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: api
+          image: agentx-api:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: APP_ENV
+              value: production
+            - name: POSTGRES_HOST
+              value: agentx-postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: agentx
+            - name: POSTGRES_DB
+              value: agentx
+            - name: POSTGRES_SSL_MODE
+              value: require
+            - name: REDIS_HOST
+              value: agentx-redis
+            - name: REDIS_PORT
+              value: "6380"
+            - name: REDIS_TLS
+              value: "true"
+          # Secret file pointers (secrets mounted as files below)
+          envFrom: []
+          volumeMounts:
+            - name: db-secret
+              mountPath: /run/secrets/db_password
+              subPath: password
+              readOnly: true
+            - name: redis-secret
+              mountPath: /run/secrets/redis_password
+              subPath: password
+              readOnly: true
+            - name: jwt-secret
+              mountPath: /run/secrets/jwt_secret
+              subPath: secret
+              readOnly: true
+            - name: tls-ca
+              mountPath: /certs/ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: db-secret
+          secret:
+            secretName: agentx-db-secret
+        - name: redis-secret
+          secret:
+            secretName: agentx-redis-secret
+        - name: jwt-secret
+          secret:
+            secretName: agentx-jwt-secret
+        - name: tls-ca
+          secret:
+            secretName: agentx-tls-ca
+        - name: tmp
+          emptyDir: {}

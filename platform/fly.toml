@@ -1,0 +1,90 @@
+# AgentX Platform — Fly.io Deployment Configuration
+# ════════════════════════════════════════════════════
+# Managed by: fly.io  |  Docs: https://fly.io/docs/reference/configuration/
+#
+# Deploy:
+#   fly deploy                     (from platform/ directory)
+#
+# Secrets (set once — stored encrypted in Fly):
+#   fly secrets set JWT_SECRET="$(openssl rand -hex 64)"
+#   fly secrets set POSTGRES_PASSWORD="<from fly postgres create output>"
+#   fly secrets set REDIS_PASSWORD="<from Upstash dashboard>"
+#
+# Update CORS after Vercel deployment:
+#   fly secrets set CORS_ORIGINS='["https://your-app.vercel.app"]'
+
+app            = "agentx-platform"
+primary_region = "iad"            # US East — change to iad/lhr/nrt/syd as needed
+
+# ── Build ──────────────────────────────────────────────────────────────────────
+[build]
+  dockerfile = "Dockerfile"       # Multi-stage, MARCUS-hardened (already in repo)
+
+# ── Environment ────────────────────────────────────────────────────────────────
+# Non-sensitive config only. Secrets go in `fly secrets set`.
+[env]
+  APP_ENV     = "production"
+  APP_HOST    = "0.0.0.0"
+  APP_PORT    = "8000"
+  LOG_LEVEL   = "info"
+
+  # ── PostgreSQL (Fly Managed Postgres via private 6PN network) ──────────────
+  # Connection is over Fly's WireGuard mesh (6PN) — already encrypted, no TLS needed
+  POSTGRES_HOST     = "agentx-platform-db.flycast"
+  POSTGRES_PORT     = "5432"
+  POSTGRES_USER     = "agentx_platform"
+  POSTGRES_DB       = "agentx_platform"
+  POSTGRES_SSL_MODE = "disable"   # 6PN private network — WireGuard handles encryption
+
+  # ── Redis (Upstash — serverless, TLS on port 6380) ─────────────────────────
+  # Set REDIS_HOST after provisioning Upstash:
+  #   fly secrets set REDIS_HOST="<your>.upstash.io"
+  REDIS_PORT = "6380"
+  REDIS_TLS  = "true"
+
+  # ── CORS (UPDATE after Vercel deploy) ──────────────────────────────────────
+  # fly secrets set CORS_ORIGINS='["https://your-app.vercel.app"]'
+  # Placeholder — will reject all browser requests until updated:
+  CORS_ORIGINS = '["https://placeholder.vercel.app"]'
+
+  # ── JWT token lifetimes ────────────────────────────────────────────────────
+  JWT_ACCESS_TOKEN_TTL  = "900"    # 15 minutes
+  JWT_REFRESH_TOKEN_TTL = "604800" # 7 days
+
+  # ── Rate limiting ──────────────────────────────────────────────────────────
+  RATE_LIMIT_DEFAULT = "100/minute"
+  RATE_LIMIT_AUTH    = "10/minute"
+
+# ── HTTP Service ───────────────────────────────────────────────────────────────
+[http_service]
+  internal_port       = 8000
+  force_https         = true       # Automatic TLS termination by Fly edge
+  auto_stop_machines  = false      # CRITICAL: keep alive for WebSocket connections
+  auto_start_machines = true
+  min_machines_running = 1         # No cold starts
+
+  [http_service.concurrency]
+    type       = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+  # ── Health check — maps to GET /health (liveness probe) ───────────────────
+  [[http_service.checks]]
+    interval     = "30s"
+    timeout      = "10s"
+    grace_period = "25s"    # Allow startup (DB pool + Redis init)
+    method       = "GET"
+    path         = "/health"
+
+# ── Machine sizing ─────────────────────────────────────────────────────────────
+# shared-cpu-2x = 1 vCPU, 512MB RAM → matches `--workers 2` in Dockerfile CMD
+# Upgrade to performance-1x (dedicated vCPU) when agent count > ~500
+[[vm]]
+  size   = "shared-cpu-2x"
+  memory = "512mb"
+
+# ── Scaling (optional — uncomment for horizontal scaling) ─────────────────────
+# [http_service.auto_scaling]
+#   min_machines = 1
+#   max_machines = 3
+#   target_concurrent_requests = 150

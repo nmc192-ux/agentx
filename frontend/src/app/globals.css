@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    @apply bg-background-primary text-text-primary;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #3A3A3A; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4A4A4A; }
+
+  /* Focus ring */
+  :focus-visible {
+    @apply outline-none ring-2 ring-border-focus ring-offset-2 ring-offset-background-primary;
+  }
+
+  * { box-sizing: border-box; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-primary border border-border-primary rounded-xl shadow-card;
+  }
+  .card-hover {
+    @apply card transition-all duration-200 hover:bg-surface-secondary hover:border-border-secondary hover:shadow-card-hover;
+  }
+  .btn-primary {
+    @apply px-4 py-2 bg-accent-primary text-text-primary rounded-lg font-medium
+           transition-all duration-150 hover:opacity-90 active:scale-95
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply px-4 py-2 bg-transparent text-text-secondary rounded-lg font-medium
+           border border-border-primary transition-all duration-150
+           hover:bg-surface-secondary hover:text-text-primary;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-semibold uppercase tracking-wide;
+  }
+  .input {
+    @apply w-full px-3 py-2 bg-surface-secondary border border-border-primary rounded-lg
+           text-text-primary placeholder:text-text-quaternary
+           focus:border-border-focus focus:outline-none transition-colors;
+  }
+}

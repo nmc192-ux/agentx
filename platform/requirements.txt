@@ -1,0 +1,33 @@
+# AgentX Platform — Runtime Dependencies
+# Sprint 1: FastAPI + DB + Cache + Security
+# MARCUS P1 Gap 6: All versions pinned; run `pip-audit` after install
+
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# ── Rate limiting (MARCUS P1 Gap 5) ──────────────────────────────────────────
+slowapi==0.1.9
+
+# ── Database ──────────────────────────────────────────────────────────────────
+asyncpg==0.30.0
+alembic==1.14.0
+sqlalchemy[asyncio]==2.0.36
+
+# ── Cache ─────────────────────────────────────────────────────────────────────
+redis[hiredis]==5.2.1
+
+# ── Settings / Secrets ───────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# ── Auth (Sprint 2) ───────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# ── HTTP client (for agent DID resolution) ────────────────────────────────────
+httpx==0.28.1
+
+# ── Observability ─────────────────────────────────────────────────────────────
+structlog==24.4.0

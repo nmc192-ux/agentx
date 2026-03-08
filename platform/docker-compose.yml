@@ -1,0 +1,163 @@
+# AgentX Platform — docker-compose.yml
+# Sprint 1 Foundation: Postgres 16 + pgvector, Redis 7, FastAPI
+#
+# MARCUS P0 Gap 1: All inter-container traffic on private backend network
+# MARCUS P0 Gap 2: TLS enforced for postgres and redis connections
+# MARCUS P1 Gap 4: Credentials via Docker secrets, not plain env vars
+#
+# Usage:
+#   cp .env.example .env
+#   ./scripts/generate-tls-certs.sh      # create certs/ directory
+#   docker compose up -d
+#
+version: "3.9"
+
+# ── Secrets (MARCUS P1 Gap 4) ──────────────────────────────────────────────────
+# In development: read from files in ./secrets/
+# In production:  use external: true  (Kubernetes Secrets / Docker Swarm)
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+
+# ── Networks (MARCUS P0 Gap 1) ─────────────────────────────────────────────────
+# frontend: public-facing (only the API is here)
+# backend:  internal only — postgres and redis are NOT reachable externally
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true   # no external routing — only containers on this network
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+
+  # ── PostgreSQL 16 + pgvector ──────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    networks:
+      - backend                          # internal only — never on frontend
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./certs/postgres:/certs:ro       # TLS certs (MARCUS P0 Gap 2)
+    secrets:
+      - db_password
+    environment:
+      POSTGRES_USER: agentx
+      POSTGRES_DB: agentx
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      # TLS: require encrypted connections (MARCUS P0 Gap 2)
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    command: >
+      postgres
+        -c ssl=on
+        -c ssl_cert_file=/certs/server.crt
+        -c ssl_key_file=/certs/server.key
+        -c ssl_ca_file=/certs/ca.crt
+        -c log_connections=on
+        -c log_disconnections=on
+        -c log_statement=ddl
+        -c shared_preload_libraries=pg_stat_statements
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentx -d agentx"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Redis 7 with TLS + AUTH ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - backend                          # internal only
+    volumes:
+      - redis_data:/data
+      - ./certs/redis:/certs:ro          # TLS certs (MARCUS P0 Gap 2)
+    secrets:
+      - redis_password
+    # TLS + AUTH via command args (MARCUS P0 Gap 2 + P1 Gap 4)
+    command: >
+      sh -c '
+        REDIS_PASS=$$(cat /run/secrets/redis_password)
+        redis-server
+          --requirepass "$$REDIS_PASS"
+          --tls-port 6380
+          --port 0
+          --tls-cert-file /certs/server.crt
+          --tls-key-file /certs/server.key
+          --tls-ca-cert-file /certs/ca.crt
+          --tls-auth-clients no
+          --maxmemory 512mb
+          --maxmemory-policy allkeys-lru
+          --appendonly yes
+          --loglevel notice
+      '
+    healthcheck:
+      test: >
+        sh -c 'PASS=$$(cat /run/secrets/redis_password) &&
+               redis-cli --tls --cacert /certs/ca.crt
+               -p 6380 -a "$$PASS" ping | grep PONG'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── FastAPI Application ───────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - frontend                         # receives external traffic via ingress
+      - backend                          # talks to postgres + redis
+    ports:
+      - "127.0.0.1:8000:8000"           # only bind to loopback — use nginx/caddy in prod
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro # CA cert for verifying postgres/redis TLS
+    secrets:
+      - db_password
+      - redis_password
+      - jwt_secret
+    environment:
+      # Non-sensitive config
+      APP_ENV: development
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8000"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: agentx
+      POSTGRES_DB: agentx
+      POSTGRES_SSL_MODE: require
+      POSTGRES_SSL_CA: /certs/ca.crt
+      REDIS_HOST: redis
+      REDIS_PORT: "6380"
+      REDIS_TLS: "true"
+      REDIS_TLS_CA: /certs/ca.crt
+      LOG_LEVEL: info
+      # Secrets loaded from /run/secrets/ by src/config.py
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

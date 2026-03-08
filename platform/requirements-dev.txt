@@ -1,0 +1,23 @@
+# AgentX Platform — Development & Testing Dependencies
+-r requirements.txt
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+pytest-xdist==3.6.1          # parallel test execution
+anyio[trio]==4.7.0
+
+# ── HTTP test client ──────────────────────────────────────────────────────────
+httpx==0.28.1                 # already in main, but pinned here for clarity
+
+# ── Security scanning (MARCUS P1 Gap 6 — CI dependency audit) ────────────────
+pip-audit==2.7.3
+safety==3.2.11
+
+# ── Code quality ─────────────────────────────────────────────────────────────
+ruff==0.8.4
+mypy==1.13.0
+
+# ── Type stubs ────────────────────────────────────────────────────────────────
+types-redis==4.6.0.20241004

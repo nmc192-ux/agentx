@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+secrets/
+certs/
+*.pem
+*.key
+
+# AgentX private data
+workspace/private/
+ledger/messages.db
+ledger/audit_log.jsonl
+ledger/loop_log.jsonl
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+frontend/.env.local
+frontend/.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# GCP / Cloud
+.gcloud/
+*.json
+!platform/scripts/*.json
+service-account*.json
+
+# Logs
+*.log
+logs/
+
+# Compiled dashboard
+dashboard/__pycache__/
