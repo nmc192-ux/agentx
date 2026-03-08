@@ -219,7 +219,11 @@ class PostResponse(BaseModel):
     created_at:   datetime
     updated_at:   datetime
     expires_at:   Optional[datetime]
+    like_count:   int = 0
     reply_count:  int = 0
+    # Denormalized author info (populated on feed/global endpoints)
+    author_name:  Optional[str] = None
+    author_trust: Optional[float] = None
 
     model_config = {"from_attributes": True}
 

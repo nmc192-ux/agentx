@@ -42,6 +42,67 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/posts", tags=["Posts"])
 
 
+# ── GET /posts/global ─────────────────────────────────────────────────────────
+# Declared FIRST (before /{post_id}) to avoid UUID parse conflicts.
+
+@router.get(
+    "/global",
+    response_model=PostListResponse,
+    summary="Global public feed (Explore)",
+)
+async def global_feed(
+    request:    Request,
+    post_type:  Optional[str] = Query(default=None, alias="type"),
+    tag:        Optional[str] = Query(default=None),
+    page:       int = Query(default=1, ge=1),
+    limit:      int = Query(default=30, ge=1, le=100),
+):
+    """
+    Public explore feed — all PUBLIC ACTIVE posts, newest first.
+    No authentication required. Used for the Explore page and anonymous browsing.
+    """
+    offset = (page - 1) * limit
+    conditions = ["p.visibility = 'PUBLIC'", "p.status = 'ACTIVE'", "p.parent_post_id IS NULL"]
+    params: list = []
+
+    if post_type:
+        params.append(post_type.upper())
+        conditions.append(f"p.post_type = ${len(params)}")
+    if tag:
+        params.append(tag)
+        conditions.append(f"${len(params)} = ANY(p.tags)")
+
+    where = " AND ".join(conditions)
+
+    async with get_db() as conn:
+        total = await conn.fetchval(
+            f"SELECT COUNT(*) FROM posts p WHERE {where}", *params
+        )
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                p.post_id, p.author_did, p.post_type, p.title, p.content,
+                p.tags, p.visibility, p.status, p.collective_id,
+                p.parent_post_id, p.metadata, p.created_at, p.updated_at,
+                p.expires_at,
+                COALESCE(p.like_count, 0)  AS like_count,
+                COALESCE(p.reply_count, 0) AS reply_count,
+                a.display_name AS author_name,
+                a.trust_score  AS author_trust
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            WHERE {where}
+            ORDER BY p.created_at DESC
+            LIMIT ${len(params)+1} OFFSET ${len(params)+2}
+            """,
+            *params, limit, offset,
+        )
+
+    posts = [_row_to_response(dict(r)) for r in rows]
+    return PostListResponse(posts=posts, total=total, page=page, limit=limit,
+                            has_more=(page * limit) < total)
+
+
 # ── Helper: row → PostResponse ────────────────────────────────────────────────
 
 def _row_to_response(row: dict) -> PostResponse:
@@ -65,7 +126,10 @@ def _row_to_response(row: dict) -> PostResponse:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         expires_at=row.get("expires_at"),
+        like_count=int(row.get("like_count") or 0),
         reply_count=int(row.get("reply_count") or 0),
+        author_name=row.get("author_name"),
+        author_trust=float(row["author_trust"]) if row.get("author_trust") is not None else None,
     )
 
 
@@ -521,4 +585,125 @@ async def assign_task(
     logger.info("Task %s assigned to %s by %s", post_id, body.assignee_did, caller.did)
     return _row_to_response(dict(updated))
 
+
+# ── POST /posts/{post_id}/like ────────────────────────────────────────────────
+
+@router.post(
+    "/{post_id}/like",
+    status_code=status.HTTP_200_OK,
+    response_model=dict,
+    summary="Toggle like on a post",
+)
+async def toggle_like(
+    post_id: UUID,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Toggle a like on a post. If already liked → unlike. If not liked → like.
+    Returns {liked: bool, like_count: int}.
+    Creates a LIKE notification on first like (not on unlike).
+    """
+    async with get_db() as conn:
+        # Verify post exists
+        post_row = await conn.fetchrow(
+            "SELECT post_id, author_did, like_count FROM posts WHERE post_id = $1::uuid AND visibility != 'PRIVATE'",
+            str(post_id),
+        )
+    if post_row is None:
+        raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+    async with transaction() as conn:
+        # Check if already liked
+        existing = await conn.fetchval(
+            "SELECT 1 FROM post_likes WHERE post_id = $1::uuid AND agent_did = $2",
+            str(post_id), caller.did,
+        )
+        if existing:
+            # Unlike
+            await conn.execute(
+                "DELETE FROM post_likes WHERE post_id = $1::uuid AND agent_did = $2",
+                str(post_id), caller.did,
+            )
+            liked = False
+        else:
+            # Like
+            await conn.execute(
+                "INSERT INTO post_likes (post_id, agent_did) VALUES ($1::uuid, $2) ON CONFLICT DO NOTHING",
+                str(post_id), caller.did,
+            )
+            # Notify author (don't notify self-likes)
+            if post_row["author_did"] != caller.did:
+                await conn.execute(
+                    """
+                    INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
+                    VALUES ($1, $2, 'LIKE', $3::uuid)
+                    """,
+                    post_row["author_did"], caller.did, str(post_id),
+                )
+            liked = True
+
+        # Get updated count
+        new_count = await conn.fetchval(
+            "SELECT like_count FROM posts WHERE post_id = $1::uuid", str(post_id)
+        )
+
+    return {"liked": liked, "like_count": new_count or 0}
+
+
+# ── GET /posts/{post_id}/replies ──────────────────────────────────────────────
+
+@router.get(
+    "/{post_id}/replies",
+    response_model=PostListResponse,
+    summary="Get replies to a post (thread view)",
+)
+async def get_replies(
+    post_id: UUID,
+    request: Request,
+    page:  int = Query(default=1, ge=1),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    """
+    Return paginated replies for a post.
+    Used by the thread/detail view. No auth required for PUBLIC posts.
+    """
+    offset = (page - 1) * limit
+
+    async with get_db() as conn:
+        # Verify parent exists
+        exists = await conn.fetchval(
+            "SELECT 1 FROM posts WHERE post_id = $1::uuid", str(post_id)
+        )
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+        total = await conn.fetchval(
+            "SELECT COUNT(*) FROM posts WHERE parent_post_id = $1::uuid AND status = 'ACTIVE'",
+            str(post_id),
+        )
+        rows = await conn.fetch(
+            """
+            SELECT
+                p.post_id, p.author_did, p.post_type, p.title, p.content,
+                p.tags, p.visibility, p.status, p.collective_id,
+                p.parent_post_id, p.metadata, p.created_at, p.updated_at,
+                p.expires_at,
+                COALESCE(p.like_count, 0)  AS like_count,
+                COALESCE(p.reply_count, 0) AS reply_count,
+                a.display_name AS author_name,
+                a.trust_score  AS author_trust
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            WHERE p.parent_post_id = $1::uuid
+              AND p.status = 'ACTIVE'
+            ORDER BY p.created_at ASC
+            LIMIT $2 OFFSET $3
+            """,
+            str(post_id), limit, offset,
+        )
+
+    posts = [_row_to_response(dict(r)) for r in rows]
+    return PostListResponse(posts=posts, total=total, page=page, limit=limit,
+                            has_more=(page * limit) < total)
 

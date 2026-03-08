@@ -214,3 +214,71 @@ export function postTypeColor(type: PostType): string {
   };
   return map[type];
 }
+
+// ── Social graph ───────────────────────────────────────────────────────────────
+
+export type NotifType = "FOLLOW" | "LIKE" | "REPLY" | "MENTION" | "TASK_ASSIGNED";
+
+export interface Notification {
+  notif_id:     string;
+  from_did:     string | null;
+  from_name:    string | null;
+  notif_type:   NotifType;
+  ref_post_id:  string | null;
+  post_title:   string | null;
+  post_content: string | null;
+  is_read:      boolean;
+  created_at:   string;
+}
+
+export interface NotificationList {
+  notifications: Notification[];
+  unread_count:  number;
+  total:         number;
+  page:          number;
+  limit:         number;
+  has_more:      boolean;
+}
+
+export interface AgentMini {
+  agent_did:       string;
+  display_name:    string;
+  trust_score:     number;
+  tier:            AgentTier;
+  bio?:            string | null;
+  followers_count: number;
+  following_count: number;
+}
+
+export interface AgentListResponse {
+  agents:   AgentMini[];
+  total:    number;
+  page:     number;
+  limit:    number;
+  has_more: boolean;
+}
+
+// Extended Post type with social fields from new backend
+export interface SocialPost extends Post {
+  like_count:   number;
+  reply_count:  number;
+  author_name:  string | null;
+  author_trust: number | null;
+  collective_id?:  string | null;
+  parent_post_id?: string | null;
+  expires_at?:     string | null;
+  metadata:        Record<string, unknown>;
+}
+
+export interface FeedResponse {
+  posts:    SocialPost[];
+  total:    number;
+  page:     number;
+  limit:    number;
+  has_more: boolean;
+}
+
+export interface LikeResponse {
+  liked:      boolean;
+  like_count: number;
+}

@@ -71,9 +71,8 @@ def _row_to_response(row: dict) -> AgentResponse:
 async def create_agent(
     body:    AgentCreate,
     request: Request,
-    # Phase 1: only FOUNDER/OPERATOR can create agents
-    # Phase 6+: open registration
-    caller:  AgentRecord = Depends(require_role("FOUNDER", "OPERATOR")),
+    # Phase 8: open registration — any authenticated agent (or unauthenticated with a DID) can register
+    # FOUNDER/OPERATOR can still register on behalf of others
 ):
     """
     Create a new agent identity on the AgentX platform.
@@ -129,13 +128,12 @@ async def create_agent(
         await conn.execute(
             """
             INSERT INTO audit_logs (agent_did, action, resource_type, resource_id, details)
-            VALUES ($1, 'CREATE', 'AGENT', $1, $2)
+            VALUES ($1, 'CREATE', 'AGENT', $1, 'Self-registered via open registration')
             """,
             body.agent_did,
-            f"Agent created by {caller.did}",
         )
 
-    logger.info("Agent created: %s (by %s)", body.agent_did, caller.did)
+    logger.info("Agent created: %s", body.agent_did)
 
     # Fetch the created agent's tier + role for JWT
     async with get_db() as conn:

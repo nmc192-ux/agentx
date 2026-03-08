@@ -1,128 +1,227 @@
 "use client";
-
-/**
- * AgentX — PostCard component
- * Displays a post with type badge, trust-colored author, tags, similarity score.
- */
+import { useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { useSession } from "next-auth/react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  MessageSquare, Gift, CheckSquare, TrendingUp, Bell, Vote,
-  Clock, Tag, ExternalLink,
+  MessageCircle, Heart, Repeat2, BarChart2,
 } from "lucide-react";
-import { cn, shortDid, timeAgo } from "@/lib/utils";
-import { postTypeColor, type Post, type PostType } from "@/types";
+import { likePost } from "@/lib/api";
+import type { SocialPost, Post } from "@/types";
+import { trustTierFromScore } from "@/types";
 
-const POST_TYPE_ICONS: Record<PostType, typeof MessageSquare> = {
-  REQUEST:    MessageSquare,
-  OFFER:      Gift,
-  TASK:       CheckSquare,
-  PREDICTION: TrendingUp,
-  UPDATE:     Bell,
-  PROPOSAL:   Vote,
-};
+// Accept both the legacy Post type and the richer SocialPost
+type AnyPost = SocialPost | (Post & {
+  like_count?:   number;
+  reply_count?:  number;
+  author_name?:  string | null;
+  author_trust?: number | null;
+  metadata?:     Record<string, unknown>;
+});
+import { timeAgo } from "@/lib/utils";
 
-interface PostCardProps {
-  post:         Post;
-  showAuthor?:  boolean;
-  showSimilarity?: boolean;
-  className?:   string;
-  animate?:     boolean;
-}
+// Post type config
+const POST_TYPE_CONFIG = {
+  REQUEST:    { label: "Request",    emoji: "🙋", color: "text-post-REQUEST",    bg: "bg-post-REQUEST/10"    },
+  OFFER:      { label: "Offer",      emoji: "💼", color: "text-post-OFFER",      bg: "bg-post-OFFER/10"      },
+  TASK:       { label: "Task",       emoji: "✅", color: "text-post-TASK",       bg: "bg-post-TASK/10"       },
+  PREDICTION: { label: "Prediction", emoji: "🔮", color: "text-post-PREDICTION", bg: "bg-post-PREDICTION/10" },
+  UPDATE:     { label: "Update",     emoji: "📡", color: "text-post-UPDATE",     bg: "bg-post-UPDATE/10"     },
+  PROPOSAL:   { label: "Proposal",   emoji: "📋", color: "text-post-PROPOSAL",  bg: "bg-post-PROPOSAL/10"   },
+} as const;
 
-export function PostCard({
-  post,
-  showAuthor       = true,
-  showSimilarity   = false,
-  className,
-  animate          = true,
-}: PostCardProps) {
-  const color = postTypeColor(post.post_type);
-  const Icon  = POST_TYPE_ICONS[post.post_type];
+// Agent avatar — colored circle with initial
+function AgentAvatar({ name, did, size = 40 }: { name?: string | null; did: string; size?: number }) {
+  const letter = (name ?? did)?.[0]?.toUpperCase() ?? "?";
+  // Derive a stable hue from the DID string
+  let hash = 0;
+  for (let i = 0; i < did.length; i++) hash = ((hash << 5) - hash + did.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
 
-  const card = (
+  return (
     <div
-      className={cn(
-        "card-hover p-4 space-y-3 cursor-pointer",
-        className,
-      )}
-      style={{ borderLeft: `3px solid ${color}` }}
+      style={{
+        width: size,
+        height: size,
+        background: `hsl(${hue}, 60%, 40%)`,
+        borderRadius: "50%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#fff",
+        fontWeight: 700,
+        fontSize: size * 0.4,
+        flexShrink: 0,
+      }}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div
-            className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: `${color}22` }}
-          >
-            <Icon className="w-3.5 h-3.5" style={{ color }} />
-          </div>
-          <span
-            className="badge shrink-0"
-            style={{ backgroundColor: `${color}22`, color, border: `1px solid ${color}44` }}
-          >
-            {post.post_type}
-          </span>
-          {showSimilarity && post.similarity !== undefined && (
-            <span className="badge bg-accent-primary/20 text-accent-primary border border-accent-primary/30">
-              {Math.round(post.similarity * 100)}% similar
-            </span>
-          )}
-        </div>
-        <ExternalLink className="w-3.5 h-3.5 text-text-quaternary shrink-0 mt-0.5" />
-      </div>
-
-      {/* Content */}
-      <div>
-        <h3 className="font-semibold text-text-primary text-sm leading-snug line-clamp-2">
-          {post.title}
-        </h3>
-        <p className="text-xs text-text-secondary mt-1 line-clamp-3 leading-relaxed">
-          {post.content}
-        </p>
-      </div>
-
-      {/* Tags */}
-      {post.tags && post.tags.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap">
-          <Tag className="w-3 h-3 text-text-quaternary" />
-          {post.tags.slice(0, 4).map((tag) => (
-            <span
-              key={tag}
-              className="text-2xs text-text-tertiary bg-surface-tertiary px-1.5 py-0.5 rounded"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between border-t border-border-primary pt-2">
-        {showAuthor && (
-          <p className="text-2xs text-text-quaternary font-mono">
-            {post.author?.display_name ?? shortDid(post.author_did)}
-          </p>
-        )}
-        <div className="flex items-center gap-1 text-2xs text-text-quaternary ml-auto">
-          <Clock className="w-3 h-3" />
-          <span>{timeAgo(post.created_at)}</span>
-        </div>
-      </div>
+      {letter}
     </div>
   );
+}
 
-  if (animate) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25 }}
-      >
-        <Link href={`/feed/${post.post_id}`}>{card}</Link>
-      </motion.div>
-    );
+interface Props {
+  post:       AnyPost;
+  compact?:   boolean;   // omit action buttons (for thread replies)
+  showReply?: boolean;   // show reply compose inline
+  // Legacy props (kept for backwards compat with existing pages — no-op)
+  showAuthor?: boolean;
+  animate?:    boolean;
+}
+
+export function PostCard({ post, compact = false }: Props) {
+  const { data: session } = useSession();
+  const qc = useQueryClient();
+  const [liked, setLiked]       = useState(false);
+  const [likeCount, setLikeCount] = useState(post.like_count ?? 0);
+  const [pending, setPending]   = useState(false);
+
+  const token   = (session as any)?.accessToken as string | undefined;
+  const cfg     = POST_TYPE_CONFIG[post.post_type] ?? POST_TYPE_CONFIG.UPDATE;
+  const name    = post.author_name ?? post.author_did?.split(":").pop() ?? "unknown";
+  const handle  = post.author_did?.split(":").pop() ?? "unknown";
+  const tier    = trustTierFromScore(post.author_trust ?? 0);
+
+  const tierColors: Record<string, string> = {
+    elite: "#F59E0B", trusted: "#8B5CF6", verified: "#3B82F6", unverified: "#6B7280",
+  };
+
+  async function handleLike(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!token || pending) return;
+    setPending(true);
+    try {
+      const res = await likePost(post.post_id, token);
+      setLiked(res.liked);
+      setLikeCount(res.like_count);
+      qc.invalidateQueries({ queryKey: ["global-feed"] });
+      qc.invalidateQueries({ queryKey: ["home-feed"] });
+    } catch {
+      // noop
+    } finally {
+      setPending(false);
+    }
   }
 
-  return <Link href={`/feed/${post.post_id}`}>{card}</Link>;
+  // Truncate content for feed view
+  const MAX_CHARS = 280;
+  const contentPreview = post.content.length > MAX_CHARS
+    ? post.content.slice(0, MAX_CHARS) + "…"
+    : post.content;
+
+  return (
+    <article className="
+      border-b border-border-primary
+      px-4 py-4
+      hover:bg-surface-primary/40 transition-colors
+      cursor-pointer
+    ">
+      <Link href={`/post/${post.post_id}`} className="flex gap-3">
+        {/* Avatar */}
+        <Link
+          href={`/profile/${encodeURIComponent(post.author_did)}`}
+          onClick={e => e.stopPropagation()}
+          className="shrink-0 hover:opacity-80 transition-opacity"
+        >
+          <AgentAvatar name={post.author_name} did={post.author_did} />
+        </Link>
+
+        {/* Content area */}
+        <div className="flex-1 min-w-0">
+          {/* Header row */}
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <Link
+              href={`/profile/${encodeURIComponent(post.author_did)}`}
+              onClick={e => e.stopPropagation()}
+              className="font-semibold text-text-primary hover:underline text-sm truncate"
+            >
+              {name}
+            </Link>
+            {/* Trust dot */}
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: tierColors[tier] }}
+              title={tier}
+            />
+            <span className="text-text-tertiary text-sm">@{handle}</span>
+            <span className="text-text-quaternary text-sm">·</span>
+            <span className="text-text-quaternary text-sm shrink-0">{timeAgo(post.created_at)}</span>
+
+            {/* Type badge */}
+            <span className={`badge ml-auto ${cfg.color} ${cfg.bg} text-2xs`}>
+              {cfg.emoji} {cfg.label}
+            </span>
+          </div>
+
+          {/* Title */}
+          <p className="text-text-primary text-sm font-medium mb-1 leading-snug">
+            {post.title}
+          </p>
+
+          {/* Content */}
+          <p className="text-text-secondary text-sm leading-relaxed whitespace-pre-wrap">
+            {contentPreview}
+          </p>
+
+          {/* Tags */}
+          {post.tags && post.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {post.tags.slice(0, 5).map(tag => (
+                <span key={tag} className="text-accent-primary text-sm hover:underline cursor-pointer">
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Action bar */}
+          {!compact && (
+            <div className="flex items-center gap-6 mt-3 text-text-tertiary">
+              {/* Reply */}
+              <Link
+                href={`/post/${post.post_id}`}
+                onClick={e => e.stopPropagation()}
+                className="flex items-center gap-1.5 hover:text-accent-info transition-colors group"
+              >
+                <span className="p-1.5 rounded-full group-hover:bg-accent-info/10 transition-colors">
+                  <MessageCircle size={16} />
+                </span>
+                <span className="text-xs">{post.reply_count ?? 0}</span>
+              </Link>
+
+              {/* Repost placeholder */}
+              <button className="flex items-center gap-1.5 hover:text-accent-success transition-colors group">
+                <span className="p-1.5 rounded-full group-hover:bg-accent-success/10 transition-colors">
+                  <Repeat2 size={16} />
+                </span>
+              </button>
+
+              {/* Like */}
+              <button
+                onClick={handleLike}
+                disabled={!token || pending}
+                className={`flex items-center gap-1.5 transition-colors group ${
+                  liked ? "text-accent-error" : "hover:text-accent-error"
+                }`}
+              >
+                <span className="p-1.5 rounded-full group-hover:bg-accent-error/10 transition-colors">
+                  <Heart size={16} fill={liked ? "currentColor" : "none"} />
+                </span>
+                <span className="text-xs">{likeCount}</span>
+              </button>
+
+              {/* Trust score */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <BarChart2 size={14} />
+                <span className="text-xs">{Math.round((post.author_trust ?? 0) * 100)}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </Link>
+    </article>
+  );
 }
+
+// Re-export AgentAvatar for use in other components
+export { AgentAvatar };

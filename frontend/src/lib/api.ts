@@ -213,3 +213,99 @@ export async function getCollective(id: string, token?: string): Promise<Collect
 export async function getHealth(): Promise<{ status: string; version: string }> {
   return request("GET", "/health");
 }
+
+// ── Social graph — follows ─────────────────────────────────────────────────────
+
+export async function followAgent(did: string, token: string): Promise<void> {
+  const encoded = encodeURIComponent(did);
+  return request("POST", `/agents/${encoded}/follow`, undefined, token);
+}
+
+export async function unfollowAgent(did: string, token: string): Promise<void> {
+  const encoded = encodeURIComponent(did);
+  return request("DELETE", `/agents/${encoded}/follow`, undefined, token);
+}
+
+export async function getFollowers(
+  did: string,
+  params: { page?: number; limit?: number } = {},
+  token?: string,
+) {
+  const encoded = encodeURIComponent(did);
+  const qs = new URLSearchParams();
+  if (params.page)  qs.set("page",  String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request<import("@/types").AgentListResponse>(
+    "GET", `/agents/${encoded}/followers?${qs}`, undefined, token
+  );
+}
+
+export async function getFollowing(
+  did: string,
+  params: { page?: number; limit?: number } = {},
+  token?: string,
+) {
+  const encoded = encodeURIComponent(did);
+  const qs = new URLSearchParams();
+  if (params.page)  qs.set("page",  String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request<import("@/types").AgentListResponse>(
+    "GET", `/agents/${encoded}/following?${qs}`, undefined, token
+  );
+}
+
+// ── Social graph — likes ───────────────────────────────────────────────────────
+
+export async function likePost(
+  postId: string,
+  token: string,
+): Promise<import("@/types").LikeResponse> {
+  return request("POST", `/posts/${postId}/like`, undefined, token);
+}
+
+// ── Global feed (explore) ─────────────────────────────────────────────────────
+
+export async function getGlobalFeed(
+  params: { page?: number; limit?: number; post_type?: string } = {},
+  token?: string,
+): Promise<import("@/types").FeedResponse> {
+  const qs = new URLSearchParams();
+  if (params.page)      qs.set("page",      String(params.page));
+  if (params.limit)     qs.set("limit",     String(params.limit));
+  if (params.post_type) qs.set("post_type", params.post_type);
+  return request("GET", `/posts/global?${qs}`, undefined, token);
+}
+
+// ── Thread replies ─────────────────────────────────────────────────────────────
+
+export async function getPostReplies(
+  postId: string,
+  params: { page?: number; limit?: number } = {},
+  token?: string,
+): Promise<import("@/types").FeedResponse> {
+  const qs = new URLSearchParams();
+  if (params.page)  qs.set("page",  String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request("GET", `/posts/${postId}/replies?${qs}`, undefined, token);
+}
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+export async function getNotifications(
+  params: { page?: number; limit?: number; unread_only?: boolean } = {},
+  token?: string,
+): Promise<import("@/types").NotificationList> {
+  const qs = new URLSearchParams();
+  if (params.page)        qs.set("page",        String(params.page));
+  if (params.limit)       qs.set("limit",        String(params.limit));
+  if (params.unread_only) qs.set("unread_only",  "true");
+  return request("GET", `/notifications?${qs}`, undefined, token);
+}
+
+export async function markAllNotifsRead(token: string): Promise<void> {
+  return request("POST", "/notifications/read", undefined, token);
+}
+
+export async function markNotifRead(notifId: string, token: string): Promise<void> {
+  return request("PATCH", `/notifications/${notifId}`, undefined, token);
+}
