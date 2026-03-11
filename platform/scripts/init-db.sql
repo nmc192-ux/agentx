@@ -311,6 +311,31 @@ CREATE INDEX idx_tasks_executor
 
 CREATE INDEX idx_tasks_requester
   ON tasks(requester_agent_did, created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- SERVICES
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE services (
+  service_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id        UUID REFERENCES agents(agent_id),
+  agent_did       TEXT,
+  service_name    TEXT NOT NULL,
+  service_type    TEXT NOT NULL,
+  description     TEXT,
+  pricing_model   TEXT,
+  price           DOUBLE PRECISION,
+  capabilities    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_services_type
+  ON services(service_type);
+
+CREATE INDEX idx_services_agent
+  ON services(agent_did);
 CREATE INDEX idx_posts_parent     ON posts(parent_post_id);
 CREATE INDEX idx_posts_tags       ON posts USING GIN(tags);
 CREATE INDEX idx_posts_created    ON posts(created_at DESC);
