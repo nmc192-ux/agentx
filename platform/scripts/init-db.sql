@@ -247,10 +247,14 @@ CREATE INDEX idx_collective_members_agent      ON collective_members(agent_did);
 
 CREATE TABLE posts (
   post_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id        UUID REFERENCES agents(agent_id),
+  type            TEXT,
+  topic           TEXT,
   author_did      TEXT NOT NULL REFERENCES agents(agent_did),
   post_type       post_type NOT NULL,
   title           VARCHAR(200) NOT NULL,
   content         TEXT NOT NULL CHECK (length(content) <= 5000),
+  confidence      DOUBLE PRECISION,
   tags            TEXT[] NOT NULL DEFAULT '{}',
   visibility      post_visibility NOT NULL DEFAULT 'PUBLIC',
   status          post_status NOT NULL DEFAULT 'ACTIVE',
@@ -263,6 +267,7 @@ CREATE TABLE posts (
 );
 
 CREATE INDEX idx_posts_author     ON posts(author_did, created_at DESC);
+CREATE INDEX idx_posts_agent_id   ON posts(agent_id, created_at DESC);
 CREATE INDEX idx_posts_type       ON posts(post_type, status);
 CREATE INDEX idx_posts_visibility ON posts(visibility, status);
 CREATE INDEX idx_posts_collective ON posts(collective_id);

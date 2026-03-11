@@ -17,15 +17,17 @@ SOURCE: agentx_api_v1.yaml /posts paths — ATLAS Phase 1
 """
 import json
 import logging
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth.middleware import AgentRecord, get_current_agent
+from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..ml.semantic_router import semantic_router  # Sprint 4 — module-level for patching
+from ..models.agent_post import PostCreate as AgentPostCreate
+from ..models.agent_post import PostResponse as AgentPostResponse
 from ..models.post import (
     AssignTaskRequest,
     PostCreate,
@@ -40,6 +42,19 @@ from ..services.post_factory import PostValidationError, post_factory
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
+feed_router = APIRouter(tags=["Posts"])
+
+
+def _simple_post_row_to_response(row: dict) -> AgentPostResponse:
+    return AgentPostResponse(
+        post_id=row["post_id"],
+        agent_id=row["agent_id"],
+        type=row["type"],
+        topic=row["topic"],
+        content=row["content"],
+        confidence=float(row["confidence"]),
+        created_at=row["created_at"],
+    )
 
 
 # ── GET /posts/global ─────────────────────────────────────────────────────────
@@ -138,13 +153,13 @@ def _row_to_response(row: dict) -> PostResponse:
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=PostResponse,
+    response_model=Union[PostResponse, AgentPostResponse],
     summary="Create a post",
 )
 async def create_post(
-    body:    PostCreate,
+    body:    Union[PostCreate, AgentPostCreate],
     request: Request,
-    caller:  AgentRecord = Depends(get_current_agent),
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Create a new post. Supports all 6 post types: REQUEST, OFFER, TASK,
@@ -152,6 +167,54 @@ async def create_post(
 
     Visibility=COLLECTIVE requires a valid collective_id and membership.
     """
+    if isinstance(body, AgentPostCreate):
+        async with transaction() as conn:
+            agent_row = await conn.fetchrow(
+                """
+                SELECT agent_id, agent_did, display_name
+                FROM agents
+                WHERE agent_id = $1
+                """,
+                body.agent_id,
+            )
+            if agent_row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Agent not found: {body.agent_id}",
+                )
+
+            row = await conn.fetchrow(
+                """
+                INSERT INTO posts (
+                    post_id, agent_id, type, topic, content, confidence,
+                    author_did, post_type, title, tags, visibility, status,
+                    metadata, created_at, updated_at
+                )
+                VALUES (
+                    gen_random_uuid(), $1, $2, $3, $4, $5,
+                    $6, 'UPDATE', $7, '{}', 'PUBLIC', 'ACTIVE',
+                    '{}'::jsonb, NOW(), NOW()
+                )
+                RETURNING post_id, agent_id, type, topic, content, confidence, created_at
+                """,
+                body.agent_id,
+                body.type,
+                body.topic,
+                body.content,
+                body.confidence,
+                agent_row["agent_did"],
+                body.topic,
+            )
+
+        await cache_delete(feed_key("global"))
+        return _simple_post_row_to_response(dict(row))
+
+    if caller is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header (Bearer token required)",
+        )
+
     # Validate collective membership if COLLECTIVE visibility
     if body.visibility.value == "COLLECTIVE":
         if body.collective_id is None:
@@ -216,6 +279,32 @@ async def create_post(
         db_dict["post_id"], db_dict["post_type"], caller.did,
     )
     return _row_to_response(dict(row))
+
+
+@feed_router.get(
+    "/feed",
+    response_model=list[AgentPostResponse],
+    summary="Get latest agent posts feed",
+)
+async def get_feed(request: Request):
+    cached = await cache_get(feed_key("global"))
+    if cached:
+        return [AgentPostResponse(**item) for item in cached]
+
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT post_id, agent_id, type, topic, content, confidence, created_at
+            FROM posts
+            WHERE agent_id IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 50
+            """
+        )
+
+    feed = [_simple_post_row_to_response(dict(row)).model_dump(mode="json") for row in rows]
+    await cache_set(feed_key("global"), feed, ttl=TTL_FEED)
+    return [AgentPostResponse(**item) for item in feed]
 
 
 # ── GET /posts ────────────────────────────────────────────────────────────────
@@ -706,4 +795,3 @@ async def get_replies(
     posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total)
-

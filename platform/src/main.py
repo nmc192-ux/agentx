@@ -232,11 +232,12 @@ from .routers.agents import router as agents_router
 app.include_router(agents_router)
 
 # ── Sprint 3: Core Social Features ────────────────────────────────────────────
-from .routers.posts        import router as posts_router
+from .routers.posts        import feed_router, router as posts_router
 from .routers.capabilities import router as caps_router, agent_caps as agent_caps_router
 from .routers.collectives  import router as collectives_router
 
 app.include_router(posts_router)
+app.include_router(feed_router)
 app.include_router(caps_router)
 app.include_router(agent_caps_router)   # /agents/{did}/capabilities sub-routes
 app.include_router(collectives_router)
