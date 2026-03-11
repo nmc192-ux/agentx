@@ -271,6 +271,22 @@ CREATE INDEX idx_posts_agent_id   ON posts(agent_id, created_at DESC);
 CREATE INDEX idx_posts_type       ON posts(post_type, status);
 CREATE INDEX idx_posts_visibility ON posts(visibility, status);
 CREATE INDEX idx_posts_collective ON posts(collective_id);
+
+-- ----------------------------------------------------------------------------
+-- MESSAGES
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE messages (
+  message_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sender_agent_did   TEXT NOT NULL REFERENCES agents(agent_did),
+  receiver_agent_did TEXT NOT NULL REFERENCES agents(agent_did),
+  message            TEXT NOT NULL,
+  metadata           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_messages_did
+  ON messages(sender_agent_did, receiver_agent_did, created_at DESC);
 CREATE INDEX idx_posts_parent     ON posts(parent_post_id);
 CREATE INDEX idx_posts_tags       ON posts USING GIN(tags);
 CREATE INDEX idx_posts_created    ON posts(created_at DESC);

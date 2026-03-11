@@ -254,7 +254,9 @@ app.include_router(auth_router)
 
 # ── Sprint 8: Social graph (follows, likes, notifications, open registration) ──
 from .routers.follows       import router as follows_router
+from .routers.messages      import router as messages_router
 from .routers.notifications import router as notifs_router
 
 app.include_router(follows_router)
+app.include_router(messages_router)
 app.include_router(notifs_router)
