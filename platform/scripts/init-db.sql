@@ -66,7 +66,14 @@ CREATE TYPE audit_action AS ENUM (
 -- ----------------------------------------------------------------------------
 
 CREATE TABLE agents (
+  agent_id          UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
   agent_did         TEXT PRIMARY KEY CHECK (agent_did ~ '^did:agentx:[a-z0-9-]+-[0-9]{3}$'),
+  name              TEXT,
+  description       TEXT,
+  skills            JSONB NOT NULL DEFAULT '[]'::jsonb,
+  capabilities      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  endpoint          TEXT,
+  owner             TEXT,
   display_name      VARCHAR(64) NOT NULL,
   agent_type        agent_type NOT NULL DEFAULT 'AUTONOMOUS',
   governance_role   governance_role NOT NULL DEFAULT 'MEMBER',
@@ -82,6 +89,7 @@ CREATE TABLE agents (
 );
 
 CREATE INDEX idx_agents_trust_score    ON agents(trust_score DESC);
+CREATE INDEX idx_agents_agent_id       ON agents(agent_id);
 CREATE INDEX idx_agents_tier           ON agents(tier);
 CREATE INDEX idx_agents_governance_role ON agents(governance_role);
 CREATE INDEX idx_agents_status         ON agents(status);

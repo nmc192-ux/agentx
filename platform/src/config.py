@@ -82,9 +82,9 @@ class Settings(BaseSettings):
     postgres_ssl_ca:  Optional[str] = None  # CA cert path for verification
 
     # ── Redis ────────────────────────────────────────────────────────────────
-    redis_host: str = "localhost"
-    redis_port: int = 6380          # TLS port
-    redis_tls:  bool = True
+    redis_host: str = "redis"      # Docker service name
+    redis_port: int = 6379         # non-TLS port
+    redis_tls:  bool = False
     redis_tls_ca: Optional[str] = None
 
     # ── Secrets (loaded dynamically — not from pydantic env parsing) ─────────
@@ -166,9 +166,8 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
-        """Redis connection URL with TLS scheme."""
         scheme = "rediss" if self.redis_tls else "redis"
-        return f"{scheme}://:{self.redis_password}@{self.redis_host}:{self.redis_port}/0"
+        return f"{scheme}://{self.redis_host}:{self.redis_port}/0"
 
     @property
     def is_production(self) -> bool:

@@ -17,6 +17,7 @@ SOURCE: agentx_api_v1.yaml /agents paths — ATLAS Phase 1
 import json
 import logging
 import uuid
+from uuid import UUID
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -33,7 +34,14 @@ from ..models.agent import (
     AgentWithTrust,
     TokenResponse,
 )
+from ..models.agent_registry import AgentCreate as RegistryAgentCreate
+from ..models.agent_registry import AgentResponse as RegistryAgentResponse
 from ..services.trust_score import TrustScore, get_trust_score
+from ..services.agent_directory import (
+    search_agents_by_capability,
+    search_agents_by_reputation,
+    search_agents_by_skill,
+)
 from ..ml.task_recommender import task_recommender  # Sprint 4 — module-level for patching
 
 logger = logging.getLogger(__name__)
@@ -57,6 +65,113 @@ def _row_to_response(row: dict) -> AgentResponse:
         created_at=row["created_at"],
         last_seen_at=row.get("last_seen_at"),
     )
+
+
+def _registry_row_to_response(row: dict) -> RegistryAgentResponse:
+    skills = row.get("skills") or []
+    capabilities = row.get("capabilities") or []
+    if isinstance(skills, str):
+        skills = json.loads(skills)
+    if isinstance(capabilities, str):
+        capabilities = json.loads(capabilities)
+
+    return RegistryAgentResponse(
+        agent_id=row["agent_id"],
+        name=row["name"] or row["display_name"],
+        description=row["description"] or row.get("bio") or "",
+        skills=list(skills),
+        capabilities=list(capabilities),
+        endpoint=row.get("endpoint") or "",
+        owner=row.get("owner") or "",
+        trust_score=float(row["trust_score"]),
+        created_at=row["created_at"],
+    )
+
+
+def _make_agent_did(name: str) -> str:
+    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")
+    slug = "-".join(part for part in slug.split("-") if part) or "agent"
+    return f"did:agentx:{slug[:48]}-{uuid.uuid4().int % 1000:03d}"
+
+
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+    response_model=RegistryAgentResponse,
+    summary="Register an agent in the registry",
+)
+async def register_agent(
+    body: RegistryAgentCreate,
+    request: Request,
+):
+    agent_id = uuid.uuid4()
+    agent_did = _make_agent_did(body.name)
+
+    async with transaction() as conn:
+        await conn.execute(
+            """
+            INSERT INTO agents (
+                agent_id,
+                agent_did,
+                name,
+                description,
+                skills,
+                capabilities,
+                endpoint,
+                owner,
+                display_name,
+                bio,
+                trust_score,
+                created_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, 0.5, NOW()
+            )
+            """,
+            agent_id,
+            agent_did,
+            body.name,
+            body.description,
+            json.dumps(body.skills),
+            json.dumps(body.capabilities),
+            body.endpoint,
+            body.owner,
+            body.name,
+            body.description,
+        )
+
+        await conn.execute(
+            """
+            INSERT INTO agent_trust_breakdown (
+                agent_did, execution_success, sla_compliance,
+                peer_endorsements, audit_transparency, security_record
+            ) VALUES ($1, 0.50, 0.50, 0.00, 0.50, 1.00)
+            ON CONFLICT (agent_did) DO NOTHING
+            """,
+            agent_did,
+        )
+
+        row = await conn.fetchrow(
+            """
+            SELECT
+                agent_id,
+                name,
+                description,
+                skills,
+                capabilities,
+                endpoint,
+                owner,
+                display_name,
+                bio,
+                trust_score,
+                created_at
+            FROM agents
+            WHERE agent_id = $1
+            """,
+            agent_id,
+        )
+
+    return _registry_row_to_response(dict(row))
 
 
 # ── POST /agents ──────────────────────────────────────────────────────────────
@@ -229,6 +344,96 @@ async def list_agents(
         limit=limit,
         has_more=(page * limit) < total,
     )
+
+
+# ── GET /agents/search ────────────────────────────────────────────────────────
+
+@router.get(
+    "/search",
+    response_model=list[AgentResponse],
+    summary="Search agents by skill, capability, and/or reputation",
+)
+async def search_agents(
+    request: Request,
+    skill: Optional[str] = Query(default=None, min_length=1),
+    capability: Optional[str] = Query(default=None, min_length=1),
+    min_reputation: Optional[float] = Query(default=None, ge=0.0, le=1.0),
+):
+    """
+    Directory and discovery endpoint.
+
+    Supports one or more filters:
+    - `skill`: free-text matching on specialization/bio/capability metadata
+    - `capability`: capability id/name/domain matching
+    - `min_reputation`: minimum trust score threshold (0.0–1.0)
+    """
+    if skill is None and capability is None and min_reputation is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide at least one search filter: skill, capability, min_reputation",
+        )
+
+    filtered: Optional[list[AgentResponse]] = None
+
+    if skill is not None:
+        filtered = await search_agents_by_skill(skill)
+
+    if capability is not None:
+        cap_results = await search_agents_by_capability(capability)
+        if filtered is None:
+            filtered = cap_results
+        else:
+            cap_ids = {a.agent_did for a in cap_results}
+            filtered = [a for a in filtered if a.agent_did in cap_ids]
+
+    if min_reputation is not None:
+        rep_results = await search_agents_by_reputation(min_reputation)
+        if filtered is None:
+            filtered = rep_results
+        else:
+            rep_ids = {a.agent_did for a in rep_results}
+            filtered = [a for a in filtered if a.agent_did in rep_ids]
+
+    return sorted(filtered or [], key=lambda a: a.trust_score, reverse=True)
+
+
+@router.get(
+    "/{agent_id}",
+    response_model=RegistryAgentResponse,
+    summary="Get agent registry profile by UUID",
+)
+async def get_registered_agent(
+    agent_id: UUID,
+    request: Request,
+):
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                agent_id,
+                name,
+                description,
+                skills,
+                capabilities,
+                endpoint,
+                owner,
+                display_name,
+                bio,
+                trust_score,
+                created_at
+            FROM agents
+            WHERE agent_id = $1
+            """,
+            agent_id,
+        )
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent not found: {agent_id}",
+        )
+
+    return _registry_row_to_response(dict(row))
 
 
 # ── GET /agents/{agent_did}/trust ─────────────────────────────────────────────
@@ -653,5 +858,3 @@ async def update_agent(
 
     logger.info("Agent %s updated by %s: %s", agent_did, caller.did, list(updates.keys()))
     return _row_to_response(dict(row))
-
-

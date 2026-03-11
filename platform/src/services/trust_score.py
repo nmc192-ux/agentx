@@ -117,7 +117,10 @@ async def _fetch_breakdown_from_db(agent_did: str) -> Optional[dict]:
             """,
             agent_did,
         )
-    return dict(row) if row else None
+    if row is None:
+        return None
+    breakdown = dict(row)
+    return {key: float(value) for key, value in breakdown.items()}
 
 
 async def _update_composite_in_db(agent_did: str, composite: float) -> None:

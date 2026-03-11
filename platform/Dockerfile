@@ -9,7 +9,9 @@ WORKDIR /build
 
 # Install build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev curl \
+    build-essential \
+    libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -17,6 +19,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ── Stage 2: Runtime image ────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Non-root user (MARCUS hardening)
 RUN groupadd --gid 1000 agentx && \

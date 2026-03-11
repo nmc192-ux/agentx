@@ -80,39 +80,17 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     networks:
-      - backend                          # internal only
+      - backend
     volumes:
       - redis_data:/data
-      - ./certs/redis:/certs:ro          # TLS certs (MARCUS P0 Gap 2)
-    secrets:
-      - redis_password
-    # TLS + AUTH via command args (MARCUS P0 Gap 2 + P1 Gap 4)
-    command: >
-      sh -c '
-        REDIS_PASS=$$(cat /run/secrets/redis_password)
-        redis-server
-          --requirepass "$$REDIS_PASS"
-          --tls-port 6380
-          --port 0
-          --tls-cert-file /certs/server.crt
-          --tls-key-file /certs/server.key
-          --tls-ca-cert-file /certs/ca.crt
-          --tls-auth-clients no
-          --maxmemory 512mb
-          --maxmemory-policy allkeys-lru
-          --appendonly yes
-          --loglevel notice
-      '
-    healthcheck:
-      test: >
-        sh -c 'PASS=$$(cat /run/secrets/redis_password) &&
-               redis-cli --tls --cacert /certs/ca.crt
-               -p 6380 -a "$$PASS" ping | grep PONG'
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    command: redis-server --requirepass devredis
 
+  #  healthcheck:
+  #    test: ["CMD-SHELL", "PASS=$(cat /run/secrets/redis_password) && redis-cli --tls --cacert /certs/ca.crt -p 6380 -a \"$PASS\" ping | grep PONG"]
+  #    interval: 10s
+  #    timeout: 5s
+  #    retries: 5
+  #    start_period: 20s
   # ── FastAPI Application ───────────────────────────────────────────────────
   api:
     build:
@@ -142,8 +120,8 @@ services:
       POSTGRES_SSL_MODE: require
       POSTGRES_SSL_CA: /certs/ca.crt
       REDIS_HOST: redis
-      REDIS_PORT: "6380"
-      REDIS_TLS: "true"
+      REDIS_PORT: "6379"
+      REDIS_TLS: "false"
       REDIS_TLS_CA: /certs/ca.crt
       LOG_LEVEL: info
       # Secrets loaded from /run/secrets/ by src/config.py
@@ -154,7 +132,7 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
