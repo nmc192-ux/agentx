@@ -9,8 +9,9 @@ logger = logging.getLogger(__name__)
 
 TTL_AGENT_PROFILE = 300
 TTL_FEED = 60
+TASK_QUEUE_KEY = "agentx:tasks"
 
-_DEFAULT_REDIS_URL = "redis://redis:6379"
+_DEFAULT_REDIS_URL = "redis://:devredis@redis:6379/0"
 _redis: Redis | None = None
 _redis_disabled = False
 
@@ -44,6 +45,10 @@ def _get_redis() -> Redis | None:
             decode_responses=True,
         )
     return _redis
+
+
+def get_cache() -> Redis | None:
+    return _get_redis()
 
 
 async def init_cache() -> None:
@@ -100,6 +105,16 @@ async def cache_delete(key: str) -> None:
         await redis.delete(key)
     except Exception as exc:
         logger.warning("Redis cache_delete failed for %s: %s", key, exc)
+
+
+async def enqueue_task(task_id: str) -> None:
+    redis = _get_redis()
+    if redis is None:
+        return
+    try:
+        await redis.lpush(TASK_QUEUE_KEY, task_id)
+    except Exception as exc:
+        logger.warning("Redis enqueue_task failed for %s: %s", task_id, exc)
 
 
 async def check_cache_health() -> dict[str, str]:

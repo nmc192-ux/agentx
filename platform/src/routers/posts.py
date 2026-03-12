@@ -37,7 +37,10 @@ from ..models.post import (
     PostType,
     PostUpdate,
 )
+from ..models.post_social import PostInteractionCreate, PostInteractionResponse
+from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
+from ..services.post_service import add_post_interaction
 
 logger = logging.getLogger(__name__)
 
@@ -186,12 +189,12 @@ async def create_post(
             row = await conn.fetchrow(
                 """
                 INSERT INTO posts (
-                    post_id, agent_id, type, topic, content, confidence,
+                    post_id, agent_id, creator_agent_id, type, topic, content, confidence,
                     author_did, post_type, title, tags, visibility, status,
                     metadata, created_at, updated_at
                 )
                 VALUES (
-                    gen_random_uuid(), $1, $2, $3, $4, $5,
+                    gen_random_uuid(), $1, $1, $2, $3, $4, $5,
                     $6, 'UPDATE', $7, '{}', 'PUBLIC', 'ACTIVE',
                     '{}'::jsonb, NOW(), NOW()
                 )
@@ -207,7 +210,17 @@ async def create_post(
             )
 
         await cache_delete(feed_key("global"))
-        return _simple_post_row_to_response(dict(row))
+        response = _simple_post_row_to_response(dict(row))
+        await emit_event(
+            "POST_CREATED",
+            agent_row["agent_did"],
+            {
+                "post_id": str(response.post_id),
+                "topic": response.topic,
+                "content": response.content,
+            },
+        )
+        return response
 
     if caller is None:
         raise HTTPException(
@@ -249,17 +262,21 @@ async def create_post(
         ) from e
 
     async with transaction() as conn:
+        creator_agent_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            caller.did,
+        )
         row = await conn.fetchrow(
             """
             INSERT INTO posts (
-                post_id, author_did, post_type, title, content, tags,
+                post_id, creator_agent_id, author_did, post_type, title, content, tags,
                 visibility, status, collective_id, parent_post_id,
                 metadata, created_at, updated_at, expires_at
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6,
-                $7, $8, $9, $10,
-                $11, $12, $13, $14
+                $1, $2, $3, $4, $5, $6, $7,
+                $8, $9, $10, $11,
+                $12, $13, $14, $15
             )
             RETURNING
                 post_id, author_did, post_type, title, content, tags,
@@ -267,18 +284,61 @@ async def create_post(
                 metadata, created_at, updated_at, expires_at,
                 0 AS reply_count
             """,
-            db_dict["post_id"],    db_dict["author_did"], db_dict["post_type"],
-            db_dict["title"],      db_dict["content"],    db_dict["tags"],
-            db_dict["visibility"], db_dict["status"],     db_dict["collective_id"],
-            db_dict["parent_post_id"], db_dict["metadata"],
+            db_dict["post_id"],    creator_agent_id,       db_dict["author_did"],
+            db_dict["post_type"],  db_dict["title"],       db_dict["content"],
+            db_dict["tags"],       db_dict["visibility"],  db_dict["status"],
+            db_dict["collective_id"], db_dict["parent_post_id"], db_dict["metadata"],
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
         )
+
+        for tag in db_dict["tags"]:
+            await conn.execute(
+                """
+                INSERT INTO post_tags (tag_id, post_id, tag)
+                VALUES (gen_random_uuid(), $1, $2)
+                """,
+                db_dict["post_id"],
+                tag,
+            )
 
     logger.info(
         "Post created: %s type=%s author=%s",
         db_dict["post_id"], db_dict["post_type"], caller.did,
     )
-    return _row_to_response(dict(row))
+    response = _row_to_response(dict(row))
+    await emit_event(
+        "POST_CREATED",
+        caller.did,
+        {
+            "post_id": str(response.post_id),
+            "post_type": response.post_type,
+            "title": response.title,
+        },
+    )
+    return response
+
+
+@router.post(
+    "/{post_id}/interact",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostInteractionResponse,
+    summary="Add post interaction",
+)
+async def interact_with_post(
+    post_id: UUID,
+    body: PostInteractionCreate,
+    request: Request,
+):
+    interaction = await add_post_interaction(post_id, body)
+    await emit_event(
+        "POST_INTERACTION_CREATED",
+        body.agent_did,
+        {
+            "post_id": str(post_id),
+            "interaction_type": body.interaction_type.value,
+        },
+    )
+    return interaction
 
 
 @feed_router.get(

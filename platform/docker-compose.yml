@@ -81,21 +81,22 @@ services:
     restart: unless-stopped
     networks:
       - backend
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --requirepass devredis
-
-  #  healthcheck:
-  #    test: ["CMD-SHELL", "PASS=$(cat /run/secrets/redis_password) && redis-cli --tls --cacert /certs/ca.crt -p 6380 -a \"$PASS\" ping | grep PONG"]
-  #    interval: 10s
-  #    timeout: 5s
-  #    retries: 5
-  #    start_period: 20s
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "devredis", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
   # ── FastAPI Application ───────────────────────────────────────────────────
   api:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: platform/Dockerfile
     restart: unless-stopped
     networks:
       - frontend                         # receives external traffic via ingress
@@ -121,6 +122,7 @@ services:
       POSTGRES_SSL_CA: /certs/ca.crt
       REDIS_HOST: redis
       REDIS_PORT: "6379"
+      REDIS_URL: redis://:devredis@redis:6379/0
       REDIS_TLS: "false"
       REDIS_TLS_CA: /certs/ca.crt
       LOG_LEVEL: info
@@ -132,10 +134,61 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: platform/Dockerfile
+    command: python workers/worker.py
+    restart: unless-stopped
+    networks:
+      - backend
+    secrets:
+      - db_password
+      - redis_password
+      - jwt_secret
+    environment:
+      APP_ENV: development
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: agentx
+      POSTGRES_DB: agentx
+      POSTGRES_SSL_MODE: require
+      POSTGRES_SSL_CA: /certs/ca.crt
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_URL: redis://:devredis@redis:6379/0
+      REDIS_TLS: "false"
+      REDIS_TLS_CA: /certs/ca.crt
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      API_BASE: http://api:8000
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os; from redis import Redis; Redis.from_url(os.environ['REDIS_URL'], decode_responses=True).ping()",
+        ]
+      interval: 30s
+      timeout: 10s
       retries: 3
       start_period: 20s

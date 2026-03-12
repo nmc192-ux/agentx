@@ -1,11 +1,14 @@
 import json
 from uuid import UUID
+import uuid
+from typing import Union
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from ..cache import cache_delete, cache_get, cache_set
+from ..cache import cache_delete, cache_get, cache_set, enqueue_task
 from ..database import get_db, transaction
 from ..models.agent_task import TaskCreate, TaskResponse, TaskRouteCreate, TaskUpdate
+from ..services.events import emit_event
 from ..services.reputation import record_event
 from ..services.router import create_routed_task
 from ..services.workflows import update_workflow_for_task
@@ -107,7 +110,19 @@ async def _create_task_record(body: TaskCreate) -> TaskResponse:
 
     await cache_delete(_tasks_key(body.requester_agent_did))
     await cache_delete(_tasks_key(body.executor_agent_did))
-    return _row_to_response(dict(row))
+    task = _row_to_response(dict(row))
+    await enqueue_task(str(task.task_id))
+    await emit_event(
+        "TASK_CREATED",
+        body.executor_agent_did,
+        {
+            "task_id": str(task.task_id),
+            "requester_agent_did": body.requester_agent_did,
+            "executor_agent_did": body.executor_agent_did,
+            "task_type": body.task_type,
+        },
+    )
+    return task
 
 
 @router.post(
@@ -140,9 +155,40 @@ async def route_task(body: TaskRouteCreate, request: Request):
 
 @router.get(
     "/{agent_did:path}",
-    response_model=list[TaskResponse],
+    response_model=Union[TaskResponse, list[TaskResponse]],
 )
 async def get_tasks_for_agent(agent_did: str, request: Request):
+    try:
+        task_uuid = uuid.UUID(agent_did)
+    except ValueError:
+        task_uuid = None
+
+    if task_uuid is not None:
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT
+                    task_id,
+                    requester_agent_did,
+                    executor_agent_did,
+                    task_type,
+                    payload,
+                    status,
+                    result,
+                    created_at,
+                    updated_at
+                FROM tasks
+                WHERE task_id = $1
+                """,
+                task_uuid,
+            )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task not found: {task_uuid}",
+            )
+        return _row_to_response(dict(row))
+
     cached = await cache_get(_tasks_key(agent_did))
     if cached:
         return [TaskResponse(**item) for item in cached]
@@ -255,6 +301,20 @@ async def update_task(task_id: UUID, body: TaskUpdate, request: Request):
     await cache_delete(_tasks_key(task.executor_agent_did))
 
     if status_value == "COMPLETED" and existing["status"] != "COMPLETED":
+        await emit_event(
+            "TASK_COMPLETED",
+            task.executor_agent_did,
+            {"task_id": str(task.task_id), "task_type": task.task_type},
+        )
+        await emit_event(
+            "TASK_EXECUTED",
+            task.executor_agent_did,
+            {
+                "task_id": str(task.task_id),
+                "task_type": task.task_type,
+                "result": task.result or {},
+            },
+        )
         await record_event(
             task.executor_agent_did,
             "TASK_COMPLETED",

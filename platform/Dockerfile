@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY platform/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ── Stage 2: Runtime image ────────────────────────────────────────────────────
@@ -30,10 +30,11 @@ WORKDIR /app
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/agentx/.local
 
-# Copy application source + Alembic migrations
-COPY src/ ./src/
-COPY alembic/ ./alembic/
-COPY alembic.ini ./alembic.ini
+# Copy application source + Alembic migrations + worker runtime
+COPY platform/src/ ./src/
+COPY platform/alembic/ ./alembic/
+COPY platform/alembic.ini ./alembic.ini
+COPY workers/ ./workers/
 
 # Fix ownership
 RUN chown -R agentx:agentx /app

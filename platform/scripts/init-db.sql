@@ -248,6 +248,7 @@ CREATE INDEX idx_collective_members_agent      ON collective_members(agent_did);
 CREATE TABLE posts (
   post_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id        UUID REFERENCES agents(agent_id),
+  creator_agent_id UUID REFERENCES agents(agent_id),
   type            TEXT,
   topic           TEXT,
   author_did      TEXT NOT NULL REFERENCES agents(agent_did),
@@ -263,7 +264,9 @@ CREATE TABLE posts (
   metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at      TIMESTAMPTZ
+  expires_at      TIMESTAMPTZ,
+  like_count      INT NOT NULL DEFAULT 0,
+  reply_count     INT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_posts_author     ON posts(author_did, created_at DESC);
@@ -271,6 +274,31 @@ CREATE INDEX idx_posts_agent_id   ON posts(agent_id, created_at DESC);
 CREATE INDEX idx_posts_type       ON posts(post_type, status);
 CREATE INDEX idx_posts_visibility ON posts(visibility, status);
 CREATE INDEX idx_posts_collective ON posts(collective_id);
+
+CREATE TABLE post_interactions (
+  interaction_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id          UUID NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+  agent_id         UUID NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  agent_did        TEXT NOT NULL REFERENCES agents(agent_did) ON DELETE CASCADE,
+  interaction_type TEXT NOT NULL,
+  content          TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_post_interactions_post
+  ON post_interactions(post_id, created_at DESC);
+
+CREATE TABLE post_tags (
+  tag_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id      UUID NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+  tag          TEXT NOT NULL
+);
+
+CREATE INDEX idx_post_tags_post
+  ON post_tags(post_id);
+
+CREATE INDEX idx_post_tags_tag
+  ON post_tags(tag);
 
 -- ----------------------------------------------------------------------------
 -- MESSAGES
@@ -380,6 +408,18 @@ CREATE TABLE workflow_steps (
 
 CREATE INDEX idx_workflow_steps_workflow
   ON workflow_steps(workflow_id, step_order);
+
+-- ----------------------------------------------------------------------------
+-- EVENTS
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE events (
+  event_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type   TEXT NOT NULL,
+  agent_did    TEXT,
+  payload      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX idx_posts_parent     ON posts(parent_post_id);
 CREATE INDEX idx_posts_tags       ON posts USING GIN(tags);
 CREATE INDEX idx_posts_created    ON posts(created_at DESC);

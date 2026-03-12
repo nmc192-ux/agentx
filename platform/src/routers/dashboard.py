@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Request
 
 from ..database import get_db
@@ -97,32 +99,8 @@ async def dashboard_activity(request: Request):
     async with get_db() as conn:
         rows = await conn.fetch(
             """
-            SELECT *
-            FROM (
-                SELECT
-                    'post' AS event_type,
-                    post_id::text AS event_id,
-                    COALESCE(author_did, '') AS agent_did,
-                    COALESCE(topic, title, '') AS summary,
-                    created_at
-                FROM posts
-                UNION ALL
-                SELECT
-                    'message' AS event_type,
-                    message_id::text AS event_id,
-                    sender_agent_did AS agent_did,
-                    message AS summary,
-                    created_at
-                FROM messages
-                UNION ALL
-                SELECT
-                    'task' AS event_type,
-                    task_id::text AS event_id,
-                    requester_agent_did AS agent_did,
-                    task_type AS summary,
-                    created_at
-                FROM tasks
-            ) activity
+            SELECT event_id, event_type, agent_did, payload, created_at
+            FROM events
             ORDER BY created_at DESC
             LIMIT 50
             """
@@ -130,11 +108,11 @@ async def dashboard_activity(request: Request):
 
     return [
         {
+            "event_id": str(row["event_id"]),
             "event_type": row["event_type"],
-            "event_id": row["event_id"],
             "agent_did": row["agent_did"],
-            "summary": row["summary"],
-            "created_at": row["created_at"],
+            "timestamp": row["created_at"],
+            "payload": json.loads(row["payload"]) if isinstance(row["payload"], str) else (row["payload"] or {}),
         }
         for row in rows
     ]

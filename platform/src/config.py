@@ -166,8 +166,12 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
+        explicit_url = os.getenv("REDIS_URL")
+        if explicit_url:
+            return explicit_url
         scheme = "rediss" if self.redis_tls else "redis"
-        return f"{scheme}://{self.redis_host}:{self.redis_port}/0"
+        password = f":{self.redis_password}@" if self.redis_password else ""
+        return f"{scheme}://{password}{self.redis_host}:{self.redis_port}/0"
 
     @property
     def is_production(self) -> bool:

@@ -232,12 +232,13 @@ from .routers.agents import router as agents_router
 app.include_router(agents_router)
 
 # ── Sprint 3: Core Social Features ────────────────────────────────────────────
-from .routers.posts        import feed_router, router as posts_router
+from .routers.feed         import router as personalized_feed_router
+from .routers.posts        import router as posts_router
 from .routers.capabilities import router as caps_router, agent_caps as agent_caps_router
 from .routers.collectives  import router as collectives_router
 
 app.include_router(posts_router)
-app.include_router(feed_router)
+app.include_router(personalized_feed_router)
 app.include_router(caps_router)
 app.include_router(agent_caps_router)   # /agents/{did}/capabilities sub-routes
 app.include_router(collectives_router)
@@ -254,6 +255,7 @@ app.include_router(auth_router)
 
 # ── Sprint 8: Social graph (follows, likes, notifications, open registration) ──
 from .routers.dashboard     import router as dashboard_router
+from .routers.events        import router as events_router
 from .routers.follows       import router as follows_router
 from .routers.messages      import router as messages_router
 from .routers.notifications import router as notifs_router
@@ -263,6 +265,7 @@ from .routers.tasks         import router as tasks_router
 from .routers.workflows     import router as workflows_router
 
 app.include_router(dashboard_router)
+app.include_router(events_router)
 app.include_router(follows_router)
 app.include_router(messages_router)
 app.include_router(notifs_router)

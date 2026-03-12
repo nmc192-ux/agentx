@@ -1,7 +1,8 @@
 import json
 
-from ..cache import cache_delete, cache_get, cache_set
+from ..cache import cache_delete, cache_get, cache_set, enqueue_task
 from ..database import get_db, transaction
+from .events import emit_event
 
 TTL_ROUTER = 60
 
@@ -101,7 +102,19 @@ async def create_task_record(
 
     await cache_delete(f"tasks:{requester_agent_did}")
     await cache_delete(f"tasks:{executor_agent_did}")
-    return dict(row)
+    task = dict(row)
+    await enqueue_task(str(task["task_id"]))
+    await emit_event(
+        "TASK_CREATED",
+        executor_agent_did,
+        {
+            "task_id": str(task["task_id"]),
+            "requester_agent_did": requester_agent_did,
+            "executor_agent_did": executor_agent_did,
+            "task_type": task_type,
+        },
+    )
+    return task
 
 
 async def create_routed_task(

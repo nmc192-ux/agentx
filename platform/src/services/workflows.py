@@ -2,6 +2,7 @@ import json
 from uuid import UUID
 
 from ..database import get_db, transaction
+from .events import emit_event
 from .router import create_routed_task
 
 
@@ -42,13 +43,23 @@ async def trigger_next_step(workflow_id: UUID) -> None:
 
     if next_step is None:
         async with transaction() as conn:
-            await conn.execute(
+            workflow = await conn.fetchrow(
                 """
                 UPDATE workflows
                 SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP
                 WHERE workflow_id = $1
+                RETURNING workflow_id, initiator_agent_did, workflow_type
                 """,
                 workflow_id,
+            )
+        if workflow is not None:
+            await emit_event(
+                "WORKFLOW_COMPLETED",
+                workflow["initiator_agent_did"],
+                {
+                    "workflow_id": str(workflow["workflow_id"]),
+                    "workflow_type": workflow["workflow_type"],
+                },
             )
         return
 
@@ -164,6 +175,15 @@ async def create_workflow_record(
             )
 
     await trigger_next_step(workflow["workflow_id"])
+    await emit_event(
+        "WORKFLOW_STARTED",
+        initiator_agent_did,
+        {
+            "workflow_id": str(workflow["workflow_id"]),
+            "workflow_type": workflow_type,
+            "steps_count": len(steps),
+        },
+    )
     return await get_workflow(workflow["workflow_id"])
 
 
