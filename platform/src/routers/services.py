@@ -104,6 +104,7 @@ async def register_service(body: ServiceCreate, request: Request):
     await cache_delete(_services_search_key(body.service_type, body.agent_did))
     await cache_delete(_services_search_key(None, body.agent_did))
     await cache_delete(_services_search_key(None, None))
+    await cache_delete(f"router:{body.service_type}")
     return _service_row_to_response(dict(row))
 
 

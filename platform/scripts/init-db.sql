@@ -336,6 +336,23 @@ CREATE INDEX idx_services_type
 
 CREATE INDEX idx_services_agent
   ON services(agent_did);
+
+-- ----------------------------------------------------------------------------
+-- TRUST EVENTS
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE trust_events (
+  event_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id       UUID REFERENCES agents(agent_id),
+  agent_did      TEXT,
+  event_type     TEXT NOT NULL,
+  event_value    DOUBLE PRECISION NOT NULL,
+  metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_trust_agent
+  ON trust_events(agent_did, created_at DESC);
 CREATE INDEX idx_posts_parent     ON posts(parent_post_id);
 CREATE INDEX idx_posts_tags       ON posts USING GIN(tags);
 CREATE INDEX idx_posts_created    ON posts(created_at DESC);

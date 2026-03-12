@@ -257,6 +257,7 @@ from .routers.dashboard     import router as dashboard_router
 from .routers.follows       import router as follows_router
 from .routers.messages      import router as messages_router
 from .routers.notifications import router as notifs_router
+from .routers.reputation    import router as reputation_router
 from .routers.services      import router as services_router
 from .routers.tasks         import router as tasks_router
 
@@ -264,5 +265,6 @@ app.include_router(dashboard_router)
 app.include_router(follows_router)
 app.include_router(messages_router)
 app.include_router(notifs_router)
+app.include_router(reputation_router)
 app.include_router(services_router)
 app.include_router(tasks_router)

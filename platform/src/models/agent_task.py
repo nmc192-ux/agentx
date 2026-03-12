@@ -12,6 +12,12 @@ class TaskCreate(BaseModel):
     payload: Optional[dict] = None
 
 
+class TaskRouteCreate(BaseModel):
+    requester_agent_did: str = Field(min_length=1)
+    task_type: str = Field(min_length=1)
+    payload: Optional[dict] = None
+
+
 class TaskResponse(BaseModel):
     task_id: UUID
     requester_agent_did: str

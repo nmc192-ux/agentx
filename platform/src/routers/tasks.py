@@ -5,7 +5,9 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
-from ..models.agent_task import TaskCreate, TaskResponse, TaskUpdate
+from ..models.agent_task import TaskCreate, TaskResponse, TaskRouteCreate, TaskUpdate
+from ..services.reputation import record_event
+from ..services.router import select_executor
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -37,12 +39,7 @@ def _row_to_response(row: dict) -> TaskResponse:
     )
 
 
-@router.post(
-    "/create",
-    status_code=status.HTTP_201_CREATED,
-    response_model=TaskResponse,
-)
-async def create_task(body: TaskCreate, request: Request):
+async def _create_task_record(body: TaskCreate) -> TaskResponse:
     async with transaction() as conn:
         requester_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
@@ -112,6 +109,38 @@ async def create_task(body: TaskCreate, request: Request):
     return _row_to_response(dict(row))
 
 
+@router.post(
+    "/create",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TaskResponse,
+)
+async def create_task(body: TaskCreate, request: Request):
+    return await _create_task_record(body)
+
+
+@router.post(
+    "/route",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TaskResponse,
+)
+async def route_task(body: TaskRouteCreate, request: Request):
+    executor_agent_did = await select_executor(body.task_type)
+    if executor_agent_did is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "NO_EXECUTOR_AVAILABLE"},
+        )
+
+    return await _create_task_record(
+        TaskCreate(
+            requester_agent_did=body.requester_agent_did,
+            executor_agent_did=executor_agent_did,
+            task_type=body.task_type,
+            payload=body.payload,
+        )
+    )
+
+
 @router.get(
     "/{agent_did:path}",
     response_model=list[TaskResponse],
@@ -165,6 +194,7 @@ async def get_tasks_for_agent(agent_did: str, request: Request):
 async def update_task(task_id: UUID, body: TaskUpdate, request: Request):
     updates: list[str] = []
     values: list[object] = []
+    status_value: str | None = None
 
     if body.status is not None:
         status_value = body.status.upper()
@@ -190,6 +220,20 @@ async def update_task(task_id: UUID, body: TaskUpdate, request: Request):
     values.append(task_id)
 
     async with transaction() as conn:
+        existing = await conn.fetchrow(
+            """
+            SELECT status, executor_agent_did
+            FROM tasks
+            WHERE task_id = $1
+            """,
+            task_id,
+        )
+        if existing is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task not found: {task_id}",
+            )
+
         row = await conn.fetchrow(
             f"""
             UPDATE tasks
@@ -209,13 +253,26 @@ async def update_task(task_id: UUID, body: TaskUpdate, request: Request):
             *values,
         )
 
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task not found: {task_id}",
-        )
-
     task = _row_to_response(dict(row))
     await cache_delete(_tasks_key(task.requester_agent_did))
     await cache_delete(_tasks_key(task.executor_agent_did))
+
+    if status_value == "COMPLETED" and existing["status"] != "COMPLETED":
+        await record_event(
+            task.executor_agent_did,
+            "TASK_COMPLETED",
+            {"task_id": str(task.task_id), "task_type": task.task_type},
+        )
+        await record_event(
+            task.executor_agent_did,
+            "SERVICE_USED",
+            {"task_id": str(task.task_id), "task_type": task.task_type},
+        )
+    elif status_value == "FAILED" and existing["status"] != "FAILED":
+        await record_event(
+            task.executor_agent_did,
+            "TASK_FAILED",
+            {"task_id": str(task.task_id), "task_type": task.task_type},
+        )
+
     return task

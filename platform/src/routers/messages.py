@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
 from ..models.agent_message import MessageCreate, MessageResponse
+from ..services.reputation import record_event
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
@@ -94,6 +95,11 @@ async def send_message(body: MessageCreate, request: Request):
 
     await cache_delete(_messages_key(body.sender_agent_did))
     await cache_delete(_messages_key(body.receiver_agent_did))
+    await record_event(
+        body.sender_agent_did,
+        "MESSAGE_REPLIED",
+        {"receiver_agent_did": body.receiver_agent_did},
+    )
     return _row_to_response(dict(row))
 
 
