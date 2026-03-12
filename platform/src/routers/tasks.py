@@ -7,7 +7,8 @@ from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
 from ..models.agent_task import TaskCreate, TaskResponse, TaskRouteCreate, TaskUpdate
 from ..services.reputation import record_event
-from ..services.router import select_executor
+from ..services.router import create_routed_task
+from ..services.workflows import update_workflow_for_task
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -124,21 +125,17 @@ async def create_task(body: TaskCreate, request: Request):
     response_model=TaskResponse,
 )
 async def route_task(body: TaskRouteCreate, request: Request):
-    executor_agent_did = await select_executor(body.task_type)
-    if executor_agent_did is None:
+    task = await create_routed_task(
+        requester_agent_did=body.requester_agent_did,
+        task_type=body.task_type,
+        payload=body.payload,
+    )
+    if task is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "NO_EXECUTOR_AVAILABLE"},
         )
-
-    return await _create_task_record(
-        TaskCreate(
-            requester_agent_did=body.requester_agent_did,
-            executor_agent_did=executor_agent_did,
-            task_type=body.task_type,
-            payload=body.payload,
-        )
-    )
+    return _row_to_response(task)
 
 
 @router.get(
@@ -274,5 +271,8 @@ async def update_task(task_id: UUID, body: TaskUpdate, request: Request):
             "TASK_FAILED",
             {"task_id": str(task.task_id), "task_type": task.task_type},
         )
+
+    if status_value in {"COMPLETED", "FAILED"}:
+        await update_workflow_for_task(task.task_id, status_value)
 
     return task

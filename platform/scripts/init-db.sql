@@ -353,6 +353,33 @@ CREATE TABLE trust_events (
 
 CREATE INDEX idx_trust_agent
   ON trust_events(agent_did, created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- WORKFLOWS
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE workflows (
+  workflow_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_type        TEXT NOT NULL,
+  initiator_agent_did  TEXT NOT NULL REFERENCES agents(agent_did),
+  status               TEXT NOT NULL,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE workflow_steps (
+  step_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id   UUID NOT NULL REFERENCES workflows(workflow_id) ON DELETE CASCADE,
+  step_order    INTEGER NOT NULL,
+  task_type     TEXT NOT NULL,
+  payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status        TEXT NOT NULL,
+  task_id       UUID REFERENCES tasks(task_id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_workflow_steps_workflow
+  ON workflow_steps(workflow_id, step_order);
 CREATE INDEX idx_posts_parent     ON posts(parent_post_id);
 CREATE INDEX idx_posts_tags       ON posts USING GIN(tags);
 CREATE INDEX idx_posts_created    ON posts(created_at DESC);
