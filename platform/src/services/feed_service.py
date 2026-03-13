@@ -93,11 +93,11 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
-                a.trust_score AS author_trust,
+                COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
                 (
                     GREATEST(0, 100 - EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0)
                     + CASE WHEN fp.following_did IS NOT NULL THEN 30 ELSE 0 END
-                    + (a.trust_score * 25)
+                    + (COALESCE(ts.current_score, a.trust_score, 0.5) * 25)
                     + COALESCE(ic.interaction_count, 0)
                     + CASE
                         WHEN EXISTS (
@@ -110,6 +110,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 ) AS feed_score
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
+            LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
             LEFT JOIN followed_posts fp ON fp.following_did = p.author_did
             LEFT JOIN interaction_counts ic ON ic.post_id = p.post_id
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
@@ -165,13 +166,19 @@ async def get_global_feed(limit: int = 50) -> list[PostResponse]:
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
-                a.trust_score AS author_trust
+                COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
+            LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
             LEFT JOIN interaction_counts ic ON ic.post_id = p.post_id
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
               AND p.status = 'ACTIVE'
-            ORDER BY (COALESCE(p.like_count, 0) + COALESCE(p.reply_count, 0) + COALESCE(ic.interaction_count, 0)) DESC,
+            ORDER BY (
+                        COALESCE(p.like_count, 0)
+                        + COALESCE(p.reply_count, 0)
+                        + COALESCE(ic.interaction_count, 0)
+                        + (COALESCE(ts.current_score, a.trust_score, 0.5) * 10)
+                     ) DESC,
                      p.created_at DESC
             LIMIT $1
             """,

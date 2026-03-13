@@ -43,9 +43,11 @@ class TestUpdateEmbeddingsJob:
         async def fake_get_db():
             yield mock_conn
 
-        with patch("src.jobs.update_embeddings.get_db", fake_get_db), \
-             patch("src.jobs.update_embeddings.semantic_router", mock_router):
-            from src.jobs.update_embeddings import _run_update_embeddings
+        from src.jobs import update_embeddings as job_module
+
+        with patch.object(job_module, "get_db", fake_get_db), \
+             patch.object(job_module, "semantic_router", mock_router):
+            _run_update_embeddings = job_module._run_update_embeddings
             result = await _run_update_embeddings(lookback_hours=1, limit=100)
 
         assert result["processed"] == 5
@@ -71,9 +73,11 @@ class TestUpdateEmbeddingsJob:
         async def fake_get_db():
             yield mock_conn
 
-        with patch("src.jobs.update_embeddings.get_db", fake_get_db), \
-             patch("src.jobs.update_embeddings.semantic_router", mock_router):
-            from src.jobs.update_embeddings import _run_update_embeddings
+        from src.jobs import update_embeddings as job_module
+
+        with patch.object(job_module, "get_db", fake_get_db), \
+             patch.object(job_module, "semantic_router", mock_router):
+            _run_update_embeddings = job_module._run_update_embeddings
             result = await _run_update_embeddings(lookback_hours=1, limit=100)
 
         assert result["processed"] == 0
@@ -97,9 +101,11 @@ class TestUpdateEmbeddingsJob:
         mock_router = MagicMock()
         mock_router.embed_and_store = AsyncMock(return_value=None)
 
-        with patch("src.jobs.update_embeddings.get_db", fake_get_db), \
-             patch("src.jobs.update_embeddings.semantic_router", mock_router):
-            from src.jobs.update_embeddings import _run_update_embeddings
+        from src.jobs import update_embeddings as job_module
+
+        with patch.object(job_module, "get_db", fake_get_db), \
+             patch.object(job_module, "semantic_router", mock_router):
+            _run_update_embeddings = job_module._run_update_embeddings
             await _run_update_embeddings(lookback_hours=1, limit=25)
 
         # Verify the limit parameter was passed to the fetch query
@@ -127,9 +133,11 @@ class TestUpdateEmbeddingsJob:
         async def fake_get_db():
             yield mock_conn
 
-        with patch("src.jobs.update_embeddings.get_db", fake_get_db), \
-             patch("src.jobs.update_embeddings.semantic_router", mock_router):
-            from src.jobs.update_embeddings import _run_update_embeddings
+        from src.jobs import update_embeddings as job_module
+
+        with patch.object(job_module, "get_db", fake_get_db), \
+             patch.object(job_module, "semantic_router", mock_router):
+            _run_update_embeddings = job_module._run_update_embeddings
             result = await _run_update_embeddings(lookback_hours=1, limit=100)
 
         assert result["processed"] == 2
@@ -149,9 +157,11 @@ class TestUpdateEmbeddingsJob:
             yield mock_conn
 
         mock_router = MagicMock()
-        with patch("src.jobs.update_embeddings.get_db", fake_get_db), \
-             patch("src.jobs.update_embeddings.semantic_router", mock_router):
-            from src.jobs.update_embeddings import _run_update_embeddings
+        from src.jobs import update_embeddings as job_module
+
+        with patch.object(job_module, "get_db", fake_get_db), \
+             patch.object(job_module, "semantic_router", mock_router):
+            _run_update_embeddings = job_module._run_update_embeddings
             result = await _run_update_embeddings()
 
         assert result == {"processed": 0, "skipped": 0, "errors": 0}

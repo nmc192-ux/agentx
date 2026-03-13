@@ -4,6 +4,8 @@ Tests — Trust Score ML Model
 Verifies XGBoost prediction, formula fallback, and model lifecycle.
 XGBoost and model I/O are mocked to avoid training overhead in CI.
 """
+import sys
+import types
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 
@@ -21,6 +23,31 @@ def model():
     m._model     = None
     m._available = False
     return m
+
+
+class _FakeArray(list):
+    def __getitem__(self, index):
+        return super().__getitem__(index)
+
+
+@pytest.fixture
+def fake_ml_modules():
+    fake_numpy = types.ModuleType("numpy")
+    fake_numpy.float32 = float
+    fake_numpy.array = lambda values, dtype=None: values
+    fake_numpy.isscalar = lambda value: not isinstance(value, (list, tuple, dict, set))
+
+    fake_xgboost = types.ModuleType("xgboost")
+
+    class FakeDMatrix:
+        def __init__(self, values):
+            self.values = values
+
+    fake_xgboost.DMatrix = FakeDMatrix
+    fake_xgboost.Booster = MagicMock()
+
+    with patch.dict(sys.modules, {"numpy": fake_numpy, "xgboost": fake_xgboost}):
+        yield fake_xgboost
 
 
 @pytest.fixture
@@ -109,13 +136,12 @@ class TestModelAvailability:
         assert result is False
         assert model.is_available() is False
 
-    def test_load_returns_true_when_file_exists(self, model, tmp_path):
+    def test_load_returns_true_when_file_exists(self, model, tmp_path, fake_ml_modules):
         fake_model_path = tmp_path / "trust_model.json"
         fake_model_path.write_text("{}")  # non-empty file
 
         mock_booster = MagicMock()
-        with patch("xgboost.Booster") as mock_cls:
-            mock_cls.return_value = mock_booster
+        with patch.object(fake_ml_modules, "Booster", return_value=mock_booster) as mock_cls:
             result = model.load(fake_model_path)
 
         assert result is True
@@ -156,11 +182,10 @@ class TestFormulaFallback:
 # ── ML prediction tests ───────────────────────────────────────────────────────
 
 class TestMLPrediction:
-    def test_prediction_in_bounds(self, model, high_trust_features):
+    def test_prediction_in_bounds(self, model, high_trust_features, fake_ml_modules):
         """Score must always be ∈ [0, 1]."""
         mock_booster = MagicMock()
-        import numpy as np
-        mock_booster.predict.return_value = np.array([0.85], dtype=np.float32)
+        mock_booster.predict.return_value = _FakeArray([0.85])
         model._model     = mock_booster
         model._available = True
 
@@ -172,10 +197,9 @@ class TestMLPrediction:
         low_score  = model._formula_fallback(low_trust_features)
         assert high_score > low_score
 
-    def test_ml_path_called_when_model_available(self, model, high_trust_features):
+    def test_ml_path_called_when_model_available(self, model, high_trust_features, fake_ml_modules):
         mock_booster = MagicMock()
-        import numpy as np
-        mock_booster.predict.return_value = np.array([0.77], dtype=np.float32)
+        mock_booster.predict.return_value = _FakeArray([0.77])
         model._model     = mock_booster
         model._available = True
 
@@ -183,18 +207,16 @@ class TestMLPrediction:
         mock_booster.predict.assert_called_once()
         assert score == pytest.approx(0.77, abs=0.001)
 
-    def test_prediction_clamped_above_1(self, model, high_trust_features):
+    def test_prediction_clamped_above_1(self, model, high_trust_features, fake_ml_modules):
         mock_booster = MagicMock()
-        import numpy as np
-        mock_booster.predict.return_value = np.array([1.5], dtype=np.float32)  # Out of range
+        mock_booster.predict.return_value = _FakeArray([1.5])  # Out of range
         model._model     = mock_booster
         model._available = True
         assert model.predict(high_trust_features) <= 1.0
 
-    def test_prediction_clamped_below_0(self, model, low_trust_features):
+    def test_prediction_clamped_below_0(self, model, low_trust_features, fake_ml_modules):
         mock_booster = MagicMock()
-        import numpy as np
-        mock_booster.predict.return_value = np.array([-0.2], dtype=np.float32)  # Out of range
+        mock_booster.predict.return_value = _FakeArray([-0.2])  # Out of range
         model._model     = mock_booster
         model._available = True
         assert model.predict(low_trust_features) >= 0.0

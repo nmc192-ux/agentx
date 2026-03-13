@@ -104,6 +104,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"           # only bind to loopback — use nginx/caddy in prod
     volumes:
+      - .:/app
       - ./certs/ca.crt:/certs/ca.crt:ro # CA cert for verifying postgres/redis TLS
     secrets:
       - db_password

@@ -74,14 +74,18 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_create_request_returns_201(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        with patch("src.routers.posts.transaction") as mock_tx:
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = _post_row(post_type="REQUEST")
+            mock_conn.fetchval.return_value = uuid.uuid4()
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            app.dependency_overrides[get_current_agent] = lambda: caller
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "REQUEST",
                 "title":     "Need help with Kubernetes",
@@ -94,14 +98,18 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_create_task_returns_201(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        with patch("src.routers.posts.transaction") as mock_tx:
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = _post_row(post_type="TASK")
+            mock_conn.fetchval.return_value = uuid.uuid4()
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            app.dependency_overrides[get_current_agent] = lambda: caller
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "TASK",
                 "title":     "Deploy service",
@@ -114,14 +122,18 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_create_prediction_returns_201(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        with patch("src.routers.posts.transaction") as mock_tx:
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = _post_row(post_type="PREDICTION")
+            mock_conn.fetchval.return_value = uuid.uuid4()
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            app.dependency_overrides[get_current_agent] = lambda: caller
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "PREDICTION",
                 "title":     "Uptime forecast",
@@ -139,14 +151,18 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_create_proposal_returns_201(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        with patch("src.routers.posts.transaction") as mock_tx:
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = _post_row(post_type="PROPOSAL")
+            mock_conn.fetchval.return_value = uuid.uuid4()
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            app.dependency_overrides[get_current_agent] = lambda: caller
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "PROPOSAL",
                 "title":     "Governance vote",
@@ -164,14 +180,18 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_create_offer_returns_201(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        with patch("src.routers.posts.transaction") as mock_tx:
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = _post_row(post_type="OFFER")
+            mock_conn.fetchval.return_value = uuid.uuid4()
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            app.dependency_overrides[get_current_agent] = lambda: caller
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "OFFER",
                 "title":     "K8s consulting",
@@ -184,14 +204,18 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_create_update_returns_201(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        with patch("src.routers.posts.transaction") as mock_tx:
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = _post_row(post_type="UPDATE")
+            mock_conn.fetchval.return_value = uuid.uuid4()
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            app.dependency_overrides[get_current_agent] = lambda: caller
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "UPDATE",
                 "title":     "Progress: 75%",
@@ -204,8 +228,8 @@ class TestCreatePost:
 
     @pytest.mark.asyncio
     async def test_invalid_urgency_returns_422(self, client, caller):
-        from src.auth.middleware import get_current_agent
-        app.dependency_overrides[get_current_agent] = lambda: caller
+        from src.auth.middleware import get_current_agent_optional
+        app.dependency_overrides[get_current_agent_optional] = lambda: caller
 
         response = await client.post("/posts", json={
             "post_type": "REQUEST",

@@ -12,7 +12,16 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from .celery_app import celery_app
+try:
+    from .celery_app import celery_app
+except ModuleNotFoundError:  # pragma: no cover - unit tests can run without Celery installed
+    class _CeleryStub:
+        def task(self, *args, **kwargs):
+            def _decorator(func):
+                return func
+            return _decorator
+
+    celery_app = _CeleryStub()
 from ..database           import get_db             # module-level for test patching
 from ..ml.semantic_router import semantic_router    # module-level for test patching
 

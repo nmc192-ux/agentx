@@ -36,7 +36,9 @@ from ..models.agent import (
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
 from ..models.agent_registry import AgentResponse as RegistryAgentResponse
+from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..services.trust_score import TrustScore, get_trust_score
+from ..services.reputation import get_agent_trust, get_reputation_history
 from ..services.agent_directory import (
     search_agents_by_capability,
     search_agents_by_reputation,
@@ -395,6 +397,42 @@ async def search_agents(
             filtered = [a for a in filtered if a.agent_did in rep_ids]
 
     return sorted(filtered or [], key=lambda a: a.trust_score, reverse=True)
+
+
+@router.get(
+    "/{agent_id}/trust",
+    response_model=AgentTrustScoreResponse,
+    summary="Get agent trust score by UUID",
+)
+async def get_agent_trust_endpoint(
+    agent_id: UUID,
+    request: Request,
+):
+    try:
+        return await get_agent_trust(agent_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(
+    "/{agent_id}/reputation-history",
+    response_model=list[ReputationHistoryEntry],
+    summary="Get agent reputation history by UUID",
+)
+async def get_agent_reputation_history_endpoint(
+    agent_id: UUID,
+    request: Request,
+):
+    try:
+        return await get_reputation_history(agent_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get(

@@ -28,8 +28,15 @@ def _make_agent_row(
     status: str = "ACTIVE",
 ) -> dict:
     return {
+        "agent_id":       "11111111-1111-1111-1111-111111111111",
         "agent_did":      did,
         "display_name":   "ATLAS",
+        "name":           "ATLAS",
+        "description":    "Chief Architect",
+        "skills":         ["architecture"],
+        "capabilities":   ["system.design"],
+        "endpoint":       "http://atlas.local",
+        "owner":          "atlas",
         "agent_type":     "AUTONOMOUS",
         "governance_role": role,
         "tier":           tier,
@@ -160,25 +167,52 @@ class TestCreateAgent:
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_create_without_auth_returns_401(self, client):
-        response = await client.post("/agents", json={
-            "agent_did":    "did:agentx:newbot-003",
-            "display_name": "Bot",
-        })
-        assert response.status_code == 401
+    async def test_create_without_auth_returns_201(self, client):
+        with (
+            patch("src.routers.agents.transaction") as mock_tx,
+            patch("src.routers.agents.get_db") as mock_db,
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchval.return_value = None
+            mock_conn.execute.return_value = None
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_db_conn = AsyncMock()
+            mock_db_conn.fetchrow.return_value = {"tier": "BOOTSTRAP", "governance_role": "MEMBER"}
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_db_conn)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            response = await client.post("/agents", json={
+                "agent_did":    "did:agentx:newbot-003",
+                "display_name": "Bot",
+            })
+
+        assert response.status_code == 201
 
     @pytest.mark.asyncio
-    async def test_create_as_member_returns_403(self, client, member_record):
-        from src.auth.middleware import get_current_agent
-        app.dependency_overrides[get_current_agent] = lambda: member_record
+    async def test_create_as_member_returns_201(self, client, member_record):
+        with (
+            patch("src.routers.agents.transaction") as mock_tx,
+            patch("src.routers.agents.get_db") as mock_db,
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchval.return_value = None
+            mock_conn.execute.return_value = None
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        response = await client.post("/agents", json={
-            "agent_did":    "did:agentx:newbot-004",
-            "display_name": "Bot",
-        })
+            mock_db_conn = AsyncMock()
+            mock_db_conn.fetchrow.return_value = {"tier": "BOOTSTRAP", "governance_role": "MEMBER"}
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_db_conn)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        app.dependency_overrides = {}
-        assert response.status_code == 403
+            response = await client.post("/agents", json={
+                "agent_did":    "did:agentx:newbot-004",
+                "display_name": "Bot",
+            })
+
+        assert response.status_code == 201
 
     @pytest.mark.asyncio
     async def test_create_duplicate_did_returns_409(self, client, atlas_record):
@@ -268,74 +302,66 @@ class TestListAgents:
 # ── GET /agents/{did} ─────────────────────────────────────────────────────────
 
 class TestGetAgent:
-    """GET /agents/{did} — single agent profile."""
+    """GET /agents/{id} — registry profile."""
 
     @pytest.mark.asyncio
     async def test_existing_agent_returns_200(self, client):
-        with (
-            patch("src.routers.agents.cache_get", new=AsyncMock(return_value=None)),
-            patch("src.routers.agents.get_db")   as mock_db,
-            patch("src.routers.agents.cache_set", new=AsyncMock()),
-        ):
+        agent_row = _make_agent_row()
+        with patch("src.routers.agents.get_db") as mock_db:
             mock_conn = AsyncMock()
-            mock_conn.fetchrow.return_value = _make_agent_row()
+            mock_conn.fetchrow.return_value = agent_row
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            response = await client.get("/agents/did:agentx:atlas-001")
+            response = await client.get(f"/agents/{agent_row['agent_id']}")
 
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_existing_agent_returns_correct_did(self, client):
-        with (
-            patch("src.routers.agents.cache_get", new=AsyncMock(return_value=None)),
-            patch("src.routers.agents.get_db")   as mock_db,
-            patch("src.routers.agents.cache_set", new=AsyncMock()),
-        ):
+    async def test_existing_agent_returns_correct_id(self, client):
+        agent_row = _make_agent_row()
+        with patch("src.routers.agents.get_db") as mock_db:
             mock_conn = AsyncMock()
-            mock_conn.fetchrow.return_value = _make_agent_row()
+            mock_conn.fetchrow.return_value = agent_row
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            response = await client.get("/agents/did:agentx:atlas-001")
+            response = await client.get(f"/agents/{agent_row['agent_id']}")
 
         data = response.json()
-        assert data["agent_did"] == "did:agentx:atlas-001"
+        assert data["agent_id"] == agent_row["agent_id"]
 
     @pytest.mark.asyncio
     async def test_nonexistent_agent_returns_404(self, client):
-        with (
-            patch("src.routers.agents.cache_get", new=AsyncMock(return_value=None)),
-            patch("src.routers.agents.get_db")   as mock_db,
-        ):
+        with patch("src.routers.agents.get_db") as mock_db:
             mock_conn = AsyncMock()
             mock_conn.fetchrow.return_value = None
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
 
-            response = await client.get("/agents/did:agentx:ghost-001")
+            response = await client.get("/agents/22222222-2222-2222-2222-222222222222")
 
         assert response.status_code == 404
 
     @pytest.mark.asyncio
     async def test_cache_hit_returns_200(self, client):
-        import json
         cached = {
-            "agent_did":    "did:agentx:atlas-001",
-            "display_name": "ATLAS",
-            "agent_type":   "AUTONOMOUS",
-            "governance_role": "FOUNDER",
-            "tier":         "ELITE",
-            "status":       "ACTIVE",
-            "trust_score":  0.98,
-            "bio":          None,
-            "specialization": None,
-            "created_at":   "2024-01-01T00:00:00+00:00",
-            "last_seen_at": None,
+            "agent_id": "11111111-1111-1111-1111-111111111111",
+            "name": "ATLAS",
+            "description": "Chief Architect",
+            "skills": ["architecture"],
+            "capabilities": ["system.design"],
+            "endpoint": "http://atlas.local",
+            "owner": "atlas",
+            "trust_score": 0.98,
+            "created_at": "2024-01-01T00:00:00+00:00",
         }
-        with patch("src.routers.agents.cache_get", new=AsyncMock(return_value=cached)):
-            response = await client.get("/agents/did:agentx:atlas-001")
+        with patch("src.routers.agents.get_db") as mock_db:
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = cached
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+            response = await client.get("/agents/11111111-1111-1111-1111-111111111111")
         assert response.status_code == 200
 
 

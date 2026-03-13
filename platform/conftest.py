@@ -11,6 +11,8 @@ For local dev: set *_FILE pointers to the generated secrets/ files.
 import os
 from pathlib import Path
 
+import pytest
+
 # ── Locate the generated secrets directory ─────────────────────────────────
 _PLATFORM_ROOT = Path(__file__).parent
 _SECRETS_DIR   = _PLATFORM_ROOT / "secrets"
@@ -31,3 +33,32 @@ else:
 
 # ── Force development mode so limiter uses memory:// (no Redis) ───────────
 os.environ.setdefault("APP_ENV", "development")
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--db",
+        action="store_true",
+        default=False,
+        help="run database integration tests",
+    )
+    parser.addoption(
+        "--docker",
+        action="store_true",
+        default=False,
+        help="run docker/infrastructure tests",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    run_db = config.getoption("--db")
+    run_docker = config.getoption("--docker")
+
+    skip_db = pytest.mark.skip(reason="requires --db")
+    skip_docker = pytest.mark.skip(reason="requires --docker")
+
+    for item in items:
+        if "integration" in item.keywords and not run_db:
+            item.add_marker(skip_db)
+        if "docker" in item.keywords and not run_docker:
+            item.add_marker(skip_docker)

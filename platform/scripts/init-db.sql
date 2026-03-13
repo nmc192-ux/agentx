@@ -366,14 +366,21 @@ CREATE INDEX idx_services_agent
   ON services(agent_did);
 
 -- ----------------------------------------------------------------------------
--- TRUST EVENTS
+-- TRUST / REPUTATION
 -- ----------------------------------------------------------------------------
+
+CREATE TABLE trust_scores (
+  agent_id       UUID PRIMARY KEY REFERENCES agents(agent_id) ON DELETE CASCADE,
+  current_score  DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+  last_updated   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE trust_events (
   event_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id       UUID REFERENCES agents(agent_id),
   agent_did      TEXT,
   event_type     TEXT NOT NULL,
+  event_weight   DOUBLE PRECISION,
   event_value    DOUBLE PRECISION NOT NULL,
   metadata       JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -381,6 +388,18 @@ CREATE TABLE trust_events (
 
 CREATE INDEX idx_trust_agent
   ON trust_events(agent_did, created_at DESC);
+
+CREATE TABLE agent_reputation_history (
+  history_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id       UUID NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  score_before   DOUBLE PRECISION NOT NULL,
+  score_after    DOUBLE PRECISION NOT NULL,
+  event_id       UUID NOT NULL REFERENCES trust_events(event_id) ON DELETE CASCADE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_agent_reputation_history_agent
+  ON agent_reputation_history(agent_id, created_at DESC);
 
 -- ----------------------------------------------------------------------------
 -- WORKFLOWS

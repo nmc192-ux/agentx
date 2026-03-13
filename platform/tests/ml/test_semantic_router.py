@@ -5,6 +5,8 @@ Verifies embedding generation, pgvector similarity search, and Redis caching.
 All external calls (SentenceTransformer, DB, Redis) are mocked.
 """
 import asyncio
+import sys
+import types
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -33,15 +35,27 @@ def router():
 @pytest.fixture
 def mock_model():
     """Fake SentenceTransformer that returns deterministic vectors."""
-    import numpy as np
     m = MagicMock()
+    class FakeVector(list):
+        def tolist(self):
+            return list(self)
+
     def _encode(text, normalize_embeddings=True):
-        # Return a reproducible 384-dim vector based on text hash
         seed = sum(ord(c) for c in text) % 1000
-        rng  = np.random.default_rng(seed)
-        return rng.random(384).astype(np.float32)
+        return FakeVector([float((seed + i) % 97) / 97.0 for i in range(384)])
     m.encode.side_effect = _encode
     return m
+
+
+@pytest.fixture
+def fake_pgvector():
+    module = types.ModuleType("pgvector.asyncpg")
+    module.register_vector = AsyncMock(return_value=None)
+    fake_numpy = types.ModuleType("numpy")
+    fake_numpy.float32 = float
+    fake_numpy.array = lambda values, dtype=None: values
+    with patch.dict(sys.modules, {"pgvector.asyncpg": module, "numpy": fake_numpy}):
+        yield module
 
 
 # ── Embedding tests ───────────────────────────────────────────────────────────
@@ -100,58 +114,53 @@ class TestEmbedding:
 
 class TestSimilaritySearch:
     def _make_embedding(self, seed=42):
-        import numpy as np
-        rng = np.random.default_rng(seed)
-        return rng.random(384).tolist()
+        return [float((seed + i) % 101) / 101.0 for i in range(384)]
 
     @pytest.mark.asyncio
-    async def test_find_similar_returns_results(self, router):
+    async def test_find_similar_returns_results(self, router, fake_pgvector):
         """find_similar returns list of dicts with similarity scores."""
         post_id         = uuid4()
         emb             = self._make_embedding()
         expected_result = [
             {"post_id": post_id, "title": "Similar Task", "content": "...", "similarity": 0.9},
         ]
+        conn = AsyncMock()
+        conn.fetch.return_value = expected_result
 
-        # Replace instance method directly — no need to patch module internals
-        router_instance              = SemanticRouter()
-        router_instance.find_similar = AsyncMock(return_value=expected_result)
-
-        results = await router_instance.find_similar(AsyncMock(), emb, limit=10)
+        results = await router.find_similar(conn, emb, limit=10)
 
         assert len(results) == 1
         assert results[0]["similarity"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_find_similar_respects_limit(self, router):
+    async def test_find_similar_respects_limit(self, router, fake_pgvector):
         rows = [
             {"post_id": uuid4(), "title": f"Task {i}", "content": "c", "similarity": 0.9 - i * 0.1}
             for i in range(5)
         ]
-        router_instance = SemanticRouter()
-        router_instance.find_similar = AsyncMock(return_value=rows[:3])
-        results = await router_instance.find_similar(MagicMock(), self._make_embedding(), limit=3)
+        conn = AsyncMock()
+        conn.fetch.return_value = rows[:3]
+        results = await router.find_similar(conn, self._make_embedding(), limit=3)
         assert len(results) == 3
+        assert conn.fetch.await_args.args[-1] == 3
 
     @pytest.mark.asyncio
-    async def test_find_similar_excludes_current_post(self, router):
+    async def test_find_similar_excludes_current_post(self, router, fake_pgvector):
         """Verify exclude_post_id parameter is passed through."""
         post_id = uuid4()
-        router_instance = SemanticRouter()
-        router_instance.find_similar = AsyncMock(return_value=[])
-        await router_instance.find_similar(
-            MagicMock(), self._make_embedding(), limit=10, exclude_post_id=post_id
+        conn = AsyncMock()
+        conn.fetch.return_value = []
+        await router.find_similar(
+            conn, self._make_embedding(), limit=10, exclude_post_id=post_id
         )
-        router_instance.find_similar.assert_awaited_once()
+        assert conn.fetch.await_args.args[-2] == post_id
 
 
 # ── Cache tests ───────────────────────────────────────────────────────────────
 
 class TestCaching:
     def _make_embedding(self, seed=1):
-        import numpy as np
-        rng = np.random.default_rng(seed)
-        return rng.random(384).tolist()
+        return [float((seed + i) % 89) / 89.0 for i in range(384)]
 
     @pytest.mark.asyncio
     async def test_cache_key_format(self):
