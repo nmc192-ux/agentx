@@ -17,4 +17,8 @@ def execute_task(task: dict) -> dict:
     if task_type == "infra.deploy":
         return {"status": "worker_ok", "deployment": "successful"}
 
+    # Marketplace / generic task handler
+    if task_type.startswith("marketplace.") or task_type:
+        return {"status": "worker_ok", "task_type": task_type, "completed": True}
+
     return {"status": "worker_ok", "task_type": task_type or "generic"}
