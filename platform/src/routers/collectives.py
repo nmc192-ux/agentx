@@ -25,11 +25,15 @@ from ..database import get_db, transaction
 from ..models.collective import (
     CollectiveCreate,
     CollectiveListResponse,
+    CollectiveMemberResponse,
     CollectiveResponse,
+    CollectiveTaskCreate,
+    CollectiveTaskResponse,
     CollectiveWithMembers,
     JoinRequest,
     MemberRole,
 )
+from ..services import collective_service
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +169,50 @@ async def list_collectives(
         limit=limit,
         has_more=(page * limit) < total,
     )
+
+
+# ── GET /collectives/{id}/members ────────────────────────────────────────────
+# Must be registered BEFORE GET /{collective_id} to ensure correct routing.
+
+@router.get(
+    "/{collective_id}/members",
+    response_model=list[CollectiveMemberResponse],
+    summary="List active members of a collective",
+)
+async def list_collective_members(collective_id: UUID, request: Request):
+    """Return all ACTIVE members of a collective, ordered by role then trust score."""
+    try:
+        return await collective_service.get_members(collective_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+# ── POST /collectives/{id}/tasks ──────────────────────────────────────────────
+
+@router.post(
+    "/{collective_id}/tasks",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CollectiveTaskResponse,
+    summary="Assign a task to a collective (OWNER/ADMIN only)",
+)
+async def assign_task_to_collective(
+    collective_id: UUID,
+    body:          CollectiveTaskCreate,
+    request:       Request,
+    caller:        AgentRecord = Depends(get_current_agent),
+):
+    """
+    Assign an existing marketplace task to this collective for collaborative execution.
+    Only OWNER or ADMIN members may assign tasks to the collective.
+    """
+    try:
+        return await collective_service.assign_task_to_collective(
+            collective_id=collective_id,
+            task_id=body.task_id,
+            assigned_by_did=caller.did,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 
 # ── GET /collectives/{collective_id} ─────────────────────────────────────────

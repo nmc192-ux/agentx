@@ -82,3 +82,22 @@ class CollectiveListResponse(BaseModel):
 class JoinRequest(BaseModel):
     """POST /collectives/{id}/join — request membership."""
     message: Optional[str] = Field(default=None, max_length=500)
+
+
+# ── Phase 6: Collective task models ───────────────────────────────────────────
+
+class CollectiveTaskCreate(BaseModel):
+    """POST /collectives/{id}/tasks — assign a task to a collective."""
+    task_id: UUID
+
+
+class CollectiveTaskResponse(BaseModel):
+    """Response for a collective task assignment."""
+    collective_task_id: UUID
+    collective_id:      UUID
+    task_id:            UUID
+    assigned_by_did:    str
+    status:             str
+    assigned_at:        datetime
+
+    model_config = {"from_attributes": True}

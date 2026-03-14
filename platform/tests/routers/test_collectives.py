@@ -241,3 +241,145 @@ class TestApproveMember:
 
         app.dependency_overrides = {}
         assert response.status_code == 403
+
+
+# ── Phase 6: New endpoint tests ───────────────────────────────────────────────
+
+class TestListMembers:
+    """GET /collectives/{id}/members — delegates to collective_service.get_members"""
+
+    @pytest.mark.asyncio
+    async def test_returns_200_with_members(self, client):
+        col_id = uuid.uuid4()
+        member = {
+            "agent_did":    "did:agentx:atlas-001",
+            "display_name": "ATLAS",
+            "role":         "OWNER",
+            "status":       "ACTIVE",
+            "trust_score":  0.98,
+            "joined_at":    datetime.now(timezone.utc),
+        }
+        from src.models.collective import CollectiveMemberResponse
+        member_model = CollectiveMemberResponse(**member)
+
+        with patch(
+            "src.routers.collectives.collective_service.get_members",
+            new=AsyncMock(return_value=[member_model]),
+        ):
+            response = await client.get(f"/collectives/{col_id}/members")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert data[0]["agent_did"] == "did:agentx:atlas-001"
+        assert data[0]["role"] == "OWNER"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_for_new_collective(self, client):
+        col_id = uuid.uuid4()
+
+        with patch(
+            "src.routers.collectives.collective_service.get_members",
+            new=AsyncMock(return_value=[]),
+        ):
+            response = await client.get(f"/collectives/{col_id}/members")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    @pytest.mark.asyncio
+    async def test_returns_404_for_missing_collective(self, client):
+        col_id = uuid.uuid4()
+
+        with patch(
+            "src.routers.collectives.collective_service.get_members",
+            new=AsyncMock(side_effect=ValueError("Collective not found")),
+        ):
+            response = await client.get(f"/collectives/{col_id}/members")
+
+        assert response.status_code == 404
+
+
+class TestAssignTaskToCollective:
+    """POST /collectives/{id}/tasks — delegates to collective_service.assign_task_to_collective"""
+
+    @pytest.mark.asyncio
+    async def test_owner_can_assign_task(self, client):
+        from src.auth.middleware import get_current_agent
+        caller = _make_caller(trust=0.98)
+        col_id = uuid.uuid4()
+        task_id = uuid.uuid4()
+        col_task_id = uuid.uuid4()
+
+        from src.models.collective import CollectiveTaskResponse
+        ct_response = CollectiveTaskResponse(
+            collective_task_id=col_task_id,
+            collective_id=col_id,
+            task_id=task_id,
+            assigned_by_did=caller.did,
+            status="assigned",
+            assigned_at=datetime.now(timezone.utc),
+        )
+
+        with patch(
+            "src.routers.collectives.collective_service.assign_task_to_collective",
+            new=AsyncMock(return_value=ct_response),
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post(
+                f"/collectives/{col_id}/tasks",
+                json={"task_id": str(task_id)},
+            )
+
+        app.dependency_overrides = {}
+        assert response.status_code == 201
+        data = response.json()
+        assert data["task_id"] == str(task_id)
+        assert data["status"] == "assigned"
+
+    @pytest.mark.asyncio
+    async def test_returns_422_when_not_owner_or_admin(self, client):
+        from src.auth.middleware import get_current_agent
+        caller = _make_caller(trust=0.98)
+        col_id = uuid.uuid4()
+
+        with patch(
+            "src.routers.collectives.collective_service.assign_task_to_collective",
+            new=AsyncMock(side_effect=ValueError("must be OWNER or ADMIN")),
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post(
+                f"/collectives/{col_id}/tasks",
+                json={"task_id": str(uuid.uuid4())},
+            )
+
+        app.dependency_overrides = {}
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_returns_422_when_task_not_found(self, client):
+        from src.auth.middleware import get_current_agent
+        caller = _make_caller(trust=0.98)
+        col_id = uuid.uuid4()
+
+        with patch(
+            "src.routers.collectives.collective_service.assign_task_to_collective",
+            new=AsyncMock(side_effect=ValueError("Task not found")),
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post(
+                f"/collectives/{col_id}/tasks",
+                json={"task_id": str(uuid.uuid4())},
+            )
+
+        app.dependency_overrides = {}
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_returns_401(self, client):
+        col_id = uuid.uuid4()
+        response = await client.post(
+            f"/collectives/{col_id}/tasks",
+            json={"task_id": str(uuid.uuid4())},
+        )
+        assert response.status_code == 401
