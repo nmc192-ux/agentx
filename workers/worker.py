@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import socket
@@ -11,6 +12,8 @@ import httpx
 from redis import Redis
 
 from executor import execute_task
+from src.database import close_pool, init_pool
+from src.services.reputation import recalculate_agent_trust as recalculate_agent_trust_service
 
 API_BASE = os.getenv("API_BASE", "http://api:8000")
 REDIS_URL = os.getenv("REDIS_URL", "redis://:devredis@redis:6379/0")
@@ -78,46 +81,63 @@ def recalculate_post_scores(client: httpx.Client) -> None:
     log(f"recalculate_post_scores posts={len(posts)}")
 
 
+def recalculate_agent_trust(loop: asyncio.AbstractEventLoop) -> None:
+    summary = loop.run_until_complete(recalculate_agent_trust_service())
+    log(
+        "recalculate_agent_trust "
+        f"processed_events={summary['processed_events']} "
+        f"updated_agents={summary['updated_agents']}"
+    )
+
+
 def run_worker() -> None:
     redis = Redis.from_url(REDIS_URL, decode_responses=True)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(init_pool())
 
-    with httpx.Client() as client:
-        log("AgentX Worker Started")
-        register_worker(client)
-        log("Worker running...")
-        last_maintenance = 0.0
+    try:
+        with httpx.Client() as client:
+            log("AgentX Worker Started")
+            register_worker(client)
+            log("Worker running...")
+            last_maintenance = 0.0
 
-        while True:
-            task_id: str | None = None
-            try:
-                queue_item = redis.brpop(TASK_QUEUE_KEY, timeout=5)
-                if queue_item is None:
-                    now = time.time()
-                    if now - last_maintenance >= MAINTENANCE_INTERVAL:
-                        generate_trending_posts(client)
-                        update_agent_feed_cache(client)
-                        recalculate_post_scores(client)
-                        last_maintenance = now
-                    continue
+            while True:
+                task_id: str | None = None
+                try:
+                    queue_item = redis.brpop(TASK_QUEUE_KEY, timeout=5)
+                    if queue_item is None:
+                        now = time.time()
+                        if now - last_maintenance >= MAINTENANCE_INTERVAL:
+                            generate_trending_posts(client)
+                            update_agent_feed_cache(client)
+                            recalculate_post_scores(client)
+                            recalculate_agent_trust(loop)
+                            last_maintenance = now
+                        continue
 
-                _, task_id = queue_item
-                log(f"task received task_id={task_id}")
-                task = fetch_task(client, task_id)
-                log(f"task started task_id={task_id} type={task['task_type']}")
+                    _, task_id = queue_item
+                    log(f"task received task_id={task_id}")
+                    task = fetch_task(client, task_id)
+                    log(f"task started task_id={task_id} type={task['task_type']}")
 
-                result = execute_task(task)
-                updated = update_task(client, task_id, "COMPLETED", result)
-                log(f"task completed task_id={task_id} status={updated['status']}")
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                log(f"task failed error={exc}")
-                if task_id is not None:
-                    try:
-                        update_task(client, task_id, "FAILED")
-                    except Exception as update_exc:
-                        log(f"failed to mark task failed task_id={task_id} error={update_exc}")
-                time.sleep(1)
+                    result = execute_task(task)
+                    updated = update_task(client, task_id, "COMPLETED", result)
+                    log(f"task completed task_id={task_id} status={updated['status']}")
+                except KeyboardInterrupt:
+                    raise
+                except Exception as exc:
+                    log(f"task failed error={exc}")
+                    if task_id is not None:
+                        try:
+                            update_task(client, task_id, "FAILED")
+                        except Exception as update_exc:
+                            log(f"failed to mark task failed task_id={task_id} error={update_exc}")
+                    time.sleep(1)
+    finally:
+        loop.run_until_complete(close_pool())
+        loop.close()
 
 
 if __name__ == "__main__":
