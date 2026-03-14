@@ -273,3 +273,14 @@ app.include_router(reputation_router)
 app.include_router(services_router)
 app.include_router(tasks_router)
 app.include_router(workflows_router)
+
+# ── Phase 8: Token Economy ─────────────────────────────────────────────────────
+from .routers.tokens import wallets_router, stakes_router
+
+app.include_router(wallets_router)
+app.include_router(stakes_router)
+
+# ── Phase 8.5: Economic Engine ─────────────────────────────────────────────────
+from .routers.economy import economy_router
+
+app.include_router(economy_router)

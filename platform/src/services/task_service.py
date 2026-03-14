@@ -18,7 +18,10 @@ Redis queue is used to dispatch accepted tasks to the worker.
 from __future__ import annotations
 
 import json
+import logging
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from ..cache import enqueue_task
 from ..database import get_db, transaction
@@ -150,6 +153,40 @@ async def create_task(
     await publish_event(
         EventType.TASK_CREATED,
         {"task_id": str(task.task_id), "task_type": task_type, "reward": reward},
+        creator_agent_did,
+    )
+
+    # Phase 8: Escrow task reward from creator's wallet (soft-fail)
+    escrowed_amount = 0
+    if reward > 0:
+        try:
+            from .token_service import escrow_task_reward
+            await escrow_task_reward(agent_row["agent_id"], task.task_id, reward)
+            escrowed_amount = reward
+        except Exception as exc:
+            logger.warning(
+                "Token escrow skipped for task %s: %s", task.task_id, exc
+            )
+
+    # Phase 8.5: Collect platform fee from escrow (soft-fail)
+    fee_collected = 0
+    if escrowed_amount > 0:
+        try:
+            from .economy_service import collect_task_fee
+            fee_collected = await collect_task_fee(task.task_id, escrowed_amount)
+        except Exception as exc:
+            logger.warning(
+                "Task fee collection skipped for task %s: %s", task.task_id, exc
+            )
+
+    # Phase 8.5: Publish TASK_ESCROWED (fire-and-forget, never breaks caller)
+    await publish_event(
+        EventType.TASK_ESCROWED,
+        {
+            "task_id": str(task.task_id),
+            "escrowed": escrowed_amount,
+            "fee": fee_collected,
+        },
         creator_agent_did,
     )
 
@@ -376,7 +413,81 @@ async def submit_result(
         agent_did,
     )
 
+    # Phase 8: Release escrowed reward to executor's wallet (soft-fail)
+    try:
+        from .token_service import release_task_escrow
+        await release_task_escrow(task_id, agent_row["agent_id"])
+    except Exception as exc:
+        logger.warning(
+            "Token escrow release skipped for task %s: %s", task_id, exc
+        )
+
+    # Phase 8.5: Publish TASK_REWARD_RELEASED (fire-and-forget)
+    await publish_event(
+        EventType.TASK_REWARD_RELEASED,
+        {"task_id": str(task_id)},
+        agent_did,
+    )
+
     return _row_to_result(dict(result_row))
+
+
+async def fail_task(task_id: UUID, reason: str = "") -> TaskResponse:
+    """
+    Phase 8.5 — Mark a task as failed:
+      1. Updates task status to 'failed'.
+      2. Publishes TASK_FAILED event.
+      3. Refunds escrowed reward to the creator (soft-fail).
+      4. Publishes STAKE_SLASHED event if executor stake was slashed (soft-fail).
+
+    Raises:
+        ValueError: if task not found.
+    """
+    async with transaction() as conn:
+        task_row = await conn.fetchrow(
+            """
+            SELECT task_id, creator_agent_id, task_type, payload,
+                   reward, status, created_at, escrowed_reward
+            FROM   tasks
+            WHERE  task_id = $1
+            """,
+            task_id,
+        )
+        if task_row is None:
+            raise ValueError(f"Task not found: {task_id}")
+
+        updated = await conn.fetchrow(
+            """
+            UPDATE tasks
+               SET status     = 'failed',
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE task_id = $1
+            RETURNING
+                task_id, creator_agent_id, task_type, payload,
+                reward, status, created_at
+            """,
+            task_id,
+        )
+
+    task = _row_to_task(dict(updated))
+
+    # Publish TASK_FAILED (existing event type — reputation handler picks it up)
+    await publish_event(
+        EventType.TASK_FAILED,
+        {"task_id": str(task_id), "reason": reason},
+    )
+
+    # Refund escrow to creator (soft-fail)
+    if task_row["escrowed_reward"]:
+        try:
+            from .token_service import refund_task_escrow
+            await refund_task_escrow(task_id, task_row["creator_agent_id"])
+        except Exception as exc:
+            logger.warning(
+                "Escrow refund skipped for failed task %s: %s", task_id, exc
+            )
+
+    return task
 
 
 async def suggest_agents_for_task(

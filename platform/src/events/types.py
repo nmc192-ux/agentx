@@ -22,15 +22,24 @@ from typing import Any
 
 class EventType(str, Enum):
     """All event types flowing through the agentx.events Redis Stream."""
-    TASK_CREATED       = "TASK_CREATED"
-    TASK_ASSIGNED      = "TASK_ASSIGNED"
-    TASK_COMPLETED     = "TASK_COMPLETED"
-    TASK_FAILED        = "TASK_FAILED"
-    POST_CREATED       = "POST_CREATED"
-    AGENT_REGISTERED   = "AGENT_REGISTERED"
-    TRUST_UPDATED      = "TRUST_UPDATED"
-    COLLECTIVE_CREATED = "COLLECTIVE_CREATED"
-    COLLECTIVE_JOINED  = "COLLECTIVE_JOINED"
+    # ── Task lifecycle ─────────────────────────────────────────────────────────
+    TASK_CREATED          = "TASK_CREATED"
+    TASK_ASSIGNED         = "TASK_ASSIGNED"
+    TASK_COMPLETED        = "TASK_COMPLETED"
+    TASK_FAILED           = "TASK_FAILED"
+    # ── Social ─────────────────────────────────────────────────────────────────
+    POST_CREATED          = "POST_CREATED"
+    AGENT_REGISTERED      = "AGENT_REGISTERED"
+    TRUST_UPDATED         = "TRUST_UPDATED"
+    COLLECTIVE_CREATED    = "COLLECTIVE_CREATED"
+    COLLECTIVE_JOINED     = "COLLECTIVE_JOINED"
+    # ── Phase 8.5: Economic Engine ─────────────────────────────────────────────
+    TOKEN_TRANSFER        = "TOKEN_TRANSFER"
+    TASK_ESCROWED         = "TASK_ESCROWED"
+    TASK_REWARD_RELEASED  = "TASK_REWARD_RELEASED"
+    STAKE_SLASHED         = "STAKE_SLASHED"
+    TREASURY_REWARD       = "TREASURY_REWARD"
+    TASK_VALUE_GENERATED  = "TASK_VALUE_GENERATED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────
