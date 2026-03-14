@@ -2,13 +2,15 @@
 AgentX Platform — Task Marketplace Service
 ═══════════════════════════════════════════
 Phase 4: Agent Task Economy
+Phase 5: Capability Graph Integration
 
 Business logic for the open marketplace:
-  create_task()    — publish an open task
-  list_tasks()     — discover available tasks
-  submit_bid()     — agent bids on a task
-  assign_task()    — creator accepts a bid
-  submit_result()  — executor submits task result
+  create_task()             — publish an open task
+  list_tasks()              — discover available tasks
+  submit_bid()              — agent bids on a task
+  assign_task()             — creator accepts a bid
+  submit_result()           — executor submits task result
+  suggest_agents_for_task() — rank agents by capability fit (Phase 5)
 
 All DB access uses asyncpg via get_db() / transaction() context managers.
 Redis queue is used to dispatch accepted tasks to the worker.
@@ -26,6 +28,7 @@ from ..models.task import (
     TaskResponse,
     TaskResultResponse,
 )
+from ..models.capability import EligibleAgentResponse
 from ..services.reputation import record_event
 
 
@@ -349,3 +352,49 @@ async def submit_result(
     )
 
     return _row_to_result(dict(result_row))
+
+
+async def suggest_agents_for_task(
+    task_id: UUID,
+    required_capabilities: list[str],
+    limit: int = 5,
+    min_trust_score: float = 0.0,
+) -> list[EligibleAgentResponse]:
+    """
+    Phase 5 — Capability Graph Integration.
+
+    Given a marketplace task's required capabilities, rank and return the
+    best-suited agents using the capability router.
+
+    This is the bridge between the Task Economy (Phase 4) and the Capability
+    Graph (Phase 5): when a task has no assigned executor, callers can use
+    this function to discover qualified agents and surface them to bidders.
+
+    Args:
+        task_id:               UUID of the task (validated to exist).
+        required_capabilities: capability_ids the task demands.
+        limit:                 Maximum agents to return.
+        min_trust_score:       Filter out agents below this threshold.
+
+    Returns:
+        Ranked list of EligibleAgentResponse (highest composite score first).
+
+    Raises:
+        ValueError: if the task_id does not exist.
+    """
+    # Validate task exists
+    async with get_db() as conn:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM tasks WHERE task_id = $1",
+            task_id,
+        )
+    if not exists:
+        raise ValueError(f"Task not found: {task_id}")
+
+    # Delegate to capability_router for agent ranking
+    from .capability_router import find_best_agents
+    return await find_best_agents(
+        required_capabilities=required_capabilities,
+        limit=limit,
+        min_trust_score=min_trust_score,
+    )

@@ -97,3 +97,43 @@ class CapabilityListResponse(BaseModel):
     total:        int
     page:         int
     limit:        int
+
+
+class CapabilityCreate(BaseModel):
+    """POST /capabilities — register a new capability in the registry."""
+    capability_id:        str = Field(description="e.g. infrastructure.kubernetes.advanced")
+    name:                 str = Field(min_length=1, max_length=100)
+    description:          str = Field(default="", max_length=500)
+    domain:               CapabilityDomain
+    level:                CapabilityLevel
+    requires_verification: bool = False
+    rep_reward:           int = Field(default=10, ge=1, le=1000)
+    prerequisites:        list[str] = Field(default_factory=list)
+
+    @field_validator("capability_id")
+    @classmethod
+    def valid_capability_id(cls, v: str) -> str:
+        if not _CAP_PATTERN.match(v):
+            raise ValueError(
+                f"Invalid capability_id {v!r}. "
+                "Expected: domain.skill.(basic|intermediate|advanced|expert)"
+            )
+        return v
+
+
+class EligibleAgentResponse(BaseModel):
+    """Agent ranked by capability match — returned by POST /capabilities/route."""
+    agent_did:              str
+    display_name:           str
+    score:                  float
+    capability_match_score: float
+    trust_score:            float
+    rep_balance:            int
+    missing_capabilities:   list[str]
+
+
+class CapabilityRouteRequest(BaseModel):
+    """POST /capabilities/route — find best agents for a set of capabilities."""
+    required_capabilities: list[str] = Field(default_factory=list)
+    limit:                 int = Field(default=5, ge=1, le=50)
+    min_trust_score:       float = Field(default=0.0, ge=0.0, le=1.0)
