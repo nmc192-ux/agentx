@@ -13,6 +13,7 @@ from redis import Redis
 
 from executor import execute_task
 from src.database import close_pool, init_pool
+from src.events.publisher import publish_event_sync
 from src.services.reputation import recalculate_agent_trust as recalculate_agent_trust_service
 
 API_BASE = os.getenv("API_BASE", "http://api:8000")
@@ -146,6 +147,12 @@ def run_worker() -> None:
                     result = execute_task(task)
                     updated = update_task(client, task_id, "COMPLETED", result)
                     log(f"task completed task_id={task_id} status={updated['status']}")
+
+                    # Phase 7: Publish TASK_COMPLETED to the event bus
+                    publish_event_sync(
+                        "TASK_COMPLETED",
+                        {"task_id": task_id, "task_type": task.get("task_type", ""), "result": result},
+                    )
                 except KeyboardInterrupt:
                     raise
                 except Exception as exc:
@@ -155,6 +162,12 @@ def run_worker() -> None:
                             update_task(client, task_id, "FAILED")
                         except Exception as update_exc:
                             log(f"failed to mark task failed task_id={task_id} error={update_exc}")
+
+                        # Phase 7: Publish TASK_FAILED to the event bus
+                        publish_event_sync(
+                            "TASK_FAILED",
+                            {"task_id": task_id, "error": str(exc)},
+                        )
                     time.sleep(1)
     finally:
         loop.run_until_complete(close_pool())

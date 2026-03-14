@@ -22,6 +22,8 @@ from uuid import UUID
 
 from ..cache import enqueue_task
 from ..database import get_db, transaction
+from ..events.publisher import publish_event
+from ..events.types import EventType
 from ..models.task import (
     TaskAssignmentResponse,
     TaskBidResponse,
@@ -142,7 +144,16 @@ async def create_task(
             reward,
         )
 
-    return _row_to_task(dict(row))
+    task = _row_to_task(dict(row))
+
+    # Phase 7: Publish alongside existing direct calls (backward compatible)
+    await publish_event(
+        EventType.TASK_CREATED,
+        {"task_id": str(task.task_id), "task_type": task_type, "reward": reward},
+        creator_agent_did,
+    )
+
+    return task
 
 
 async def list_tasks(status: str = "open", limit: int = 50) -> list[TaskResponse]:
@@ -277,6 +288,12 @@ async def assign_task(task_id: UUID, bid_id: UUID) -> TaskAssignmentResponse:
     # Enqueue task for worker execution (plain UUID string — backward compatible)
     await enqueue_task(str(task_id))
 
+    # Phase 7: Publish TASK_ASSIGNED event alongside existing direct calls
+    await publish_event(
+        EventType.TASK_ASSIGNED,
+        {"task_id": str(task_id), "executor_did": bid_row["agent_did"]},
+    )
+
     return _row_to_assignment(dict(assignment_row))
 
 
@@ -345,10 +362,18 @@ async def submit_result(
         )
 
     # Record reputation event outside the transaction to avoid nested locks
+    # (existing direct-call path — preserved for backward compatibility)
     await record_event(
         agent_did,
         "task_completed",
         {"task_id": str(task_id)},
+    )
+
+    # Phase 7: Publish TASK_COMPLETED event alongside existing direct calls
+    await publish_event(
+        EventType.TASK_COMPLETED,
+        {"task_id": str(task_id)},
+        agent_did,
     )
 
     return _row_to_result(dict(result_row))
