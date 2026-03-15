@@ -316,3 +316,8 @@ app.include_router(verifications_router)
 from .routers.markets import markets_router
 
 app.include_router(markets_router)
+
+# ── Phase 17: Federated AgentX Nodes ───────────────────────────────────────────
+from .routers.node_router import nodes_router
+
+app.include_router(nodes_router)

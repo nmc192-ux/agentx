@@ -13,15 +13,16 @@ consumer group (``agentx-service-layer``) so that every event on
 
 Dispatch table
 ──────────────
-  CONTRACT_COMPLETED            → contract_consumer.handle
+  CONTRACT_COMPLETED            → contract_consumer, discovery_consumer, node_consumer
   CONTRACT_RESULT_SUBMITTED     → contract_consumer.handle
   TASK_REWARD_RELEASED          → economy_consumer.handle
   TOKEN_TRANSFER                → economy_consumer.handle
   TREASURY_REWARD               → economy_consumer.handle
-  TASK_COMPLETED                → reputation_consumer.handle
-  CONTRACT_VERIFIED             → reputation_consumer.handle
+  TASK_COMPLETED                → reputation_consumer, discovery_consumer, node_consumer
+  CONTRACT_VERIFIED             → reputation_consumer, discovery_consumer
   VERIFICATION_SUBMITTED        → reputation_consumer.handle
   CONTRACT_VERIFICATION_REQUESTED → verification_consumer.handle
+  BOUNTY_REWARD_DISTRIBUTED     → discovery_consumer, node_consumer  (Phase 16/17)
 
 Usage
 ─────
@@ -70,6 +71,7 @@ def _build_handlers() -> dict[str, Any]:
         contract_consumer,
         discovery_consumer,
         economy_consumer,
+        node_consumer,
         reputation_consumer,
         verification_consumer,
     )
@@ -87,22 +89,25 @@ def _build_handlers() -> dict[str, Any]:
     return {
         # Contract lifecycle
         "CONTRACT_COMPLETED":              _chain(contract_consumer.handle,
-                                                  discovery_consumer.handle),
+                                                  discovery_consumer.handle,
+                                                  node_consumer.handle),
         "CONTRACT_RESULT_SUBMITTED":       contract_consumer.handle,
         # Economy
         "TASK_REWARD_RELEASED":            economy_consumer.handle,
         "TOKEN_TRANSFER":                  economy_consumer.handle,
         "TREASURY_REWARD":                 economy_consumer.handle,
-        # Reputation + Discovery
+        # Reputation + Discovery + Node broadcasting
         "TASK_COMPLETED":                  _chain(reputation_consumer.handle,
-                                                  discovery_consumer.handle),
+                                                  discovery_consumer.handle,
+                                                  node_consumer.handle),
         "CONTRACT_VERIFIED":               _chain(reputation_consumer.handle,
                                                   discovery_consumer.handle),
         "VERIFICATION_SUBMITTED":          reputation_consumer.handle,
         # Verification
         "CONTRACT_VERIFICATION_REQUESTED": verification_consumer.handle,
-        # Discovery (Phase 16) — bounty rewards
-        "BOUNTY_REWARD_DISTRIBUTED":       discovery_consumer.handle,
+        # Discovery + Node broadcasting (Phase 16/17) — bounty rewards
+        "BOUNTY_REWARD_DISTRIBUTED":       _chain(discovery_consumer.handle,
+                                                  node_consumer.handle),
     }
 
 

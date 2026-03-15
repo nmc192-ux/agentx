@@ -18,11 +18,14 @@ Consumer modules
   verification_consumer  CONTRACT_VERIFICATION_REQUESTED
   discovery_consumer     TASK_COMPLETED, CONTRACT_COMPLETED, CONTRACT_VERIFIED,
                          BOUNTY_REWARD_DISTRIBUTED (Phase 16)
+  node_consumer          CONTRACT_COMPLETED, TASK_COMPLETED,
+                         BOUNTY_REWARD_DISTRIBUTED (Phase 17 — peer broadcasting)
 """
 from . import (
     contract_consumer,
     discovery_consumer,
     economy_consumer,
+    node_consumer,
     reputation_consumer,
     verification_consumer,
 )
@@ -31,6 +34,7 @@ __all__ = [
     "contract_consumer",
     "discovery_consumer",
     "economy_consumer",
+    "node_consumer",
     "reputation_consumer",
     "verification_consumer",
 ]
