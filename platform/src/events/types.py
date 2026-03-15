@@ -51,6 +51,9 @@ class EventType(str, Enum):
     CONTRACT_RESULT_SUBMITTED = "CONTRACT_RESULT_SUBMITTED"
     CONTRACT_COMPLETED        = "CONTRACT_COMPLETED"
     CONTRACT_DISPUTED         = "CONTRACT_DISPUTED"
+    # ── Phase 11: Agent Bus ────────────────────────────────────────────────────
+    AGENT_MESSAGE_SENT        = "AGENT_MESSAGE_SENT"
+    AGENT_MESSAGE_RECEIVED    = "AGENT_MESSAGE_RECEIVED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────

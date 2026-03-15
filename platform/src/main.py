@@ -294,3 +294,8 @@ app.include_router(governance_router)
 from .routers.contracts import contracts_router
 
 app.include_router(contracts_router)
+
+# ── Phase 11: Agent Bus ────────────────────────────────────────────────────────
+from .routers.agentbus import agentbus_router
+
+app.include_router(agentbus_router)
