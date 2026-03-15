@@ -34,6 +34,7 @@ from .discover_cmd import discover_app
 from .init_cmd import init_agent
 from .node_cmd import node_app
 from .run_cmd import run_agent
+from .simulate_cmd import simulate
 from .wallet_cmd import wallet_app
 
 # ── Root application ──────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ app.add_typer(node_app,      name="node")
 
 app.command("init")(init_agent)
 app.command("run")(run_agent)
+app.command("simulate")(simulate)
 
 
 # ── agentx info ───────────────────────────────────────────────────────────────
