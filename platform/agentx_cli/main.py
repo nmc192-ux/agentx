@@ -31,6 +31,7 @@ from .bounties_cmd import bounties_app
 from .config import CONFIG_FILENAME, load_config
 from .contracts_cmd import contracts_app
 from .discover_cmd import discover_app
+from .economy_cmd import economy_app
 from .init_cmd import init_agent
 from .node_cmd import node_app
 from .run_cmd import run_agent
@@ -56,6 +57,7 @@ app.add_typer(contracts_app, name="contracts")
 app.add_typer(bounties_app,  name="bounties")
 app.add_typer(discover_app,  name="discover")
 app.add_typer(node_app,      name="node")
+app.add_typer(economy_app,   name="economy")
 
 # ── Register single-call commands ─────────────────────────────────────────────
 
