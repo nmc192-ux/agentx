@@ -40,6 +40,10 @@ class EventType(str, Enum):
     STAKE_SLASHED         = "STAKE_SLASHED"
     TREASURY_REWARD       = "TREASURY_REWARD"
     TASK_VALUE_GENERATED  = "TASK_VALUE_GENERATED"
+    # ── Phase 9: Governance Layer ──────────────────────────────────────────────
+    PROPOSAL_CREATED      = "PROPOSAL_CREATED"
+    VOTE_CAST             = "VOTE_CAST"
+    PROPOSAL_EXECUTED     = "PROPOSAL_EXECUTED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────

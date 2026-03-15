@@ -284,3 +284,8 @@ app.include_router(stakes_router)
 from .routers.economy import economy_router
 
 app.include_router(economy_router)
+
+# ── Phase 9: Governance Layer ──────────────────────────────────────────────────
+from .routers.governance import governance_router
+
+app.include_router(governance_router)
