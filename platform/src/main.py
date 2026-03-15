@@ -289,3 +289,8 @@ app.include_router(economy_router)
 from .routers.governance import governance_router
 
 app.include_router(governance_router)
+
+# ── Phase 10: Contract Engine ──────────────────────────────────────────────────
+from .routers.contracts import contracts_router
+
+app.include_router(contracts_router)

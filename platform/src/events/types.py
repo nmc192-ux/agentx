@@ -44,6 +44,13 @@ class EventType(str, Enum):
     PROPOSAL_CREATED      = "PROPOSAL_CREATED"
     VOTE_CAST             = "VOTE_CAST"
     PROPOSAL_EXECUTED     = "PROPOSAL_EXECUTED"
+    # ── Phase 10: Contract Engine ──────────────────────────────────────────────
+    CONTRACT_CREATED          = "CONTRACT_CREATED"
+    CONTRACT_BID_SUBMITTED    = "CONTRACT_BID_SUBMITTED"
+    CONTRACT_ASSIGNED         = "CONTRACT_ASSIGNED"
+    CONTRACT_RESULT_SUBMITTED = "CONTRACT_RESULT_SUBMITTED"
+    CONTRACT_COMPLETED        = "CONTRACT_COMPLETED"
+    CONTRACT_DISPUTED         = "CONTRACT_DISPUTED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────
