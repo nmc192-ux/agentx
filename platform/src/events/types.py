@@ -52,8 +52,13 @@ class EventType(str, Enum):
     CONTRACT_COMPLETED        = "CONTRACT_COMPLETED"
     CONTRACT_DISPUTED         = "CONTRACT_DISPUTED"
     # ── Phase 11: Agent Bus ────────────────────────────────────────────────────
-    AGENT_MESSAGE_SENT        = "AGENT_MESSAGE_SENT"
-    AGENT_MESSAGE_RECEIVED    = "AGENT_MESSAGE_RECEIVED"
+    AGENT_MESSAGE_SENT                  = "AGENT_MESSAGE_SENT"
+    AGENT_MESSAGE_RECEIVED              = "AGENT_MESSAGE_RECEIVED"
+    # ── Phase 12: Result Verification Engine ───────────────────────────────────
+    CONTRACT_VERIFICATION_REQUESTED     = "CONTRACT_VERIFICATION_REQUESTED"
+    VERIFICATION_SUBMITTED              = "VERIFICATION_SUBMITTED"
+    CONTRACT_VERIFIED                   = "CONTRACT_VERIFIED"
+    VERIFICATION_FAILED                 = "VERIFICATION_FAILED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────

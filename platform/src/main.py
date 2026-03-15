@@ -299,3 +299,8 @@ app.include_router(contracts_router)
 from .routers.agentbus import agentbus_router
 
 app.include_router(agentbus_router)
+
+# ── Phase 12: Result Verification Engine ───────────────────────────────────────
+from .routers.verifications import verifications_router
+
+app.include_router(verifications_router)
