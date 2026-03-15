@@ -16,9 +16,12 @@ Consumer modules
   economy_consumer       TASK_REWARD_RELEASED, TOKEN_TRANSFER, TREASURY_REWARD
   reputation_consumer    TASK_COMPLETED, CONTRACT_VERIFIED, VERIFICATION_SUBMITTED
   verification_consumer  CONTRACT_VERIFICATION_REQUESTED
+  discovery_consumer     TASK_COMPLETED, CONTRACT_COMPLETED, CONTRACT_VERIFIED,
+                         BOUNTY_REWARD_DISTRIBUTED (Phase 16)
 """
 from . import (
     contract_consumer,
+    discovery_consumer,
     economy_consumer,
     reputation_consumer,
     verification_consumer,
@@ -26,6 +29,7 @@ from . import (
 
 __all__ = [
     "contract_consumer",
+    "discovery_consumer",
     "economy_consumer",
     "reputation_consumer",
     "verification_consumer",

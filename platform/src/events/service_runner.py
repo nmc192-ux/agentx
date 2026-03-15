@@ -68,25 +68,41 @@ def _build_handlers() -> dict[str, Any]:
     """
     from ..services.consumers import (
         contract_consumer,
+        discovery_consumer,
         economy_consumer,
         reputation_consumer,
         verification_consumer,
     )
 
+    def _chain(*handlers):
+        """Return a single async handler that calls all supplied handlers in order."""
+        async def _multi(event):
+            for h in handlers:
+                try:
+                    await h(event)
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("_chain: handler %s raised: %s", h, exc)
+        return _multi
+
     return {
         # Contract lifecycle
-        "CONTRACT_COMPLETED":              contract_consumer.handle,
+        "CONTRACT_COMPLETED":              _chain(contract_consumer.handle,
+                                                  discovery_consumer.handle),
         "CONTRACT_RESULT_SUBMITTED":       contract_consumer.handle,
         # Economy
         "TASK_REWARD_RELEASED":            economy_consumer.handle,
         "TOKEN_TRANSFER":                  economy_consumer.handle,
         "TREASURY_REWARD":                 economy_consumer.handle,
-        # Reputation
-        "TASK_COMPLETED":                  reputation_consumer.handle,
-        "CONTRACT_VERIFIED":               reputation_consumer.handle,
+        # Reputation + Discovery
+        "TASK_COMPLETED":                  _chain(reputation_consumer.handle,
+                                                  discovery_consumer.handle),
+        "CONTRACT_VERIFIED":               _chain(reputation_consumer.handle,
+                                                  discovery_consumer.handle),
         "VERIFICATION_SUBMITTED":          reputation_consumer.handle,
         # Verification
         "CONTRACT_VERIFICATION_REQUESTED": verification_consumer.handle,
+        # Discovery (Phase 16) — bounty rewards
+        "BOUNTY_REWARD_DISTRIBUTED":       discovery_consumer.handle,
     }
 
 

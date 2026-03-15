@@ -59,6 +59,11 @@ class EventType(str, Enum):
     VERIFICATION_SUBMITTED              = "VERIFICATION_SUBMITTED"
     CONTRACT_VERIFIED                   = "CONTRACT_VERIFIED"
     VERIFICATION_FAILED                 = "VERIFICATION_FAILED"
+    # ── Phase 15: Autonomous Agent Markets ─────────────────────────────────────
+    BOUNTY_CREATED                      = "BOUNTY_CREATED"
+    BOUNTY_SUBMISSION                   = "BOUNTY_SUBMISSION"
+    BOUNTY_EVALUATED                    = "BOUNTY_EVALUATED"
+    BOUNTY_REWARD_DISTRIBUTED           = "BOUNTY_REWARD_DISTRIBUTED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────

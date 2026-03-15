@@ -27,8 +27,10 @@ from typing import Optional
 
 import typer
 
+from .bounties_cmd import bounties_app
 from .config import CONFIG_FILENAME, load_config
 from .contracts_cmd import contracts_app
+from .discover_cmd import discover_app
 from .init_cmd import init_agent
 from .run_cmd import run_agent
 from .wallet_cmd import wallet_app
@@ -49,6 +51,8 @@ app = typer.Typer(
 
 app.add_typer(wallet_app,    name="wallet")
 app.add_typer(contracts_app, name="contracts")
+app.add_typer(bounties_app,  name="bounties")
+app.add_typer(discover_app,  name="discover")
 
 # ── Register single-call commands ─────────────────────────────────────────────
 

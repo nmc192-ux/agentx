@@ -562,7 +562,7 @@ class TestServiceRunner:
         mock_redis.xack.assert_awaited_once()
 
     def test_service_handler_table_contains_all_expected_event_types(self):
-        """Verify the dispatch table covers all Phase 12.5 event types."""
+        """Verify the dispatch table covers all Phase 12.5+ event types."""
         from src.events.service_runner import _build_handlers
 
         handlers = _build_handlers()
@@ -576,6 +576,8 @@ class TestServiceRunner:
             "CONTRACT_VERIFIED",
             "VERIFICATION_SUBMITTED",
             "CONTRACT_VERIFICATION_REQUESTED",
+            # Phase 16: Agent Discovery
+            "BOUNTY_REWARD_DISTRIBUTED",
         }
         assert expected == set(handlers.keys())
 

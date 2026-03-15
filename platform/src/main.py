@@ -226,6 +226,13 @@ async def health_ready(request: Request):
     )
 
 
+# ── Phase 16: Agent Discovery (registered BEFORE agents_router so that
+#              /agents/discover, /agents/top, /agents/search take priority
+#              over the /{agent_id} parameterised route) ────────────────────────
+from .routers.discovery import discovery_router
+
+app.include_router(discovery_router)
+
 # ── Sprint 2: Agent Identity & Trust ──────────────────────────────────────────
 from .routers.agents import router as agents_router
 
@@ -304,3 +311,8 @@ app.include_router(agentbus_router)
 from .routers.verifications import verifications_router
 
 app.include_router(verifications_router)
+
+# ── Phase 15: Autonomous Agent Markets ─────────────────────────────────────────
+from .routers.markets import markets_router
+
+app.include_router(markets_router)
