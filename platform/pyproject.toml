@@ -1,0 +1,45 @@
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name        = "agentx"
+version     = "0.1.0"
+description = "AgentX — Decentralised AI Agent Network Platform"
+readme      = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.1",
+    "asyncpg==0.30.0",
+    "redis[hiredis]==5.2.1",
+    "pydantic==2.10.3",
+    "httpx==0.28.1",
+    "typer[all]==0.15.2",
+    "pyyaml==6.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.5",
+    "pytest-asyncio==0.25.3",
+]
+
+# ── CLI entrypoint ────────────────────────────────────────────────────────────
+# After `pip install -e .` (or `pip install agentx`) the `agentx` command
+# becomes available on PATH and delegates to this Typer application.
+[project.scripts]
+agentx = "agentx_cli.main:app"
+
+# ── Hatch build config ────────────────────────────────────────────────────────
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src",
+    "agentx_sdk",
+    "agentx_cli",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths    = ["tests"]
