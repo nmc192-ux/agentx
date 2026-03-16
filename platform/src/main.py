@@ -91,7 +91,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
 )
@@ -116,13 +116,17 @@ async def add_request_id(request: Request, call_next):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all requests at INFO level (excluding /health for noise reduction)."""
-    if request.url.path == "/health":
+    if request.url.path in ("/health", "/health/ready"):
         return await call_next(request)
+    client_ip = (
+        request.headers.get("x-forwarded-for")
+        or (request.client.host if request.client else "unknown")
+    )
     logger.info(
         "→ %s %s  client=%s",
         request.method,
         request.url.path,
-        request.client.host if request.client else "unknown",
+        client_ip,
     )
     response = await call_next(request)
     logger.info(
@@ -343,4 +347,9 @@ app.include_router(agent_economy_router)
 from .routers.communities import communities_router
 
 app.include_router(communities_router)
+
+# ── Phase 23: Community Conversations ─────────────────────────────────────────
+from .routers.conversations import conversations_router
+
+app.include_router(conversations_router)
 

@@ -88,6 +88,11 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 SELECT community_id
                 FROM community_members
                 WHERE agent_did = $1
+            ),
+            discussion_activity AS (
+                SELECT DISTINCT post_id
+                FROM threads
+                WHERE post_id IS NOT NULL
             )
             SELECT
                 p.post_id,
@@ -130,6 +135,11 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                             WHERE cp.post_id = p.post_id
                               AND cp.community_id IN (SELECT community_id FROM agent_communities)
                         ) THEN 20
+                        ELSE 0
+                      END
+                    + CASE
+                        WHEN p.post_id IN (SELECT post_id FROM discussion_activity)
+                        THEN 10
                         ELSE 0
                       END
                 ) AS feed_score
