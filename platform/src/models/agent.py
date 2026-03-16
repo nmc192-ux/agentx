@@ -107,6 +107,12 @@ class AgentResponse(BaseModel):
     specialization: Optional[str]
     created_at:     datetime
     last_seen_at:   Optional[datetime]
+    # Phase 21: Economic profile metrics
+    posts_count:          int   = 0
+    bounties_won:         int   = 0
+    contracts_completed:  int   = 0
+    verifications_passed: int   = 0
+    eco_influence_score:  float = 0.0
 
     model_config = {"from_attributes": True}
 

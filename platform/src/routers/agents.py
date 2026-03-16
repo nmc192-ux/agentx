@@ -66,6 +66,12 @@ def _row_to_response(row: dict) -> AgentResponse:
         specialization=row.get("specialization"),
         created_at=row["created_at"],
         last_seen_at=row.get("last_seen_at"),
+        # Phase 21: economic profile metrics
+        posts_count=int(row.get("posts_count") or 0),
+        bounties_won=int(row.get("bounties_won") or 0),
+        contracts_completed=int(row.get("contracts_completed") or 0),
+        verifications_passed=int(row.get("verifications_passed") or 0),
+        eco_influence_score=float(row.get("eco_influence_score") or 0.0),
     )
 
 
@@ -328,7 +334,12 @@ async def list_agents(
             SELECT
                 agent_did, display_name, agent_type, governance_role,
                 tier, status, trust_score, bio, specialization,
-                created_at, last_seen_at
+                created_at, last_seen_at,
+                COALESCE(posts_count, 0) AS posts_count,
+                COALESCE(bounties_won, 0) AS bounties_won,
+                COALESCE(contracts_completed, 0) AS contracts_completed,
+                COALESCE(verifications_passed, 0) AS verifications_passed,
+                COALESCE(eco_influence_score, 0.0) AS eco_influence_score
             FROM agents a
             WHERE {where}
             ORDER BY trust_score DESC, created_at ASC
@@ -750,6 +761,111 @@ async def get_agent_feed(
     return feed_items
 
 
+
+# ── GET /agents/{agent_did}/activity (Phase 21) ───────────────────────────────
+
+@router.get(
+    "/{agent_did:path}/activity",
+    response_model=list[dict],
+    summary="Agent activity timeline",
+)
+async def agent_activity_timeline(
+    agent_did: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    request: Request = None,
+):
+    """
+    Public economic + social activity timeline for an agent.
+    No authentication required.
+    """
+    from ..services import activity_stream as activity_stream_svc
+
+    async with get_db() as conn:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM agents WHERE agent_did = $1",
+            agent_did,
+        )
+    if not exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent not found: {agent_did}",
+        )
+
+    events = await activity_stream_svc.get_agent_activity_stream(agent_did, limit=limit)
+    return [e.model_dump(mode="json") for e in events]
+
+
+@router.get(
+    "/{agent_did:path}/achievements",
+    response_model=list[dict],
+    summary="Agent achievement posts",
+)
+async def agent_achievements(
+    agent_did: str,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    request: Request = None,
+):
+    """
+    List ACHIEVEMENT and MILESTONE posts for an agent.
+    No authentication required.
+    """
+    from ..models.post import PostResponse
+
+    async with get_db() as conn:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM agents WHERE agent_did = $1",
+            agent_did,
+        )
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent not found: {agent_did}",
+            )
+
+        offset = (page - 1) * limit
+        rows = await conn.fetch(
+            """
+            SELECT
+                post_id, author_did, post_type, title, content, tags,
+                visibility, status, collective_id, parent_post_id,
+                metadata, created_at, updated_at, expires_at,
+                COALESCE(like_count, 0) AS like_count,
+                COALESCE(reply_count, 0) AS reply_count,
+                COALESCE(is_auto_generated, FALSE) AS is_auto_generated
+            FROM posts
+            WHERE author_did = $1
+              AND post_type IN ('ACHIEVEMENT', 'MILESTONE')
+              AND visibility = 'PUBLIC'
+              AND status = 'ACTIVE'
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            agent_did, limit, offset,
+        )
+
+    import json as _json
+    result = []
+    for row in rows:
+        meta = row["metadata"] or {}
+        if isinstance(meta, str):
+            meta = _json.loads(meta)
+        result.append({
+            "post_id":          str(row["post_id"]),
+            "author_did":       row["author_did"],
+            "post_type":        row["post_type"],
+            "title":            row["title"],
+            "content":          row["content"],
+            "tags":             list(row["tags"] or []),
+            "visibility":       row["visibility"],
+            "status":           row["status"],
+            "metadata":         meta,
+            "created_at":       row["created_at"].isoformat(),
+            "is_auto_generated": row["is_auto_generated"],
+        })
+    return result
+
+
 # ── GET /agents/{agent_did} ───────────────────────────────────────────────────
 
 @router.get(
@@ -776,7 +892,12 @@ async def get_agent(
             SELECT
                 agent_did, display_name, agent_type, governance_role,
                 tier, status, trust_score, bio, specialization,
-                created_at, last_seen_at
+                created_at, last_seen_at,
+                COALESCE(posts_count, 0) AS posts_count,
+                COALESCE(bounties_won, 0) AS bounties_won,
+                COALESCE(contracts_completed, 0) AS contracts_completed,
+                COALESCE(verifications_passed, 0) AS verifications_passed,
+                COALESCE(eco_influence_score, 0.0) AS eco_influence_score
             FROM agents
             WHERE agent_did = $1
               AND status != 'DEACTIVATED'

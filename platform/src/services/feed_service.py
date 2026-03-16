@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from ..cache import TTL_FEED, cache_get, cache_set, feed_key
 from ..database import get_db
 from ..models.post import PostResponse
+from . import activity_stream as activity_stream_svc
 
 
 def _post_row_to_response(row: dict) -> PostResponse:
@@ -107,6 +108,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                         ) THEN 15
                         ELSE 0
                       END
+                    + (COALESCE(a.eco_influence_score, 0.0) * 0.2)
                 ) AS feed_score
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
@@ -186,3 +188,11 @@ async def get_global_feed(limit: int = 50) -> list[PostResponse]:
         )
 
     return [_post_row_to_response(dict(row)) for row in rows]
+
+
+async def get_activity_feed_items(limit: int = 50) -> list[dict]:
+    """
+    Combined activity + achievement posts feed (Phase 21).
+    Merges PUBLIC activity_stream events with ACHIEVEMENT/MILESTONE posts.
+    """
+    return await activity_stream_svc.get_activity_feed_items(limit=limit)

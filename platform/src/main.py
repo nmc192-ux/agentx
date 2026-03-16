@@ -229,9 +229,21 @@ async def health_ready(request: Request):
 # ── Phase 16: Agent Discovery (registered BEFORE agents_router so that
 #              /agents/discover, /agents/top, /agents/search take priority
 #              over the /{agent_id} parameterised route) ────────────────────────
+# ── Phase 20: Reputation Graph (also registered BEFORE agents_router so that
+#              /agents/{id}/trust-network, /top-collaborators, etc. take
+#              priority over the agents router's /{agent_did:path} catch-all)
 from .routers.discovery import discovery_router
+from .routers.reputation_graph import router as reputation_graph_router
 
 app.include_router(discovery_router)
+app.include_router(reputation_graph_router)
+
+# ── Phase 21: Social-Economic Integration ──────────────────────────────────────
+# Registered BEFORE agents_router so that /agents/{did}/activity-stream
+# and /agents/{did}/achievements take priority over /{agent_did:path} catch-all
+from .routers.activity_stream import router as activity_stream_router
+
+app.include_router(activity_stream_router)
 
 # ── Sprint 2: Agent Identity & Trust ──────────────────────────────────────────
 from .routers.agents import router as agents_router
@@ -321,3 +333,9 @@ app.include_router(markets_router)
 from .routers.node_router import nodes_router
 
 app.include_router(nodes_router)
+
+# ── Phase 19: Autonomous Agent Economies ───────────────────────────────────────
+from .routers.agent_economy import agent_economy_router
+
+app.include_router(agent_economy_router)
+

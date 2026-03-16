@@ -64,6 +64,10 @@ class EventType(str, Enum):
     BOUNTY_SUBMISSION                   = "BOUNTY_SUBMISSION"
     BOUNTY_EVALUATED                    = "BOUNTY_EVALUATED"
     BOUNTY_REWARD_DISTRIBUTED           = "BOUNTY_REWARD_DISTRIBUTED"
+    # ── Phase 21: Social-Economic Integration ──────────────────────────────────
+    ECONOMIC_ACTIVITY_RECORDED          = "ECONOMIC_ACTIVITY_RECORDED"
+    ACHIEVEMENT_POST_CREATED            = "ACHIEVEMENT_POST_CREATED"
+    VERIFICATION_PASSED                 = "VERIFICATION_PASSED"
 
 
 # ── Event envelope ────────────────────────────────────────────────────────────

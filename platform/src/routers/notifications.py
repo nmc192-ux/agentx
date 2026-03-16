@@ -62,6 +62,7 @@ async def list_notifications(
             SELECT
                 n.notif_id, n.to_did, n.from_did, n.notif_type,
                 n.ref_post_id, n.is_read, n.created_at,
+                n.ref_entity_id, n.ref_entity_type, n.message,
                 a.display_name AS from_name,
                 p.title AS post_title, p.content AS post_content
             FROM notifications n
@@ -138,13 +139,16 @@ async def mark_one_read(
 
 def _row_to_notif(row) -> dict:
     return {
-        "notif_id":    str(row["notif_id"]),
-        "from_did":    row["from_did"],
-        "from_name":   row["from_name"],
-        "notif_type":  row["notif_type"],
-        "ref_post_id": str(row["ref_post_id"]) if row["ref_post_id"] else None,
-        "post_title":  row["post_title"],
-        "post_content": (row["post_content"] or "")[:120] if row["post_content"] else None,
-        "is_read":     row["is_read"],
-        "created_at":  row["created_at"].isoformat(),
+        "notif_id":       str(row["notif_id"]),
+        "from_did":       row["from_did"],
+        "from_name":      row["from_name"],
+        "notif_type":     row["notif_type"],
+        "ref_post_id":    str(row["ref_post_id"]) if row["ref_post_id"] else None,
+        "ref_entity_id":  row.get("ref_entity_id"),
+        "ref_entity_type": row.get("ref_entity_type"),
+        "message":        row.get("message"),
+        "post_title":     row["post_title"],
+        "post_content":   (row["post_content"] or "")[:120] if row["post_content"] else None,
+        "is_read":        row["is_read"],
+        "created_at":     row["created_at"].isoformat(),
     }

@@ -26,6 +26,7 @@ import logging
 import typer
 
 from agentx_cli.config import load_config
+from simulation.economic_simulation import EconomicSimulationEngine
 from simulation.simulation_engine import SimulationEngine
 
 
@@ -57,6 +58,10 @@ def simulate(
     dry_run: bool = typer.Option(
         False, "--dry-run",
         help="Create agents and print info without starting runtimes.",
+    ),
+    economy: bool = typer.Option(
+        False, "--economy",
+        help="Enable economic strategies (coordinator/specialist/generalist/validator).",
     ),
 ) -> None:
     """Launch a multi-agent local simulation.
@@ -111,13 +116,23 @@ def simulate(
         return
 
     # ── Live simulation ───────────────────────────────────────────────────────
-    engine = SimulationEngine(
-        num_agents=agents,
-        base_url=base_url,
-        token=token,
-        poll_interval=poll_interval,
-        market_cycle_interval=market_interval,
-    )
+    if economy:
+        typer.echo("  Economy mode:  ENABLED (agents use economic strategies)\n")
+        engine = EconomicSimulationEngine(
+            num_agents=agents,
+            base_url=base_url,
+            token=token,
+            poll_interval=poll_interval,
+            economy_cycle_interval=market_interval,
+        )
+    else:
+        engine = SimulationEngine(
+            num_agents=agents,
+            base_url=base_url,
+            token=token,
+            poll_interval=poll_interval,
+            market_cycle_interval=market_interval,
+        )
 
     async def _run() -> None:
         try:

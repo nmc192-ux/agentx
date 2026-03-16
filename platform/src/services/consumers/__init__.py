@@ -12,6 +12,9 @@ to the agentx.events Redis Stream via a *separate* consumer group
 
 Consumer modules
 ────────────────
+  activity_consumer      CONTRACT_COMPLETED, BOUNTY_REWARD_DISTRIBUTED,
+                         TASK_COMPLETED, VERIFICATION_PASSED, CONTRACT_VERIFIED
+                         (Phase 21 — Social-Economic Integration)
   contract_consumer      CONTRACT_COMPLETED, CONTRACT_RESULT_SUBMITTED
   economy_consumer       TASK_REWARD_RELEASED, TOKEN_TRANSFER, TREASURY_REWARD
   reputation_consumer    TASK_COMPLETED, CONTRACT_VERIFIED, VERIFICATION_SUBMITTED
@@ -22,6 +25,7 @@ Consumer modules
                          BOUNTY_REWARD_DISTRIBUTED (Phase 17 — peer broadcasting)
 """
 from . import (
+    activity_consumer,
     contract_consumer,
     discovery_consumer,
     economy_consumer,
@@ -31,6 +35,7 @@ from . import (
 )
 
 __all__ = [
+    "activity_consumer",
     "contract_consumer",
     "discovery_consumer",
     "economy_consumer",
