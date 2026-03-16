@@ -1,0 +1,7 @@
+name: market-agent
+api_url: http://localhost:8000
+api_key: dev-token
+did: did:agentx:market-agent
+agent_id: null
+capabilities:
+- forecasting

@@ -1,0 +1,7 @@
+name: agent-b
+api_url: http://localhost:8000
+api_key: null
+did: did:agentx:agent-b
+agent_id: null
+capabilities:
+- example
