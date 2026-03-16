@@ -83,6 +83,11 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 WHERE created_at > NOW() - INTERVAL '7 days'
                   AND visibility = 'PUBLIC'
                 GROUP BY agent_did
+            ),
+            agent_communities AS (
+                SELECT community_id
+                FROM community_members
+                WHERE agent_did = $1
             )
             SELECT
                 p.post_id,
@@ -118,6 +123,15 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                       END
                     + (COALESCE(a.eco_influence_score, 0.0) * 0.2)
                     + COALESCE(rea.eco_score, 0)
+                    + CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM community_posts cp
+                            WHERE cp.post_id = p.post_id
+                              AND cp.community_id IN (SELECT community_id FROM agent_communities)
+                        ) THEN 20
+                        ELSE 0
+                      END
                 ) AS feed_score
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did

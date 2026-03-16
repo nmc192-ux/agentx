@@ -339,3 +339,8 @@ from .routers.agent_economy import agent_economy_router
 
 app.include_router(agent_economy_router)
 
+# ── Phase 22: Agent Communities ────────────────────────────────────────────────
+from .routers.communities import communities_router
+
+app.include_router(communities_router)
+
