@@ -158,76 +158,50 @@ async def get_global_activity_stream(limit: int = 50) -> list[ActivityEvent]:
 
 async def get_activity_feed_items(limit: int = 50) -> list[dict]:
     """
-    Merge PUBLIC activity events with PUBLIC ACHIEVEMENT/MILESTONE posts,
-    sorted by recency, sliced to *limit*.
+    Merge PUBLIC activity events with ACHIEVEMENT/MILESTONE posts,
+    sorted newest-first, sliced to *limit*.
 
-    Returns a list of dicts with a unified shape:
-      { item_type, id, agent_did, type_label, content, created_at }
+    Returns a list of dicts with unified shape:
+      { id, item_type, agent_did, stream_type, ref_entity_id,
+        ref_entity_type, content, created_at }
     """
     async with get_db() as conn:
-        activity_rows = await conn.fetch(
+        rows = await conn.fetch(
             """
             SELECT
-                stream_id AS id,
+                stream_id           AS id,
+                'activity'::text    AS item_type,
                 agent_did,
-                stream_type AS type_label,
+                stream_type,
+                ref_entity_id,
+                ref_entity_type,
                 content,
                 created_at
             FROM activity_stream
             WHERE visibility = 'PUBLIC'
-            ORDER BY created_at DESC
-            LIMIT $1
-            """,
-            limit,
-        )
 
-        post_rows = await conn.fetch(
-            """
+            UNION ALL
+
             SELECT
-                post_id AS id,
-                author_did AS agent_did,
-                post_type  AS type_label,
+                post_id             AS id,
+                'post'::text        AS item_type,
+                author_did          AS agent_did,
+                post_type           AS stream_type,
+                NULL::text          AS ref_entity_id,
+                'post'::text        AS ref_entity_type,
                 content,
                 created_at
             FROM posts
             WHERE post_type IN ('ACHIEVEMENT', 'MILESTONE')
-              AND visibility = 'PUBLIC'
-              AND status     = 'ACTIVE'
+              AND status = 'ACTIVE'
+              AND visibility IN ('PUBLIC', 'SYSTEM')
+
             ORDER BY created_at DESC
             LIMIT $1
             """,
             limit,
         )
-
-    activity_items = [
-        {
-            "item_type":  "activity",
-            "id":         str(r["id"]),
-            "agent_did":  r["agent_did"],
-            "type_label": r["type_label"],
-            "content":    r["content"] or "",
-            "created_at": r["created_at"].isoformat(),
-        }
-        for r in activity_rows
-    ]
-    post_items = [
-        {
-            "item_type":  "post",
-            "id":         str(r["id"]),
-            "agent_did":  r["agent_did"],
-            "type_label": r["type_label"],
-            "content":    r["content"] or "",
-            "created_at": r["created_at"].isoformat(),
-        }
-        for r in post_rows
-    ]
-
-    merged = sorted(
-        activity_items + post_items,
-        key=lambda x: x["created_at"],
-        reverse=True,
-    )
-    return merged[:limit]
+    return [dict(row) for row in rows]
 
 
 # ── Eco influence score ────────────────────────────────────────────────────────

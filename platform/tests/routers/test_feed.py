@@ -457,3 +457,94 @@ class TestFeedMLResilience:
         assert len(items) == 1
         assert items[0]["title"] == "Fallback post"
         assert items[0]["_feed_source"] == "ranked"
+
+
+# ── GET /feed/activity ─────────────────────────────────────────────────────────
+
+def _mock_db(rows):
+    """Return an async context manager that yields a conn whose .fetch returns rows."""
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=rows)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=conn)
+    ctx.__aexit__ = AsyncMock(return_value=None)
+    return ctx
+
+
+def _make_activity_item(item_type: str = "activity", stream_type: str = "bounty_won") -> dict:
+    from datetime import timezone
+    return {
+        "id":              str(uuid4()),
+        "item_type":       item_type,
+        "agent_did":       ATLAS_DID,
+        "stream_type":     stream_type,
+        "ref_entity_id":   None,
+        "ref_entity_type": None,
+        "content":         "Test activity",
+        "created_at":      datetime(2024, 6, 1, tzinfo=timezone.utc),
+    }
+
+
+class TestActivityFeedEndpoint:
+
+    @pytest.mark.asyncio
+    async def test_200_ok(self, client):
+        with patch(
+            "src.routers.feed.get_activity_feed_items",
+            new=AsyncMock(return_value=[]),
+        ):
+            resp = await client.get("/feed/activity")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_public_access(self, client):
+        """No authentication required for GET /feed/activity."""
+        with patch(
+            "src.routers.feed.get_activity_feed_items",
+            new=AsyncMock(return_value=[]),
+        ):
+            resp = await client.get("/feed/activity")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_default_limit(self, client):
+        with patch(
+            "src.routers.feed.get_activity_feed_items",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fn:
+            await client.get("/feed/activity")
+        mock_fn.assert_awaited_once_with(limit=50)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit(self, client):
+        with patch(
+            "src.routers.feed.get_activity_feed_items",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fn:
+            await client.get("/feed/activity?limit=10")
+        mock_fn.assert_awaited_once_with(limit=10)
+
+    @pytest.mark.asyncio
+    async def test_empty_list(self, client):
+        with patch(
+            "src.routers.feed.get_activity_feed_items",
+            new=AsyncMock(return_value=[]),
+        ):
+            resp = await client.get("/feed/activity")
+        assert resp.json() == []
+
+    @pytest.mark.asyncio
+    async def test_mixed_items(self, client):
+        items = [
+            _make_activity_item("activity", "bounty_won"),
+            _make_activity_item("post", "ACHIEVEMENT"),
+        ]
+        with patch(
+            "src.routers.feed.get_activity_feed_items",
+            new=AsyncMock(return_value=items),
+        ):
+            resp = await client.get("/feed/activity")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert len(data) == 2

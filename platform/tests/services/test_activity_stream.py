@@ -83,13 +83,23 @@ def _make_activity_row(
     }
 
 
-def _make_feed_row(id_=None, agent_did="did:agentx:test-001", type_label="bounty_won"):
+def _make_feed_row(
+    id_=None,
+    agent_did="did:agentx:test-001",
+    stream_type="bounty_won",
+    item_type="activity",
+    ref_entity_id=None,
+    ref_entity_type=None,
+):
     return {
-        "id":         id_ or uuid4(),
-        "agent_did":  agent_did,
-        "type_label": type_label,
-        "content":    "Some content",
-        "created_at": datetime.now(UTC),
+        "id":              id_ or uuid4(),
+        "item_type":       item_type,
+        "agent_did":       agent_did,
+        "stream_type":     stream_type,
+        "ref_entity_id":   ref_entity_id,
+        "ref_entity_type": ref_entity_type,
+        "content":         "Some content",
+        "created_at":      datetime.now(UTC),
     }
 
 
@@ -337,6 +347,7 @@ class TestGetGlobalActivityStream:
 # ── get_activity_feed_items() ─────────────────────────────────────────────────
 
 class TestGetActivityFeedItems:
+    """Tests for get_activity_feed_items() — single UNION ALL query."""
 
     @pytest.mark.asyncio
     async def test_returns_list(self):
@@ -352,8 +363,7 @@ class TestGetActivityFeedItems:
     async def test_returns_dicts(self):
         activity_row = _make_feed_row()
         conn = AsyncMock()
-        # fetch is called twice: once for activity_stream, once for posts
-        conn.fetch = AsyncMock(side_effect=[[activity_row], []])
+        conn.fetch = AsyncMock(return_value=[activity_row])
 
         with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
             result = await get_activity_feed_items(limit=10)
@@ -364,7 +374,7 @@ class TestGetActivityFeedItems:
     async def test_each_has_item_type(self):
         activity_row = _make_feed_row()
         conn = AsyncMock()
-        conn.fetch = AsyncMock(side_effect=[[activity_row], []])
+        conn.fetch = AsyncMock(return_value=[activity_row])
 
         with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
             result = await get_activity_feed_items(limit=10)
@@ -375,7 +385,7 @@ class TestGetActivityFeedItems:
     async def test_each_has_id(self):
         activity_row = _make_feed_row()
         conn = AsyncMock()
-        conn.fetch = AsyncMock(side_effect=[[activity_row], []])
+        conn.fetch = AsyncMock(return_value=[activity_row])
 
         with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
             result = await get_activity_feed_items(limit=10)
@@ -384,15 +394,130 @@ class TestGetActivityFeedItems:
 
     @pytest.mark.asyncio
     async def test_limit_is_applied(self):
-        # Generate 20 activity rows; ask for limit=5
-        rows = [_make_feed_row() for _ in range(20)]
+        # DB returns 5 rows when asked for limit=5 (UNION ALL LIMIT in SQL)
+        rows = [_make_feed_row() for _ in range(5)]
         conn = AsyncMock()
-        conn.fetch = AsyncMock(side_effect=[rows, []])
+        conn.fetch = AsyncMock(return_value=rows)
 
         with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
             result = await get_activity_feed_items(limit=5)
 
         assert len(result) <= 5
+
+
+# ── TestActivityFeedItems (Phase 21 spec) ─────────────────────────────────────
+
+class TestActivityFeedItems:
+    """New Phase 21 spec tests for the UNION ALL implementation."""
+
+    @pytest.mark.asyncio
+    async def test_returns_list(self):
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
+            result = await get_activity_feed_items(limit=50)
+
+        assert isinstance(result, list)
+
+    @pytest.mark.asyncio
+    async def test_empty_feed(self):
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
+            result = await get_activity_feed_items(limit=50)
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_respects_limit(self):
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[])
+
+        with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
+            await get_activity_feed_items(limit=25)
+
+        # Limit is passed as first positional SQL param
+        args = conn.fetch.call_args[0]
+        assert 25 in args
+
+    @pytest.mark.asyncio
+    async def test_mixed_items(self):
+        activity_row = _make_feed_row(item_type="activity", stream_type="bounty_won")
+        post_row = _make_feed_row(item_type="post", stream_type="ACHIEVEMENT")
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[activity_row, post_row])
+
+        with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
+            result = await get_activity_feed_items(limit=50)
+
+        item_types = {item["item_type"] for item in result}
+        assert "activity" in item_types
+        assert "post" in item_types
+
+    @pytest.mark.asyncio
+    async def test_expected_keys(self):
+        row = _make_feed_row()
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[row])
+
+        with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
+            result = await get_activity_feed_items(limit=50)
+
+        assert len(result) == 1
+        item = result[0]
+        for key in ("id", "item_type", "agent_did", "stream_type",
+                    "ref_entity_id", "ref_entity_type", "content", "created_at"):
+            assert key in item, f"Missing key: {key}"
+
+    @pytest.mark.asyncio
+    async def test_record_activity_inserts_row(self):
+        inserted = _make_activity_row()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=inserted)
+
+        with patch("src.services.activity_stream.transaction", return_value=_tx_context(conn)):
+            result = await record_activity(
+                agent_did="did:agentx:test-001",
+                stream_type="bounty_won",
+            )
+
+        conn.fetchrow.assert_called_once()
+        assert result.agent_did == "did:agentx:test-001"
+
+    @pytest.mark.asyncio
+    async def test_record_activity_uses_transaction(self):
+        """record_activity() must use transaction(), not get_db()."""
+        inserted = _make_activity_row()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=inserted)
+        tx_ctx = _tx_context(conn)
+
+        with (
+            patch("src.services.activity_stream.transaction", return_value=tx_ctx) as mock_tx,
+            patch("src.services.activity_stream.get_db") as mock_db,
+        ):
+            await record_activity(
+                agent_did="did:agentx:test-001",
+                stream_type="contract_completed",
+            )
+
+        mock_tx.assert_called_once()
+        mock_db.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_optional_fields_default(self):
+        """ref_entity_id, ref_entity_type, ref_post_id all default to None."""
+        row = _make_feed_row(ref_entity_id=None, ref_entity_type=None)
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[row])
+
+        with patch("src.services.activity_stream.get_db", return_value=_db_context(conn)):
+            result = await get_activity_feed_items(limit=50)
+
+        assert result[0]["ref_entity_id"] is None
+        assert result[0]["ref_entity_type"] is None
 
 
 # ── check_auto_post_rate_limit() ──────────────────────────────────────────────

@@ -75,6 +75,14 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 SELECT post_id, COUNT(*)::int AS interaction_count
                 FROM post_interactions
                 GROUP BY post_id
+            ),
+            recent_economic_activity AS (
+                SELECT agent_did,
+                       LEAST(COUNT(*)::int * 5, 50) AS eco_score
+                FROM activity_stream
+                WHERE created_at > NOW() - INTERVAL '7 days'
+                  AND visibility = 'PUBLIC'
+                GROUP BY agent_did
             )
             SELECT
                 p.post_id,
@@ -109,12 +117,14 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                         ELSE 0
                       END
                     + (COALESCE(a.eco_influence_score, 0.0) * 0.2)
+                    + COALESCE(rea.eco_score, 0)
                 ) AS feed_score
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
             LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
             LEFT JOIN followed_posts fp ON fp.following_did = p.author_did
             LEFT JOIN interaction_counts ic ON ic.post_id = p.post_id
+            LEFT JOIN recent_economic_activity rea ON rea.agent_did = a.agent_did
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
               AND p.status = 'ACTIVE'
             ORDER BY feed_score DESC, p.created_at DESC
