@@ -1,3 +1,5 @@
+import { logEvent } from "./logger";
+
 export type WsMessage =
   | { type: "CONNECTED"; agent_did: string; ts: string }
   | { type: "HEARTBEAT"; ts: string }
@@ -36,11 +38,14 @@ export class AgentXWebSocket {
     }
 
     const attempt = this.reconnectAttempts;
-    console.info(
-      attempt === 0
-        ? "[AgentXWS] connecting…"
-        : `[AgentXWS] reconnecting (attempt ${attempt}, delay ${Math.min(BASE_DELAY * 2 ** attempt, MAX_DELAY)}ms)…`
-    );
+    if (attempt === 0) {
+      logEvent("WS_CONNECT", { token: "[redacted]" });
+    } else {
+      logEvent("WS_RECONNECT", {
+        attempt,
+        delay: Math.min(BASE_DELAY * 2 ** attempt, MAX_DELAY),
+      });
+    }
 
     this.ws = new WebSocket(`${BASE_WS}/ws?token=${token}`);
 
@@ -48,7 +53,7 @@ export class AgentXWebSocket {
     this.ws.onopen = () => {
       this.isConnecting = false;
       this.reconnectAttempts = 0;
-      console.info("[AgentXWS] connected");
+      logEvent("WS_CONNECTED");
 
       // Re-send ALL previously subscribed channels (handles reconnect state recovery)
       for (const channel of this.activeSubscriptions) {
@@ -63,9 +68,11 @@ export class AgentXWebSocket {
     this.ws.onmessage = (e) => {
       try {
         const msg: WsMessage = JSON.parse(e.data as string);
+        logEvent("WS_MESSAGE", { type: msg.type });
         this.handlers.forEach((h) => h(msg));
       } catch (err) {
-        console.warn("[AgentXWS] malformed message", e.data, err);
+        logEvent("WS_ERROR", { reason: "malformed frame", raw: e.data });
+        void err; // suppress unused variable warning
       }
     };
 
@@ -75,7 +82,7 @@ export class AgentXWebSocket {
       if (!this.token) return; // disconnected intentionally
 
       const delay = Math.min(BASE_DELAY * 2 ** this.reconnectAttempts, MAX_DELAY);
-      console.warn(`[AgentXWS] disconnected — reconnecting in ${delay}ms`);
+      logEvent("WS_DISCONNECT", { delay });
       this.reconnectAttempts++;
 
       if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -109,6 +116,7 @@ export class AgentXWebSocket {
   }
 
   disconnect() {
+    logEvent("WS_DISCONNECT", { delay: 0 });
     this.token = null;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;

@@ -1,3 +1,5 @@
+import { logEvent } from "./logger";
+
 // Production guard: never fall back to localhost in production builds.
 const BASE =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -15,11 +17,16 @@ async function get<T>(
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
   }
   const noStore = NO_STORE_PATHS.some((p) => path.startsWith(p));
+  logEvent("API_REQUEST", { method: "GET", path });
   const res = await fetch(
     url.toString(),
     noStore ? { cache: "no-store" } : { next: { revalidate: 60 } }
   );
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) {
+    logEvent("API_ERROR", { method: "GET", path, status: res.status });
+    throw new Error(`API error ${res.status}: ${path}`);
+  }
+  logEvent("API_RESPONSE", { method: "GET", path, status: res.status });
   return res.json();
 }
 
@@ -34,12 +41,17 @@ async function getList(
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
+  logEvent("API_REQUEST", { method: "POST", path });
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) {
+    logEvent("API_ERROR", { method: "POST", path, status: res.status });
+    throw new Error(`API error ${res.status}: ${path}`);
+  }
+  logEvent("API_RESPONSE", { method: "POST", path, status: res.status });
   return res.json();
 }
 
