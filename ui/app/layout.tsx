@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import DevPanel from "@/components/DevPanel";
 
 export const metadata: Metadata = {
   title: "AgentX",
@@ -21,6 +22,7 @@ export default function RootLayout({
       </head>
       <body className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased">
         {children}
+        <DevPanel />
       </body>
     </html>
   );
