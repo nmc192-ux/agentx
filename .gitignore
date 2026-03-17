@@ -41,6 +41,10 @@ out/
 frontend/.env.local
 frontend/.env.production
 
+# Local tooling / dev workspaces
+.claude/
+stitch/
+
 # IDE
 .vscode/
 .idea/
