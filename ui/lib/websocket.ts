@@ -11,42 +11,93 @@ const BASE_WS = (
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 ).replace(/^http/, "ws");
 
+const BASE_DELAY = 1_000;  // 1 s
+const MAX_DELAY  = 30_000; // 30 s
+
 export class AgentXWebSocket {
   private ws: WebSocket | null = null;
   private handlers = new Set<Handler>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private token: string | null = null;
 
+  private reconnectAttempts = 0;
+  private pendingSubscriptions: string[] = [];
+  private isConnecting = false;
+  private activeSubscriptions = new Set<string>();
+
   connect(token: string) {
+    if (this.isConnecting) return; // already mid-handshake
+    this.isConnecting = true;
     this.token = token;
+
     if (this.ws) {
-      this.ws.onclose = null; // prevent reconnect loop during manual reconnect
+      this.ws.onclose = null; // suppress reconnect loop on manual call
       this.ws.close();
     }
+
+    const attempt = this.reconnectAttempts;
+    console.info(
+      attempt === 0
+        ? "[AgentXWS] connecting…"
+        : `[AgentXWS] reconnecting (attempt ${attempt}, delay ${Math.min(BASE_DELAY * 2 ** attempt, MAX_DELAY)}ms)…`
+    );
+
     this.ws = new WebSocket(`${BASE_WS}/ws?token=${token}`);
 
+    // ── open: reset counters, re-subscribe all active channels ──────────
+    this.ws.onopen = () => {
+      this.isConnecting = false;
+      this.reconnectAttempts = 0;
+      console.info("[AgentXWS] connected");
+
+      // Re-send ALL previously subscribed channels (handles reconnect state recovery)
+      for (const channel of this.activeSubscriptions) {
+        this.ws!.send(JSON.stringify({ action: "subscribe_channel", channel }));
+      }
+
+      // Clear the pending queue — already covered by activeSubscriptions replay
+      this.pendingSubscriptions = [];
+    };
+
+    // ── message ──────────────────────────────────────────────────────────
     this.ws.onmessage = (e) => {
       try {
         const msg: WsMessage = JSON.parse(e.data as string);
         this.handlers.forEach((h) => h(msg));
-      } catch {
-        // ignore malformed frames
+      } catch (err) {
+        console.warn("[AgentXWS] malformed message", e.data, err);
       }
     };
 
+    // ── close: exponential backoff reconnect ─────────────────────────────
     this.ws.onclose = () => {
-      if (this.token) {
-        this.reconnectTimer = setTimeout(() => {
-          if (this.token) this.connect(this.token);
-        }, 5000);
-      }
+      this.isConnecting = false;
+      if (!this.token) return; // disconnected intentionally
+
+      const delay = Math.min(BASE_DELAY * 2 ** this.reconnectAttempts, MAX_DELAY);
+      console.warn(`[AgentXWS] disconnected — reconnecting in ${delay}ms`);
+      this.reconnectAttempts++;
+
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => {
+        if (this.token) this.connect(this.token);
+      }, delay);
     };
   }
 
-  subscribe(channel: "feed" | "governance" | "alerts") {
-    this.ws?.send(
-      JSON.stringify({ action: "subscribe_channel", channel })
-    );
+  subscribe(channel: string) {
+    // Always record — ensures re-subscription after any future reconnect
+    this.activeSubscriptions.add(channel);
+
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      // Already open — send immediately
+      this.ws.send(JSON.stringify({ action: "subscribe_channel", channel }));
+    } else {
+      // Queue for flush on next open; prevent duplicates
+      if (!this.pendingSubscriptions.includes(channel)) {
+        this.pendingSubscriptions.push(channel);
+      }
+    }
   }
 
   onMessage(handler: Handler) {
@@ -60,6 +111,11 @@ export class AgentXWebSocket {
   disconnect() {
     this.token = null;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.pendingSubscriptions = [];
+    this.activeSubscriptions.clear();
+    this.reconnectAttempts = 0;
+    this.isConnecting = false;
     this.ws?.close();
     this.ws = null;
   }
