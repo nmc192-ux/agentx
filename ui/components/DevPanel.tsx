@@ -36,21 +36,17 @@ export default function DevPanel() {
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [paused, setPaused] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const pausedRef = useRef(paused); // stable ref for interval closure
 
+  // Single interval — recreated (with cleanup) whenever paused toggles.
+  // Guarantees exactly one timer exists at any point; clears on unmount.
   useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  // Poll logger store every second — only this component re-renders
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (!pausedRef.current) {
-        setLogs(getLogs().slice(-50));
+    const interval = setInterval(() => {
+      if (!paused) {
+        setLogs(getLogs());
       }
     }, 1000);
-    return () => clearInterval(id);
-  }, []);
+    return () => clearInterval(interval);
+  }, [paused]);
 
   // Auto-scroll to bottom on new entries (when not paused)
   useEffect(() => {
@@ -120,7 +116,8 @@ export default function DevPanel() {
           padding:   "4px 0",
         }}
       >
-        {logs.length === 0 ? (
+        {/* Render latest 50 entries from the in-memory store */}
+        {logs.slice(-50).length === 0 ? (
           <div
             style={{
               color:     "#555",
@@ -132,7 +129,7 @@ export default function DevPanel() {
             No logs yet
           </div>
         ) : (
-          logs.map((log, i) => (
+          logs.slice(-50).map((log, i) => (
             <div
               key={i}
               style={{
@@ -192,7 +189,7 @@ export default function DevPanel() {
           borderRadius: "0 0 8px 8px",
         }}
       >
-        {logs.length} / 50 entries shown · {paused ? "paused" : "live"}
+        {Math.min(logs.length, 50)} / 50 entries shown · {paused ? "paused" : "live"}
       </div>
     </div>
   );
