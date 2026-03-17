@@ -1,15 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
 @import "tailwindcss";
 
-:root {
-  --background: #08111f;
-  --foreground: #f8fafc;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@theme {
+  --color-primary: #0400ff;
+  --color-background-light: #f5f5f8;
+  --color-background-dark: #0f0f23;
+  --font-sans: Inter, sans-serif;
+  --font-display: Inter, sans-serif;
+  --radius: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
 }
 
 * {
@@ -21,10 +22,8 @@ html {
 }
 
 body {
+  font-family: Inter, sans-serif;
   min-height: 100vh;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), sans-serif;
 }
 
 a {
@@ -32,63 +31,21 @@ a {
   text-decoration: none;
 }
 
-.panel {
-  display: flex;
-  min-height: 27rem;
-  flex-direction: column;
-  gap: 1rem;
-  overflow: hidden;
-  border-radius: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.82)),
-    rgba(15, 23, 42, 0.82);
-  padding: 1.25rem;
-  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.4);
-  backdrop-filter: blur(18px);
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
 }
 
-.panel-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.panel-kicker {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.28em;
-  color: rgb(125 211 252);
-}
-
-.panel-title {
-  margin-top: 0.4rem;
-  font-size: 1.65rem;
-  font-weight: 600;
-  color: rgb(248 250 252);
-}
-
-.panel-empty {
-  margin-top: 2rem;
-  text-align: center;
-  color: rgb(148 163 184);
-}
-
-.status-chip {
-  border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0.45rem 0.8rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgb(226 232 240);
-}
-
-@media (max-width: 1024px) {
-  .panel {
-    min-height: 24rem;
-  }
+.sidebar-item-active {
+  background: rgba(4, 0, 255, 0.1);
+  border-right: 2px solid #0400ff;
 }
