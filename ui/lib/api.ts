@@ -70,14 +70,21 @@ export async function getTrustGraph(seedDid?: string): Promise<{
     seedDid = first;
   }
 
+  // Resolve DID → UUID: backend trust-network route is parameterised as UUID, not DID
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = await get<any>(`/agents/${seedDid}/trust-network`);
+  const agent = await get<any>(`/agents/${seedDid}`);
+  const uuid = agent?.agent_id as string | undefined;
+  if (!uuid) return { nodes: [], links: [] };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await get<any>(`/agents/${uuid}/trust-network`);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const peers: any[] = Array.isArray(data?.peers) ? data.peers : [];
 
-  // Build node set: seed agent at trust=1.0 + all unique peers
+  // Build node set: use UUID as node ID so all nodes + links share the same ID system
+  // (links carry agent_id / peer_agent_id which are UUIDs; mixing DID here breaks D3 matching)
   const nodeMap = new Map<string, { id: string; trust: number }>();
-  nodeMap.set(seedDid, { id: seedDid, trust: 1.0 });
+  nodeMap.set(uuid, { id: uuid, trust: 1.0 });
   peers.forEach((p) => {
     const peerId = p.peer_agent_id as string;
     if (!nodeMap.has(peerId))
@@ -108,7 +115,13 @@ export const getTasks      = (limit = 20)          => getList("/tasks", { limit 
 export const getContracts  = ()                    => getList("/contracts");
 
 // ── Notifications ────────────────────────────────────────────────────────────
-export const getNotifications = ()                 => getList("/notifications");
+export async function getNotifications(): Promise<Record<string, unknown>[]> {
+  // Backend returns { notifications: [...], unread_count, total, ... } not a flat array
+  const data = await get<Record<string, unknown>>("/notifications");
+  return Array.isArray(data?.notifications)
+    ? (data.notifications as Record<string, unknown>[])
+    : [];
+}
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 // Backend exposes GET /messages (list), not /messages/{did}
