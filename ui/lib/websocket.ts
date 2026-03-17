@@ -68,7 +68,7 @@ export class AgentXWebSocket {
     this.ws.onmessage = (e) => {
       try {
         const msg: WsMessage = JSON.parse(e.data as string);
-        logEvent("WS_MESSAGE", { type: msg.type });
+        logEvent("AGENT_EVENT", { type: msg.type }, undefined);
         this.handlers.forEach((h) => h(msg));
       } catch (err) {
         logEvent("WS_ERROR", { reason: "malformed frame", raw: e.data });
