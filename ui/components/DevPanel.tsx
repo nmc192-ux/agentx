@@ -16,7 +16,13 @@ const TYPE_COLOR: Record<string, string> = {
   TASK_FAILED:    "#f85149",
 };
 
-// Status of a trace — drives the left-border colour
+const TRACE_BORDER: Record<string, string> = {
+  completed: "#3fb950",
+  failed:    "#f85149",
+  running:   "#58a6ff",
+};
+
+// ── pure helpers ──────────────────────────────────────────────────────────────
 function traceStatus(events: LogEvent[]): "completed" | "failed" | "running" {
   for (const e of events) {
     if (e.type === "TASK_FAILED")    return "failed";
@@ -25,13 +31,15 @@ function traceStatus(events: LogEvent[]): "completed" | "failed" | "running" {
   return "running";
 }
 
-const TRACE_BORDER: Record<string, string> = {
-  completed: "#3fb950",
-  failed:    "#f85149",
-  running:   "#58a6ff",
-};
+/** ms between TASK_STARTED and TASK_COMPLETED; undefined if either is missing */
+function traceDuration(events: LogEvent[]): number | undefined {
+  const started   = events.find((e) => e.type === "TASK_STARTED");
+  const completed = events.find((e) => e.type === "TASK_COMPLETED");
+  if (!started || !completed) return undefined;
+  const ms = Date.parse(completed.timestamp) - Date.parse(started.timestamp);
+  return ms >= 0 ? ms : undefined;
+}
 
-// ── helpers ───────────────────────────────────────────────────────────────────
 function fmt(ts: string): string {
   return ts.slice(11, 19); // HH:MM:SS from ISO-8601
 }
@@ -45,7 +53,6 @@ function fmtPayload(payload: unknown): string {
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-/** A single flat log row (used both in trace expansions and untraced section) */
 function LogRow({ log, indent = false }: { log: LogEvent; indent?: boolean }) {
   return (
     <div
@@ -88,7 +95,6 @@ function LogRow({ log, indent = false }: { log: LogEvent; indent?: boolean }) {
   );
 }
 
-/** A collapsible trace block grouping all events sharing a traceId */
 function TraceBlock({
   traceId,
   events,
@@ -100,8 +106,19 @@ function TraceBlock({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const status = traceStatus(events);
+  const [copied, setCopied] = useState(false);
+  const status      = traceStatus(events);
   const borderColor = TRACE_BORDER[status];
+  const duration    = traceDuration(events);
+
+  function handleCopyId(e: React.MouseEvent) {
+    // Copy traceId without toggling the block
+    e.stopPropagation();
+    navigator.clipboard.writeText(traceId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  }
 
   return (
     <div
@@ -111,34 +128,54 @@ function TraceBlock({
         marginBottom: 2,
       }}
     >
-      {/* ── trace header (clickable) ─────────────────────────────────────── */}
+      {/* ── trace header ────────────────────────────────────────────────── */}
       <div
         onClick={onToggle}
         style={{
-          display:        "flex",
-          alignItems:     "center",
-          gap:            6,
-          padding:        "3px 10px",
-          cursor:         "pointer",
-          userSelect:     "none",
-          borderBottom:   expanded ? "1px solid #222" : "none",
+          display:      "flex",
+          alignItems:   "center",
+          gap:          6,
+          padding:      "3px 10px",
+          cursor:       "pointer",
+          userSelect:   "none",
+          borderBottom: expanded ? "1px solid #222" : "none",
         }}
       >
+        {/* expand/collapse caret */}
         <span style={{ color: "#555", fontSize: 9 }}>
           {expanded ? "▼" : "▶"}
         </span>
-        <span style={{ color: borderColor, fontWeight: "bold" }}>
-          Trace
+
+        {/* "Trace" label */}
+        <span style={{ color: borderColor, fontWeight: "bold" }}>Trace</span>
+
+        {/* traceId — click-to-copy, stops propagation so header doesn't toggle */}
+        <span
+          onClick={handleCopyId}
+          title="Click to copy trace ID"
+          style={{
+            color:        copied ? "#3fb950" : "#555",
+            cursor:       "copy",
+            borderBottom: copied ? "1px solid #3fb950" : "1px dashed #333",
+            transition:   "color 0.2s",
+          }}
+        >
+          {copied ? "copied!" : `[${traceId}]`}
         </span>
-        <span style={{ color: "#555" }}>[{traceId}]</span>
+
+        {/* duration (only when trace completed) */}
+        {duration !== undefined && (
+          <span style={{ color: "#444", fontSize: 9 }}>· {duration}ms</span>
+        )}
+
+        {/* event count — pushed right */}
         <span style={{ color: "#444", marginLeft: "auto", fontSize: 9 }}>
           {events.length} event{events.length !== 1 ? "s" : ""}
         </span>
       </div>
 
-      {/* ── expanded events ──────────────────────────────────────────────── */}
-      {expanded &&
-        events.map((log, i) => <LogRow key={i} log={log} indent />)}
+      {/* ── expanded event rows ──────────────────────────────────────────── */}
+      {expanded && events.map((log, i) => <LogRow key={i} log={log} indent />)}
     </div>
   );
 }
@@ -147,10 +184,13 @@ function TraceBlock({
 export default function DevPanel() {
   if (process.env.NODE_ENV === "production") return null;
 
-  const [logs, setLogs] = useState<LogEvent[]>([]);
-  const [paused, setPaused] = useState(false);
+  const [logs, setLogs]                   = useState<LogEvent[]>([]);
+  const [paused, setPaused]               = useState(false);
   const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const bottomRef      = useRef<HTMLDivElement>(null);
+  // Tracks which failed traces we've already auto-expanded so user collapses
+  // are not overridden on the next poll cycle.
+  const autoExpandedRef = useRef<Set<string>>(new Set());
 
   // Single interval — recreated with cleanup whenever paused toggles
   useEffect(() => {
@@ -165,10 +205,10 @@ export default function DevPanel() {
     if (!paused) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs, paused]);
 
-  // ── derive trace groups from latest 50 logs ───────────────────────────────
+  // ── group latest 50 logs into traces + untraced ───────────────────────────
   const { traces, untraced } = useMemo(() => {
     const slice = logs.slice(-50);
-    const traceMap = new Map<string, LogEvent[]>();
+    const traceMap    = new Map<string, LogEvent[]>();
     const untracedList: LogEvent[] = [];
 
     for (const log of slice) {
@@ -184,6 +224,27 @@ export default function DevPanel() {
     return { traces: traceMap, untraced: untracedList };
   }, [logs]);
 
+  // Auto-expand failed traces on first encounter (respects manual collapses)
+  useEffect(() => {
+    const toExpand: string[] = [];
+    for (const [id, events] of traces) {
+      if (
+        traceStatus(events) === "failed" &&
+        !autoExpandedRef.current.has(id)
+      ) {
+        toExpand.push(id);
+        autoExpandedRef.current.add(id);
+      }
+    }
+    if (toExpand.length > 0) {
+      setExpandedTraces((prev) => {
+        const next = new Set(prev);
+        toExpand.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  }, [traces]);
+
   const toggleTrace = (id: string) =>
     setExpandedTraces((prev) => {
       const next = new Set(prev);
@@ -195,6 +256,7 @@ export default function DevPanel() {
     clearLogs();
     setLogs([]);
     setExpandedTraces(new Set());
+    autoExpandedRef.current.clear();
   };
 
   const total = Math.min(logs.length, 50);
@@ -262,7 +324,6 @@ export default function DevPanel() {
           </div>
         ) : (
           <>
-            {/* ── trace groups (ordered by first-seen traceId) ─────────── */}
             {traces.size > 0 && (
               <div style={{ marginBottom: 4 }}>
                 {Array.from(traces.entries()).map(([id, events]) => (
@@ -276,8 +337,6 @@ export default function DevPanel() {
                 ))}
               </div>
             )}
-
-            {/* ── untraced flat rows ───────────────────────────────────── */}
             {untraced.map((log, i) => (
               <LogRow key={`u-${i}`} log={log} />
             ))}
