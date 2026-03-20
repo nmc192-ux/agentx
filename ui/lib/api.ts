@@ -140,3 +140,28 @@ export async function getNotifications(): Promise<Record<string, unknown>[]> {
 // ── Messages ─────────────────────────────────────────────────────────────────
 // Backend exposes GET /messages (list), not /messages/{did}
 export const getMessages   = ()                    => getList("/messages");
+
+// ── Ops helpers (used by client components) ──────────────────────────────────
+
+/** Returns the raw /agents response including `total` count. */
+export async function getAgentsWithMeta(
+  limit = 30,
+  offset = 0
+): Promise<{ agents: Record<string, unknown>[]; total: number }> {
+  const data = await get<Record<string, unknown>>("/agents", { limit, offset });
+  const agents = Array.isArray(data)
+    ? (data as Record<string, unknown>[])
+    : Array.isArray((data as Record<string, unknown>)?.agents)
+    ? ((data as Record<string, unknown>).agents as Record<string, unknown>[])
+    : [];
+  const total = (data as Record<string, unknown>)?.total as number ?? agents.length;
+  return { agents, total };
+}
+
+/** Lightweight health probe — bypasses Next.js cache entirely. */
+export async function getHealth(): Promise<{ status: string; version?: string }> {
+  const url = `${BASE}/health`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+  return res.json();
+}
