@@ -21,18 +21,6 @@ export default async function AgentsPage() {
         </p>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-          search
-        </span>
-        <input
-          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Search agents by DID, name, or capability…"
-          type="text"
-        />
-      </div>
-
       {/* Top agents */}
       {(topAgents as Record<string, unknown>[]).length > 0 && (
         <section>
