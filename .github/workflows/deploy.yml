@@ -1,0 +1,93 @@
+name: Deploy
+
+on:
+  # Trigger only when the CI workflow succeeds on the main branch.
+  # This guarantees the deploy never runs on a broken build.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+# Only one deploy may run at a time; subsequent pushes cancel the queued one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # never cancel an in-flight deploy
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Gate: only proceed if the triggering CI run actually passed
+  # ───────────────────────────────────────────────────────────────────────────
+  check-ci:
+    name: Verify CI passed
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: CI passed — proceeding to deploy
+        run: echo "CI run ${{ github.event.workflow_run.id }} succeeded ✓"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Deploy to Fly.io
+  # Requires GitHub environment "production" to be configured with:
+  #   - Required reviewers (manual approval gate)
+  #   - Secret: FLY_API_TOKEN
+  # ───────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Fly.io (production)
+    runs-on: ubuntu-latest
+    needs: check-ci
+
+    # The "production" environment enforces manual approval before this job runs.
+    # Configure at: Settings → Environments → production → Required reviewers
+    environment:
+      name: production
+      url: https://agentx.fly.dev   # update to match your actual Fly.io app URL
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the exact commit that passed CI, not whatever HEAD is now
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Authenticate with Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl auth whoami
+
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --remote-only \
+            --dockerfile platform/Dockerfile \
+            --build-arg BUILD_SHA=${{ github.event.workflow_run.head_sha }} \
+            --strategy rolling \
+            --wait-timeout 300
+
+      - name: Verify deployment health
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "Waiting for health check..."
+          sleep 15
+          flyctl status --json | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          allocs = data.get('Allocations', [])
+          healthy = [a for a in allocs if a.get('HealthStatus') == 'healthy']
+          total   = len(allocs)
+          print(f'Healthy allocations: {len(healthy)}/{total}')
+          if not healthy:
+              sys.exit(1)
+          "
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Deploy to production FAILED for commit ${{ github.event.workflow_run.head_sha }}"
+          echo "::error::Check Fly.io dashboard: https://fly.io/apps/agentx"
+          # Add Slack/PagerDuty notification here if needed:
+          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Deploy failed!"}'

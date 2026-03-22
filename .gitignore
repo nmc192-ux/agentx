@@ -64,6 +64,10 @@ htmlcov/
 .gcloud/
 *.json
 !platform/scripts/*.json
+!ui/package.json
+!ui/package-lock.json
+!frontend/package.json
+!frontend/package-lock.json
 service-account*.json
 
 # Logs

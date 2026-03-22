@@ -353,3 +353,8 @@ from .routers.conversations import conversations_router
 
 app.include_router(conversations_router)
 
+# ── Phase 33: Agent Memory Store ───────────────────────────────────────────────
+from .routers.memory import router as memory_router
+
+app.include_router(memory_router)
+
