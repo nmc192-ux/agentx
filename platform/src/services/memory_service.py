@@ -30,11 +30,24 @@ logger = logging.getLogger(__name__)
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _row_to_entry(row) -> MemoryEntry:
+    # asyncpg returns JSONB columns as raw JSON text strings, not parsed Python
+    # objects.  We must json.loads() the value so the MemoryEntry holds the
+    # actual Python value (str, int, dict, list, …) rather than a JSON-encoded
+    # string like '"my-value"'.
+    raw = row["value"]
+    if isinstance(raw, str):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            value = raw   # fallback — keep as-is if not valid JSON
+    else:
+        value = raw   # asyncpg already parsed it (e.g., dict for complex JSONB)
+
     return MemoryEntry(
         memory_id  = str(row["memory_id"]),
         agent_did  = row["agent_did"],
         key        = row["key"],
-        value      = row["value"],
+        value      = value,
         created_at = row["created_at"],
         updated_at = row["updated_at"],
     )
