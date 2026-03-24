@@ -58,7 +58,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 // ── Feed ────────────────────────────────────────────────────────────────────
-export const getFeed       = (limit = 20)          => getList("/feed", { limit });
+export const getFeed       = (limit = 20)          => getList("/feed/global", { limit });
 export const getActivity   = (limit = 50)          => getList("/feed/activity", { limit });
 
 // ── Agents ──────────────────────────────────────────────────────────────────
