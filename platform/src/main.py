@@ -249,6 +249,14 @@ from .routers.activity_stream import router as activity_stream_router
 
 app.include_router(activity_stream_router)
 
+# ── Phase 33: Agent Memory Store — must be registered BEFORE agents_router
+# because agents_router contains a GET /agents/{agent_did:path} catch-all that
+# would shadow the memory sub-routes (GET /agents/{did}/memory[/{key}]) if
+# registered after.
+from .routers.memory import router as memory_router
+
+app.include_router(memory_router)
+
 # ── Sprint 2: Agent Identity & Trust ──────────────────────────────────────────
 from .routers.agents import router as agents_router
 
@@ -352,4 +360,15 @@ app.include_router(communities_router)
 from .routers.conversations import conversations_router
 
 app.include_router(conversations_router)
+
+# Phase 33: memory_router is registered earlier (before agents_router) to avoid
+# being shadowed by GET /agents/{agent_did:path}.
+
+# ── Sprint 8: A2A Protocol — Agent Cards ──────────────────────────────────────
+# Registered AFTER agents_router so the per-agent card route
+# /agents/{agent_did}/.well-known/agent.json is handled correctly.
+# The platform card /.well-known/agent.json has no conflict.
+from .a2a.router import a2a_router
+
+app.include_router(a2a_router)
 

@@ -1,141 +1,178 @@
 """
 AgentX Platform — Agent Bus Service
 ═════════════════════════════════════
-Phase 11: Direct agent-to-agent messaging with channel support,
-inbox querying, and real-time SSE streaming via Redis pub/sub.
+Phase 11 + ACP-1.0: Direct agent-to-agent messaging with ACP envelope
+validation, inbox querying (with type/time filters), and real-time SSE
+streaming via Redis pub/sub.
 
 Public API
 ──────────
-  send_message(sender_did, data)            → AgentMessageResponse
-  get_inbox(agent_did, limit, offset)       → list[AgentMessageResponse]
-  stream_messages(agent_did)                → AsyncGenerator[str, None]
+  send_acp_message(sender_did, data)                    → ACPMessageResponse
+  get_acp_inbox(agent_did, limit, offset, acp_type,
+                since)                                  → list[ACPMessageResponse]
+  stream_messages(agent_did)                            → AsyncGenerator[str, None]
 
 Design notes
 ────────────
-• sender_did is resolved to sender_id inside the write transaction (same
-  DID→UUID pattern used by governance and contract services).
-• receiver_did is resolved to receiver_id for FK integrity (NULL-safe:
-  if the receiver DID is unknown the message is still stored).
-• After DB insert, the message is published to a Redis pub/sub channel
-  keyed agentbus:{receiver_did} so that any active SSE stream for that
-  agent receives the event in real-time.
-• stream_messages() is an async generator suitable for FastAPI
-  StreamingResponse. It subscribes to the Redis channel for the caller's
-  DID and yields 'data: <json>\\n\\n' SSE payloads.
-• Events are fire-and-forget; Redis publish failures are logged but never
-  bubble up.
+• ACP envelope fields (protocol_version, acp_message_id, acp_timestamp,
+  agent_id, acp_type, human_summary, machine_payload) are stored in the
+  columns added by migration 034 alongside the legacy content / channel /
+  metadata columns.
+• message_id and timestamp are filled by the service if omitted by the caller.
+• receiver_did is resolved to receiver_id for FK integrity.
+• After DB insert the message is published to:
+    1. Redis Stream (AGENT_MESSAGE_SENT event for the event bus)
+    2. Redis pub/sub channel agentbus:{receiver_did} for live SSE delivery
+• stream_messages() is an async generator for FastAPI StreamingResponse.
+• Redis failures are logged but never propagated.
 """
 from __future__ import annotations
 
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
 from ..cache import get_cache
 from ..database import get_db, transaction
 from ..events.publisher import publish_event
 from ..events.types import EventType
-from ..models.agentbus import AgentMessageCreate, AgentMessageResponse
+from ..models.acp import ACPMessageCreate, ACPMessageResponse
 
 logger = logging.getLogger(__name__)
 
-# Redis pub/sub channel prefix for agentbus messages
 _AGENTBUS_CHANNEL_PREFIX = "agentbus:"
 
 
 def _agentbus_channel(agent_did: str) -> str:
-    """Return the Redis pub/sub channel key for an agent's inbox."""
     return f"{_AGENTBUS_CHANNEL_PREFIX}{agent_did}"
 
 
-def _row_to_message(row) -> AgentMessageResponse:
-    payload = row.get("metadata")
-    if isinstance(payload, str):
-        payload = json.loads(payload) if payload else None
-    elif payload is not None:
-        payload = dict(payload)
-    return AgentMessageResponse(
-        message_id=row["message_id"],
-        sender_did=row["sender_did"],
+def _row_to_acp(row) -> ACPMessageResponse:
+    """Convert a DB row to an ACPMessageResponse."""
+
+    def _jsonb(col):
+        val = row.get(col)
+        if isinstance(val, str):
+            return json.loads(val) if val else {}
+        return dict(val) if val is not None else {}
+
+    return ACPMessageResponse(
+        protocol_version=row.get("protocol_version") or "ACP-1.0",
+        message_id=row["acp_message_id"] or row["message_id"],
+        timestamp=row.get("acp_timestamp") or row["created_at"],
+        agent_id=row.get("agent_id") or row["sender_did"],
+        type=row.get("acp_type") or "channel_message",
+        human_summary=row.get("human_summary") or row.get("content", ""),
+        machine_payload=_jsonb("machine_payload"),
+        metadata=_jsonb("metadata"),
         receiver_did=row["receiver_did"],
-        content=row["content"],
-        channel=row["channel"],
-        status=row["status"],
-        metadata=payload,
-        created_at=row["created_at"],
+        channel=row.get("channel") or "default",
     )
 
 
 # ── Service functions ──────────────────────────────────────────────────────────
 
-async def send_message(
+async def send_acp_message(
     sender_did: str,
-    data: AgentMessageCreate,
-) -> AgentMessageResponse:
+    data: ACPMessageCreate,
+) -> ACPMessageResponse:
     """
-    Send a direct message from sender_did to data.receiver_did.
+    Send an ACP-1.0 message from sender_did.
 
-    Inserts the message into agent_messages, publishes an
-    AGENT_MESSAGE_SENT event to the Redis stream, and publishes to the
-    per-agent Redis pub/sub channel for real-time delivery.
+    Fills ``message_id`` and ``timestamp`` if the caller omitted them, then
+    inserts the full ACP envelope into ``agent_messages``.  Publishes the
+    message to the event bus and the recipient's SSE pub/sub channel.
 
     Args:
-        sender_did: DID of the authenticated sender.
-        data:       Validated AgentMessageCreate payload.
+        sender_did: DID of the authenticated sender (from JWT).
+        data:       Validated ACPMessageCreate payload.
 
     Returns:
-        AgentMessageResponse for the stored message.
+        ACPMessageResponse with all fields populated.
 
     Raises:
-        ValueError: If receiver_did is not a registered agent.
+        ValueError: If receiver_did is provided but not a registered agent.
     """
+    # Fill optional fields
+    msg_id    = data.message_id    or uuid.uuid4()
+    timestamp = data.timestamp     or datetime.now(timezone.utc)
+    receiver  = data.receiver_did
+
     async with transaction() as conn:
-        # Resolve sender DID → agent_id (NULL-safe)
+        # Resolve sender DID → UUID (NULL-safe)
         sender_row = await conn.fetchrow(
-            "SELECT agent_id FROM agents WHERE agent_did = $1",
-            sender_did,
+            "SELECT agent_id FROM agents WHERE agent_did = $1", sender_did
         )
         sender_id = sender_row["agent_id"] if sender_row else None
 
-        # Resolve receiver DID → agent_id (required — must exist)
-        receiver_row = await conn.fetchrow(
-            "SELECT agent_id FROM agents WHERE agent_did = $1",
-            data.receiver_did,
-        )
-        if receiver_row is None:
-            raise ValueError(f"Receiver agent not found: {data.receiver_did}")
-        receiver_id = receiver_row["agent_id"]
+        # Resolve receiver DID → UUID (required if provided)
+        receiver_id = None
+        if receiver:
+            receiver_row = await conn.fetchrow(
+                "SELECT agent_id FROM agents WHERE agent_did = $1", receiver
+            )
+            if receiver_row is None:
+                raise ValueError(f"Receiver agent not found: {receiver}")
+            receiver_id = receiver_row["agent_id"]
 
         row = await conn.fetchrow(
             """
-            INSERT INTO agent_messages
-                (sender_did, sender_id, receiver_did, receiver_id,
-                 content, channel, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+            INSERT INTO agent_messages (
+                sender_did,      sender_id,
+                receiver_did,    receiver_id,
+                content,         channel,
+                metadata,
+                protocol_version, acp_message_id,  acp_timestamp,
+                agent_id,         acp_type,
+                human_summary,    machine_payload
+            )
+            VALUES (
+                $1,  $2,
+                $3,  $4,
+                $5,  $6,
+                $7::jsonb,
+                $8,  $9,  $10,
+                $11, $12,
+                $13, $14::jsonb
+            )
             RETURNING
-                message_id, sender_did, receiver_did, content,
-                channel, status, metadata, created_at
+                message_id,      sender_did,       receiver_did,
+                content,         channel,          status,
+                metadata,        created_at,
+                protocol_version, acp_message_id,  acp_timestamp,
+                agent_id,         acp_type,
+                human_summary,    machine_payload
             """,
             sender_did,
             sender_id,
-            data.receiver_did,
+            receiver or sender_did,   # broadcast: sender = receiver sentinel
             receiver_id,
-            data.content,
+            data.human_summary,       # legacy content column
             data.channel,
             json.dumps(data.metadata) if data.metadata else None,
+            data.protocol_version,
+            msg_id,
+            timestamp,
+            data.agent_id,
+            data.type,
+            data.human_summary,
+            json.dumps(data.machine_payload),
         )
 
-    message = _row_to_message(row)
+    message = _row_to_acp(row)
 
-    # ── Publish AGENT_MESSAGE_SENT event (fire-and-forget) ──────────────────
+    # ── Event bus (fire-and-forget) ──────────────────────────────────────────
     try:
         await publish_event(
             EventType.AGENT_MESSAGE_SENT,
             {
-                "message_id":   str(message.message_id),
-                "sender_did":   sender_did,
-                "receiver_did": data.receiver_did,
-                "channel":      data.channel,
+                "message_id":    str(message.message_id),
+                "sender_did":    sender_did,
+                "receiver_did":  receiver,
+                "acp_type":      data.type,
+                "channel":       data.channel,
             },
             source_agent_did=sender_did,
         )
@@ -144,12 +181,12 @@ async def send_message(
             "agentbus_service: failed to publish AGENT_MESSAGE_SENT", exc_info=True
         )
 
-    # ── Publish to Redis pub/sub for SSE streaming (fire-and-forget) ─────────
+    # ── Redis pub/sub for SSE (fire-and-forget) ───────────────────────────────
     try:
         redis = get_cache()
-        if redis is not None:
+        if redis is not None and receiver:
             await redis.publish(
-                _agentbus_channel(data.receiver_did),
+                _agentbus_channel(receiver),
                 json.dumps(message.model_dump(mode="json")),
             )
     except Exception:
@@ -159,60 +196,89 @@ async def send_message(
         )
 
     logger.info(
-        "agentbus_service: message %s sent from %s to %s (channel=%s)",
-        message.message_id, sender_did, data.receiver_did, data.channel,
+        "agentbus_service: ACP message %s (%s) from %s to %s",
+        message.message_id, data.type, sender_did, receiver or "BROADCAST",
     )
     return message
 
 
-async def get_inbox(
+async def get_acp_inbox(
     agent_did: str,
     limit: int = 50,
     offset: int = 0,
-) -> list[AgentMessageResponse]:
+    acp_type: Optional[str] = None,
+    since: Optional[str] = None,
+) -> list[ACPMessageResponse]:
     """
-    Return messages addressed to agent_did, newest first.
+    Return ACP messages addressed to agent_did, newest first.
 
     Args:
         agent_did: DID of the inbox owner.
-        limit:     Maximum number of messages to return (default 50).
-        offset:    Number of messages to skip (for pagination, default 0).
+        limit:     Max messages to return (default 50).
+        offset:    Messages to skip — for pagination.
+        acp_type:  Filter to a specific ACP message type (optional).
+        since:     ISO-8601 datetime string — return only messages after this
+                   timestamp (optional).
 
     Returns:
-        List of AgentMessageResponse objects ordered by created_at DESC.
+        List of ACPMessageResponse objects.
     """
+    clauses = ["receiver_did = $1"]
+    params: list = [agent_did]
+    idx = 2
+
+    if acp_type:
+        clauses.append(f"acp_type = ${idx}")
+        params.append(acp_type)
+        idx += 1
+
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since)
+            clauses.append(f"created_at > ${idx}")
+            params.append(since_dt)
+            idx += 1
+        except ValueError:
+            pass   # ignore unparseable since — return all
+
+    where = " AND ".join(clauses)
+    params.extend([limit, offset])
+
     async with get_db() as conn:
         rows = await conn.fetch(
-            """
-            SELECT message_id, sender_did, receiver_did, content,
-                   channel, status, metadata, created_at
+            f"""
+            SELECT
+                message_id,      sender_did,       receiver_did,
+                content,         channel,          status,
+                metadata,        created_at,
+                protocol_version, acp_message_id,  acp_timestamp,
+                agent_id,         acp_type,
+                human_summary,    machine_payload
             FROM   agent_messages
-            WHERE  receiver_did = $1
+            WHERE  {where}
             ORDER  BY created_at DESC
-            LIMIT  $2
-            OFFSET $3
+            LIMIT  ${idx}
+            OFFSET ${idx + 1}
             """,
-            agent_did,
-            limit,
-            offset,
+            *params,
         )
-    return [_row_to_message(r) for r in rows]
+    return [_row_to_acp(r) for r in rows]
 
 
 async def stream_messages(agent_did: str) -> AsyncGenerator[str, None]:
     """
-    Async generator yielding SSE-formatted events for messages sent to
-    agent_did.  Subscribes to the Redis pub/sub channel
-    ``agentbus:{agent_did}`` and yields ``data: <json>\\n\\n`` frames.
+    Async generator yielding SSE-formatted ACP message events for agent_did.
 
-    When Redis is unavailable a single keepalive comment is yielded and
-    the generator exits immediately — this prevents a hung HTTP response.
+    Subscribes to Redis pub/sub channel ``agentbus:{agent_did}`` and yields
+    ``data: <json>\\n\\n`` frames containing the full ACPMessageResponse JSON.
+
+    Falls back to a single keepalive comment if Redis is unavailable.
 
     Args:
-        agent_did: DID of the authenticated agent whose inbox to stream.
+        agent_did: DID of the authenticated agent to stream for.
 
     Yields:
-        SSE-formatted string frames (``data: ...\\n\\n`` or ``: keepalive\\n\\n``).
+        SSE-formatted frames.
     """
     redis = get_cache()
     if redis is None:

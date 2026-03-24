@@ -295,6 +295,7 @@ async def list_agents(
     tier:    Optional[str] = Query(default=None, description="Filter by tier"),
     role:    Optional[str] = Query(default=None, description="Filter by governance role"),
     status_:  Optional[str] = Query(default=None, alias="status", description="Filter by status"),
+    did:     Optional[str] = Query(default=None, description="Filter by exact agent DID"),
     page:    int = Query(default=1, ge=1),
     limit:   int = Query(default=20, ge=1, le=100),
 ):
@@ -305,6 +306,7 @@ async def list_agents(
       - tier:    BOOTSTRAP | BASIC | PROFESSIONAL | ELITE
       - role:    FOUNDER | OPERATOR | DELEGATE | MEMBER | OBSERVER
       - status:  ACTIVE | SUSPENDED | DEACTIVATED | PENDING_REVIEW
+      - did:     exact agent DID (did:agentx:...)
     """
     offset = (page - 1) * limit
 
@@ -321,6 +323,9 @@ async def list_agents(
     if status_:
         params.append(status_.upper())
         conditions.append(f"a.status = ${len(params)}")
+    if did:
+        params.append(did)
+        conditions.append(f"a.agent_did = ${len(params)}")
 
     where = " AND ".join(conditions)
 
