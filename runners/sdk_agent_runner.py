@@ -41,10 +41,20 @@ from pathlib import Path
 from typing import Optional
 
 # ── Ensure the standalone SDK is importable ──────────────────────────────────
-# The SDK lives at ~/agentx/sdk; add it to the path if not installed.
-_SDK_PATH = Path(__file__).parent.parent.parent / "sdk"
-if _SDK_PATH.exists() and str(_SDK_PATH) not in sys.path:
-    sys.path.insert(0, str(_SDK_PATH))
+# Try ~/agentx-sdk first (pip install -e target), then fall back to sdk/ sibling dir.
+_SDK_CANDIDATES = [
+    Path.home() / "agentx-sdk",                          # pip install -e ~/agentx-sdk
+    Path(__file__).parent.parent / "sdk",                 # ~/AgentX/sdk
+    Path(__file__).parent.parent.parent / "agentx-sdk",  # sibling checkout
+]
+# Evict any cached legacy agentx_sdk so we always get the standalone SDK
+for _mod in list(sys.modules.keys()):
+    if _mod == "agentx_sdk" or _mod.startswith("agentx_sdk."):
+        del sys.modules[_mod]
+for _candidate in _SDK_CANDIDATES:
+    if _candidate.exists() and str(_candidate) not in sys.path:
+        sys.path.insert(0, str(_candidate))
+        break
 
 try:
     from agentx_sdk import Agent, AgentRuntime, AgentXClient, Event
@@ -305,9 +315,53 @@ class SDKAgentRunner:
 
     # -- Registration -----------------------------------------------------------
 
+    def _reauth_existing(self, agent_did: str) -> None:
+        """
+        Re-authenticate an already-registered agent by exchanging its DID for a
+        fresh JWT via POST /auth/token (client_credentials grant).
+        Sets client._token and client.identity so subsequent calls are authenticated.
+        """
+        import json as _json
+        import urllib.parse as _parse
+        import urllib.error as _uerr
+
+        from agentx_sdk.auth import AgentIdentity, TokenStore
+
+        base = self.client._config.base_url.rstrip("/")
+        payload = _parse.urlencode({
+            "grant_type": "client_credentials",
+            "username":   agent_did,
+            "password":   "",
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{base}/auth/token",
+            data    = payload,
+            headers = {"Content-Type": "application/x-www-form-urlencoded"},
+            method  = "POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                token_data = _json.loads(r.read())
+        except _uerr.HTTPError as exc:
+            body = exc.read().decode(errors="replace")
+            raise RuntimeError(f"Re-auth failed ({exc.code}): {body}") from exc
+
+        access_token = token_data.get("access_token", self.client._config.api_key)
+        self.client._token = TokenStore(access_token=access_token)
+
+        id_path = f".{self.name.lower()}_sdk_identity.json"
+        self.client.identity = AgentIdentity(
+            agent_did = agent_did,
+            api_key   = access_token,
+        )
+        self.client.identity.save(id_path)
+        print(f"  Re-authed: {agent_did}")
+
     def register_or_load(self) -> None:
         """
         Load existing identity from disk, or register a new agent on the platform.
+        If the agent is already registered (409), re-authenticate via /auth/token.
         Sets agent.did so the contract pattern can resolve the DID.
         """
         if self.client.identity:
@@ -315,19 +369,28 @@ class SDKAgentRunner:
             self.agent.did = self.client.identity.agent_did
             return
 
+        # Derive the canonical DID for this founding agent
+        canonical_did = f"did:agentx:{self.name.lower()}-001"
+
         print(f"  Registering {self.name} on platform...")
         try:
             profile = self.client.register_agent(
-                name         = self.name,
-                capabilities = self.capabilities,
-                strategy     = "AUTONOMOUS",
+                name          = self.name,
+                capabilities  = self.capabilities,
+                strategy      = "AUTONOMOUS",
                 save_identity = True,
             )
             self.agent.did = profile.agent_did
             print(f"  Registered: {profile.agent_did}")
         except Exception as exc:
-            print(f"  [ERROR] Registration failed: {exc}")
-            raise
+            # 409 = already registered — re-auth with existing identity
+            if "409" in str(exc):
+                print(f"  Already registered — re-authenticating as {canonical_did}")
+                self._reauth_existing(canonical_did)
+                self.agent.did = canonical_did
+            else:
+                print(f"  [ERROR] Registration failed: {exc}")
+                raise
 
     # -- Event-handler pattern --------------------------------------------------
 
