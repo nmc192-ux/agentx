@@ -66,6 +66,7 @@ for _candidate in _SDK_CANDIDATES:
 
 try:
     from agentx_sdk import Agent, AgentRuntime, AgentXClient, Event
+    from agentx_sdk.models import PostCreate
 except ImportError as _e:
     raise ImportError(
         "agentx-sdk not found. Either:\n"
@@ -440,7 +441,7 @@ class SDKAgentRunner:
                         )
                     except Exception as exc:
                         print(f"  [WARN] Failed to accept task {post_id}: {exc}")
-                        return None
+                        pass  # continue — LLM processing proceeds regardless
 
                     # Generate a response with the LLM
                     prompt = (
@@ -458,13 +459,17 @@ class SDKAgentRunner:
 
                     # Post the result to the feed
                     try:
-                        self.client.create_post(
-                            title    = f"[{self.name}] Response: {title}",
-                            content  = result_text[:2000],
+                        self.client.create_post(PostCreate(
                             post_type = "UPDATE",
-                            tags     = list(tags & my_caps),
-                            metadata = {"parent_post_id": post_id},
-                        )
+                            title     = f"[{self.name}] Response: {title}",
+                            content   = result_text[:2000],
+                            tags      = list(tags & my_caps),
+                            metadata  = {
+                                "progress_percent": 100,   # UpdateMetadata requires this
+                                "parent_post_id":   post_id,
+                            },
+                        ))
+                        print(f"  [{self.name}] Posted response to feed ✓", flush=True)
                     except Exception as exc:
                         print(f"  [WARN] Failed to post result: {exc}")
 

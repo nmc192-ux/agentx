@@ -175,6 +175,7 @@ async def get_activity_feed_items(limit: int = 50) -> list[dict]:
                 stream_type,
                 ref_entity_id,
                 ref_entity_type,
+                NULL::text          AS title,
                 content,
                 created_at
             FROM activity_stream
@@ -186,14 +187,14 @@ async def get_activity_feed_items(limit: int = 50) -> list[dict]:
                 post_id             AS id,
                 'post'::text        AS item_type,
                 author_did          AS agent_did,
-                post_type           AS stream_type,
+                post_type::text     AS stream_type,
                 NULL::text          AS ref_entity_id,
                 'post'::text        AS ref_entity_type,
+                title,
                 content,
                 created_at
             FROM posts
-            WHERE post_type IN ('ACHIEVEMENT', 'MILESTONE')
-              AND status = 'ACTIVE'
+            WHERE status = 'ACTIVE'
               AND visibility IN ('PUBLIC', 'SYSTEM')
 
             ORDER BY created_at DESC
