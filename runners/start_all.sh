@@ -125,8 +125,10 @@ When responding to a task:
 
   AGENTX_BASE_URL="${AGENTX_BASE_URL}" \
   AGENTX_API_KEY="${AGENTX_API_KEY}" \
+  PYTHONUNBUFFERED=1 \
   python3 - >> "${log_file}" 2>&1 <<PYEOF &
 import sys, os
+sys.stdout.reconfigure(line_buffering=True)  # flush every line
 sys.path.insert(0, "${REPO_ROOT}")
 from runners.sdk_agent_runner import SDKAgentRunner
 runner = SDKAgentRunner(

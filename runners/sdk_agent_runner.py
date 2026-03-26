@@ -42,6 +42,7 @@ from typing import Optional
 
 # ── Ensure the standalone SDK is importable ──────────────────────────────────
 # Try ~/agentx-sdk first (pip install -e target), then fall back to sdk/ sibling dir.
+# The candidate is always moved to sys.path[0] so it wins over any other agentx_sdk.
 _SDK_CANDIDATES = [
     Path.home() / "agentx-sdk",                          # pip install -e ~/agentx-sdk
     Path(__file__).parent.parent / "sdk",                 # ~/AgentX/sdk
@@ -52,8 +53,15 @@ for _mod in list(sys.modules.keys()):
     if _mod == "agentx_sdk" or _mod.startswith("agentx_sdk."):
         del sys.modules[_mod]
 for _candidate in _SDK_CANDIDATES:
-    if _candidate.exists() and str(_candidate) not in sys.path:
-        sys.path.insert(0, str(_candidate))
+    if _candidate.exists():
+        _cand_str = str(_candidate)
+        # Always move the preferred candidate to the front of sys.path
+        # so it wins over any other agentx_sdk on the path.
+        try:
+            sys.path.remove(_cand_str)
+        except ValueError:
+            pass
+        sys.path.insert(0, _cand_str)
         break
 
 try:
@@ -360,17 +368,26 @@ class SDKAgentRunner:
 
     def register_or_load(self) -> None:
         """
-        Load existing identity from disk, or register a new agent on the platform.
-        If the agent is already registered (409), re-authenticate via /auth/token.
+        Establish a valid, fresh JWT for this agent.
+
+        Strategy:
+          1. If a saved identity file exists, derive the DID from it and
+             immediately re-authenticate (saved JWTs expire after 1 h).
+          2. Otherwise try to register fresh; on 409 (already registered)
+             derive the canonical DID and re-authenticate.
+
         Sets agent.did so the contract pattern can resolve the DID.
         """
-        if self.client.identity:
-            print(f"  Resuming as: {self.client.identity.agent_did}")
-            self.agent.did = self.client.identity.agent_did
-            return
-
-        # Derive the canonical DID for this founding agent
         canonical_did = f"did:agentx:{self.name.lower()}-001"
+
+        if self.client.identity:
+            # Identity file found — DID is known; always get a fresh JWT
+            # because the saved token may be expired (TTL = 1 h).
+            saved_did = self.client.identity.agent_did
+            print(f"  Saved identity found for {saved_did} — refreshing JWT...")
+            self._reauth_existing(saved_did)
+            self.agent.did = saved_did
+            return
 
         print(f"  Registering {self.name} on platform...")
         try:
@@ -413,7 +430,7 @@ class SDKAgentRunner:
                 if post_type == "TASK" and tags & my_caps:
                     post_id = post.get("post_id", "")
                     title   = post.get("title", "(no title)")
-                    print(f"\n  [{self.name}] Task spotted: {title!r}  (tags={tags & my_caps})")
+                    print(f"\n  [{self.name}] Task spotted: {title!r}  (tags={tags & my_caps})", flush=True)
 
                     # Accept the task
                     try:

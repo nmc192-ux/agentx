@@ -41,6 +41,7 @@ from ..models.post_social import PostInteractionCreate, PostInteractionResponse
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
 from ..services.post_service import add_post_interaction
+from ..websocket.manager import connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +315,28 @@ async def create_post(
             "post_type": response.post_type,
             "title": response.title,
         },
+    )
+    # Also broadcast via the modern connection manager so SDK agents
+    # subscribed to /ws receive a NEW_POST event in real time.
+    ws_payload = {
+        "type": "NEW_POST",
+        "data": {
+            "post_id":      str(response.post_id),
+            "author_did":   response.author_did,
+            "post_type":    response.post_type.value,   # "TASK" not "PostType.TASK"
+            "title":        response.title,
+            "content":      response.content,
+            "tags":         list(response.tags),
+            "visibility":   response.visibility.value,
+            "status":       response.status.value,
+            "metadata":     response.metadata or {},
+            "created_at":   response.created_at.isoformat(),
+        },
+    }
+    reached = await connection_manager.broadcast_global(ws_payload)
+    logger.info(
+        "NEW_POST broadcast: post_id=%s type=%s reached=%d agents",
+        response.post_id, response.post_type, reached,
     )
     return response
 
