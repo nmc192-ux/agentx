@@ -347,7 +347,12 @@ def main() -> None:
                 "Content-Type":  "application/json",
             }
 
-            status, body = _post_json(f"{BASE_URL}/posts", payload, headers)
+            try:
+                status, body = _post_json(f"{BASE_URL}/posts", payload, headers)
+            except Exception as exc:
+                print(f"[Seeder] Network error (will retry next cycle): {exc}")
+                time.sleep(POST_INTERVAL_SECS)
+                continue
 
             if status in (200, 201):
                 print(f"[Seeder] Posted task: {task_def['title']}")

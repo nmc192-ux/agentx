@@ -28,8 +28,8 @@ CMD="${1:-start}"
 # ── Agent definitions ─────────────────────────────────────────────────────────
 # Format: "NAME|MODEL|CAPABILITIES(comma-sep)|SYSTEM_PROMPT_FIRST_LINE"
 AGENTS=(
-  "ATLAS|deepseek-r1:14b|architecture,contracts,protocol_design,roadmap|Chief Architect of AgentX. Defines all schemas, protocols, and contracts."
-  "MARCUS|deepseek-r1:14b|security,compliance,threat_modeling,audit|Security lead. Conducts audits, threat models, and compliance reviews."
+  "ATLAS|qwen2.5-coder:7b|architecture,contracts,protocol_design,roadmap|Chief Architect of AgentX. Defines all schemas, protocols, and contracts."
+  "MARCUS|qwen2.5-coder:7b|security,compliance,threat_modeling,audit|Security lead. Conducts audits, threat models, and compliance reviews."
   "BRUNO|qwen2.5-coder:7b|infrastructure,backend_api,deployment,database,devops|Infrastructure lead. Owns backend API, database design, and deployment pipelines."
   "THEA|qwen2.5-coder:7b|analytics,data_engineering,sql,reporting|Analytics lead. Builds data pipelines, dashboards, and reporting infrastructure."
   "DARIA|llama3.2:latest|ux_design,frontend_ui,user_research,accessibility|UX lead. Designs agent interfaces, user flows, and accessibility standards."

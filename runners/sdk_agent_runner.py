@@ -33,9 +33,11 @@ Usage::
 """
 from __future__ import annotations
 
+import fcntl
 import logging
 import os
 import sys
+import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -79,8 +81,12 @@ logger = logging.getLogger(__name__)
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 OLLAMA_HOST    = "http://localhost:11434"
-LOCAL_MAX_TOK  = 6_000     # safe cap for local models (prevents RAM freeze)
+LOCAL_MAX_TOK  = 1_500     # keep responses concise — less RAM + faster inference
 CLOUD_MAX_TOK  = 16_000    # cloud can handle longer outputs
+
+# Cross-process file lock so only ONE agent calls Ollama at a time.
+# Without this, 8 agents simultaneously load different models → OOM.
+_OLLAMA_LOCK_PATH = Path(tempfile.gettempdir()) / "agentx_ollama.lock"
 
 
 # ── LLM helpers (replicates base_agent logic, standalone) ────────────────────
@@ -95,7 +101,13 @@ def _ollama_available() -> bool:
 
 
 def _call_local(model: str, system_prompt: str, messages: list[dict]) -> str:
-    """Call a local Ollama model and return the full response text."""
+    """Call a local Ollama model and return the full response text.
+
+    Uses a cross-process file lock so only one agent calls Ollama at a time,
+    preventing concurrent model loads that exhaust unified memory.  keep_alive=0
+    tells Ollama to unload the model immediately after inference so the next
+    agent's model can load without competing for RAM.
+    """
     try:
         import ollama as _ollama
     except ImportError:
@@ -107,35 +119,47 @@ def _call_local(model: str, system_prompt: str, messages: list[dict]) -> str:
     thinking_shown = False
     all_messages   = [{"role": "system", "content": system_prompt}] + messages
 
+    # Serialize Ollama calls across all agent processes on this machine.
+    # Without this, 8 agents loading different models simultaneously → OOM.
+    lock_file = open(_OLLAMA_LOCK_PATH, "w")  # noqa: WPS515
     try:
-        for chunk in _ollama.chat(
-            model    = model,
-            messages = all_messages,
-            stream   = True,
-            options  = {"num_predict": LOCAL_MAX_TOK},
-        ):
-            msg = chunk.get("message") if isinstance(chunk, dict) else chunk.message
+        fcntl.flock(lock_file, fcntl.LOCK_EX)  # blocks until our turn
+        print(f"  [LLM] Acquired Ollama lock → {model}", flush=True)
+        try:
+            for chunk in _ollama.chat(
+                model      = model,
+                messages   = all_messages,
+                stream     = True,
+                keep_alive = 0,                  # unload model immediately after → free RAM
+                options    = {"num_predict": LOCAL_MAX_TOK},
+            ):
+                msg = chunk.get("message") if isinstance(chunk, dict) else chunk.message
 
-            # deepseek-r1 thinking tokens — show dimmed, don't include in result
-            thinking = getattr(msg, "thinking", None) or ""
-            if thinking:
-                if not thinking_shown:
-                    print("\n\033[2m[Thinking...]\033[0m\n\033[2m", end="", flush=True)
-                    thinking_shown = True
-                print(thinking, end="", flush=True)
-                continue
+                # deepseek-r1 thinking tokens — show dimmed, don't include in result
+                thinking = getattr(msg, "thinking", None) or ""
+                if thinking:
+                    if not thinking_shown:
+                        print("\n\033[2m[Thinking...]\033[0m\n\033[2m", end="", flush=True)
+                        thinking_shown = True
+                    print(thinking, end="", flush=True)
+                    continue
 
-            if thinking_shown:
-                print("\033[0m\n\n", end="", flush=True)
-                thinking_shown = False
+                if thinking_shown:
+                    print("\033[0m\n\n", end="", flush=True)
+                    thinking_shown = False
 
-            content = getattr(msg, "content", None) or ""
-            if content:
-                print(content, end="", flush=True)
-                full_text += content
+                content = getattr(msg, "content", None) or ""
+                if content:
+                    print(content, end="", flush=True)
+                    full_text += content
 
-    except _ollama.ResponseError as exc:
-        raise RuntimeError(f"Ollama error ({model}): {exc}") from exc
+        except _ollama.ResponseError as exc:
+            raise RuntimeError(f"Ollama error ({model}): {exc}") from exc
+        finally:
+            print(f"  [LLM] Releasing Ollama lock ({model})", flush=True)
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+    finally:
+        lock_file.close()
 
     print()
     return full_text
