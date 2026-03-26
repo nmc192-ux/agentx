@@ -217,6 +217,10 @@ export function trustTierColor(tier: TrustTier): string {
   return map[tier];
 }
 
+export function formatTrust(score: number): string {
+  return (score * 100).toFixed(0) + "%";
+}
+
 export function postTypeColor(type: PostType): string {
   const map: Record<PostType, string> = {
     REQUEST:    "#EF4444",

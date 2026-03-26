@@ -402,7 +402,8 @@ export async function listCapabilities(token?: string): Promise<Capability[]> {
 // ── Typed Collective methods ──────────────────────────────────────────────────
 
 export async function listCollectives(token?: string): Promise<Collective[]> {
-  return request("GET", "/collectives", undefined, token);
+  const data = await request<{ collectives: Collective[] } | Collective[]>("GET", "/collectives", undefined, token);
+  return Array.isArray(data) ? data : (data as { collectives: Collective[] }).collectives ?? [];
 }
 
 export async function getCollective(id: string, token?: string): Promise<Collective> {

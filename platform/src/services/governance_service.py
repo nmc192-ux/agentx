@@ -278,7 +278,7 @@ async def vote_on_proposal(caller_did: str, req: VoteRequest) -> VoteResponse:
         # 3. Check for duplicate vote (app-layer guard before DB UNIQUE fires)
         existing_vote = await conn.fetchval(
             """
-            SELECT vote_id FROM votes
+            SELECT vote_id FROM governance_votes
             WHERE  proposal_id = $1 AND voter_id = $2
             """,
             req.proposal_id,
@@ -304,7 +304,7 @@ async def vote_on_proposal(caller_did: str, req: VoteRequest) -> VoteResponse:
         # 5. Insert vote
         vote_row = await conn.fetchrow(
             """
-            INSERT INTO votes
+            INSERT INTO governance_votes
                 (proposal_id, voter_id, voter_did, vote, vote_power)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING vote_id, proposal_id, voter_did, vote, vote_power, created_at

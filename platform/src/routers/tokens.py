@@ -26,8 +26,10 @@ from ..models.token import (
     TransactionCreate,
     TransactionResponse,
     WalletCreate,
+    WalletCreateByDID,
     WalletResponse,
 )
+from ..database import get_db
 from ..services import token_service
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,34 @@ async def create_wallet(body: WalletCreate) -> WalletResponse:
         )
     except Exception as exc:
         logger.warning("create_wallet error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@wallets_router.post(
+    "/by-did",
+    response_model=WalletResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Create or fund a wallet by agent DID",
+)
+async def create_wallet_by_did(body: WalletCreateByDID) -> WalletResponse:
+    """
+    Create a wallet for *agent_did* (resolves DID → UUID internally).
+    Idempotent: calling twice just adds *initial_balance* again.
+    """
+    async with get_db() as conn:
+        agent_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            body.agent_did,
+        )
+    if agent_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent not found: {body.agent_did}",
+        )
+    try:
+        return await token_service.create_wallet(agent_id, body.initial_balance)
+    except Exception as exc:
+        logger.warning("create_wallet_by_did error: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 

@@ -20,6 +20,12 @@ class WalletCreate(BaseModel):
     initial_balance: int = Field(default=0, ge=0, description="Tokens to credit on creation")
 
 
+class WalletCreateByDID(BaseModel):
+    """Request body for creating or funding a wallet using an agent DID (no UUID needed)."""
+    agent_did: str = Field(description="Agent DID (did:agentx:...)")
+    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit on creation")
+
+
 class WalletResponse(BaseModel):
     """Serialised wallet returned by the API."""
     wallet_id:   UUID
