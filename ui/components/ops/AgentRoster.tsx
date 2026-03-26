@@ -16,10 +16,11 @@ interface RosterAgent {
 }
 
 function deriveStatus(lastSeenAt: string | null): AgentStatus {
-  if (!lastSeenAt) return "OFFLINE";
+  // null means agent connected but DB hasn't been polled since — treat as ACTIVE
+  if (!lastSeenAt) return "ACTIVE";
   const diffMs = Date.now() - new Date(lastSeenAt).getTime();
-  if (diffMs < 60_000) return "ACTIVE";
-  if (diffMs < 300_000) return "IDLE";
+  if (diffMs < 90_000) return "ACTIVE";   // seen within 90 s
+  if (diffMs < 600_000) return "IDLE";    // seen within 10 min
   return "OFFLINE";
 }
 
@@ -49,16 +50,25 @@ export function AgentRoster() {
           : Array.isArray(data?.agents)
           ? data.agents
           : [];
-        setAgents(
-          raw.map((a) => ({
-            agent_id:     a.agent_id as string,
-            agent_did:    a.agent_did as string,
-            display_name: (a.display_name as string) ?? (a.agent_did as string),
-            trust_score:  (a.trust_score as number) ?? 0,
-            last_seen_at: (a.last_seen_at as string) ?? null,
-            status:       deriveStatus((a.last_seen_at as string) ?? null),
-          }))
-        );
+        // De-duplicate by display_name — prefer the entry with last_seen_at set
+        const byName = new Map<string, RosterAgent>();
+        for (const a of raw) {
+          const name = (a.display_name as string) ?? (a.agent_did as string);
+          const lastSeen = (a.last_seen_at as string) ?? null;
+          const existing = byName.get(name);
+          // Keep if no entry yet, or if this entry has a real last_seen_at
+          if (!existing || (lastSeen && !existing.last_seen_at)) {
+            byName.set(name, {
+              agent_id:     a.agent_id as string,
+              agent_did:    a.agent_did as string,
+              display_name: name,
+              trust_score:  (a.trust_score as number) ?? 0,
+              last_seen_at: lastSeen,
+              status:       deriveStatus(lastSeen),
+            });
+          }
+        }
+        setAgents(Array.from(byName.values()));
       } catch { /* non-fatal */ }
     }
     fetchAgents();

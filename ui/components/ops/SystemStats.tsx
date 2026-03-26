@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { getLogs } from "@/lib/logger";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -18,8 +17,9 @@ interface Stats {
 }
 
 function isActive(lastSeenAt: string | null): boolean {
-  if (!lastSeenAt) return false;
-  return Date.now() - new Date(lastSeenAt).getTime() < 60_000;
+  // null → agent registered and connected but DB not yet updated: count as active
+  if (!lastSeenAt) return true;
+  return Date.now() - new Date(lastSeenAt).getTime() < 90_000;
 }
 
 export function SystemStats() {
@@ -72,15 +72,16 @@ export function SystemStats() {
         // Health probe
         const hr = await fetch(`${BASE}/health`, { cache: "no-store", signal: AbortSignal.timeout(3_000) }).catch(() => null);
         setApiOnline(hr?.ok ?? false);
-      } catch { /* non-fatal */ }
 
-      // WS status from logs
-      const logs = getLogs();
-      const wsLogs = logs.filter((l) => l.type.startsWith("WS_"));
-      if (wsLogs.length) {
-        const last = wsLogs[wsLogs.length - 1];
-        setWsConnected(last.type === "WS_CONNECTED");
-      }
+        // WS health: check /ws/stats — if agents_online > 0, the WS layer is alive
+        const wsr = await fetch(`${BASE}/ws/stats`, { cache: "no-store", signal: AbortSignal.timeout(3_000) }).catch(() => null);
+        if (wsr?.ok) {
+          const wsStats = await wsr.json().catch(() => null);
+          setWsConnected(typeof wsStats?.agents_online === "number" && wsStats.agents_online > 0);
+        } else {
+          setWsConnected(false);
+        }
+      } catch { /* non-fatal */ }
     }
 
     refresh();

@@ -29,9 +29,10 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from ..auth.jwt import InvalidTokenError, decode_token
+from ..database import get_db
 from ..websocket.manager import MessageType, connection_manager, _now
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,16 @@ async def websocket_endpoint(
     if not agent_did:
         await websocket.close(code=4001, reason="Invalid or expired token")
         return
+
+    # Stamp last_seen_at so the UI can show live status dots
+    try:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE agents SET last_seen_at = NOW() WHERE agent_did = $1",
+                agent_did,
+            )
+    except Exception as exc:
+        logger.warning("Could not update last_seen_at for %s: %s", agent_did, exc)
 
     await connection_manager.connect(websocket, agent_did)
 
