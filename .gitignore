@@ -44,6 +44,8 @@ frontend/.env.production
 # Local tooling / dev workspaces
 .claude/
 stitch/
+.agent_pids/
+sdk/
 
 # IDE
 .vscode/
