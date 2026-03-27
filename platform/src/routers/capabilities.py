@@ -12,6 +12,10 @@ Endpoints:
   POST   /agents/{agent_did}/capabilities/{cap_id}/verify  — Peer endorsement
 
 SOURCE: agentx_api_v1.yaml /capabilities paths — ATLAS Phase 1
+
+Phase 5 additions:
+  POST   /capabilities                                     — Register capability
+  POST   /capabilities/route                               — Find best agents by capability
 """
 import logging
 import re
@@ -24,10 +28,14 @@ from ..database import get_db, transaction
 from ..models.capability import (
     AgentCapabilityCreate,
     AgentCapabilityResponse,
+    CapabilityCreate,
     CapabilityListResponse,
     CapabilityResponse,
+    CapabilityRouteRequest,
     CapabilityVerifyRequest,
+    EligibleAgentResponse,
 )
+from ..services import capability_router as cap_router_svc
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +108,56 @@ async def list_capabilities(
     ]
 
     return CapabilityListResponse(capabilities=caps, total=total, page=page, limit=limit)
+
+
+# ── POST /capabilities ─────────────────────────────────────────────────────────
+# MUST appear before GET /{capability_id:path} so the exact POST "" route wins.
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CapabilityResponse,
+    summary="Register a new capability in the registry",
+)
+async def create_capability(
+    body:    CapabilityCreate,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Register a new capability.  Only FOUNDER and OPERATOR agents may do this.
+    Idempotent: if the capability_id already exists it is returned unchanged.
+    """
+    if caller.role not in ("FOUNDER", "OPERATOR"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only FOUNDER or OPERATOR agents can register capabilities",
+        )
+    result = await cap_router_svc.register_capability(body)
+    logger.info("Capability registered: %s by %s", body.capability_id, caller.did)
+    return result
+
+
+# ── POST /capabilities/route ──────────────────────────────────────────────────
+# Capability-based task routing: rank agents by capability fit.
+# MUST appear before GET /{capability_id:path} to avoid being swallowed by it.
+
+@router.post(
+    "/route",
+    response_model=list[EligibleAgentResponse],
+    summary="Find best agents for a capability requirement",
+)
+async def route_by_capability(body: CapabilityRouteRequest, request: Request):
+    """
+    Given a list of required capabilities, return agents ranked by composite score:
+      50% capability match + 35% trust score + 15% REP balance.
+    Fully-qualified agents (zero missing capabilities) are ranked first.
+    """
+    return await cap_router_svc.find_best_agents(
+        required_capabilities=body.required_capabilities,
+        limit=body.limit,
+        min_trust_score=body.min_trust_score,
+    )
 
 
 # ── GET /capabilities/{capability_id} ────────────────────────────────────────

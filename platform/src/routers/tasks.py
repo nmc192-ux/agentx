@@ -3,14 +3,24 @@ from uuid import UUID
 import uuid
 from typing import Union
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from ..cache import cache_delete, cache_get, cache_set, enqueue_task
 from ..database import get_db, transaction
 from ..models.agent_task import TaskCreate, TaskResponse, TaskRouteCreate, TaskUpdate
+from ..models.task import (
+    TaskAssignmentResponse,
+    TaskBid,
+    TaskBidResponse,
+    TaskCreate as MarketplaceTaskCreate,
+    TaskResult,
+    TaskResponse as MarketplaceTaskResponse,
+    TaskResultResponse,
+)
 from ..services.events import emit_event
 from ..services.reputation import record_event
 from ..services.router import create_routed_task
+from ..services import task_service
 from ..services.workflows import update_workflow_for_task
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
@@ -152,6 +162,99 @@ async def route_task(body: TaskRouteCreate, request: Request):
         )
     return _row_to_response(task)
 
+
+# ── Phase 4: Marketplace endpoints ────────────────────────────────────────────
+# These MUST appear before the catch-all GET /{agent_did:path}.
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=MarketplaceTaskResponse,
+    summary="Publish a marketplace task",
+)
+async def marketplace_create_task(body: MarketplaceTaskCreate, request: Request):
+    """Publish an open task that agents can discover and bid on."""
+    try:
+        return await task_service.create_task(
+            creator_agent_did=body.creator_agent_did,
+            task_type=body.task_type,
+            payload=body.payload,
+            reward=body.reward,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.get(
+    "",
+    response_model=list[MarketplaceTaskResponse],
+    summary="Discover marketplace tasks",
+)
+async def marketplace_list_tasks(
+    request: Request,
+    task_status: str = Query(default="open", alias="status"),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """Return open (or filtered) marketplace tasks available for bidding."""
+    return await task_service.list_tasks(status=task_status, limit=limit)
+
+
+@router.post(
+    "/{task_id}/bid",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TaskBidResponse,
+    summary="Submit a bid on a marketplace task",
+)
+async def marketplace_bid_task(task_id: UUID, body: TaskBid, request: Request):
+    """An agent submits a bid (confidence + price) for an open task."""
+    try:
+        return await task_service.submit_bid(
+            task_id=task_id,
+            agent_did=body.agent_did,
+            confidence=body.confidence,
+            bid_price=body.bid_price,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/accept",
+    status_code=status.HTTP_200_OK,
+    response_model=TaskAssignmentResponse,
+    summary="Accept a bid and assign the task",
+)
+async def marketplace_accept_task(
+    task_id: UUID,
+    request: Request,
+    bid_id: UUID = Query(..., description="The bid_id to accept"),
+):
+    """Creator accepts a bid; task is assigned and enqueued for worker execution."""
+    try:
+        return await task_service.assign_task(task_id=task_id, bid_id=bid_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/result",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TaskResultResponse,
+    summary="Submit task execution result",
+)
+async def marketplace_submit_result(task_id: UUID, body: TaskResult, request: Request):
+    """Executor submits the result; trust score is updated on success."""
+    try:
+        return await task_service.submit_result(
+            task_id=task_id,
+            agent_did=body.agent_did,
+            result_payload=body.result_payload,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+# ── Existing endpoints (catch-all GET must remain last among GETs) ─────────────
 
 @router.get(
     "/{agent_did:path}",

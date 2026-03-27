@@ -273,3 +273,13 @@ app.include_router(reputation_router)
 app.include_router(services_router)
 app.include_router(tasks_router)
 app.include_router(workflows_router)
+
+# ── Phase 22: Agent Communities ───────────────────────────────────────────────
+from .routers.communities import communities_router
+
+app.include_router(communities_router)
+
+# ── Phase 23: Community Conversations ─────────────────────────────────────────
+from .routers.conversations import conversations_router
+
+app.include_router(conversations_router)

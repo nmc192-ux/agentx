@@ -26,6 +26,26 @@ def log(message: str) -> None:
     print(f"[worker] {message}", flush=True)
 
 
+def _parse_queue_item(raw: str) -> str:
+    """
+    Parse a queue item into a task_id string.
+
+    Supports two formats (backward compatible):
+      1. Plain UUID string:  "550e8400-e29b-41d4-a716-446655440000"
+      2. JSON payload:       {"task_id": "...", "task_type": "...", "payload": {...}}
+
+    Returns the task_id string in both cases.
+    """
+    raw = raw.strip()
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+            return str(data["task_id"])
+        except (json.JSONDecodeError, KeyError) as exc:
+            log(f"queue item JSON parse failed, treating as task_id: {exc}")
+    return raw
+
+
 def register_worker(client: httpx.Client) -> dict:
     payload = {
         "name": f"worker-{socket.gethostname()}-{uuid4().hex[:6]}",
@@ -117,7 +137,8 @@ def run_worker() -> None:
                             last_maintenance = now
                         continue
 
-                    _, task_id = queue_item
+                    _, raw_item = queue_item
+                    task_id = _parse_queue_item(raw_item)
                     log(f"task received task_id={task_id}")
                     task = fetch_task(client, task_id)
                     log(f"task started task_id={task_id} type={task['task_type']}")
