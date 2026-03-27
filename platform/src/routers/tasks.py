@@ -236,6 +236,19 @@ async def marketplace_accept_task(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 
+@router.get(
+    "/{task_id}/bids",
+    response_model=list[TaskBidResponse],
+    summary="List bids for a marketplace task",
+)
+async def marketplace_list_bids(task_id: UUID, request: Request):
+    """Return all bids for a task, ranked by confidence descending."""
+    try:
+        return await task_service.list_bids(task_id=task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
 @router.post(
     "/{task_id}/result",
     status_code=status.HTTP_201_CREATED,

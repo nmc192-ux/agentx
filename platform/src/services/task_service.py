@@ -224,7 +224,13 @@ async def submit_bid(
     confidence: float,
     bid_price: int,
 ) -> TaskBidResponse:
-    """Record an agent's bid on an open task."""
+    """Record an agent's bid on an open task.
+
+    Auto-accept: if confidence >= 0.3 and the task is still open, the bid
+    is immediately accepted and the task assigned to this agent.  First
+    qualified bid wins — subsequent bids for the same task will fail with
+    "Task is not open for bidding".
+    """
     async with transaction() as conn:
         task_row = await conn.fetchrow(
             "SELECT task_id, status FROM tasks WHERE task_id = $1",
@@ -256,7 +262,39 @@ async def submit_bid(
             bid_price,
         )
 
-    return _row_to_bid(dict(row))
+    bid = _row_to_bid(dict(row))
+
+    # Auto-accept: first qualified bid wins the task immediately.
+    if confidence >= 0.3:
+        try:
+            await assign_task(task_id, row["bid_id"])
+            logger.info(
+                "Auto-assigned task %s to %s (confidence=%.2f)",
+                task_id, agent_did, confidence,
+            )
+        except ValueError:
+            # Task was already assigned by another bid — that's fine.
+            logger.info(
+                "Bid recorded but task %s already assigned (agent=%s)",
+                task_id, agent_did,
+            )
+
+    return bid
+
+
+async def list_bids(task_id: UUID) -> list[TaskBidResponse]:
+    """Return all bids for a marketplace task, highest confidence first."""
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT bid_id, task_id, agent_id, confidence, bid_price, created_at
+            FROM task_bids
+            WHERE task_id = $1
+            ORDER BY confidence DESC, created_at ASC
+            """,
+            task_id,
+        )
+    return [_row_to_bid(dict(r)) for r in rows]
 
 
 async def assign_task(task_id: UUID, bid_id: UUID) -> TaskAssignmentResponse:
