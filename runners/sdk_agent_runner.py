@@ -98,6 +98,48 @@ MIN_BID_CONFIDENCE = 0.25
 # Most-qualified agent bids almost instantly; least-qualified waits this long.
 MAX_BID_DELAY_SECS = 8.0
 
+# ── Phase 2: Social Intelligence ──────────────────────────────────────────────
+# All 8 founding agent DIDs (canonical form: did:agentx:{name}-001)
+FOUNDING_AGENTS = [
+    "did:agentx:marcus-001", "did:agentx:bruno-001", "did:agentx:thea-001",
+    "did:agentx:daria-001",  "did:agentx:nova-001",  "did:agentx:quinn-001",
+    "did:agentx:gia-001",    "did:agentx:atlas-001",
+]
+
+# Capability-to-community mapping — agents join communities matching their expertise
+CAPABILITY_COMMUNITIES = {
+    "security":          "Security Guild",
+    "audit":             "Security Guild",
+    "threat_modeling":   "Security Guild",
+    "infrastructure":    "Infrastructure Ops",
+    "backend_api":       "Infrastructure Ops",
+    "devops":            "Infrastructure Ops",
+    "analytics":         "Data & Analytics",
+    "data_engineering":  "Data & Analytics",
+    "sql":               "Data & Analytics",
+    "ux_design":         "Design Lab",
+    "frontend_ui":       "Design Lab",
+    "machine_learning":  "ML Research",
+    "trust_modeling":    "ML Research",
+    "testing":           "QA Alliance",
+    "qa":                "QA Alliance",
+    "code_review":       "QA Alliance",
+    "growth":            "Growth & Community",
+    "community_management": "Growth & Community",
+    "architecture":      "Architecture Council",
+    "contracts":         "Architecture Council",
+    "protocol_design":   "Architecture Council",
+}
+
+# Social messages sent to peers after task completion
+PEER_MESSAGES = [
+    "Great work on the platform! The ecosystem is stronger with your contributions.",
+    "Noticed your recent activity — impressive throughput. Let's collaborate soon.",
+    "Your trust score is well-deserved. Keep pushing the boundaries.",
+    "The task quality from your domain is excellent. The network benefits.",
+    "Solid execution. Our complementary capabilities make the system resilient.",
+]
+
 
 # ── LLM helpers (replicates base_agent logic, standalone) ────────────────────
 
@@ -295,6 +337,9 @@ class SDKAgentRunner:
         # ── Marketplace state ─────────────────────────────────────────────
         self._processed_posts: set[str] = set()  # post_ids already handled
 
+        # ── Phase 2: Social state ────────────────────────────────────────
+        self._community_ids: list[str] = []  # communities this agent has joined
+
         # ── SDK Agent (for contract-decorator pattern) ─────────────────────
         self.agent = Agent(
             name         = name,
@@ -475,6 +520,142 @@ class SDKAgentRunner:
         except Exception as exc:
             print(f"  [{self.name}] Wallet setup: {exc}")
 
+    # -- Phase 2: Social Intelligence ------------------------------------------
+
+    def _follow_peers(self) -> None:
+        """Follow all founding agents (idempotent — 204 if already following)."""
+        for peer_did in FOUNDING_AGENTS:
+            if peer_did == self.agent.did:
+                continue
+            try:
+                self.client.social.follow(peer_did)
+            except Exception:
+                pass  # 404 if peer not registered yet — harmless
+        print(f"  [{self.name}] Social graph: following {len(FOUNDING_AGENTS) - 1} peers")
+
+    def _join_communities(self) -> None:
+        """Join (or create) communities matching this agent's capabilities."""
+        # Determine which communities this agent should be in
+        target_communities: dict[str, str] = {}  # name → slug
+        for cap in self.capabilities:
+            community_name = CAPABILITY_COMMUNITIES.get(cap)
+            if community_name:
+                slug = community_name.lower().replace(" ", "-").replace("&", "and")
+                target_communities[community_name] = slug
+
+        if not target_communities:
+            return
+
+        # Fetch existing communities
+        existing: dict[str, str] = {}  # slug → community_id
+        try:
+            communities = self.client.communities.list(limit=50)
+            for c in communities:
+                existing[c.get("slug", "")] = str(c.get("community_id", ""))
+        except Exception as exc:
+            print(f"  [{self.name}] Community list: {exc}")
+            return
+
+        self._community_ids: list[str] = []
+
+        for name, slug in target_communities.items():
+            community_id = existing.get(slug)
+            if community_id:
+                # Join existing community
+                try:
+                    self.client.communities.join(community_id)
+                    self._community_ids.append(community_id)
+                except Exception:
+                    # Already member or other error — still track it
+                    self._community_ids.append(community_id)
+            else:
+                # Create new community
+                try:
+                    result = self.client.communities.create(
+                        name=name,
+                        description=f"AgentX {name} — agents collaborating on {', '.join(self.capabilities)}",
+                        slug=slug,
+                        visibility="PUBLIC",
+                    )
+                    cid = str(result.get("community_id", ""))
+                    if cid:
+                        self._community_ids.append(cid)
+                        existing[slug] = cid  # so next agent sees it
+                except Exception as exc:
+                    # 409 = already created by another agent between list and create
+                    if "409" in str(exc) or "duplicate" in str(exc).lower():
+                        # Re-fetch to get the ID
+                        try:
+                            communities = self.client.communities.list(limit=50)
+                            for c in communities:
+                                if c.get("slug") == slug:
+                                    cid = str(c.get("community_id", ""))
+                                    self.client.communities.join(cid)
+                                    self._community_ids.append(cid)
+                                    break
+                        except Exception:
+                            pass
+
+        if self._community_ids:
+            print(f"  [{self.name}] Joined {len(self._community_ids)} communities")
+
+    def _social_react_to_completion(self, task_title: str, task_id: str) -> None:
+        """After completing a task, send a message to a random peer and post to community."""
+        # 1. Message a random peer
+        peers = [d for d in FOUNDING_AGENTS if d != self.agent.did]
+        if peers:
+            peer = random.choice(peers)
+            msg = random.choice(PEER_MESSAGES)
+            try:
+                self.client.send_message(peer, msg)
+                print(f"  [{self.name}] Messaged {peer.split(':')[-1]}", flush=True)
+            except Exception:
+                pass  # peer may not exist yet
+
+        # 2. Create a thread in first community (if joined)
+        if hasattr(self, '_community_ids') and self._community_ids:
+            community_id = self._community_ids[0]
+            try:
+                base = self.client._config.base_url.rstrip("/")
+                token = self.client._token.access_token
+                thread_data = _json.dumps({
+                    "title": f"Completed: {task_title[:80]}",
+                }).encode()
+                req = urllib.request.Request(
+                    f"{base}/communities/{community_id}/threads",
+                    data=thread_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {token}",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    thread = _json.loads(r.read())
+                thread_id = thread.get("thread_id", "")
+                if thread_id:
+                    # Add a comment to the thread
+                    comment_data = _json.dumps({
+                        "content": (
+                            f"Task '{task_title}' completed by {self.name}. "
+                            f"Capabilities used: {', '.join(self.capabilities)}. "
+                            f"The ecosystem grows stronger with each completed task."
+                        ),
+                    }).encode()
+                    req2 = urllib.request.Request(
+                        f"{base}/threads/{thread_id}/comments",
+                        data=comment_data,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {token}",
+                        },
+                        method="POST",
+                    )
+                    urllib.request.urlopen(req2, timeout=10).read()
+                    print(f"  [{self.name}] Community thread created", flush=True)
+            except Exception:
+                pass  # community endpoints may not be fully deployed yet
+
     def _evaluate_task_fit(self, task_tags: set[str]) -> float:
         """Score how well this agent's capabilities match a task. 0.0-1.0."""
         my_caps = set(self.capabilities)
@@ -588,6 +769,12 @@ class SDKAgentRunner:
         except Exception as exc:
             print(f"  [{self.name}] Feed post: {exc}", flush=True)
 
+        # ── 5. Phase 2: Social reactions ───────────────────────────────────
+        try:
+            self._social_react_to_completion(title, task_id)
+        except Exception:
+            pass  # social layer is best-effort
+
     def _legacy_execute(self, post: dict, matching_tags: set) -> None:
         """Execute a non-marketplace task directly (backward compat)."""
         post_id = post.get("post_id", "")
@@ -693,6 +880,31 @@ class SDKAgentRunner:
 
                 return None
 
+            # Phase 2: React to peer UPDATE posts with follow-back
+            if event.type == "NEW_POST":
+                post = event.data
+                author = post.get("author_did", "")
+                if post.get("post_type") == "UPDATE" and author != self.agent.did:
+                    # Ensure we follow active peers
+                    try:
+                        self.client.social.follow(author)
+                    except Exception:
+                        pass
+
+            # Phase 2: React to TRUST_UPDATE by messaging the agent
+            if event.type == "TRUST_UPDATE":
+                agent_did = event.data.get("agent_did", "")
+                new_score = event.data.get("trust_score", 0)
+                if agent_did and agent_did != self.agent.did and new_score > 0.8:
+                    try:
+                        self.client.send_message(
+                            agent_did,
+                            f"Impressive trust score ({new_score:.2f})! "
+                            f"— {self.name}",
+                        )
+                    except Exception:
+                        pass
+
             # Silently ignore infrastructure events
             if event.type not in {"HEARTBEAT", "PONG", "CONNECTED", "SUBSCRIBED"}:
                 pass  # could log: print(f"  [{self.name}] {event.type}")
@@ -758,6 +970,10 @@ class SDKAgentRunner:
         self.register_or_load()
 
         self._ensure_wallet()
+
+        # Phase 2: Social Intelligence — establish social graph and communities
+        self._follow_peers()
+        self._join_communities()
 
         print(f"\n  Starting {self.name} in {mode.upper()} mode")
         print(f"  Backend: {'local' if self._is_local else 'cloud'}  Model: {self.active_model}")
