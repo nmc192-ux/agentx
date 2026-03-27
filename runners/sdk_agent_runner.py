@@ -340,6 +340,14 @@ class SDKAgentRunner:
         # ── Phase 2: Social state ────────────────────────────────────────
         self._community_ids: list[str] = []  # communities this agent has joined
 
+        # ── Phase 4: Persistent memory state ─────────────────────────────
+        self._task_stats: dict = {
+            "completed": 0,
+            "delegated": 0,
+            "total_reward": 0,
+            "capabilities_used": {},
+        }
+
         # ── SDK Agent (for contract-decorator pattern) ─────────────────────
         self.agent = Agent(
             name         = name,
@@ -731,6 +739,8 @@ class SDKAgentRunner:
                 f"({len(steps)} sub-tasks delegated)",
                 flush=True,
             )
+            # Phase 4: Record delegation in persistent memory
+            self._record_delegation()
         except Exception as exc:
             print(f"  [{self.name}] Workflow creation failed: {exc}", flush=True)
             return False
@@ -774,6 +784,144 @@ class SDKAgentRunner:
             pass
 
         return True
+
+    # -- Phase 4: Self-Governance + Memory --------------------------------------
+
+    def _load_memory(self) -> None:
+        """Load persistent agent state from platform memory store."""
+        try:
+            stats = self.client.memory.load_json("task_stats")
+            if stats:
+                self._task_stats = stats
+            else:
+                self._task_stats = {
+                    "completed": 0,
+                    "delegated": 0,
+                    "total_reward": 0,
+                    "capabilities_used": {},
+                }
+        except Exception:
+            self._task_stats = {
+                "completed": 0,
+                "delegated": 0,
+                "total_reward": 0,
+                "capabilities_used": {},
+            }
+
+    def _save_memory(self) -> None:
+        """Persist agent state to platform memory store."""
+        try:
+            self.client.memory.save_json("task_stats", self._task_stats)
+        except Exception:
+            pass  # memory service may not be available
+
+    def _record_task_completion(self, task_type: str, reward: int = 0) -> None:
+        """Update in-memory stats and persist after task completion."""
+        self._task_stats["completed"] += 1
+        self._task_stats["total_reward"] += reward
+        cap_counts = self._task_stats.get("capabilities_used", {})
+        cap_counts[task_type] = cap_counts.get(task_type, 0) + 1
+        self._task_stats["capabilities_used"] = cap_counts
+        self._save_memory()
+
+    def _record_delegation(self) -> None:
+        """Track a workflow delegation in persistent stats."""
+        self._task_stats["delegated"] += 1
+        self._save_memory()
+
+    def _governance_participation(self) -> None:
+        """Periodically create proposals and vote on active ones.
+
+        Called from background thread. Each agent contributes to governance
+        based on its domain expertise — security agents propose security policies,
+        infrastructure agents propose scaling parameters, etc.
+        """
+        import time
+
+        # Proposal templates per capability area
+        PROPOSALS = {
+            "security": [
+                ("Require 2FA for all agent registrations", "Strengthen agent identity verification by mandating two-factor authentication."),
+                ("Mandate security audit for trust score > 0.9", "High-trust agents should undergo periodic security audits to maintain integrity."),
+            ],
+            "infrastructure": [
+                ("Increase task queue concurrency limit to 50", "Current limit of 20 bottlenecks high-throughput periods. Propose raising to 50."),
+                ("Enable auto-scaling for worker pool", "Workers should scale based on queue depth to maintain SLA commitments."),
+            ],
+            "analytics": [
+                ("Publish weekly ecosystem health dashboard", "Automate weekly generation of trust distribution, task completion, and reward flow metrics."),
+                ("Standardize event logging format", "Adopt structured JSON logging across all services for better analytics pipeline integration."),
+            ],
+            "machine_learning": [
+                ("Retrain trust model quarterly", "The trust decay model should be retrained on fresh data every quarter for calibration."),
+                ("Open-source the capability matching algorithm", "Transparency in agent-task matching builds ecosystem trust."),
+            ],
+            "testing": [
+                ("Require 80% test coverage for new services", "Set a minimum branch coverage threshold to maintain code quality."),
+                ("Automated regression suite for trust scoring", "Prevent trust score regressions with automated validation after each deployment."),
+            ],
+            "architecture": [
+                ("Adopt ACP-2.0 message envelope standard", "Current ACP-1.0 lacks message threading. Propose upgrade to ACP-2.0 with context chains."),
+                ("Introduce capability versioning scheme", "Capability slugs should carry semantic versions for backward compatibility."),
+            ],
+            "growth": [
+                ("Launch agent onboarding bounty program", "Offer REP rewards to existing agents who successfully onboard new participants."),
+                ("Create monthly contributor spotlight", "Recognize top contributors by trust score delta and task completion volume."),
+            ],
+            "ux_design": [
+                ("Standardize agent profile card layout", "Unified profile card improves discovery UX and builds visual consistency."),
+                ("Accessibility audit for governance voting UI", "Ensure WCAG 2.1 AA compliance across all interaction surfaces."),
+            ],
+        }
+
+        proposal_created = False
+        while True:
+            try:
+                time.sleep(120)  # check every 2 minutes
+
+                # 1. Vote on active proposals
+                try:
+                    proposals = self.client.governance.list_proposals(status="active")
+                    for p in proposals:
+                        # Simple heuristic: vote yes if proposal matches our domain
+                        proposal_text = f"{p.title} {p.description}".lower()
+                        relevance = any(cap in proposal_text for cap in self.capabilities)
+                        try:
+                            vote = "yes" if relevance else "abstain"
+                            self.client.governance.vote(str(p.proposal_id), vote)
+                            print(
+                                f"  [{self.name}] Voted '{vote}' on: {p.title[:50]}",
+                                flush=True,
+                            )
+                        except Exception:
+                            pass  # already voted or other error
+                except Exception:
+                    pass
+
+                # 2. Create one proposal (only once per session)
+                if not proposal_created:
+                    for cap in self.capabilities:
+                        templates = PROPOSALS.get(cap, [])
+                        if templates:
+                            title, desc = random.choice(templates)
+                            try:
+                                self.client.governance.create_proposal(
+                                    title=title,
+                                    description=desc,
+                                    proposal_type="general",
+                                    voting_days=7,
+                                )
+                                print(
+                                    f"  [{self.name}] Proposal created: {title[:50]}",
+                                    flush=True,
+                                )
+                                proposal_created = True
+                            except Exception:
+                                pass
+                            break
+
+            except Exception:
+                pass  # governance may not be available
 
     def _evaluate_task_fit(self, task_tags: set[str]) -> float:
         """Score how well this agent's capabilities match a task. 0.0-1.0."""
@@ -880,6 +1028,9 @@ class SDKAgentRunner:
             with urllib.request.urlopen(req, timeout=15) as r:
                 r.read()
             print(f"  [{self.name}] Marketplace result submitted", flush=True)
+            # Phase 4: Record completion in persistent memory
+            task_type = post.get("tags", ["unknown"])[0] if post.get("tags") else "unknown"
+            self._record_task_completion(task_type)
         except Exception as exc:
             print(f"  [{self.name}] Result submission: {exc}", flush=True)
 
@@ -1139,9 +1290,17 @@ class SDKAgentRunner:
         bus_thread = threading.Thread(target=self._poll_agentbus, daemon=True)
         bus_thread.start()
 
+        # Phase 4: Load persistent memory and start governance thread
+        self._load_memory()
+        gov_thread = threading.Thread(target=self._governance_participation, daemon=True)
+        gov_thread.start()
+
         print(f"\n  Starting {self.name} in {mode.upper()} mode")
         print(f"  Backend: {'local' if self._is_local else 'cloud'}  Model: {self.active_model}")
         print(f"  Capabilities: {self.capabilities}")
+        if self._task_stats["completed"] > 0:
+            print(f"  Memory: {self._task_stats['completed']} tasks completed, "
+                  f"{self._task_stats['delegated']} delegated")
         print("  Press Ctrl-C to stop\n")
 
         try:
