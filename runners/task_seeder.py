@@ -21,7 +21,8 @@ BASE_URL = os.environ.get("AGENTX_BASE_URL", "http://localhost:8000").rstrip("/"
 SEEDER_DID = "did:agentx:atlas-001"
 REAUTH_INTERVAL_TASKS = 100   # re-auth every N tasks
 REAUTH_INTERVAL_SECS  = 3600  # or every hour, whichever comes first
-POST_INTERVAL_SECS    = 20    # one task every 20 seconds
+POST_INTERVAL_SECS    = 30    # one task every 30s (more time for bidding)
+TASK_REWARD           = 50    # tokens escrowed per task
 
 # ---------------------------------------------------------------------------
 # Task catalog — one entry per capability area (8 total)
@@ -305,15 +306,93 @@ def get_token() -> str:
 # Main seeder loop
 # ---------------------------------------------------------------------------
 
+def _ensure_seeder_wallet(token: str) -> None:
+    """Create a wallet for the seeder agent if one doesn't exist."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {"agent_did": SEEDER_DID, "initial_balance": 50_000}
+    try:
+        status, body = _post_json(f"{BASE_URL}/wallets/by-did", payload, headers)
+        if status in (200, 201):
+            data = _json_mod.loads(body)
+            print(f"[Seeder] Wallet ready — balance: {data.get('balance', '?')} AX")
+        else:
+            print(f"[Seeder] Wallet: {status} {body[:120]}")
+    except Exception as exc:
+        print(f"[Seeder] Wallet setup: {exc}")
+
+
+def _create_marketplace_task(task_def: dict, token: str) -> str | None:
+    """Create a marketplace task via POST /tasks. Returns task_id or None."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {
+        "creator_agent_did": SEEDER_DID,
+        "task_type": task_def["tags"][0],
+        "payload": {
+            "title": task_def["title"],
+            "content": task_def["content"],
+            "tags": task_def["tags"],
+        },
+        "reward": TASK_REWARD,
+    }
+    try:
+        status, body = _post_json(f"{BASE_URL}/tasks", payload, headers)
+    except Exception as exc:
+        print(f"[Seeder] Marketplace task error: {exc}")
+        return None
+
+    if status in (200, 201):
+        data = _json_mod.loads(body)
+        task_id = data.get("task_id", "")
+        print(f"[Seeder] Marketplace task created: {task_id[:8]}  reward={TASK_REWARD} AX")
+        return str(task_id)
+    else:
+        print(f"[Seeder] Marketplace task failed ({status}): {body[:150]}")
+        return None
+
+
+def _create_feed_post(task_def: dict, marketplace_task_id: str | None, token: str) -> bool:
+    """Create a TASK post in the feed, linked to a marketplace task if available."""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    metadata = {"sla_hours": 2, "bounty_rep": 100}
+    if marketplace_task_id:
+        metadata["marketplace_task_id"] = marketplace_task_id
+
+    payload = {
+        "post_type": "TASK",
+        "title": task_def["title"],
+        "content": task_def["content"],
+        "tags": task_def["tags"],
+        "metadata": metadata,
+        "visibility": "PUBLIC",
+        "author_did": SEEDER_DID,
+    }
+    try:
+        status, body = _post_json(f"{BASE_URL}/posts", payload, headers)
+    except Exception as exc:
+        print(f"[Seeder] Feed post error: {exc}")
+        return False
+
+    if status in (200, 201):
+        label = "marketplace" if marketplace_task_id else "legacy"
+        print(f"[Seeder] Feed post: {task_def['title']}  ({label})")
+        return True
+    else:
+        print(f"[Seeder] Feed post failed ({status}): {body[:150]}")
+        return False
+
+
 def main() -> None:
     print(f"[Seeder] Starting — base URL: {BASE_URL}")
-    print(f"[Seeder] Posting one task every {POST_INTERVAL_SECS}s, re-auth every "
-          f"{REAUTH_INTERVAL_TASKS} tasks or {REAUTH_INTERVAL_SECS}s")
+    print(f"[Seeder] Posting one task every {POST_INTERVAL_SECS}s")
+    print(f"[Seeder] Marketplace reward: {TASK_REWARD} AX per task")
 
-    token        = get_token()
-    auth_time    = time.monotonic()
-    task_count   = 0
-    catalog_len  = len(TASK_CATALOG)
+    token = get_token()
+    auth_time = time.monotonic()
+    task_count = 0
+    catalog_len = len(TASK_CATALOG)
+
+    # Bootstrap wallet for escrow
+    _ensure_seeder_wallet(token)
 
     try:
         while True:
@@ -324,7 +403,7 @@ def main() -> None:
                 or elapsed >= REAUTH_INTERVAL_SECS
             ):
                 try:
-                    token     = get_token()
+                    token = get_token()
                     auth_time = time.monotonic()
                     print("[Seeder] Re-authenticated successfully.")
                 except Exception as exc:
@@ -332,32 +411,11 @@ def main() -> None:
 
             task_def = TASK_CATALOG[task_count % catalog_len]
 
-            payload = {
-                "post_type":  "TASK",
-                "title":      task_def["title"],
-                "content":    task_def["content"],
-                "tags":       task_def["tags"],
-                "metadata":   {"sla_hours": 2, "bounty_rep": 100},
-                "visibility": "PUBLIC",
-                "author_did": SEEDER_DID,
-            }
+            # 1. Create marketplace task (escrows reward)
+            marketplace_id = _create_marketplace_task(task_def, token)
 
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type":  "application/json",
-            }
-
-            try:
-                status, body = _post_json(f"{BASE_URL}/posts", payload, headers)
-            except Exception as exc:
-                print(f"[Seeder] Network error (will retry next cycle): {exc}")
-                time.sleep(POST_INTERVAL_SECS)
-                continue
-
-            if status in (200, 201):
-                print(f"[Seeder] Posted task: {task_def['title']}")
-            else:
-                print(f"[Seeder] Error {status}: {body[:200]}")
+            # 2. Create feed post (linked to marketplace task for agent discovery)
+            _create_feed_post(task_def, marketplace_id, token)
 
             task_count += 1
             time.sleep(POST_INTERVAL_SECS)

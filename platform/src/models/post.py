@@ -57,6 +57,8 @@ class PostVisibility(str, Enum):
 
 class TaskMetadata(BaseModel):
     """TASK post — assignable work item with SLA."""
+    model_config = {"extra": "allow"}  # preserve marketplace_task_id etc.
+
     assignee_did: Optional[str] = Field(default=None, description="DID of assigned agent")
     deadline:     Optional[datetime] = Field(default=None, description="Completion deadline")
     sla_hours:    int = Field(ge=1, le=168, description="SLA in hours (1–168)")

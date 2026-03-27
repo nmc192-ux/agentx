@@ -34,10 +34,14 @@ Usage::
 from __future__ import annotations
 
 import fcntl
+import json as _json
 import logging
 import os
+import random
 import sys
 import tempfile
+import threading
+import urllib.error as _uerr
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -87,6 +91,12 @@ CLOUD_MAX_TOK  = 16_000    # cloud can handle longer outputs
 # Cross-process file lock so only ONE agent calls Ollama at a time.
 # Without this, 8 agents simultaneously load different models → OOM.
 _OLLAMA_LOCK_PATH = Path(tempfile.gettempdir()) / "agentx_ollama.lock"
+
+# Marketplace bidding: agents with confidence below this threshold ignore tasks.
+MIN_BID_CONFIDENCE = 0.25
+# Maximum delay (seconds) before the least-qualified agent bids.
+# Most-qualified agent bids almost instantly; least-qualified waits this long.
+MAX_BID_DELAY_SECS = 8.0
 
 
 # ── LLM helpers (replicates base_agent logic, standalone) ────────────────────
@@ -282,6 +292,9 @@ class SDKAgentRunner:
         # ── Conversation history (per-session, mirrors base_agent) ─────────
         self._messages: list[dict] = []
 
+        # ── Marketplace state ─────────────────────────────────────────────
+        self._processed_posts: set[str] = set()  # post_ids already handled
+
         # ── SDK Agent (for contract-decorator pattern) ─────────────────────
         self.agent = Agent(
             name         = name,
@@ -434,77 +447,255 @@ class SDKAgentRunner:
                 print(f"  [ERROR] Registration failed: {exc}")
                 raise
 
+    # -- Marketplace helpers ----------------------------------------------------
+
+    def _ensure_wallet(self) -> None:
+        """Bootstrap a token wallet for this agent (idempotent)."""
+        base = self.client._config.base_url.rstrip("/")
+        try:
+            data = _json.dumps({
+                "agent_did": self.agent.did,
+                "initial_balance": 1000,
+            }).encode()
+            req = urllib.request.Request(
+                f"{base}/wallets/by-did",
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.client._token.access_token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                wallet = _json.loads(r.read())
+            print(f"  [{self.name}] Wallet ready — balance: {wallet.get('balance', '?')} AX")
+        except _uerr.HTTPError as exc:
+            body = exc.read().decode(errors="replace")[:120]
+            print(f"  [{self.name}] Wallet: {exc.code} {body}")
+        except Exception as exc:
+            print(f"  [{self.name}] Wallet setup: {exc}")
+
+    def _evaluate_task_fit(self, task_tags: set[str]) -> float:
+        """Score how well this agent's capabilities match a task. 0.0-1.0."""
+        my_caps = set(self.capabilities)
+        overlap = task_tags & my_caps
+        if not overlap:
+            return 0.0
+        base = len(overlap) / max(len(task_tags), 1)
+        return min(1.0, base + random.uniform(0.0, 0.05))
+
+    def _marketplace_bid_and_execute(
+        self, task_id: str, confidence: float, post: dict,
+    ) -> None:
+        """
+        Timer-thread callback: submit bid → if we win → execute → submit result.
+
+        Called after a confidence-proportional delay so the most qualified agent
+        bids first.  Auto-accept on the platform assigns the task to the first
+        qualified bidder; subsequent bids fail with "not open".
+        """
+        base = self.client._config.base_url.rstrip("/")
+        token = self.client._token.access_token
+
+        # ── 1. Submit bid ─────────────────────────────────────────────────
+        try:
+            bid_data = _json.dumps({
+                "agent_did": self.agent.did,
+                "confidence": round(confidence, 3),
+                "bid_price": int(confidence * 80),
+            }).encode()
+            req = urllib.request.Request(
+                f"{base}/tasks/{task_id}/bid",
+                data=bid_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                _json.loads(r.read())  # bid accepted
+        except _uerr.HTTPError as exc:
+            body = exc.read().decode(errors="replace")
+            if "not open" in body.lower() or "already" in body.lower():
+                print(f"  [{self.name}] Task already taken — skipping", flush=True)
+            else:
+                print(f"  [{self.name}] Bid failed ({exc.code}): {body[:120]}", flush=True)
+            return
+        except Exception as exc:
+            print(f"  [{self.name}] Bid error: {exc}", flush=True)
+            return
+
+        title = post.get("title", "(no title)")
+        tags = set(post.get("tags", []))
+        my_caps = set(self.capabilities)
+
+        print(f"  [{self.name}] Won task: {title!r}  (conf={confidence:.2f})", flush=True)
+
+        # ── 2. Execute with LLM ──────────────────────────────────────────
+        self._messages = []  # fresh context per task
+        prompt = (
+            f"You have been assigned a task on the AgentX platform.\n\n"
+            f"Title: {title}\n"
+            f"Content: {post.get('content', '')}\n"
+            f"Tags: {sorted(tags)}\n\n"
+            f"Provide a thorough, production-quality response."
+        )
+        try:
+            result_text = self.think(prompt)
+        except Exception as exc:
+            print(f"  [{self.name}] LLM failed: {exc}", flush=True)
+            return
+
+        # ── 3. Submit result to marketplace (triggers escrow + trust) ─────
+        try:
+            result_data = _json.dumps({
+                "agent_did": self.agent.did,
+                "result_payload": {
+                    "output": result_text[:2000],
+                    "model": self.active_model,
+                    "agent": self.name,
+                },
+            }).encode()
+            req = urllib.request.Request(
+                f"{base}/tasks/{task_id}/result",
+                data=result_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                r.read()
+            print(f"  [{self.name}] Marketplace result submitted", flush=True)
+        except Exception as exc:
+            print(f"  [{self.name}] Result submission: {exc}", flush=True)
+
+        # ── 4. Post UPDATE to feed (dashboard visibility) ─────────────────
+        try:
+            self.client.create_post(PostCreate(
+                post_type="UPDATE",
+                title=f"[{self.name}] Response: {title}",
+                content=result_text[:2000],
+                tags=list(tags & my_caps),
+                metadata={
+                    "progress_percent": 100,
+                    "marketplace_task_id": task_id,
+                },
+            ))
+            print(f"  [{self.name}] Feed update posted", flush=True)
+        except Exception as exc:
+            print(f"  [{self.name}] Feed post: {exc}", flush=True)
+
+    def _legacy_execute(self, post: dict, matching_tags: set) -> None:
+        """Execute a non-marketplace task directly (backward compat)."""
+        post_id = post.get("post_id", "")
+        title = post.get("title", "(no title)")
+        tags = set(post.get("tags", []))
+
+        self._messages = []
+        prompt = (
+            f"You have been assigned a task on the AgentX platform.\n\n"
+            f"Title: {title}\n"
+            f"Content: {post.get('content', '')}\n"
+            f"Tags: {sorted(tags)}\n\n"
+            f"Provide a thorough, production-quality response."
+        )
+        try:
+            result_text = self.think(prompt)
+        except Exception as exc:
+            print(f"  [{self.name}] LLM failed: {exc}", flush=True)
+            return
+
+        try:
+            self.client.create_post(PostCreate(
+                post_type="UPDATE",
+                title=f"[{self.name}] Response: {title}",
+                content=result_text[:2000],
+                tags=list(matching_tags),
+                metadata={
+                    "progress_percent": 100,
+                    "parent_post_id": post_id,
+                },
+            ))
+            print(f"  [{self.name}] Feed update posted", flush=True)
+        except Exception as exc:
+            print(f"  [{self.name}] Feed post: {exc}", flush=True)
+
     # -- Event-handler pattern --------------------------------------------------
 
     def _make_event_handler(self):
         """
         Build the event-handler function for runtime.run().
 
-        Reacts to NEW_POST events with post_type=TASK where the tags overlap
-        with this agent's capabilities.
+        Marketplace flow (when post has marketplace_task_id in metadata):
+          1. Calculate confidence from capability overlap
+          2. Schedule a delayed bid (delay = (1 - conf) * MAX_BID_DELAY_SECS)
+          3. Most-qualified agent bids first → auto-accept assigns them
+          4. Winner executes with LLM → submits result → posts UPDATE
+
+        Legacy flow (posts without marketplace_task_id):
+          Direct execution with confidence threshold (≥0.5).
         """
         my_caps = set(self.capabilities)
 
         def handle(event: Event, memory: list[Event]) -> Optional[dict]:
-            # ── Task events ───────────────────────────────────────────────
             if event.type == "NEW_POST":
-                post      = event.data
-                post_type = post.get("post_type", "")
-                tags      = set(post.get("tags", []))
+                post = event.data
+                if post.get("post_type") != "TASK":
+                    return None
 
-                if post_type == "TASK" and tags & my_caps:
-                    post_id = post.get("post_id", "")
-                    title   = post.get("title", "(no title)")
-                    print(f"\n  [{self.name}] Task spotted: {title!r}  (tags={tags & my_caps})", flush=True)
+                post_id = post.get("post_id", "")
+                if post_id in self._processed_posts:
+                    return None
+                self._processed_posts.add(post_id)
 
-                    # Accept the task
-                    try:
-                        self.client.act(
-                            action_type = "ACCEPT_TASK",
-                            data        = {"post_id": post_id},
-                        )
-                    except Exception as exc:
-                        print(f"  [WARN] Failed to accept task {post_id}: {exc}")
-                        pass  # continue — LLM processing proceeds regardless
+                # Don't bid on own tasks (seeder may share DID)
+                if post.get("author_did") == self.agent.did:
+                    return None
 
-                    # Generate a response with the LLM
-                    prompt = (
-                        f"You have been assigned a task on the AgentX platform.\n\n"
-                        f"Title: {title}\n"
-                        f"Content: {post.get('content', '')}\n"
-                        f"Tags: {sorted(tags)}\n\n"
-                        f"Provide a thorough, production-quality response."
+                tags = set(post.get("tags", []))
+                confidence = self._evaluate_task_fit(tags)
+                if confidence < MIN_BID_CONFIDENCE:
+                    return None
+
+                title = post.get("title", "(no title)")
+                metadata = post.get("metadata") or {}
+                marketplace_id = metadata.get("marketplace_task_id")
+
+                if marketplace_id:
+                    # ── Marketplace: delayed bid (most qualified bids first) ──
+                    delay = (1.0 - confidence) * MAX_BID_DELAY_SECS
+                    print(
+                        f"\n  [{self.name}] Task: {title!r}"
+                        f"  conf={confidence:.2f}  bid in {delay:.1f}s",
+                        flush=True,
                     )
-                    try:
-                        result_text = self.think(prompt)
-                    except Exception as exc:
-                        print(f"  [ERROR] LLM call failed: {exc}")
-                        return None
+                    threading.Timer(
+                        delay,
+                        self._marketplace_bid_and_execute,
+                        args=(marketplace_id, confidence, post),
+                    ).start()
+                else:
+                    # ── Legacy: direct execution with higher threshold ────────
+                    if confidence >= 0.5:
+                        print(
+                            f"\n  [{self.name}] Task: {title!r}"
+                            f"  conf={confidence:.2f} (legacy)",
+                            flush=True,
+                        )
+                        threading.Thread(
+                            target=self._legacy_execute,
+                            args=(post, tags & my_caps),
+                            daemon=True,
+                        ).start()
 
-                    # Post the result to the feed
-                    try:
-                        self.client.create_post(PostCreate(
-                            post_type = "UPDATE",
-                            title     = f"[{self.name}] Response: {title}",
-                            content   = result_text[:2000],
-                            tags      = list(tags & my_caps),
-                            metadata  = {
-                                "progress_percent": 100,   # UpdateMetadata requires this
-                                "parent_post_id":   post_id,
-                            },
-                        ))
-                        print(f"  [{self.name}] Posted response to feed ✓", flush=True)
-                    except Exception as exc:
-                        print(f"  [WARN] Failed to post result: {exc}")
+                return None
 
-                    return None  # action already dispatched above
-
-            # ── Ignore heartbeats ─────────────────────────────────────────
-            elif event.type in {"HEARTBEAT", "PONG", "CONNECTED", "SUBSCRIBED"}:
-                pass
-
-            else:
-                print(f"  [{self.name}] {event.type}: {str(event.data)[:80]}")
+            # Silently ignore infrastructure events
+            if event.type not in {"HEARTBEAT", "PONG", "CONNECTED", "SUBSCRIBED"}:
+                pass  # could log: print(f"  [{self.name}] {event.type}")
 
             return None
 
@@ -565,6 +756,8 @@ class SDKAgentRunner:
                       Defaults to ["feed", "governance"].
         """
         self.register_or_load()
+
+        self._ensure_wallet()
 
         print(f"\n  Starting {self.name} in {mode.upper()} mode")
         print(f"  Backend: {'local' if self._is_local else 'cloud'}  Model: {self.active_model}")
