@@ -656,6 +656,125 @@ class SDKAgentRunner:
             except Exception:
                 pass  # community endpoints may not be fully deployed yet
 
+    # -- Phase 3: Collaborative Intelligence --------------------------------------
+
+    def _should_decompose(self, post: dict) -> bool:
+        """Decide if a task is complex enough to warrant decomposition into a workflow.
+
+        A task is decomposable when it spans multiple capability areas beyond
+        what this agent covers — meaning peer agents should handle sub-tasks.
+        """
+        tags = set(post.get("tags", []))
+        my_caps = set(self.capabilities)
+        uncovered = tags - my_caps
+        # Decompose if the task has tags we can't handle AND we cover at least one
+        return len(uncovered) >= 2 and len(tags & my_caps) >= 1
+
+    def _decompose_and_delegate(self, post: dict, task_id: str) -> bool:
+        """Decompose a complex task into a multi-step workflow and delegate sub-tasks.
+
+        Creates a workflow via POST /workflows/create where each uncovered
+        capability area becomes a separate step. The platform's workflow engine
+        routes each step to the best-suited agent automatically.
+
+        Returns True if delegation succeeded, False to fall back to solo execution.
+        """
+        tags = set(post.get("tags", []))
+        my_caps = set(self.capabilities)
+        my_tags = tags & my_caps
+        other_tags = tags - my_caps
+
+        title = post.get("title", "(no title)")
+        content = post.get("content", "")
+
+        # Build workflow steps: one for each uncovered capability area
+        steps = []
+        for i, tag in enumerate(sorted(other_tags)):
+            steps.append({
+                "task_type": tag,
+                "payload": {
+                    "title": f"[Sub-task {i+1}] {title} — {tag}",
+                    "content": content,
+                    "tags": [tag],
+                    "delegated_by": self.agent.did,
+                    "parent_task_id": task_id,
+                },
+            })
+
+        if not steps:
+            return False
+
+        base = self.client._config.base_url.rstrip("/")
+        token = self.client._token.access_token
+
+        # 1. Create workflow
+        try:
+            workflow_data = _json.dumps({
+                "initiator_agent_did": self.agent.did,
+                "workflow_type": "task_decomposition",
+                "steps": steps,
+            }).encode()
+            req = urllib.request.Request(
+                f"{base}/workflows/create",
+                data=workflow_data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                workflow = _json.loads(r.read())
+            wf_id = workflow.get("workflow_id", "?")
+            print(
+                f"  [{self.name}] Workflow created: {str(wf_id)[:8]} "
+                f"({len(steps)} sub-tasks delegated)",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"  [{self.name}] Workflow creation failed: {exc}", flush=True)
+            return False
+
+        # 2. Notify peers via AgentBus about the delegation
+        for step in steps:
+            try:
+                self.client.bus.send(
+                    to_did=self.agent.did,  # broadcast-like: send to self, others poll inbox
+                    message_type="task_request",
+                    human_summary=(
+                        f"{self.name} delegated sub-task: "
+                        f"{step['payload']['title'][:80]}"
+                    ),
+                    machine_payload={
+                        "workflow_id": str(wf_id),
+                        "task_type": step["task_type"],
+                        "parent_task_id": task_id,
+                    },
+                    channel="workflows",
+                )
+            except Exception:
+                pass  # AgentBus notification is best-effort
+
+        # 3. Broadcast delegation event
+        try:
+            self.client.bus.broadcast(
+                message_type="system_event",
+                human_summary=(
+                    f"{self.name} decomposed '{title[:60]}' into "
+                    f"{len(steps)} sub-tasks for collaborative execution"
+                ),
+                machine_payload={
+                    "workflow_id": str(wf_id),
+                    "original_task_id": task_id,
+                    "sub_task_types": [s["task_type"] for s in steps],
+                },
+                channel="workflows",
+            )
+        except Exception:
+            pass
+
+        return True
+
     def _evaluate_task_fit(self, task_tags: set[str]) -> float:
         """Score how well this agent's capabilities match a task. 0.0-1.0."""
         my_caps = set(self.capabilities)
@@ -712,6 +831,17 @@ class SDKAgentRunner:
         my_caps = set(self.capabilities)
 
         print(f"  [{self.name}] Won task: {title!r}  (conf={confidence:.2f})", flush=True)
+
+        # ── Phase 3: Try decomposition for complex cross-capability tasks ─
+        if self._should_decompose(post):
+            delegated = self._decompose_and_delegate(post, task_id)
+            if delegated:
+                # We still execute our part, but sub-tasks are delegated
+                print(
+                    f"  [{self.name}] Delegated cross-capability sub-tasks; "
+                    f"executing own part",
+                    flush=True,
+                )
 
         # ── 2. Execute with LLM ──────────────────────────────────────────
         self._messages = []  # fresh context per task
@@ -951,6 +1081,36 @@ class SDKAgentRunner:
             f"{self.agent.registered_capabilities()}"
         )
 
+    # -- Phase 3: AgentBus inbox poller ----------------------------------------
+
+    def _poll_agentbus(self) -> None:
+        """Background thread: periodically check AgentBus inbox for delegation requests."""
+        import time
+        seen_ids: set[str] = set()
+        while True:
+            try:
+                time.sleep(30)  # check every 30s
+                messages = self.client.bus.receive(limit=10, acp_type="task_request")
+                for msg in messages:
+                    msg_id = str(msg.get("message_id", ""))
+                    if msg_id in seen_ids:
+                        continue
+                    seen_ids.add(msg_id)
+                    payload = msg.get("machine_payload") or {}
+                    summary = msg.get("human_summary", "")
+                    task_type = payload.get("task_type", "")
+                    # Only react to delegations matching our capabilities
+                    if task_type in self.capabilities:
+                        print(
+                            f"  [{self.name}] AgentBus: received delegation — {summary[:60]}",
+                            flush=True,
+                        )
+                # Trim seen_ids to prevent unbounded growth
+                if len(seen_ids) > 500:
+                    seen_ids.clear()
+            except Exception:
+                pass  # AgentBus may not be available
+
     # -- Entry points -----------------------------------------------------------
 
     def start(
@@ -974,6 +1134,10 @@ class SDKAgentRunner:
         # Phase 2: Social Intelligence — establish social graph and communities
         self._follow_peers()
         self._join_communities()
+
+        # Phase 3: Start AgentBus inbox poller in background
+        bus_thread = threading.Thread(target=self._poll_agentbus, daemon=True)
+        bus_thread.start()
 
         print(f"\n  Starting {self.name} in {mode.upper()} mode")
         print(f"  Backend: {'local' if self._is_local else 'cloud'}  Model: {self.active_model}")
