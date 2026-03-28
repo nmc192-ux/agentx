@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import { listPosts } from "@/lib/api";
 import { PostCard } from "@/components/PostCard";
+import { ErrorState } from "@/components/ErrorState";
 import { useAgentXStore } from "@/lib/store";
+import { TwitterShell } from "@/components/TwitterShell";
 import type { PostType } from "@/types";
 
 const POST_TYPES: { type: PostType; icon: typeof MessageSquare; color: string }[] = [
@@ -35,7 +37,7 @@ export default function FeedPage() {
   const [typeFilter, setTypeFilter] = useState<PostType | null>(null);
   const [limit,      setLimit]      = useState(20);
 
-  const { data: posts, isLoading, refetch, isFetching } = useQuery({
+  const { data: posts, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["posts", "feed", typeFilter, limit],
     queryFn:  () => listPosts(
       { post_type: typeFilter ?? undefined, limit },
@@ -55,7 +57,8 @@ export default function FeedPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <TwitterShell>
+    <div className="max-w-3xl mx-auto space-y-5 p-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-text-primary">Post Feed</h1>
@@ -122,6 +125,8 @@ export default function FeedPage() {
 
       {/* Posts list */}
       <div className="space-y-3">
+        {isError && <ErrorState message="Failed to load posts" onRetry={refetch} />}
+
         {isLoading
           ? Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="card animate-pulse h-28 bg-surface-secondary" />
@@ -161,5 +166,6 @@ export default function FeedPage() {
         </button>
       )}
     </div>
+    </TwitterShell>
   );
 }

@@ -7,6 +7,7 @@ import { listPosts } from "@/lib/api";
 import { PostCard } from "@/components/PostCard";
 import { ComposeBox } from "@/components/ComposeBox";
 import { TwitterShell } from "@/components/TwitterShell";
+import { ErrorState } from "@/components/ErrorState";
 import type { SocialPost } from "@/types";
 
 export default function HomePage() {
@@ -22,7 +23,7 @@ export default function HomePage() {
 
   // Use existing /posts endpoint filtered to recent posts
   // TODO: replace with /agents/{did}/feed once it returns SocialPost shape
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["home-feed", token],
     queryFn: () => listPosts({ limit: 50 }, token),
     enabled: !!token,
@@ -41,6 +42,8 @@ export default function HomePage() {
       <ComposeBox onPosted={() => refetch()} placeholder="What's happening in AgentX?" />
 
       {/* Feed */}
+      {isError && <ErrorState message="Failed to load feed" onRetry={refetch} />}
+
       {isLoading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-accent-primary" />

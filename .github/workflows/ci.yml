@@ -1,0 +1,191 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs for the same branch/PR so pushes don't pile up.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: Backend — unit tests + coverage
+  # Runs pytest excluding integration/docker markers (those need a live DB).
+  # The conftest.py already sets CI-safe env vars when secrets/ is absent.
+  # ────────────────────────────────────────────────────────────────────────────
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('platform/requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest-cov
+
+      - name: Run unit tests (excluding integration & docker)
+        # --db / --docker flags are NOT passed, so conftest.py skips those
+        # markers automatically. -p no:warnings keeps output clean.
+        run: |
+          pytest \
+            --cov=src \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            -p no:warnings \
+            -q
+        env:
+          # conftest.py picks these up when secrets/ dir is absent
+          APP_ENV: development
+          POSTGRES_PASSWORD: ci-test-password
+          REDIS_PASSWORD: ci-test-password
+          JWT_SECRET: ci-test-jwt-secret-do-not-use-in-production
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: platform/coverage.xml
+          retention-days: 14
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: Frontend — lint + build (Next.js 15 in frontend/)
+  # The frontend/ directory contains jest.config.ts and next.config.mjs but
+  # currently has no package.json, so we detect this and fail gracefully
+  # rather than blowing up the whole pipeline.
+  # ────────────────────────────────────────────────────────────────────────────
+  frontend-build:
+    name: Frontend Lint & Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check frontend is set up (package.json present)
+        id: check-pkg
+        run: |
+          if [ ! -f package.json ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::frontend/package.json not found — skipping frontend job."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node 20
+        if: steps.check-pkg.outputs.skip == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.check-pkg.outputs.skip == 'false'
+        run: npm ci
+
+      - name: Lint
+        if: steps.check-pkg.outputs.skip == 'false'
+        # Runs only when "lint" script exists in package.json
+        run: |
+          if npm run --silent lint 2>/dev/null; then
+            echo "Lint passed."
+          else
+            EXIT=$?
+            # Distinguish "script not found" (exit 1 with no output) from real failures
+            if npm run --silent 2>&1 | grep -q '"lint"'; then
+              exit $EXIT
+            else
+              echo "::notice::No lint script defined — skipping."
+            fi
+          fi
+
+      - name: Build (type-checks and catches import errors)
+        if: steps.check-pkg.outputs.skip == 'false'
+        run: npm run build
+        env:
+          # Prevents Next.js telemetry noise in CI logs
+          NEXT_TELEMETRY_DISABLED: "1"
+          # Stub backend URL so next.config rewrites don't complain
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3: Security scanning
+  # pip-audit for Python CVEs; npm audit for frontend (when package.json lands).
+  # Both are run as separate steps so one failure doesn't hide the other.
+  # ────────────────────────────────────────────────────────────────────────────
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Python / pip-audit ─────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-audit-${{ runner.os }}-${{ hashFiles('platform/requirements.txt') }}
+          restore-keys: |
+            pip-audit-${{ runner.os }}-
+
+      - name: Install pip-audit + project deps
+        run: |
+          pip install pip-audit
+          pip install -r platform/requirements.txt
+
+      - name: Run pip-audit
+        # --progress-spinner off keeps logs readable; exit non-zero on any vuln
+        run: pip-audit --progress-spinner off -r platform/requirements.txt
+
+      # ── Node / npm audit ───────────────────────────────────────────────────
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run npm audit (if frontend/package.json exists)
+        working-directory: frontend
+        run: |
+          if [ ! -f package.json ]; then
+            echo "::notice::frontend/package.json not found — skipping npm audit."
+            exit 0
+          fi
+          # --audit-level=high: warn on low/moderate, fail on high/critical
+          npm audit --audit-level=high

@@ -4,11 +4,12 @@ import { Users, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { listCollectives } from "@/lib/api";
 import { TwitterShell } from "@/components/TwitterShell";
+import { ErrorState } from "@/components/ErrorState";
 import { timeAgo } from "@/lib/utils";
 import type { Collective } from "@/types";
 
 export default function GroupsPage() {
-  const { data: collectives, isLoading } = useQuery({
+  const { data: collectives, isLoading, isError, refetch } = useQuery({
     queryKey: ["collectives"],
     queryFn: () => listCollectives(),
     staleTime: 5 * 60_000,
@@ -22,13 +23,15 @@ export default function GroupsPage() {
         <h1 className="text-lg font-bold text-text-primary">Groups</h1>
       </div>
 
+      {isError && <ErrorState message="Failed to load groups" onRetry={refetch} />}
+
       {isLoading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-accent-primary" />
         </div>
       )}
 
-      {!isLoading && (!collectives || collectives.length === 0) && (
+      {!isLoading && !isError && (!collectives || collectives.length === 0) && (
         <div className="px-4 py-12 text-center">
           <Users size={32} className="mx-auto mb-3 text-text-quaternary" />
           <p className="text-text-secondary text-sm">No groups yet.</p>

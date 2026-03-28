@@ -2,13 +2,15 @@
 import { use } from "react";
 import { useSession } from "next-auth/react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { getPost, getPostReplies } from "@/lib/api";
+import Link from "next/link";
+import { getPost, getPostReplies, getSimilarPosts } from "@/lib/api";
 import { PostCard } from "@/components/PostCard";
 import { ComposeBox } from "@/components/ComposeBox";
 import { TwitterShell } from "@/components/TwitterShell";
-import type { SocialPost } from "@/types";
+import { ErrorState } from "@/components/ErrorState";
+import type { SocialPost, SimilarPost } from "@/types";
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -18,16 +20,23 @@ export default function ThreadPage({ params }: Props) {
   const { data: session } = useSession();
   const token = (session as any)?.accessToken as string | undefined;
 
-  const { data: post, isLoading: postLoading } = useQuery({
+  const { data: post, isLoading: postLoading, isError: postError, refetch: refetchPost } = useQuery({
     queryKey: ["post", id],
     queryFn: () => getPost(id, token),
     staleTime: 30_000,
   });
 
-  const { data: repliesData, isLoading: repliesLoading, refetch } = useQuery({
+  const { data: repliesData, isLoading: repliesLoading, isError: repliesError, refetch } = useQuery({
     queryKey: ["replies", id],
     queryFn: () => getPostReplies(id, { limit: 50 }, token),
     staleTime: 15_000,
+  });
+
+  const { data: similarPosts, isLoading: similarLoading } = useQuery({
+    queryKey: ["similar-posts", id],
+    queryFn: () => getSimilarPosts(id, 5, token),
+    staleTime: 120_000,
+    enabled: !!id,
   });
 
   const rootPost: SocialPost | undefined = post
@@ -55,7 +64,9 @@ export default function ThreadPage({ params }: Props) {
       </div>
 
       {/* Root post */}
-      {postLoading ? (
+      {postError ? (
+        <ErrorState message="Failed to load post" onRetry={refetchPost} />
+      ) : postLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-accent-primary" />
         </div>
@@ -76,13 +87,15 @@ export default function ThreadPage({ params }: Props) {
 
       {/* Replies */}
       <div className="border-t border-border-primary">
-        {repliesLoading && (
+        {repliesError && <ErrorState message="Failed to load replies" onRetry={refetch} />}
+
+        {!repliesError && repliesLoading && (
           <div className="flex items-center justify-center py-8">
             <Loader2 size={20} className="animate-spin text-accent-primary" />
           </div>
         )}
 
-        {!repliesLoading && (repliesData?.posts ?? []).length === 0 && (
+        {!repliesLoading && !repliesError && (repliesData?.posts ?? []).length === 0 && (
           <div className="px-4 py-8 text-center text-text-tertiary text-sm">
             No replies yet. Start the conversation!
           </div>
@@ -92,6 +105,47 @@ export default function ThreadPage({ params }: Props) {
           <PostCard key={reply.post_id} post={reply} />
         ))}
       </div>
+
+      {/* Similar Posts */}
+      {(similarLoading || (similarPosts && similarPosts.length > 0)) && (
+        <div className="border-t border-border-primary mt-2">
+          {/* Section header */}
+          <div className="px-4 py-3 flex items-center gap-2 text-sm font-semibold text-text-primary border-b border-border-primary">
+            <Sparkles size={15} className="text-accent-primary" />
+            Similar Posts
+          </div>
+
+          {similarLoading && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 size={18} className="animate-spin text-accent-primary" />
+            </div>
+          )}
+
+          {!similarLoading && similarPosts?.map((sp: SimilarPost) => (
+            <Link
+              key={sp.post_id}
+              href={`/post/${sp.post_id}`}
+              className="block px-4 py-3 border-b border-border-primary hover:bg-surface-primary transition-colors group"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-text-primary group-hover:text-accent-primary transition-colors truncate">
+                    {sp.title}
+                  </p>
+                  {sp.content && (
+                    <p className="text-xs text-text-tertiary mt-0.5 line-clamp-2 leading-relaxed">
+                      {sp.content}
+                    </p>
+                  )}
+                </div>
+                <span className="shrink-0 text-xs font-mono text-text-quaternary bg-surface-secondary px-2 py-0.5 rounded-full border border-border-primary">
+                  {Math.round(sp.similarity * 100)}% match
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </TwitterShell>
   );
 }

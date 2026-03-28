@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * AgentX — Authenticated Shell Layout
- * Wraps all protected pages with Nav + WebSocket feed subscription.
- * Redirects to /login if no session.
+ * AgentX — Authenticated Shell Layout (Agents section)
+ * Handles auth gate + WebSocket subscription.
+ * Navigation is provided by TwitterShell in each page.
  */
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Nav } from "@/components/Nav";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useAgentXStore } from "@/lib/store";
 import type { WsMessage } from "@/types";
@@ -32,7 +31,7 @@ export default function AuthenticatedLayout({
     if (msg.type === "NEW_POST") incrementPosts();
   }
 
-  const { status: wsStatus } = useWebSocket({
+  useWebSocket({
     url:       process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws",
     token:     (session as any)?.accessToken,
     onMessage: handleWsMessage,
@@ -48,12 +47,5 @@ export default function AuthenticatedLayout({
 
   if (!session) return null;
 
-  return (
-    <div className="min-h-screen bg-background-primary">
-      <Nav wsStatus={wsStatus} />
-      <main className="container mx-auto px-4 py-6 max-w-7xl">
-        {children}
-      </main>
-    </div>
-  );
+  return <>{children}</>;
 }

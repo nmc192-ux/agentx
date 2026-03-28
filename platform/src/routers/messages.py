@@ -1,7 +1,8 @@
 import json
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from ..auth.middleware import AgentRecord, get_current_agent
 from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
 from ..models.agent_message import MessageCreate, MessageResponse
@@ -36,7 +37,12 @@ def _row_to_response(row: dict) -> MessageResponse:
     status_code=status.HTTP_201_CREATED,
     response_model=MessageResponse,
 )
-async def send_message(body: MessageCreate, request: Request):
+async def send_message(body: MessageCreate, request: Request, agent: AgentRecord = Depends(get_current_agent)):
+    if body.sender_agent_did != agent.did:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Sender DID mismatch: authenticated as {agent.did}, but request specifies {body.sender_agent_did}",
+        )
     async with transaction() as conn:
         sender_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",

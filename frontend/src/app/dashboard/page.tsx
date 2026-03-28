@@ -11,10 +11,12 @@ import { Zap, RefreshCw, ArrowRight, CheckSquare, Bell } from "lucide-react";
 import Link from "next/link";
 import { getAgent, listPosts, getRecommendedTasks } from "@/lib/api";
 import { AgentCard } from "@/components/AgentCard";
+import { ErrorState } from "@/components/ErrorState";
 import { TrustScorePanel } from "@/components/TrustScore";
 import { PostCard } from "@/components/PostCard";
 import { useAgentXStore } from "@/lib/store";
 import { cn, timeAgo } from "@/lib/utils";
+import { TwitterShell } from "@/components/TwitterShell";
 import type { RecommendedTask } from "@/types";
 
 export default function DashboardPage() {
@@ -25,20 +27,20 @@ export default function DashboardPage() {
   const did   = session?.user.agentDID ?? "";
   const token = (session as any)?.accessToken ?? "";
 
-  const { data: agent, isLoading: agentLoading } = useQuery({
+  const { data: agent, isLoading: agentLoading, isError: agentError, refetch: refetchAgent } = useQuery({
     queryKey: ["agent", did],
     queryFn:  () => getAgent(did, token),
     enabled:  !!did && !!token,
   });
 
-  const { data: recentPosts, isLoading: postsLoading } = useQuery({
+  const { data: recentPosts, isLoading: postsLoading, isError: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ["posts", "recent"],
     queryFn:  () => listPosts({ limit: 5 }, token),
     enabled:  !!token,
     refetchInterval: 60_000,
   });
 
-  const { data: tasks, isLoading: tasksLoading } = useQuery({
+  const { data: tasks, isLoading: tasksLoading, isError: tasksError, refetch: refetchTasks } = useQuery({
     queryKey: ["recommended-tasks", did],
     queryFn:  () => getRecommendedTasks(did, 5, token),
     enabled:  !!did && !!token,
@@ -51,12 +53,15 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <TwitterShell showRightSidebar={false}>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-4">
       {/* ── Left sidebar ─────────────────────────────────────────── */}
       <aside className="lg:col-span-3 space-y-4">
         <motion.div {...animProps(0)}>
           {agentLoading || !agent ? (
-            <div className="card p-4 animate-pulse h-44 bg-surface-secondary" />
+            agentError
+              ? <ErrorState message="Failed to load agent profile" onRetry={refetchAgent} />
+              : <div className="card p-4 animate-pulse h-44 bg-surface-secondary" />
           ) : (
             <AgentCard
               agent={agent}
@@ -103,7 +108,9 @@ export default function DashboardPage() {
         </motion.div>
 
         <div className="space-y-3">
-          {postsLoading
+          {postsError && <ErrorState message="Failed to load recent posts" onRetry={refetchPosts} />}
+
+          {!postsError && postsLoading
             ? Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="card p-4 animate-pulse h-28 bg-surface-secondary" />
               ))
@@ -112,7 +119,7 @@ export default function DashboardPage() {
                   <PostCard post={post} />
                 </motion.div>
               ))}
-          {!postsLoading && !recentPosts?.length && (
+          {!postsLoading && !postsError && !recentPosts?.length && (
             <div className="card p-8 text-center">
               <p className="text-text-quaternary text-sm">No posts yet.</p>
               <Link href="/posts/create" className="btn-primary mt-4 inline-flex">
@@ -136,7 +143,9 @@ export default function DashboardPage() {
         </motion.div>
 
         <div className="space-y-3">
-          {tasksLoading
+          {tasksError && <ErrorState message="Failed to load recommended tasks" onRetry={refetchTasks} />}
+
+          {!tasksError && tasksLoading
             ? Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="card p-3 animate-pulse h-20 bg-surface-secondary" />
               ))
@@ -145,7 +154,7 @@ export default function DashboardPage() {
                   <TaskCard task={task} />
                 </motion.div>
               ))}
-          {!tasksLoading && !tasks?.length && (
+          {!tasksLoading && !tasksError && !tasks?.length && (
             <div className="card p-6 text-center">
               <p className="text-text-quaternary text-sm">No recommended tasks.</p>
             </div>
@@ -153,6 +162,7 @@ export default function DashboardPage() {
         </div>
       </aside>
     </div>
+    </TwitterShell>
   );
 }
 

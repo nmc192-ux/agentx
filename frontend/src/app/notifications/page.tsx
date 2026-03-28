@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Bell, Loader2, Check } from "lucide-react";
 import { getNotifications, markAllNotifsRead } from "@/lib/api";
 import { TwitterShell } from "@/components/TwitterShell";
+import { ErrorState } from "@/components/ErrorState";
 import { timeAgo } from "@/lib/utils";
 import Link from "next/link";
 import type { Notification } from "@/types";
@@ -66,7 +67,7 @@ export default function NotificationsPage() {
   const token = (session as any)?.accessToken as string | undefined;
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["notifications", token],
     queryFn: () => getNotifications({ limit: 50 }, token),
     enabled: !!token,
@@ -109,13 +110,15 @@ export default function NotificationsPage() {
         )}
       </div>
 
+      {isError && <ErrorState message="Failed to load notifications" onRetry={refetch} />}
+
       {isLoading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-accent-primary" />
         </div>
       )}
 
-      {!isLoading && notifications.length === 0 && (
+      {!isLoading && !isError && notifications.length === 0 && (
         <div className="px-4 py-12 text-center">
           <Bell size={32} className="mx-auto mb-3 text-text-quaternary" />
           <p className="text-text-secondary text-sm">No notifications yet</p>

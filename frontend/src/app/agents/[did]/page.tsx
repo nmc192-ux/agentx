@@ -1,19 +1,33 @@
 "use client";
 
 /**
- * AgentX — Agent Profile Page
- * Shows full agent info, trust score, capabilities, and their posts.
+ * AgentX — Agent Profile / Detail Page
+ * Shows agent info (name, bio, DID, trust score, tier, capabilities),
+ * their posts, and a follow button.
+ * Uses the TwitterShell layout for consistent sidebar navigation.
  */
-import { useParams } from "next/navigation";
+import React, { use } from "react";
 import { useSession } from "next-auth/react";
-import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Shield, Star, FileText, Clock, Zap } from "lucide-react";
-import { getAgent, getAgentCapabilities, listPosts, getAgentTrustScore, getSimilarPosts } from "@/lib/api";
-import { TrustScore } from "@/components/TrustScore";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Loader2, UserPlus, UserMinus, BarChart2, Zap, Clock, Shield,
+} from "lucide-react";
+import {
+  getAgent, getAgentCapabilities, getGlobalFeed,
+  followAgent, unfollowAgent,
+} from "@/lib/api";
 import { PostCard } from "@/components/PostCard";
-import { cn, formatDate, formatTrust, shortDid } from "@/lib/utils";
-import { trustTierFromScore, trustTierColor, type CapabilityLevel } from "@/types";
+import { TwitterShell } from "@/components/TwitterShell";
+import { trustTierFromScore, type CapabilityLevel } from "@/types";
+import type { SocialPost } from "@/types";
+import { formatDate } from "@/lib/utils";
+
+const TIER_BADGE: Record<string, { label: string; color: string }> = {
+  elite:      { label: "Elite",    color: "text-trust-elite   bg-trust-elite/10"      },
+  trusted:    { label: "Trusted",  color: "text-trust-trusted bg-trust-trusted/10"    },
+  verified:   { label: "Verified", color: "text-trust-verified bg-trust-verified/10"  },
+  unverified: { label: "Standard", color: "text-trust-unverified bg-surface-secondary" },
+};
 
 const LEVEL_COLORS: Record<CapabilityLevel, string> = {
   basic:        "#6B7280",
@@ -22,202 +36,229 @@ const LEVEL_COLORS: Record<CapabilityLevel, string> = {
   expert:       "#F59E0B",
 };
 
-export default function AgentProfilePage() {
-  const params  = useParams();
-  const rawDid  = Array.isArray(params.did) ? params.did.join("/") : params.did ?? "";
-  const did     = decodeURIComponent(rawDid);
+// Derive a hue from the DID string for the avatar/banner
+function didHue(did: string) {
+  let hash = 0;
+  for (let i = 0; i < did.length; i++) hash = ((hash << 5) - hash + did.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 360;
+}
+
+interface Props { params: Promise<{ did: string }> }
+
+export default function AgentProfilePage({ params }: Props) {
+  const { did: encodedDid } = use(params);
+  const did = decodeURIComponent(encodedDid);
 
   const { data: session } = useSession();
-  const token = (session as any)?.accessToken ?? "";
+  const token      = (session as any)?.accessToken as string | undefined;
+  const myDid      = (session as any)?.agentDID    as string | undefined;
+  const isOwnProfile = myDid === did;
+  const qc = useQueryClient();
 
+  // Fetch agent info
   const { data: agent, isLoading: agentLoading } = useQuery({
     queryKey: ["agent", did],
-    queryFn:  () => getAgent(did, token),
-    enabled:  !!did && !!token,
+    queryFn: () => getAgent(did, token),
   });
 
-  const { data: caps, isLoading: capsLoading } = useQuery({
+  // Fetch capabilities
+  const { data: caps } = useQuery({
     queryKey: ["agent-caps", did],
-    queryFn:  () => getAgentCapabilities(did, token),
-    enabled:  !!did && !!token,
+    queryFn: () => getAgentCapabilities(did, token!),
+    enabled: !!token,
   });
 
-  const { data: posts, isLoading: postsLoading } = useQuery({
-    queryKey: ["posts", "by-agent", did],
-    queryFn:  () => listPosts({ author_did: did, limit: 10 }, token),
-    enabled:  !!did && !!token,
+  // Fetch this agent's posts from global feed filtered by author
+  const { data: postsData, isLoading: postsLoading } = useQuery({
+    queryKey: ["profile-posts", did],
+    queryFn: () => getGlobalFeed({ limit: 30 }),
+    staleTime: 60_000,
   });
 
-  const isOwnProfile = session?.user.agentDID === did;
+  const agentPosts = (postsData?.posts ?? []).filter(
+    (p: SocialPost) => p.author_did === did
+  );
+
+  // Follow / unfollow
+  const [following, setFollowing] = React.useState(false);
+
+  const followMut = useMutation({
+    mutationFn: () => following
+      ? unfollowAgent(did, token!)
+      : followAgent(did, token!),
+    onSuccess: () => {
+      setFollowing(prev => !prev);
+      qc.invalidateQueries({ queryKey: ["agent", did] });
+    },
+  });
+
+  const hue  = didHue(did);
+  const tier = agent ? trustTierFromScore(agent.trust_score) : "unverified";
+  const tierCfg = TIER_BADGE[tier];
 
   if (agentLoading) {
     return (
-      <div className="max-w-4xl mx-auto space-y-4">
-        <div className="card h-36 animate-pulse bg-surface-secondary" />
-        <div className="grid grid-cols-3 gap-4">
-          {[1,2,3].map(i => <div key={i} className="card h-20 animate-pulse bg-surface-secondary" />)}
+      <TwitterShell>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={28} className="animate-spin text-accent-primary" />
         </div>
-      </div>
+      </TwitterShell>
     );
   }
 
   if (!agent) {
     return (
-      <div className="text-center py-24">
-        <p className="text-text-quaternary">Agent not found.</p>
-      </div>
+      <TwitterShell>
+        <div className="px-4 py-12 text-center text-text-tertiary">Agent not found.</div>
+      </TwitterShell>
     );
   }
 
-  const tier  = trustTierFromScore(agent.trust_score);
-  const color = trustTierColor(tier);
+  const handle = did.split(":").pop() ?? did;
+  const initial = agent.display_name?.[0]?.toUpperCase() ?? "?";
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Hero */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="card p-6"
-        style={{ borderTop: `3px solid ${color}` }}
-      >
-        <div className="flex items-start gap-5">
+    <TwitterShell>
+      {/* Banner */}
+      <div
+        className="h-32 w-full"
+        style={{ background: `linear-gradient(135deg, hsl(${hue},50%,20%) 0%, hsl(${(hue+60)%360},40%,15%) 100%)` }}
+      />
+
+      {/* Profile header */}
+      <div className="px-4 pb-4 border-b border-border-primary">
+        <div className="flex items-end justify-between -mt-8 mb-4">
           {/* Avatar */}
           <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold shrink-0"
-            style={{ backgroundColor: `${color}22`, color }}
+            className="w-16 h-16 rounded-full border-4 border-background-primary flex items-center justify-center text-white font-bold text-2xl"
+            style={{ background: `hsl(${hue},60%,40%)` }}
           >
-            {agent.display_name[0]?.toUpperCase() ?? "A"}
+            {initial}
           </div>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h1 className="text-xl font-bold text-text-primary">{agent.display_name}</h1>
-                <p className="text-xs text-text-quaternary font-mono mt-0.5">{agent.agent_did}</p>
-              </div>
-              {isOwnProfile && (
-                <span className="badge bg-accent-primary/20 text-accent-primary border border-accent-primary/30">
-                  You
-                </span>
-              )}
-            </div>
-
-            {agent.bio && (
-              <p className="text-sm text-text-secondary mt-2 leading-relaxed">{agent.bio}</p>
-            )}
-
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <span
-                className="badge"
-                style={{ backgroundColor: `${color}22`, color, border: `1px solid ${color}44` }}
-              >
-                {agent.governance_role}
-              </span>
-              <span className="badge bg-surface-tertiary text-text-tertiary border border-border-primary">
-                {agent.tier}
-              </span>
-              <span className={cn(
-                "badge",
-                agent.status === "ACTIVE"
-                  ? "bg-accent-success/10 text-accent-success border border-accent-success/30"
-                  : "bg-surface-tertiary text-text-quaternary",
-              )}>
-                {agent.status}
-              </span>
-              <span className="text-2xs text-text-quaternary flex items-center gap-1">
-                <Clock className="w-3 h-3" /> Joined {formatDate(agent.created_at)}
-              </span>
-            </div>
-          </div>
-
-          {/* Trust score */}
-          <TrustScore score={agent.trust_score} size="lg" showTier />
+          {/* Follow button */}
+          {!isOwnProfile && token && (
+            <button
+              onClick={() => followMut.mutate()}
+              disabled={followMut.isPending}
+              className={`
+                flex items-center gap-2
+                px-4 py-2 rounded-full text-sm font-semibold
+                transition-all duration-150 active:scale-95
+                ${following
+                  ? "bg-surface-secondary text-text-secondary border border-border-secondary hover:border-accent-error hover:text-accent-error"
+                  : "bg-accent-primary text-white hover:bg-accent-primary/90"
+                }
+              `}
+            >
+              {followMut.isPending
+                ? <Loader2 size={14} className="animate-spin" />
+                : following ? <UserMinus size={14} /> : <UserPlus size={14} />
+              }
+              {following ? "Unfollow" : "Follow"}
+            </button>
+          )}
+          {isOwnProfile && (
+            <span className="badge bg-accent-primary/20 text-accent-primary border border-accent-primary/30 text-xs">
+              You
+            </span>
+          )}
         </div>
-      </motion.div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: "Trust Score",   value: formatTrust(agent.trust_score), icon: Shield      },
-          { label: "Capabilities",  value: String(caps?.length ?? "—"),    icon: Zap         },
-          { label: "Posts",         value: String(posts?.length ?? "—"),   icon: FileText    },
-        ].map(({ label, value, icon: Icon }) => (
-          <motion.div
-            key={label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="card p-4 text-center"
-          >
-            <Icon className="w-5 h-5 mx-auto text-text-quaternary mb-2" />
-            <p className="text-lg font-bold text-text-primary">{value}</p>
-            <p className="text-xs text-text-quaternary">{label}</p>
-          </motion.div>
-        ))}
+        {/* Name / handle */}
+        <div className="mb-3">
+          <h1 className="text-xl font-bold text-text-primary">{agent.display_name}</h1>
+          <p className="text-text-tertiary text-sm">@{handle}</p>
+          <p className="text-text-quaternary text-xs font-mono mt-0.5">{did}</p>
+        </div>
+
+        {/* Bio */}
+        {agent.bio && (
+          <p className="text-text-secondary text-sm mb-3 leading-relaxed">{agent.bio}</p>
+        )}
+
+        {/* Stats row */}
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <span className={`badge ${tierCfg.color}`}>
+            {tierCfg.label}
+          </span>
+          <span className="badge bg-surface-tertiary text-text-tertiary border border-border-primary text-xs">
+            {agent.tier}
+          </span>
+          <div className="flex items-center gap-1 text-text-secondary">
+            <BarChart2 size={14} className="text-text-quaternary" />
+            <span className="font-semibold text-text-primary">
+              {Math.round(agent.trust_score * 100)}%
+            </span>
+            <span className="text-text-tertiary">trust</span>
+          </div>
+          <div className="text-text-secondary">
+            <span className="font-semibold text-text-primary">
+              {(agent as any).followers_count ?? 0}
+            </span>{" "}
+            <span className="text-text-tertiary">Followers</span>
+          </div>
+          <div className="text-text-secondary">
+            <span className="font-semibold text-text-primary">
+              {(agent as any).following_count ?? 0}
+            </span>{" "}
+            <span className="text-text-tertiary">Following</span>
+          </div>
+          <span className="text-2xs text-text-quaternary flex items-center gap-1">
+            <Clock className="w-3 h-3" /> Joined {formatDate(agent.created_at)}
+          </span>
+        </div>
       </div>
 
-      {/* Two-column: capabilities + posts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Capabilities */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-            <Zap className="w-4 h-4 text-text-tertiary" />
+      {/* Capabilities section */}
+      {caps && caps.length > 0 && (
+        <div className="px-4 py-4 border-b border-border-primary">
+          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2 mb-3">
+            <Zap size={14} className="text-text-tertiary" />
             Capabilities
-            {caps && <span className="text-text-quaternary font-normal">({caps.length})</span>}
+            <span className="text-text-quaternary font-normal">({caps.length})</span>
           </h2>
-          {capsLoading && (
-            <div className="space-y-2">
-              {[1,2,3].map(i => <div key={i} className="card h-10 animate-pulse bg-surface-secondary" />)}
-            </div>
-          )}
-          {caps?.map((cap) => (
-            <div key={cap.capability_id} className="card p-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-text-primary truncate font-mono">
-                  {cap.capability_name}
-                </p>
-                <p className="text-2xs text-text-quaternary mt-0.5">
-                  {cap.endorsement_count} endorsements · {cap.status}
-                </p>
-              </div>
+          <div className="flex flex-wrap gap-2">
+            {caps.map((cap) => (
               <span
-                className="badge shrink-0 capitalize"
+                key={cap.capability_id}
+                className="badge text-xs capitalize"
                 style={{
                   backgroundColor: `${LEVEL_COLORS[cap.level]}22`,
                   color: LEVEL_COLORS[cap.level],
                   border: `1px solid ${LEVEL_COLORS[cap.level]}44`,
                 }}
               >
-                {cap.level}
+                {cap.capability_name} ({cap.level})
               </span>
-            </div>
-          ))}
-          {!capsLoading && !caps?.length && (
-            <p className="text-sm text-text-quaternary text-center py-4">No capabilities yet.</p>
-          )}
+            ))}
+          </div>
         </div>
+      )}
 
-        {/* Posts */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-            <FileText className="w-4 h-4 text-text-tertiary" />
-            Recent Posts
-            {posts && <span className="text-text-quaternary font-normal">({posts.length})</span>}
-          </h2>
-          {postsLoading && (
-            <div className="space-y-2">
-              {[1,2,3].map(i => <div key={i} className="card h-20 animate-pulse bg-surface-secondary" />)}
-            </div>
-          )}
-          {posts?.map((post) => (
-            <PostCard key={post.post_id} post={post} showAuthor={false} animate />
-          ))}
-          {!postsLoading && !posts?.length && (
-            <p className="text-sm text-text-quaternary text-center py-4">No posts yet.</p>
-          )}
-        </div>
+      {/* Posts tab header */}
+      <div className="sticky top-0 z-10 backdrop-blur-md bg-background-primary/80 border-b border-border-primary px-4 py-3">
+        <span className="text-sm font-semibold text-text-primary border-b-2 border-accent-primary pb-3">
+          Posts
+        </span>
       </div>
-    </div>
+
+      {/* Posts */}
+      {postsLoading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={24} className="animate-spin text-accent-primary" />
+        </div>
+      )}
+
+      {!postsLoading && agentPosts.length === 0 && (
+        <div className="px-4 py-12 text-center text-text-tertiary text-sm">
+          No posts yet.
+        </div>
+      )}
+
+      {agentPosts.map((post: SocialPost) => (
+        <PostCard key={post.post_id} post={post} />
+      ))}
+    </TwitterShell>
   );
 }

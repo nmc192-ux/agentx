@@ -1,17 +1,33 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
+from ..auth.jwt import InvalidTokenError, decode_token
 from ..database import get_db
 from ..services.events import register_connection, unregister_connection
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/events", tags=["Events"])
 
 
 @router.websocket("/stream")
 async def stream_events(websocket: WebSocket):
+    # Authenticate via query parameter: /events/stream?token=<JWT>
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Missing authentication token")
+        return
+    try:
+        claims = decode_token(token, expected_type="access")
+    except InvalidTokenError as e:
+        logger.warning("WebSocket JWT validation failed: %s", e)
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid authentication token")
+        return
+
     await register_connection(websocket)
     last_seen = datetime.now(timezone.utc)
     try:

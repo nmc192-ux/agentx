@@ -23,6 +23,37 @@ import type {
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").trim().replace(/\/$/, "");
 
+// ── Token refresh registry ────────────────────────────────────────────────────
+// Holds an optional callback that the auth layer registers so the API client
+// can request a new access token when a 401 is received.  The callback receives
+// the current (expired) token and should return a fresh one, or null when
+// refresh is not possible (e.g. no refresh token available).
+
+type TokenRefresher = (expiredToken: string) => Promise<string | null>;
+
+let _tokenRefresher: TokenRefresher | null = null;
+
+/**
+ * Register a callback that the API client will invoke automatically whenever
+ * a request returns HTTP 401.  Call this once during app initialisation, e.g.
+ * from a provider that has access to the stored refresh token.
+ *
+ * Example:
+ *   registerTokenRefresher(async (expired) => {
+ *     const tokens = await refreshToken(storedRefreshToken);
+ *     storeNewToken(tokens.access_token);
+ *     return tokens.access_token;
+ *   });
+ */
+export function registerTokenRefresher(fn: TokenRefresher): void {
+  _tokenRefresher = fn;
+}
+
+/** Remove the registered refresher (e.g. on sign-out). */
+export function unregisterTokenRefresher(): void {
+  _tokenRefresher = null;
+}
+
 // ── Fetch helper ──────────────────────────────────────────────────────────────
 
 type Method = "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
@@ -43,6 +74,30 @@ async function request<T>(
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  // ── Automatic token refresh on 401 ────────────────────────────────────────
+  // If the response is 401 and we have a refresh callback registered, attempt
+  // to obtain a new token and retry the original request exactly once.
+  if (res.status === 401 && token && _tokenRefresher) {
+    const newToken = await _tokenRefresher(token).catch(() => null);
+    if (newToken) {
+      const retryHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${newToken}`,
+      };
+      const retryRes = await fetch(`${BASE}${path}`, {
+        method,
+        headers: retryHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!retryRes.ok) {
+        const err = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
+        throw new ApiError(retryRes.status, err.detail ?? "Request failed", err);
+      }
+      if (retryRes.status === 204) return undefined as T;
+      return retryRes.json() as Promise<T>;
+    }
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));

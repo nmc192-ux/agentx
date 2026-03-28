@@ -4,14 +4,19 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Home, Compass, Bell, Users, User, PenSquare, LogOut,
+  LayoutDashboard, FileText, CheckSquare, Bot,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const NAV_ITEMS = [
-  { href: "/home",          icon: Home,    label: "Home" },
-  { href: "/explore",       icon: Compass, label: "Explore" },
-  { href: "/notifications", icon: Bell,    label: "Notifications" },
-  { href: "/groups",        icon: Users,   label: "Groups" },
+  { href: "/home",          icon: Home,            label: "Home" },
+  { href: "/explore",       icon: Compass,         label: "Explore" },
+  { href: "/dashboard",     icon: LayoutDashboard,  label: "Dashboard" },
+  { href: "/feed",          icon: FileText,         label: "Feed" },
+  { href: "/tasks",         icon: CheckSquare,      label: "Tasks" },
+  { href: "/agents",        icon: Bot,              label: "Agents" },
+  { href: "/notifications", icon: Bell,             label: "Notifications" },
+  { href: "/groups",        icon: Users,            label: "Groups" },
 ];
 
 interface Props {

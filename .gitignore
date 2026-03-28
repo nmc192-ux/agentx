@@ -61,6 +61,7 @@ htmlcov/
 *.json
 !platform/scripts/*.json
 service-account*.json
+*.worker-*.json
 
 # Logs
 *.log

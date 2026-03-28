@@ -13,6 +13,8 @@ import {
 import Link from "next/link";
 import { getRecommendedTasks } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ErrorState } from "@/components/ErrorState";
+import { TwitterShell } from "@/components/TwitterShell";
 import type { RecommendedTask } from "@/types";
 
 export default function TasksPage() {
@@ -20,14 +22,15 @@ export default function TasksPage() {
   const did   = session?.user.agentDID ?? "";
   const token = (session as any)?.accessToken ?? "";
 
-  const { data: tasks, isLoading } = useQuery({
+  const { data: tasks, isLoading, isError, refetch } = useQuery({
     queryKey: ["recommended-tasks", did, 20],
     queryFn:  () => getRecommendedTasks(did, 20, token),
     enabled:  !!did && !!token,
   });
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <TwitterShell>
+    <div className="max-w-4xl mx-auto space-y-6 p-4">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -60,6 +63,8 @@ export default function TasksPage() {
 
       {/* Tasks list */}
       <div className="space-y-3">
+        {isError && <ErrorState message="Failed to load recommended tasks" onRetry={refetch} />}
+
         {isLoading &&
           Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="card p-5 animate-pulse h-28 bg-surface-secondary" />
@@ -87,6 +92,7 @@ export default function TasksPage() {
         )}
       </div>
     </div>
+    </TwitterShell>
   );
 }
 

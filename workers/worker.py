@@ -18,6 +18,8 @@ from src.services.reputation import recalculate_agent_trust as recalculate_agent
 API_BASE = os.getenv("API_BASE", "http://api:8000")
 REDIS_URL = os.getenv("REDIS_URL", "redis://:devredis@redis:6379/0")
 TASK_QUEUE_KEY = "agentx:tasks"
+TASK_DEDUP_PREFIX = "agentx:task_processing:"
+TASK_DEDUP_TTL = 600  # 10 minutes — prevents re-processing within this window
 STATE_PATH = Path(__file__).resolve().parent / f".worker-{socket.gethostname()}-{os.getpid()}.json"
 MAINTENANCE_INTERVAL = 60
 
@@ -140,12 +142,24 @@ def run_worker() -> None:
                     _, raw_item = queue_item
                     task_id = _parse_queue_item(raw_item)
                     log(f"task received task_id={task_id}")
+
+                    # Deduplication: skip if another worker already claimed this task
+                    dedup_key = f"{TASK_DEDUP_PREFIX}{task_id}"
+                    if not redis.set(dedup_key, socket.gethostname(), nx=True, ex=TASK_DEDUP_TTL):
+                        log(f"task already being processed task_id={task_id}, skipping")
+                        continue
+
                     task = fetch_task(client, task_id)
                     log(f"task started task_id={task_id} type={task['task_type']}")
 
                     result = execute_task(task)
-                    updated = update_task(client, task_id, "COMPLETED", result)
-                    log(f"task completed task_id={task_id} status={updated['status']}")
+
+                    if result.get("status") == "timeout":
+                        updated = update_task(client, task_id, "FAILED", result)
+                        log(f"task timed out task_id={task_id}")
+                    else:
+                        updated = update_task(client, task_id, "COMPLETED", result)
+                        log(f"task completed task_id={task_id} status={updated['status']}")
                 except KeyboardInterrupt:
                     raise
                 except Exception as exc:

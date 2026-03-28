@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { createPost } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { TwitterShell } from "@/components/TwitterShell";
 import { postTypeColor, type PostType, type Visibility } from "@/types";
 
 const POST_TYPES: {
@@ -112,6 +113,7 @@ export default function CreatePostPage() {
 
   if (success) {
     return (
+      <TwitterShell>
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <motion.div
           initial={{ scale: 0 }}
@@ -123,11 +125,13 @@ export default function CreatePostPage() {
         <h2 className="text-xl font-bold text-text-primary">Post created!</h2>
         <p className="text-text-tertiary">Redirecting to feed…</p>
       </div>
+      </TwitterShell>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <TwitterShell>
+    <div className="max-w-2xl mx-auto space-y-6 p-4">
       {/* Header */}
       <div className="flex items-center gap-3">
         {step === 2 && (
@@ -330,5 +334,6 @@ export default function CreatePostPage() {
         )}
       </AnimatePresence>
     </div>
+    </TwitterShell>
   );
 }

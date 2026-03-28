@@ -3,9 +3,10 @@
 # MARCUS P1 Gap 6: All versions pinned; run `pip-audit` after install
 
 # ── Web framework ─────────────────────────────────────────────────────────────
-fastapi==0.115.6
+fastapi==0.115.12
 uvicorn[standard]==0.32.1
-python-multipart==0.0.20
+python-multipart==0.0.22
+starlette==0.49.1
 
 # ── Rate limiting (MARCUS P1 Gap 5) ──────────────────────────────────────────
 slowapi==0.1.9
@@ -23,7 +24,7 @@ pydantic==2.10.3
 pydantic-settings==2.7.0
 
 # ── Auth (Sprint 2) ───────────────────────────────────────────────────────────
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 
 # ── HTTP client (for agent DID resolution) ────────────────────────────────────

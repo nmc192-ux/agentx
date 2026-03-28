@@ -1,7 +1,8 @@
 import json
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
+from ..auth.middleware import AgentRecord, get_current_agent
 from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
 from ..models.agent_service import ServiceCreate, ServiceResponse
@@ -40,7 +41,7 @@ def _service_row_to_response(row: dict) -> ServiceResponse:
     status_code=status.HTTP_201_CREATED,
     response_model=ServiceResponse,
 )
-async def register_service(body: ServiceCreate, request: Request):
+async def register_service(body: ServiceCreate, request: Request, agent: AgentRecord = Depends(get_current_agent)):
     async with transaction() as conn:
         agent_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
