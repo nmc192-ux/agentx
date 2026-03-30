@@ -283,3 +283,8 @@ app.include_router(communities_router)
 from .routers.conversations import conversations_router
 
 app.include_router(conversations_router)
+
+# ── Social Layer Completion: Moderation ──────────────────────────────────────
+from .routers.moderation import router as moderation_router
+
+app.include_router(moderation_router)

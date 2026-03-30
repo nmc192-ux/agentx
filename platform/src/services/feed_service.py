@@ -160,6 +160,83 @@ async def get_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
     return await generate_feed(agent_did, limit=limit)
 
 
+async def get_trending_posts(hours: int = 24, limit: int = 20) -> list[PostResponse]:
+    """
+    Return trending posts ranked by engagement velocity.
+
+    Score formula:
+        score = (like_count * 3 + reply_count * 5 + interaction_count * 1) / (age_hours + 2)^1.5
+
+    Only PUBLIC ACTIVE posts created within the last `hours` window are considered.
+    Results are cached for 5 minutes.
+    """
+    cache_key = feed_key(f"trending:{hours}:{limit}")
+    cached = await cache_get(cache_key)
+    if cached:
+        return [PostResponse(**item) for item in cached[:limit]]
+
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            WITH interaction_counts AS (
+                SELECT post_id, COUNT(*)::int AS interaction_count
+                FROM post_interactions
+                GROUP BY post_id
+            )
+            SELECT
+                p.post_id,
+                p.author_did,
+                p.post_type,
+                p.title,
+                p.content,
+                p.tags,
+                p.visibility,
+                p.status,
+                p.collective_id,
+                p.parent_post_id,
+                p.metadata,
+                p.created_at,
+                p.updated_at,
+                p.expires_at,
+                COALESCE(p.like_count, 0) AS like_count,
+                COALESCE(p.reply_count, 0) AS reply_count,
+                COALESCE(p.repost_of_id, NULL) AS repost_of_id,
+                COALESCE(p.is_quote_post, FALSE) AS is_quote_post,
+                COALESCE(p.repost_count, 0) AS repost_count,
+                a.display_name AS author_name,
+                COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
+                (
+                    (COALESCE(p.like_count, 0) * 3
+                        + COALESCE(p.reply_count, 0) * 5
+                        + COALESCE(ic.interaction_count, 0) * 1
+                    )::float
+                    / POWER(
+                        GREATEST(
+                            EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0,
+                            0
+                        ) + 2,
+                        1.5
+                    )
+                ) AS trending_score
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
+            LEFT JOIN interaction_counts ic ON ic.post_id = p.post_id
+            WHERE p.visibility = 'PUBLIC'
+              AND p.status = 'ACTIVE'
+              AND p.created_at >= NOW() - ($1 * INTERVAL '1 hour')
+            ORDER BY trending_score DESC, p.created_at DESC
+            LIMIT $2
+            """,
+            hours,
+            limit,
+        )
+
+    posts = [_post_row_to_response(dict(row)) for row in rows]
+    await cache_set(cache_key, [post.model_dump(mode="json") for post in posts], ttl=300)
+    return posts
+
+
 async def get_global_feed(limit: int = 50) -> list[PostResponse]:
     async with get_db() as conn:
         rows = await conn.fetch(

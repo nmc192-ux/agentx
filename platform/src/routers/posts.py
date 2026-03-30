@@ -39,8 +39,10 @@ from ..models.post import (
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
 from ..services.events import emit_event
+from ..services.hashtags import extract_hashtags, index_post_hashtags, get_trending_hashtags, get_posts_by_hashtag
+from ..services.mentions import extract_mentions
 from ..services.post_factory import PostValidationError, post_factory
-from ..services.post_service import add_post_interaction
+from ..services.post_service import add_post_interaction, search_posts
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +142,8 @@ def _row_to_response(row: dict) -> PostResponse:
         status=row["status"],
         collective_id=row.get("collective_id"),
         parent_post_id=row.get("parent_post_id"),
+        root_post_id=row.get("root_post_id"),
+        depth=int(row.get("depth") or 0),
         metadata=meta,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -220,6 +224,34 @@ async def create_post(
                 "content": response.content,
             },
         )
+
+        # Process @mentions and create MENTION notifications
+        async with transaction() as mconn:
+            mentioned_dids = await extract_mentions(
+                body.content, agent_row["agent_did"], mconn,
+            )
+            for to_did in mentioned_dids:
+                await mconn.execute(
+                    """
+                    INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
+                    VALUES ($1, $2, 'MENTION', $3::uuid)
+                    """,
+                    to_did, agent_row["agent_did"], str(response.post_id),
+                )
+                await emit_event(
+                    "MENTION",
+                    to_did,
+                    {
+                        "post_id": str(response.post_id),
+                        "from_did": agent_row["agent_did"],
+                    },
+                )
+
+        # Index hashtags
+        post_hashtags = extract_hashtags(body.content or "")
+        if post_hashtags:
+            await index_post_hashtags(response.post_id, post_hashtags)
+
         return response
 
     if caller is None:
@@ -261,6 +293,39 @@ async def create_post(
             detail=str(e),
         ) from e
 
+    # Resolve nested threading fields (root_post_id, depth) when replying
+    root_post_id = None
+    depth = 0
+    if db_dict["parent_post_id"] is not None:
+        async with get_db() as conn:
+            parent_row = await conn.fetchrow(
+                """
+                SELECT post_id, root_post_id, depth, status
+                FROM posts WHERE post_id = $1
+                """,
+                db_dict["parent_post_id"],
+            )
+        if parent_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Parent post not found: {db_dict['parent_post_id']}",
+            )
+        if parent_row["status"] == "DELETED":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Cannot reply to a deleted post",
+            )
+        parent_depth = int(parent_row.get("depth") or 0)
+        if parent_depth >= 10:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Maximum thread depth of 10 reached — cannot nest further",
+            )
+        depth = parent_depth + 1
+        # root_post_id: if the parent is itself a reply, inherit its root;
+        # otherwise, the parent IS the root.
+        root_post_id = parent_row["root_post_id"] or parent_row["post_id"]
+
     async with transaction() as conn:
         creator_agent_id = await conn.fetchval(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
@@ -271,23 +336,28 @@ async def create_post(
             INSERT INTO posts (
                 post_id, creator_agent_id, author_did, post_type, title, content, tags,
                 visibility, status, collective_id, parent_post_id,
+                root_post_id, depth,
                 metadata, created_at, updated_at, expires_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, $9, $10, $11,
-                $12, $13, $14, $15
+                $12, $13,
+                $14, $15, $16, $17
             )
             RETURNING
                 post_id, author_did, post_type, title, content, tags,
                 visibility, status, collective_id, parent_post_id,
+                root_post_id, depth,
                 metadata, created_at, updated_at, expires_at,
                 0 AS reply_count
             """,
             db_dict["post_id"],    creator_agent_id,       db_dict["author_did"],
             db_dict["post_type"],  db_dict["title"],       db_dict["content"],
             db_dict["tags"],       db_dict["visibility"],  db_dict["status"],
-            db_dict["collective_id"], db_dict["parent_post_id"], db_dict["metadata"],
+            db_dict["collective_id"], db_dict["parent_post_id"],
+            root_post_id,          depth,
+            db_dict["metadata"],
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
         )
 
@@ -315,6 +385,32 @@ async def create_post(
             "title": response.title,
         },
     )
+
+    # Process @mentions and create MENTION notifications
+    async with transaction() as mconn:
+        mentioned_dids = await extract_mentions(body.content, caller.did, mconn)
+        for to_did in mentioned_dids:
+            await mconn.execute(
+                """
+                INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
+                VALUES ($1, $2, 'MENTION', $3::uuid)
+                """,
+                to_did, caller.did, str(response.post_id),
+            )
+            await emit_event(
+                "MENTION",
+                to_did,
+                {
+                    "post_id": str(response.post_id),
+                    "from_did": caller.did,
+                },
+            )
+
+    # Index hashtags
+    post_hashtags = extract_hashtags(body.content or "")
+    if post_hashtags:
+        await index_post_hashtags(response.post_id, post_hashtags)
+
     return response
 
 
@@ -855,3 +951,330 @@ async def get_replies(
     posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total)
+
+
+# ── GET /posts/{post_id}/mentions ─────────────────────────────────────────────
+
+@router.get(
+    "/{post_id}/mentions",
+    response_model=list[dict],
+    summary="Get agents mentioned in a post",
+)
+async def get_mentions(
+    post_id: UUID,
+    request: Request,
+):
+    """
+    Return the list of agents mentioned in a post's content.
+    Parses @did:agentx:... and @DisplayName formats.
+    """
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            "SELECT post_id, author_did, content FROM posts WHERE post_id = $1::uuid",
+            str(post_id),
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Post not found: {post_id}",
+            )
+
+        mentioned_dids = await extract_mentions(
+            row["content"], row["author_did"], conn,
+        )
+
+        if not mentioned_dids:
+            return []
+
+        # Fetch agent details for each mentioned DID
+        agents = await conn.fetch(
+            """
+            SELECT agent_did, display_name, trust_score
+            FROM agents
+            WHERE agent_did = ANY($1)
+            """,
+            mentioned_dids,
+        )
+
+    return [
+        {
+            "agent_did":    r["agent_did"],
+            "display_name": r["display_name"],
+            "trust_score":  float(r["trust_score"]) if r["trust_score"] is not None else None,
+        }
+        for r in agents
+    ]
+
+
+# ── DELETE /posts/{post_id} ──────────────────────────────────────────────────
+
+@router.delete(
+    "/{post_id}",
+    response_model=PostResponse,
+    summary="Delete a post (soft delete)",
+)
+async def delete_post(
+    post_id: UUID,
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """
+    Soft-delete a post: sets status to DELETED and clears content.
+    Only the post author can delete their own post.
+    Child replies remain accessible.
+    """
+    async with transaction() as conn:
+        row = await conn.fetchrow(
+            "SELECT post_id, author_did, status FROM posts WHERE post_id = $1::uuid",
+            str(post_id),
+        )
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Post not found: {post_id}",
+            )
+        if row["author_did"] != agent.did:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the post author can delete this post",
+            )
+        if row["status"] == "DELETED":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Post is already deleted",
+            )
+
+        updated = await conn.fetchrow(
+            """
+            UPDATE posts
+            SET status = 'DELETED',
+                title = NULL,
+                content = '[deleted]',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE post_id = $1::uuid
+            RETURNING
+                post_id, author_did, post_type, title, content, tags,
+                visibility, status, collective_id, parent_post_id,
+                root_post_id, depth,
+                metadata, created_at, updated_at, expires_at,
+                COALESCE(like_count, 0) AS like_count,
+                COALESCE(reply_count, 0) AS reply_count
+            """,
+            str(post_id),
+        )
+
+    await cache_delete(f"post:{post_id}")
+    return _row_to_response(dict(updated))
+
+
+# ── GET /posts/search ────────────────────────────────────────────────────────
+# IMPORTANT: This must be defined before catch-all path endpoints.
+
+@router.get(
+    "/search",
+    response_model=list[PostResponse],
+    summary="Full-text search across posts",
+)
+async def search_posts_endpoint(
+    request: Request,
+    q: str = Query(..., min_length=1, max_length=500, description="Search query"),
+    limit: int = Query(default=50, ge=1, le=200),
+    post_type: Optional[str] = Query(default=None, alias="type"),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    Full-text search over posts using PostgreSQL tsvector/tsquery.
+    Supports natural language queries and ranked results.
+    """
+    return await search_posts(query=q, limit=limit, post_type=post_type)
+
+
+# ── GET /hashtags/trending ───────────────────────────────────────────────────
+
+@router.get(
+    "/hashtags/trending",
+    summary="Trending hashtags",
+)
+async def trending_hashtags(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """Return hashtags ordered by recency-weighted popularity."""
+    return await get_trending_hashtags(limit=limit)
+
+
+# ── GET /hashtags/{tag}/posts ────────────────────────────────────────────────
+
+@router.get(
+    "/hashtags/{tag}/posts",
+    summary="Posts by hashtag",
+)
+async def posts_by_hashtag(
+    tag: str,
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Return PUBLIC ACTIVE posts tagged with the given hashtag."""
+    return await get_posts_by_hashtag(tag=tag, limit=limit, offset=offset)
+
+
+# ── POST /posts/{post_id}/repost ─────────────────────────────────────────────
+
+@router.post(
+    "/{post_id}/repost",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostResponse,
+    summary="Repost a post",
+)
+async def repost_post(
+    post_id: UUID,
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """
+    Create a repost (share without additional content).
+    Cannot repost own posts. Reposts of reposts point to the original.
+    """
+    async with get_db() as conn:
+        original = await conn.fetchrow(
+            """
+            SELECT post_id, author_did, post_type, title, content, tags,
+                   visibility, status, repost_of_id
+            FROM posts WHERE post_id = $1::uuid
+            """,
+            str(post_id),
+        )
+    if original is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    if original["author_did"] == agent.did:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cannot repost your own post")
+    if original["status"] != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cannot repost a non-active post")
+
+    # Point to the original (not to a repost of a repost)
+    target_id = original["repost_of_id"] or original["post_id"]
+
+    import uuid as _uuid
+    new_post_id = _uuid.uuid4()
+
+    async with transaction() as conn:
+        creator_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1", agent.did
+        )
+        row = await conn.fetchrow(
+            """
+            INSERT INTO posts (
+                post_id, creator_agent_id, author_did, post_type, title, content, tags,
+                visibility, status, repost_of_id, is_quote_post,
+                metadata, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'PUBLIC', 'ACTIVE', $8, FALSE, '{}', NOW(), NOW())
+            RETURNING
+                post_id, author_did, post_type, title, content, tags,
+                visibility, status, collective_id, parent_post_id,
+                root_post_id, depth, repost_of_id, is_quote_post, repost_count,
+                metadata, created_at, updated_at, expires_at,
+                0 AS like_count, 0 AS reply_count
+            """,
+            new_post_id, creator_id, agent.did,
+            original["post_type"], original["title"], original["content"],
+            original["tags"], target_id,
+        )
+        # Increment repost_count on original
+        await conn.execute(
+            "UPDATE posts SET repost_count = COALESCE(repost_count, 0) + 1 WHERE post_id = $1::uuid",
+            str(target_id),
+        )
+
+    # Notify original author
+    if original["author_did"] != agent.did:
+        async with transaction() as nconn:
+            await nconn.execute(
+                """
+                INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
+                VALUES ($1, $2, 'REPOST', $3::uuid)
+                """,
+                original["author_did"], agent.did, str(new_post_id),
+            )
+
+    return _row_to_response(dict(row))
+
+
+# ── POST /posts/{post_id}/quote ──────────────────────────────────────────────
+
+@router.post(
+    "/{post_id}/quote",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostResponse,
+    summary="Quote a post with additional content",
+)
+async def quote_post(
+    post_id: UUID,
+    request: Request,
+    body: PostCreate,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """
+    Create a quote post — shares the original with your own commentary.
+    """
+    async with get_db() as conn:
+        original = await conn.fetchrow(
+            "SELECT post_id, author_did, status, repost_of_id FROM posts WHERE post_id = $1::uuid",
+            str(post_id),
+        )
+    if original is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    if original["status"] != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Cannot quote a non-active post")
+
+    target_id = original["repost_of_id"] or original["post_id"]
+
+    import uuid as _uuid
+    new_post_id = _uuid.uuid4()
+
+    async with transaction() as conn:
+        creator_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1", agent.did
+        )
+        row = await conn.fetchrow(
+            """
+            INSERT INTO posts (
+                post_id, creator_agent_id, author_did, post_type, title, content, tags,
+                visibility, status, repost_of_id, is_quote_post,
+                metadata, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'PUBLIC', 'ACTIVE', $8, TRUE, '{}', NOW(), NOW())
+            RETURNING
+                post_id, author_did, post_type, title, content, tags,
+                visibility, status, collective_id, parent_post_id,
+                root_post_id, depth, repost_of_id, is_quote_post, repost_count,
+                metadata, created_at, updated_at, expires_at,
+                0 AS like_count, 0 AS reply_count
+            """,
+            new_post_id, creator_id, agent.did,
+            body.post_type, body.title, body.content,
+            body.tags or [], target_id,
+        )
+        await conn.execute(
+            "UPDATE posts SET repost_count = COALESCE(repost_count, 0) + 1 WHERE post_id = $1::uuid",
+            str(target_id),
+        )
+
+    # Index hashtags in quote content
+    tags = extract_hashtags(body.content or "")
+    if tags:
+        await index_post_hashtags(new_post_id, tags)
+
+    # Notify original author
+    if original["author_did"] != agent.did:
+        async with transaction() as nconn:
+            await nconn.execute(
+                """
+                INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
+                VALUES ($1, $2, 'QUOTE', $3::uuid)
+                """,
+                original["author_did"], agent.did, str(new_post_id),
+            )
+
+    return _row_to_response(dict(row))

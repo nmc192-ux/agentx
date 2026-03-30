@@ -29,6 +29,8 @@ def _post_row_to_response(row: dict) -> PostResponse:
         status=row["status"],
         collective_id=row.get("collective_id"),
         parent_post_id=row.get("parent_post_id"),
+        root_post_id=row.get("root_post_id"),
+        depth=int(row.get("depth") or 0),
         metadata=metadata,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -258,3 +260,86 @@ async def list_post_interactions(post_id: UUID) -> list[PostInteractionResponse]
             post_id,
         )
     return [_interaction_row_to_response(dict(row)) for row in rows]
+
+
+async def search_posts(
+    query: str,
+    limit: int = 50,
+    post_type: Optional[str] = None,
+    collective_ids: Optional[list[str]] = None,
+) -> list[PostResponse]:
+    """
+    Full-text search over posts using PostgreSQL tsvector/tsquery.
+
+    Ranking uses ts_rank on the pre-built search_vector (title weight A,
+    content weight B).  Visibility rules:
+      - PUBLIC posts are always returned.
+      - COLLECTIVE posts are returned only when the caller's collective_ids
+        are supplied (pass an empty list to skip collective posts).
+      - PRIVATE / SYSTEM posts are never returned.
+
+    Args:
+        query:          Raw search string.  Converted to a websearch_to_tsquery
+                        expression so users can type naturally ("AI agents" OR
+                        #hashtag) without needing to know tsquery syntax.
+        limit:          Max rows to return (1–200).
+        post_type:      Optional post_type filter (e.g. "TASK", "OFFER").
+        collective_ids: List of collective UUIDs the caller belongs to.
+                        Pass None to skip COLLECTIVE posts entirely; pass []
+                        for an authenticated user with no memberships.
+    """
+    if not query or not query.strip():
+        return []
+
+    limit = max(1, min(limit, 200))
+
+    conditions = [
+        "p.status = 'ACTIVE'",
+        "p.search_vector IS NOT NULL",
+        "p.search_vector @@ websearch_to_tsquery('english', $1)",
+    ]
+    params: list = [query.strip()]
+
+    # Visibility
+    if collective_ids:
+        # Authenticated user with collective memberships
+        params.append(collective_ids)
+        conditions.append(
+            f"(p.visibility = 'PUBLIC' OR "
+            f"(p.visibility = 'COLLECTIVE' AND p.collective_id = ANY(${len(params)}::uuid[])))"
+        )
+    else:
+        # Unauthenticated or no memberships — PUBLIC only
+        conditions.append("p.visibility = 'PUBLIC'")
+
+    if post_type:
+        params.append(post_type.upper())
+        conditions.append(f"p.post_type = ${len(params)}")
+
+    where = " AND ".join(conditions)
+
+    params.extend([limit])
+
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                p.post_id, p.author_did, p.post_type, p.title, p.content,
+                p.tags, p.visibility, p.status, p.collective_id,
+                p.parent_post_id, p.metadata, p.created_at, p.updated_at,
+                p.expires_at,
+                COALESCE(p.like_count,  0) AS like_count,
+                COALESCE(p.reply_count, 0) AS reply_count,
+                a.display_name AS author_name,
+                a.trust_score  AS author_trust,
+                ts_rank(p.search_vector, websearch_to_tsquery('english', $1)) AS rank
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            WHERE {where}
+            ORDER BY rank DESC, p.created_at DESC
+            LIMIT ${len(params)}
+            """,
+            *params,
+        )
+
+    return [_post_row_to_response(dict(r)) for r in rows]

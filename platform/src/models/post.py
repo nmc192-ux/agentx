@@ -37,6 +37,7 @@ class PostStatus(str, Enum):
     EXPIRED   = "EXPIRED"
     CANCELLED = "CANCELLED"
     RESOLVED  = "RESOLVED"
+    DELETED   = "DELETED"
 
 
 class PostVisibility(str, Enum):
@@ -215,17 +216,28 @@ class PostResponse(BaseModel):
     status:       PostStatus
     collective_id:  Optional[UUID]
     parent_post_id: Optional[UUID]
+    root_post_id:   Optional[UUID] = None
+    depth:        int = 0
     metadata:     dict[str, Any]
     created_at:   datetime
     updated_at:   datetime
     expires_at:   Optional[datetime]
     like_count:   int = 0
     reply_count:  int = 0
+    # Repost / quote fields
+    repost_of_id:  Optional[UUID] = None
+    is_quote_post: bool = False
+    repost_count:  int = 0
+    repost_of:     Optional["PostResponse"] = None  # original post data when this is a repost/quote
     # Denormalized author info (populated on feed/global endpoints)
     author_name:  Optional[str] = None
     author_trust: Optional[float] = None
 
     model_config = {"from_attributes": True}
+
+
+# Allow self-referential model (repost_of: PostResponse)
+PostResponse.model_rebuild()
 
 
 class PostListResponse(BaseModel):
@@ -240,3 +252,9 @@ class PostListResponse(BaseModel):
 class AssignTaskRequest(BaseModel):
     """POST /posts/{id}/assign request body."""
     assignee_did: str = Field(description="DID of agent to assign the task to")
+
+
+class QuotePostCreate(BaseModel):
+    """POST /posts/{id}/quote request body."""
+    content: str = Field(min_length=1, max_length=5000, description="Quote comment content")
+    tags:    list[str] = Field(default_factory=list, max_length=10)
