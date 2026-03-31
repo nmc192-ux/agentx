@@ -66,24 +66,58 @@ class AgentRecord:
 
 # ── FastAPI dependencies ──────────────────────────────────────────────────────
 
+async def _try_api_key_auth(request: Request) -> Optional[AgentRecord]:
+    """
+    Try to authenticate via X-API-Key header.
+    Returns AgentRecord if valid, None otherwise.
+    """
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or not api_key.startswith("agx_"):
+        return None
+
+    from ..services.api_keys import validate_api_key
+    result = await validate_api_key(api_key)
+    if result is None:
+        return None
+
+    from ..database import get_db
+    async with get_db() as conn:
+        agent_row = await resolve_did_active(result["agent_did"], conn)
+
+    if agent_row is None:
+        return None
+
+    # Create a minimal claims object for API key auth
+    api_claims = TokenClaims({
+        "sub": result["agent_did"],
+        "type": "api_key",
+    })
+    return AgentRecord(row=agent_row, claims=api_claims)
+
+
 async def get_current_agent(
     request:     Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> AgentRecord:
     """
-    FastAPI dependency: validate JWT and return the authenticated agent.
+    FastAPI dependency: validate JWT or API key and return the authenticated agent.
 
-    1. Extracts Bearer token from Authorization header.
-    2. Decodes + validates the JWT (signature, expiry, type).
-    3. Resolves the agent DID to a live database record.
-    4. Returns AgentRecord (caller can then use agent.did for RLS queries).
+    Authentication methods (checked in order):
+      1. X-API-Key header (agx_<prefix>_<secret>)
+      2. Authorization: Bearer <JWT>
 
     Raises HTTP 401 on any failure.
     """
+    # Try API key first
+    api_key_agent = await _try_api_key_auth(request)
+    if api_key_agent is not None:
+        return api_key_agent
+
+    # Fall back to JWT
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header (Bearer token required)",
+            detail="Missing Authorization header (Bearer token or X-API-Key required)",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

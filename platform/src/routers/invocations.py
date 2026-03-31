@@ -29,7 +29,7 @@ async def invoke_service(
 
     try:
         return await service_proxy.invoke_service(
-            caller_did=agent.agent_did,
+            caller_did=agent.did,
             service_id=service_id,
             payload=payload,
         )
@@ -53,7 +53,7 @@ async def complete_invocation(
     try:
         return await service_proxy.complete_invocation(
             invocation_id=invocation_id,
-            provider_did=agent.agent_did,
+            provider_did=agent.did,
             result=result,
         )
     except ValueError as exc:
@@ -73,6 +73,6 @@ async def list_invocations(
 ):
     """List service invocations for the authenticated agent."""
     return await service_proxy.list_invocations(
-        agent_did=agent.agent_did,
+        agent_did=agent.did,
         role=role,
     )

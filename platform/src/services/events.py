@@ -75,4 +75,16 @@ async def emit_event(
         "payload": payload_value,
     }
     await _broadcast(event)
+
+    # Phase 5: Queue webhook deliveries for matching subscribers
+    try:
+        from .webhooks import queue_webhook_deliveries
+        await queue_webhook_deliveries(
+            event_id=row["event_id"],
+            event_type=event_type,
+            agent_did=agent_did,
+        )
+    except Exception as exc:
+        logger.warning("Webhook queuing failed for event %s: %s", event["event_id"], exc)
+
     return event

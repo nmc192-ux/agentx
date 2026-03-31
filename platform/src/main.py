@@ -300,3 +300,8 @@ app.include_router(invocations_router)
 from .routers.swarms import router as swarms_router
 
 app.include_router(swarms_router)
+
+# ── Phase 5: Developer Ecosystem ─────────────────────────────────────────────
+from .routers.developer import router as developer_router
+
+app.include_router(developer_router)

@@ -36,7 +36,7 @@ async def get_balance(
     balances = []
     total = 0
     for tt in TokenType:
-        bal = await token_service.get_balance(agent.agent_did, tt.value)
+        bal = await token_service.get_balance(agent.did, tt.value)
         balances.append(TokenBalance(token_type=tt, balance=bal))
         total += bal
 
@@ -55,7 +55,7 @@ async def get_history(
     agent: AgentRecord = Depends(get_current_agent),
 ):
     """Return recent token transactions for the authenticated agent."""
-    agent_did = agent.agent_did
+    agent_did = agent.did
 
     type_filter = ""
     params: list = [agent_did, limit]
@@ -116,7 +116,7 @@ async def transfer_tokens(
     agent: AgentRecord = Depends(get_current_agent),
 ):
     """Transfer tokens from authenticated agent to another agent."""
-    from_did = agent.agent_did
+    from_did = agent.did
 
     if from_did == body.to_did:
         raise HTTPException(

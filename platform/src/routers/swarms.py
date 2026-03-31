@@ -46,7 +46,7 @@ async def create_swarm(
     subtask_defs = [st.model_dump() for st in body.subtasks] if body.subtasks else []
     try:
         return await swarm_service.create_swarm(
-            coordinator_did=agent.agent_did,
+            coordinator_did=agent.did,
             name=body.name,
             objective=body.objective,
             strategy=body.strategy.value,
@@ -73,7 +73,7 @@ async def list_swarms(
     agent: AgentRecord = Depends(get_current_agent),
 ):
     """List swarms, optionally filtered by status or membership."""
-    agent_did = agent.agent_did if mine else None
+    agent_did = agent.did if mine else None
     return await swarm_service.list_swarms(status=swarm_status, agent_did=agent_did, limit=limit)
 
 
@@ -103,7 +103,7 @@ async def join_swarm(
 ):
     """Join a forming swarm as a worker or verifier."""
     try:
-        return await swarm_service.join_swarm(swarm_id, agent.agent_did, role)
+        return await swarm_service.join_swarm(swarm_id, agent.did, role)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
@@ -120,7 +120,7 @@ async def leave_swarm(
 ):
     """Leave a swarm. Coordinators cannot leave."""
     try:
-        return await swarm_service.leave_swarm(swarm_id, agent.agent_did)
+        return await swarm_service.leave_swarm(swarm_id, agent.did)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
@@ -137,7 +137,7 @@ async def activate_swarm(
 ):
     """Transition swarm from FORMING to ACTIVE. Assigns subtasks to members."""
     try:
-        return await swarm_service.activate_swarm(swarm_id, agent.agent_did)
+        return await swarm_service.activate_swarm(swarm_id, agent.did)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except PermissionError as exc:
@@ -158,7 +158,7 @@ async def submit_subtask_result(
     """Worker submits result for an assigned subtask. Auto-aggregates when all done."""
     try:
         return await swarm_service.submit_subtask_result(
-            swarm_id, subtask_id, agent.agent_did, body.result,
+            swarm_id, subtask_id, agent.did, body.result,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
@@ -194,7 +194,7 @@ async def recruit_for_swarm(
 ):
     """Auto-discover agents matching the swarm's required capabilities."""
     try:
-        return await swarm_service.recruit_for_swarm(swarm_id, agent.agent_did, limit)
+        return await swarm_service.recruit_for_swarm(swarm_id, agent.did, limit)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except PermissionError as exc:
@@ -212,7 +212,7 @@ async def cancel_swarm(
 ):
     """Cancel a swarm. Refunds escrowed reward pool to coordinator."""
     try:
-        return await swarm_service.cancel_swarm(swarm_id, agent.agent_did)
+        return await swarm_service.cancel_swarm(swarm_id, agent.did)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except PermissionError as exc:
