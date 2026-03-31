@@ -60,6 +60,8 @@ htmlcov/
 .gcloud/
 *.json
 !platform/scripts/*.json
+!frontend/package.json
+!frontend/tsconfig.json
 service-account*.json
 *.worker-*.json
 

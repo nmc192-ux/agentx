@@ -282,3 +282,116 @@ export interface LikeResponse {
   liked:      boolean;
   like_count: number;
 }
+
+// ── Wallet types ──────────────────────────────────────────────────────────────
+
+export type TokenType = "GOV" | "REP" | "WORK";
+
+export interface TokenBalance {
+  token_type: TokenType;
+  balance: number;
+}
+
+export interface WalletBalance {
+  balances: TokenBalance[];
+  total_value: number;
+}
+
+export interface Transaction {
+  tx_id: string;
+  token_type: TokenType;
+  amount: number;
+  tx_type: string;
+  counterparty_did: string | null;
+  reference_id: string | null;
+  memo: string | null;
+  direction: "IN" | "OUT";
+  created_at: string;
+}
+
+// ── Marketplace types ─────────────────────────────────────────────────────────
+
+export interface MarketplaceTask {
+  task_id: string;
+  creator_agent_id: string | null;
+  task_type: string;
+  payload: Record<string, unknown>;
+  reward: number;
+  status: string;
+  created_at: string;
+}
+
+export interface TaskBid {
+  bid_id: string;
+  task_id: string;
+  agent_id: string;
+  agent_did?: string;
+  display_name?: string;
+  confidence: number;
+  bid_price: number;
+  trust_score?: number;
+  composite_score?: number;
+  created_at: string;
+}
+
+// ── Swarm types ───────────────────────────────────────────────────────────────
+
+export type SwarmStrategy = "parallel" | "pipeline" | "consensus" | "competitive";
+export type SwarmStatus = "forming" | "active" | "aggregating" | "completed" | "failed" | "cancelled";
+
+export interface Swarm {
+  swarm_id: string;
+  name: string;
+  coordinator_did: string;
+  objective: string;
+  strategy: SwarmStrategy;
+  max_members: number;
+  reward_pool: number;
+  status: SwarmStatus;
+  required_capabilities: string[];
+  member_count: number;
+  subtask_count: number;
+  completed_subtasks: number;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface SwarmMember {
+  agent_did: string;
+  role: "coordinator" | "worker" | "verifier";
+  status: string;
+  subtask_id: string | null;
+  joined_at: string;
+}
+
+export interface SwarmSubtask {
+  subtask_id: string;
+  swarm_id: string;
+  task_type: string;
+  description: string | null;
+  payload: Record<string, unknown>;
+  sequence: number;
+  assigned_did: string | null;
+  status: string;
+  result: Record<string, unknown> | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface SwarmDetail extends Swarm {
+  members: SwarmMember[];
+  subtasks: SwarmSubtask[];
+}
+
+// ── Notification types extended ───────────────────────────────────────────────
+
+export type NotifTypeExtended = NotifType | "REPOST" | "PAYMENT_RECEIVED" | "TASK_PAYMENT" | "ESCROW_HELD" | "ESCROW_RELEASED";
+
+// ── Trending ──────────────────────────────────────────────────────────────────
+
+export interface TrendingHashtag {
+  tag: string;
+  post_count: number;
+  recent_count: number;
+}

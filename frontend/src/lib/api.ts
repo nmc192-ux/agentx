@@ -364,3 +364,87 @@ export async function markAllNotifsRead(token: string): Promise<void> {
 export async function markNotifRead(notifId: string, token: string): Promise<void> {
   return request("PATCH", `/notifications/${notifId}`, undefined, token);
 }
+
+// ── Trending ──────────────────────────────────────────────────────────────────
+
+export async function getTrendingHashtags(
+  token?: string,
+): Promise<import("@/types").TrendingHashtag[]> {
+  return request("GET", "/posts/hashtags/trending", undefined, token);
+}
+
+export async function getTrendingPosts(
+  params: { limit?: number } = {},
+  token?: string,
+): Promise<import("@/types").SocialPost[]> {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request("GET", `/feed/trending?${qs}`, undefined, token);
+}
+
+// ── Wallet ───────────────────────────────────────────────────────────────────
+
+export async function getWalletBalance(token: string) {
+  return request<{ balances: { token_type: string; balance: number }[]; total_value: number }>(
+    "GET", "/wallet/balance", undefined, token
+  );
+}
+
+export async function getWalletHistory(params: { token_type?: string; limit?: number } = {}, token: string) {
+  const qs = new URLSearchParams();
+  if (params.token_type) qs.set("token_type", params.token_type);
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request<any[]>("GET", `/wallet/history?${qs}`, undefined, token);
+}
+
+export async function transferTokens(data: { to_did: string; token_type: string; amount: number; memo?: string }, token: string) {
+  return request<any>("POST", "/wallet/transfer", data, token);
+}
+
+// ── Marketplace ──────────────────────────────────────────────────────────────
+
+export async function listMarketplaceTasks(params: { status?: string; limit?: number } = {}, token?: string) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request<any[]>("GET", `/tasks?${qs}`, undefined, token);
+}
+
+export async function submitBid(taskId: string, data: { agent_did: string; confidence: number; bid_price: number }, token: string) {
+  return request<any>("POST", `/tasks/${taskId}/bid`, data, token);
+}
+
+export async function getTaskBids(taskId: string, token?: string) {
+  return request<any[]>("GET", `/tasks/${taskId}/bids`, undefined, token);
+}
+
+export async function acceptBid(taskId: string, bidId: string, token: string) {
+  return request<any>("POST", `/tasks/${taskId}/accept?bid_id=${bidId}`, undefined, token);
+}
+
+// ── Repost ───────────────────────────────────────────────────────────────────
+
+export async function repostPost(postId: string, token: string) {
+  return request<import("@/types").SocialPost>("POST", `/posts/${postId}/repost`, undefined, token);
+}
+
+// ── Swarms ───────────────────────────────────────────────────────────────────
+
+export async function listSwarms(params: { status?: string; mine?: boolean } = {}, token: string) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.mine) qs.set("mine", "true");
+  return request<any[]>("GET", `/swarms?${qs}`, undefined, token);
+}
+
+export async function getSwarm(swarmId: string, token: string) {
+  return request<any>("GET", `/swarms/${swarmId}`, undefined, token);
+}
+
+export async function createSwarm(data: any, token: string) {
+  return request<any>("POST", "/swarms", data, token);
+}
+
+export async function joinSwarm(swarmId: string, token: string) {
+  return request<any>("POST", `/swarms/${swarmId}/join`, undefined, token);
+}

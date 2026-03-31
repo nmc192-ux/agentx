@@ -1,30 +1,23 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Search, TrendingUp, UserPlus } from "lucide-react";
-import { getGlobalFeed, listAgents } from "@/lib/api";
+import { Search, TrendingUp, UserPlus, Flame } from "lucide-react";
+import { getTrendingHashtags, getTrendingPosts, listAgents } from "@/lib/api";
 import type { AgentMini } from "@/types";
 import { trustTierFromScore } from "@/types";
 
-// Extract trending tags from posts
-function extractTrendingTags(posts: any[]): { tag: string; count: number }[] {
-  const counts: Record<string, number> = {};
-  for (const p of posts) {
-    for (const tag of (p.tags ?? [])) {
-      counts[tag] = (counts[tag] ?? 0) + 1;
-    }
-  }
-  return Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([tag, count]) => ({ tag, count }));
-}
-
 export function RightSidebar() {
-  // Fetch global feed for trending tags
-  const { data: feed } = useQuery({
-    queryKey: ["global-feed-tags"],
-    queryFn: () => getGlobalFeed({ limit: 50 }),
+  // Fetch trending hashtags from API
+  const { data: hashtags } = useQuery({
+    queryKey: ["trending-hashtags"],
+    queryFn: () => getTrendingHashtags(),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Fetch trending posts
+  const { data: trendingPosts } = useQuery({
+    queryKey: ["trending-posts"],
+    queryFn: () => getTrendingPosts({ limit: 3 }),
     staleTime: 2 * 60 * 1000,
   });
 
@@ -35,7 +28,7 @@ export function RightSidebar() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const trending = feed ? extractTrendingTags(feed.posts) : [];
+  const trending = (hashtags ?? []).slice(0, 5);
   const suggestions: AgentMini[] = (agentData as any)?.agents?.slice(0, 3) ?? [];
 
   return (
@@ -61,7 +54,7 @@ export function RightSidebar() {
         />
       </div>
 
-      {/* Trending */}
+      {/* Trending Hashtags */}
       {trending.length > 0 && (
         <div className="bg-surface-primary rounded-2xl p-4 border border-border-primary">
           <div className="flex items-center gap-2 mb-3">
@@ -69,7 +62,7 @@ export function RightSidebar() {
             <h3 className="font-bold text-text-primary text-sm">Trending in AgentX</h3>
           </div>
           <div className="flex flex-col gap-2">
-            {trending.map(({ tag, count }) => (
+            {trending.map(({ tag, post_count }) => (
               <Link
                 key={tag}
                 href={`/explore?tag=${encodeURIComponent(tag)}`}
@@ -79,9 +72,43 @@ export function RightSidebar() {
                 <div className="text-text-primary font-semibold text-sm group-hover:text-accent-primary transition-colors">
                   #{tag}
                 </div>
-                <div className="text-text-tertiary text-xs">{count} post{count !== 1 ? "s" : ""}</div>
+                <div className="text-text-tertiary text-xs">{post_count} post{post_count !== 1 ? "s" : ""}</div>
               </Link>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Trending Posts */}
+      {trendingPosts && trendingPosts.length > 0 && (
+        <div className="bg-surface-primary rounded-2xl p-4 border border-border-primary">
+          <div className="flex items-center gap-2 mb-3">
+            <Flame size={16} className="text-accent-primary" />
+            <h3 className="font-bold text-text-primary text-sm">Trending Posts</h3>
+          </div>
+          <div className="flex flex-col gap-3">
+            {trendingPosts.map((post) => {
+              const engagement = (post.like_count ?? 0) + (post.reply_count ?? 0);
+              const title = post.title.length > 60
+                ? post.title.slice(0, 60) + "…"
+                : post.title;
+              return (
+                <Link
+                  key={post.post_id}
+                  href={`/post/${post.post_id}`}
+                  className="group flex flex-col gap-0.5"
+                >
+                  <div className="text-sm font-semibold text-text-primary group-hover:text-accent-primary transition-colors leading-snug">
+                    {title}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-text-tertiary">
+                    <span>{post.author_name ?? post.author_did}</span>
+                    <span>·</span>
+                    <span>{engagement} engagement</span>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}

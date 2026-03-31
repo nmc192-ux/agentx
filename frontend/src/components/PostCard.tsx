@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  MessageCircle, Heart, Repeat2, BarChart2,
+  MessageCircle, Heart, Repeat2, BarChart2, Loader2,
 } from "lucide-react";
-import { likePost } from "@/lib/api";
+import { likePost, repostPost } from "@/lib/api";
 import type { SocialPost, Post } from "@/types";
 import { trustTierFromScore } from "@/types";
 
@@ -14,6 +14,7 @@ import { trustTierFromScore } from "@/types";
 type AnyPost = SocialPost | (Post & {
   like_count?:   number;
   reply_count?:  number;
+  repost_count?: number;
   author_name?:  string | null;
   author_trust?: number | null;
   metadata?:     Record<string, unknown>;
@@ -71,9 +72,12 @@ interface Props {
 export function PostCard({ post, compact = false }: Props) {
   const { data: session } = useSession();
   const qc = useQueryClient();
-  const [liked, setLiked]       = useState(false);
-  const [likeCount, setLikeCount] = useState(post.like_count ?? 0);
-  const [pending, setPending]   = useState(false);
+  const [liked, setLiked]             = useState(false);
+  const [likeCount, setLikeCount]     = useState(post.like_count ?? 0);
+  const [reposted, setReposted]       = useState(false);
+  const [repostCount, setRepostCount] = useState((post as any).repost_count ?? 0);
+  const [pending, setPending]         = useState(false);
+  const [repostPending, setRepostPending] = useState(false);
 
   const token   = (session as any)?.accessToken as string | undefined;
   const cfg     = POST_TYPE_CONFIG[post.post_type] ?? POST_TYPE_CONFIG.UPDATE;
@@ -84,6 +88,25 @@ export function PostCard({ post, compact = false }: Props) {
   const tierColors: Record<string, string> = {
     elite: "#F59E0B", trusted: "#8B5CF6", verified: "#3B82F6", unverified: "#6B7280",
   };
+
+  async function handleRepost(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!token || repostPending) return;
+    if (!window.confirm("Repost this to your followers?")) return;
+    setRepostPending(true);
+    try {
+      await repostPost(post.post_id, token);
+      setReposted(true);
+      setRepostCount((c: number) => c + 1);
+      qc.invalidateQueries({ queryKey: ["global-feed"] });
+      qc.invalidateQueries({ queryKey: ["home-feed"] });
+    } catch {
+      // noop
+    } finally {
+      setRepostPending(false);
+    }
+  }
 
   async function handleLike(e: React.MouseEvent) {
     e.preventDefault();
@@ -189,11 +212,21 @@ export function PostCard({ post, compact = false }: Props) {
                 <span className="text-xs">{post.reply_count ?? 0}</span>
               </Link>
 
-              {/* Repost placeholder */}
-              <button className="flex items-center gap-1.5 hover:text-accent-success transition-colors group">
+              {/* Repost */}
+              <button
+                onClick={handleRepost}
+                disabled={!token || repostPending || reposted}
+                className={`flex items-center gap-1.5 transition-colors group ${
+                  reposted ? "text-accent-success" : "hover:text-accent-success"
+                }`}
+              >
                 <span className="p-1.5 rounded-full group-hover:bg-accent-success/10 transition-colors">
-                  <Repeat2 size={16} />
+                  {repostPending
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <Repeat2 size={16} />
+                  }
                 </span>
+                <span className="text-xs">{repostCount > 0 ? repostCount : ""}</span>
               </button>
 
               {/* Like */}
