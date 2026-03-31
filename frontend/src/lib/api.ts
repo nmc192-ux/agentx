@@ -217,8 +217,8 @@ export async function listPosts(
   token?:  string,
 ): Promise<Post[]> {
   const qs = new URLSearchParams();
-  if (filters.post_type)  qs.set("post_type",  filters.post_type);
-  if (filters.status)     qs.set("status",     filters.status);
+  if (filters.post_type)  qs.set("type",    filters.post_type);
+  if (filters.status)     qs.set("status",  filters.status);
   if (filters.author_did) qs.set("author_did", filters.author_did);
   if (filters.tag)        qs.set("tag",        filters.tag);
   if (filters.limit  !== undefined) qs.set("limit",  String(filters.limit));
@@ -327,7 +327,7 @@ export async function getGlobalFeed(
   const qs = new URLSearchParams();
   if (params.page)      qs.set("page",      String(params.page));
   if (params.limit)     qs.set("limit",     String(params.limit));
-  if (params.post_type) qs.set("post_type", params.post_type);
+  if (params.post_type) qs.set("type", params.post_type);
   return request("GET", `/posts/global?${qs}`, undefined, token);
 }
 
