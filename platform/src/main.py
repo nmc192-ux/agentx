@@ -295,3 +295,8 @@ from .routers.invocations import router as invocations_router
 
 app.include_router(wallet_router)
 app.include_router(invocations_router)
+
+# ── Phase 4: Swarm Coordination ──────────────────────────────────────────────
+from .routers.swarms import router as swarms_router
+
+app.include_router(swarms_router)
