@@ -893,6 +893,11 @@ async def toggle_like(
             "SELECT like_count FROM posts WHERE post_id = $1::uuid", str(post_id)
         )
 
+    # Social-economic bridge: reward post author for receiving a like
+    if liked and post_row["author_did"] != caller.did:
+        from ..services.social_rewards import reward_like_received
+        await reward_like_received(post_id, post_row["author_did"], caller.did)
+
     return {"liked": liked, "like_count": new_count or 0}
 
 
@@ -1197,6 +1202,9 @@ async def repost_post(
                 """,
                 original["author_did"], agent.did, str(new_post_id),
             )
+        # Social-economic bridge: reward original author for repost
+        from ..services.social_rewards import reward_repost_received
+        await reward_repost_received(target_id, original["author_did"], agent.did)
 
     return _row_to_response(dict(row))
 

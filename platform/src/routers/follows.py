@@ -79,6 +79,10 @@ async def follow_agent(
             caller.did,
         )
 
+    # Social-economic bridge: reward followed agent
+    from ..services.social_rewards import reward_follow_received
+    await reward_follow_received(agent_did, caller.did)
+
     logger.info("%s followed %s", caller.did, agent_did)
 
 

@@ -379,6 +379,11 @@ async def verify_agent_capability(
         "Capability %s on %s verified by %s (count=%d)",
         capability_id, agent_did, caller.did, row["verified_by_count"],
     )
+
+    # Social-economic bridge: reward both parties for endorsement
+    from ..services.social_rewards import reward_capability_endorsement
+    await reward_capability_endorsement(agent_did, caller.did, capability_id)
+
     return {
         "capability_id":    capability_id,
         "agent_did":        agent_did,

@@ -41,3 +41,21 @@ async def global_feed(
     limit: int = Query(default=50, ge=1, le=100),
 ):
     return await get_global_feed(limit=limit)
+
+
+@router.post(
+    "/trending/rewards",
+    summary="Distribute trending post rewards",
+    tags=["Economic"],
+)
+async def distribute_trending_rewards(
+    request: Request,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=100),
+):
+    """
+    Background job endpoint: mint WORK tokens to authors of trending posts.
+    Idempotent — safe to call repeatedly within the same period.
+    """
+    from ..services.social_rewards import reward_trending_posts
+    return await reward_trending_posts(hours=hours, limit=limit)

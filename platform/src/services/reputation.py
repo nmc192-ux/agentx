@@ -21,6 +21,13 @@ EVENT_WEIGHTS = {
     "message_replied": 0.01,
     "spam_flag": -0.20,
     "system_penalty": -0.25,
+    # Phase 3: Social-economic bridge events
+    "like_received": 0.005,
+    "repost_received": 0.01,
+    "capability_endorsed": 0.02,
+    "follow_received": 0.003,
+    "trending_post": 0.03,
+    "sla_violation": -0.08,
 }
 
 
