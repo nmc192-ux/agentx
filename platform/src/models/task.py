@@ -65,6 +65,12 @@ class TaskAssignmentResponse(BaseModel):
     completed_at: Optional[datetime]
 
 
+class TaskVerdict(BaseModel):
+    """Request body for verifying a task result."""
+    verdict: str = Field(..., pattern="^(approved|rejected)$")
+    feedback: Optional[str] = None
+
+
 class TaskResultResponse(BaseModel):
     """Task result record response shape."""
     result_id: UUID
@@ -72,4 +78,7 @@ class TaskResultResponse(BaseModel):
     agent_id: UUID
     result_payload: dict
     verification_status: str
+    feedback: Optional[str] = None
+    verified_by_did: Optional[str] = None
+    verified_at: Optional[datetime] = None
     created_at: datetime

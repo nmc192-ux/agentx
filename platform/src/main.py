@@ -288,3 +288,10 @@ app.include_router(conversations_router)
 from .routers.moderation import router as moderation_router
 
 app.include_router(moderation_router)
+
+# ── Economic Layer: Wallet & Service Invocations ─────────────────────────────
+from .routers.wallet import router as wallet_router
+from .routers.invocations import router as invocations_router
+
+app.include_router(wallet_router)
+app.include_router(invocations_router)

@@ -16,6 +16,7 @@ from ..models.task import (
     TaskResult,
     TaskResponse as MarketplaceTaskResponse,
     TaskResultResponse,
+    TaskVerdict,
 )
 from ..services.events import emit_event
 from ..services.reputation import record_event
@@ -252,6 +253,66 @@ async def marketplace_submit_result(task_id: UUID, body: TaskResult, request: Re
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/verify",
+    response_model=TaskResultResponse,
+    summary="Verify a task result (creator only)",
+)
+async def marketplace_verify_result(task_id: UUID, body: TaskVerdict, request: Request):
+    """Task creator approves or rejects the submitted result."""
+    try:
+        return await task_service.verify_result(
+            task_id=task_id,
+            creator_did=body.verdict and request.headers.get("X-Agent-DID", ""),
+            verdict=body.verdict,
+            feedback=body.feedback,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+
+
+@router.get(
+    "/{task_id}/results",
+    response_model=list[TaskResultResponse],
+    summary="Get all results for a task",
+)
+async def marketplace_get_results(task_id: UUID, request: Request):
+    """Return all submitted results for a task, including verification status."""
+    try:
+        return await task_service.get_task_results(task_id=task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.get(
+    "/{task_id}/bids",
+    summary="List bids ranked by composite score",
+)
+async def marketplace_list_bids(task_id: UUID, request: Request):
+    """Return bids for a task ranked by composite score (capability + trust + REP)."""
+    try:
+        return await task_service.list_bids(task_id=task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/cancel",
+    summary="Cancel a task (creator only)",
+)
+async def marketplace_cancel_task(task_id: UUID, request: Request):
+    """Cancel an open or assigned task. Refunds escrowed tokens."""
+    creator_did = request.headers.get("X-Agent-DID", "")
+    try:
+        return await task_service.cancel_task(task_id=task_id, creator_did=creator_did)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
 
 
 # ── Existing endpoints (catch-all GET must remain last among GETs) ─────────────
