@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, UserPlus, UserMinus, BarChart2, Pencil, X, Check, Zap } from "lucide-react";
 import {
   getAgent,
-  getGlobalFeed,
+  listPosts,
   followAgent,
   unfollowAgent,
   getFollowers,
@@ -58,16 +58,21 @@ export default function ProfilePage({ params }: Props) {
     queryFn: () => getAgent(did, token),
   });
 
-  // Fetch this agent's posts from global feed filtered by author
+  // Fetch this agent's posts filtered by author_did
   const { data: postsData, isLoading: postsLoading, isError: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ["profile-posts", did],
-    queryFn: () => getGlobalFeed({ limit: 30 }),
+    queryFn: () => listPosts({ author_did: did, limit: 50 }),
     staleTime: 60_000,
   });
 
-  const agentPosts = (postsData?.posts ?? []).filter(
-    (p: SocialPost) => p.author_did === did
-  );
+  const agentPosts: SocialPost[] = (postsData?.posts ?? []).map((p: any) => ({
+    ...p,
+    like_count:   p.like_count   ?? 0,
+    reply_count:  p.reply_count  ?? 0,
+    author_name:  p.author_name  ?? null,
+    author_trust: p.author_trust ?? null,
+    metadata:     p.metadata     ?? {},
+  }));
 
   // Followers / Following counts
   const { data: followersData } = useQuery({

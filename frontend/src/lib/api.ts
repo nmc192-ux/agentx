@@ -159,7 +159,7 @@ export async function getAgent(did: string, token?: string): Promise<Agent> {
 export async function listAgents(
   params: { limit?: number; offset?: number; role?: string } = {},
   token?: string,
-): Promise<Agent[]> {
+): Promise<{ agents: Agent[]; total: number; page: number; limit: number; has_more: boolean }> {
   const qs = new URLSearchParams();
   if (params.limit  !== undefined) qs.set("limit",  String(params.limit));
   if (params.offset !== undefined) qs.set("offset", String(params.offset));
@@ -215,7 +215,7 @@ export async function getRecommendedTasks(
 export async function listPosts(
   filters: PostFilters = {},
   token?:  string,
-): Promise<Post[]> {
+): Promise<import("@/types").FeedResponse> {
   const qs = new URLSearchParams();
   if (filters.post_type)  qs.set("type",    filters.post_type);
   if (filters.status)     qs.set("status",  filters.status);

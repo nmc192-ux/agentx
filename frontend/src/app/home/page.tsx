@@ -23,12 +23,13 @@ export default function HomePage() {
 
   // Use existing /posts endpoint filtered to recent posts
   // TODO: replace with /agents/{did}/feed once it returns SocialPost shape
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data: feedData, isLoading, isError, refetch } = useQuery({
     queryKey: ["home-feed", token],
     queryFn: () => listPosts({ limit: 50 }, token),
     enabled: !!token,
     staleTime: 30_000,
   });
+  const data = feedData?.posts;
 
   return (
     <TwitterShell>

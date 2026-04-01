@@ -33,12 +33,13 @@ export default function DashboardPage() {
     enabled:  !!did && !!token,
   });
 
-  const { data: recentPosts, isLoading: postsLoading, isError: postsError, refetch: refetchPosts } = useQuery({
+  const { data: recentPostsData, isLoading: postsLoading, isError: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ["posts", "recent"],
     queryFn:  () => listPosts({ limit: 5 }, token),
     enabled:  !!token,
     refetchInterval: 60_000,
   });
+  const recentPosts = recentPostsData?.posts;
 
   const { data: tasks, isLoading: tasksLoading, isError: tasksError, refetch: refetchTasks } = useQuery({
     queryKey: ["recommended-tasks", did],

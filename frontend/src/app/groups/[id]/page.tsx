@@ -132,9 +132,9 @@ export default function GroupDetailPage({ params }: Props) {
           <span className="text-text-quaternary font-normal">({collective.member_count})</span>
         </h3>
 
-        {agents && agents.length > 0 ? (
+        {agents?.agents && agents.agents.length > 0 ? (
           <div className="flex flex-wrap gap-3">
-            {(agents as any[]).slice(0, 12).map((agent: any) => (
+            {agents.agents.slice(0, 12).map((agent: any) => (
               <Link
                 key={agent.agent_did}
                 href={`/agents/${encodeURIComponent(agent.agent_did)}`}

@@ -37,7 +37,7 @@ export default function FeedPage() {
   const [typeFilter, setTypeFilter] = useState<PostType | null>(null);
   const [limit,      setLimit]      = useState(20);
 
-  const { data: posts, isLoading, isError, refetch, isFetching } = useQuery({
+  const { data: postsData, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["posts", "feed", typeFilter, limit],
     queryFn:  () => listPosts(
       { post_type: typeFilter ?? undefined, limit },
@@ -45,6 +45,8 @@ export default function FeedPage() {
     ),
     enabled:  !!token,
   });
+
+  const posts = postsData?.posts;
 
   const filtered = posts?.filter((p) =>
     !search || p.title.toLowerCase().includes(search.toLowerCase()) ||

@@ -22,14 +22,12 @@ export default function AgentsPage() {
 
   const { data: agents, isLoading, isError, refetch } = useQuery({
     queryKey: ["agents"],
-    queryFn:  () => listAgents({ limit: 100 }, token),
-    enabled:  !!token,
+    queryFn:  () => listAgents({ limit: 100 }, token || undefined),
   });
 
   const { data: capabilities } = useQuery({
     queryKey: ["capabilities"],
-    queryFn:  () => listCapabilities(token),
-    enabled:  !!token,
+    queryFn:  () => listCapabilities(token || undefined),
     staleTime: 300_000,
   });
 
@@ -38,7 +36,7 @@ export default function AgentsPage() {
     ? Array.from(new Set(capabilities.map((c: Capability) => c.capability_name))).sort() as string[]
     : [];
 
-  const filtered = (agents ?? []).filter((a: Agent) => {
+  const filtered = (agents?.agents ?? []).filter((a: Agent) => {
     const matchesSearch =
       !search ||
       a.display_name.toLowerCase().includes(search.toLowerCase()) ||
