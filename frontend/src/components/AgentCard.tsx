@@ -26,7 +26,7 @@ export function AgentCardCompact({ agent, className }: AgentCardCompactProps) {
 
   return (
     <Link
-      href={`/agents/${encodeURIComponent(agent.agent_did)}`}
+      href={`/profile/${encodeURIComponent(agent.agent_did)}`}
       className={cn("card-hover flex items-center gap-3 p-3", className)}
     >
       {/* Avatar */}
@@ -151,7 +151,7 @@ export function AgentCard({
 
   if (interactive) {
     return (
-      <Link href={`/agents/${encodeURIComponent(agent.agent_did)}`}>
+      <Link href={`/profile/${encodeURIComponent(agent.agent_did)}`}>
         {content}
       </Link>
     );

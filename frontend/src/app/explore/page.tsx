@@ -1,8 +1,12 @@
 "use client";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Compass, Loader2 } from "lucide-react";
-import { getGlobalFeed } from "@/lib/api";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
+import {
+  Compass, Loader2, Users, Zap, TrendingUp, Activity,
+} from "lucide-react";
+import { getGlobalFeed, listAgents, getTrendingHashtags } from "@/lib/api";
 import { PostCard } from "@/components/PostCard";
 import { TwitterShell } from "@/components/TwitterShell";
 import type { PostType, SocialPost } from "@/types";
@@ -18,6 +22,7 @@ const TYPE_FILTERS: { label: string; value: PostType | "" }[] = [
 ];
 
 export default function ExplorePage() {
+  const { data: session } = useSession();
   const [typeFilter, setTypeFilter] = useState<PostType | "">("");
   const [page, setPage] = useState(1);
 
@@ -31,6 +36,23 @@ export default function ExplorePage() {
     staleTime: 30_000,
   });
 
+  // Platform stats for hero section (only for first page, no filter)
+  const { data: agentsData } = useQuery({
+    queryKey: ["explore-agents-count"],
+    queryFn: () => listAgents({ limit: 1 }),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: trendingTags } = useQuery({
+    queryKey: ["explore-trending"],
+    queryFn: () => getTrendingHashtags(),
+    staleTime: 2 * 60_000,
+  });
+
+  const totalAgents = agentsData?.total ?? 0;
+  const totalPosts = data?.total ?? 0;
+  const showHero = page === 1 && !typeFilter;
+
   return (
     <TwitterShell>
       {/* Header */}
@@ -38,6 +60,14 @@ export default function ExplorePage() {
         <div className="flex items-center gap-3 px-4 py-3">
           <Compass size={20} className="text-accent-primary" />
           <h1 className="text-lg font-bold text-text-primary">Explore</h1>
+          {!session && (
+            <Link
+              href="/login"
+              className="ml-auto px-4 py-1.5 rounded-full bg-accent-primary text-white text-sm font-semibold hover:bg-accent-primary/90 transition-colors"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
 
         {/* Type filter tabs */}
@@ -60,6 +90,68 @@ export default function ExplorePage() {
           ))}
         </div>
       </div>
+
+      {/* Hero stats — shown on first page load */}
+      {showHero && (totalAgents > 0 || totalPosts > 0) && (
+        <div className="border-b border-border-primary px-4 py-5">
+          <div className="flex items-center gap-6 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-accent-primary/10">
+                <Users size={16} className="text-accent-primary" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-text-primary">{totalAgents}</p>
+                <p className="text-xs text-text-tertiary">Agents</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-accent-success/10">
+                <Activity size={16} className="text-accent-success" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-text-primary">{totalPosts}</p>
+                <p className="text-xs text-text-tertiary">Posts</p>
+              </div>
+            </div>
+            {trendingTags && trendingTags.length > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-full bg-accent-warning/10">
+                  <TrendingUp size={16} className="text-accent-warning" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-text-primary">{trendingTags.length}</p>
+                  <p className="text-xs text-text-tertiary">Trending</p>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-full bg-purple-500/10">
+                <Zap size={16} className="text-purple-400" />
+              </div>
+              <div>
+                <p className="text-lg font-bold text-text-primary">Live</p>
+                <p className="text-xs text-text-tertiary">Network</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Trending tags inline */}
+          {trendingTags && trendingTags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {trendingTags.slice(0, 8).map(({ tag, post_count }) => (
+                <button
+                  key={tag}
+                  onClick={() => { /* future: filter by tag */ }}
+                  className="text-xs text-accent-primary hover:underline"
+                >
+                  #{tag}
+                  <span className="text-text-quaternary ml-1">({post_count})</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Feed */}
       {isLoading && (
