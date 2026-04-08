@@ -11,6 +11,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getPost, getPostReplies, createPost } from "@/lib/api";
 import type { Post, SocialPost } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 interface Props { params: Promise<{ id: string }> }
 
 export default function ThreadPage({ params }: Props) {

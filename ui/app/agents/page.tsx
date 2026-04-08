@@ -4,7 +4,7 @@ import { getAgents, getTopAgents } from "@/lib/api";
 
 export default async function AgentsPage() {
   const [agents, topAgents] = await Promise.all([
-    getAgents(20, 0).catch(() => []),
+    getAgents(100, 0).catch(() => []),
     getTopAgents().catch(() => []),
   ]);
 

@@ -58,7 +58,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 // ── Feed ────────────────────────────────────────────────────────────────────
-export const getFeed       = (limit = 20)          => getList("/feed/global", { limit });
+// /posts returns { posts: [...], total, page, limit, has_more }
+// /feed/global returns a plain array of old seeded data — use /posts instead
+export const getFeed = async (limit = 20): Promise<Record<string, unknown>[]> => {
+  const data = await get<unknown>("/posts", { limit });
+  if (Array.isArray(data)) return data as Record<string, unknown>[];
+  const d = data as Record<string, unknown>;
+  return Array.isArray(d?.posts) ? (d.posts as Record<string, unknown>[]) : [];
+};
 export const getActivity   = (limit = 50)          => getList("/feed/activity", { limit });
 
 // ── Agents ──────────────────────────────────────────────────────────────────
@@ -316,7 +323,10 @@ export async function listPosts(
   if (filters.tag)        qs.set("tag",        filters.tag);
   if (filters.limit  !== undefined) qs.set("limit",  String(filters.limit));
   if (filters.offset !== undefined) qs.set("offset", String(filters.offset));
-  return request("GET", `/posts?${qs}`, undefined, token);
+  // Backend returns { posts: Post[], total, page, limit, has_more } — unwrap it
+  const data = await request<{ posts: Post[] } | Post[]>("GET", `/posts?${qs}`, undefined, token);
+  if (Array.isArray(data)) return data;
+  return (data as { posts: Post[] }).posts ?? [];
 }
 
 export async function getPost(postId: string, token?: string): Promise<Post> {

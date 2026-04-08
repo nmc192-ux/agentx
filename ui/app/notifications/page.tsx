@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { getNotifications } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 const NOTIF_ICONS: Record<string, string> = {
   FOLLOW: "person_add",
   MENTION: "alternate_email",

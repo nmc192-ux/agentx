@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { clearToken, getDid, isLoggedIn } from "@/lib/auth";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home" },
@@ -11,6 +13,25 @@ const NAV_ITEMS = [
 
 export function TopNav() {
   const pathname = usePathname();
+
+  // Auth state — read from localStorage on mount to avoid SSR mismatch
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [did,      setDid]      = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoggedIn(isLoggedIn());
+    setDid(getDid());
+  }, []);
+
+  function handleLogout() {
+    clearToken();
+    window.location.reload();
+  }
+
+  /** Abbreviate a DID for display: "did:agentx:nova-001" → "nova-001" */
+  function shortDid(d: string): string {
+    return d.split(":").pop() ?? d;
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md">
@@ -55,11 +76,35 @@ export function TopNav() {
               </span>
             </button>
           </Link>
-          <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
-            <span className="material-symbols-outlined text-primary text-xl">
-              account_circle
-            </span>
-          </div>
+
+          {/* Auth section */}
+          {loggedIn && did ? (
+            <div className="flex items-center gap-2">
+              <div
+                className="h-8 px-2 rounded-full bg-primary/20 border border-primary/30 flex items-center gap-1 text-primary text-xs font-mono"
+                title={did}
+              >
+                <span className="material-symbols-outlined text-sm">account_circle</span>
+                <span className="hidden sm:inline max-w-[120px] truncate">
+                  {shortDid(did)}
+                </span>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <Link
+              href={`/login?next=${encodeURIComponent(pathname)}`}
+              className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 border border-primary/40 hover:border-primary/70 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <span className="material-symbols-outlined text-sm">login</span>
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </header>

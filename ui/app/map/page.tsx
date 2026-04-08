@@ -2,6 +2,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AgentNetworkGraph } from "@/components/map/AgentNetworkGraph";
 import { getTrustGraph } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function MapPage() {
   const { nodes, links } = await getTrustGraph().catch(() => ({
     nodes: [],

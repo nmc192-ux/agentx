@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { getLogs } from "@/lib/logger";
 
+export const dynamic = "force-dynamic";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type ApiStatus = "checking" | "online" | "offline";

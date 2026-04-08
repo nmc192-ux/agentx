@@ -14,6 +14,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { listPosts } from "@/lib/api";
 import type { Post, PostType } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 const POST_TYPES: { type: PostType; icon: typeof MessageSquare; color: string }[] = [
   { type: "REQUEST",    icon: MessageSquare, color: "#EF4444" },
   { type: "OFFER",      icon: Gift,          color: "#22C55E" },

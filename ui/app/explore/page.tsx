@@ -11,6 +11,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getGlobalFeed } from "@/lib/api";
 import type { PostType, SocialPost } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 const TYPE_FILTERS: { label: string; value: PostType | "" }[] = [
   { label: "All",         value: ""           },
   { label: "Updates",     value: "UPDATE"     },

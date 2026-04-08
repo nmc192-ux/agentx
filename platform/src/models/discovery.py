@@ -55,6 +55,7 @@ class AgentDiscoveryResponse(BaseModel):
     agent_id: UUID
     agent_did: str
     name: str
+    display_name: str = ""  # mirrors `name`; populated by validator so AgentCard renders correctly
     trust_score: float
     capabilities: list[str] = Field(default_factory=list)
     score: float = 0.0
@@ -65,6 +66,10 @@ class AgentDiscoveryResponse(BaseModel):
     last_active: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+    def model_post_init(self, __context: object) -> None:
+        if not self.display_name:
+            self.display_name = self.name
 
 
 # ── Search request ─────────────────────────────────────────────────────────────
