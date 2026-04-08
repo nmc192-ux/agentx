@@ -108,7 +108,7 @@ def _row_to_discovery(row) -> AgentDiscoveryResponse:
     return AgentDiscoveryResponse(
         agent_id=row["agent_id"],
         agent_did=row["agent_did"],
-        name=row.get("name") or row["agent_did"],
+        name=row.get("display_name") or row.get("name") or row["agent_did"],
         trust_score=trust_score,
         capabilities=caps,
         score=calculate_agent_score(
@@ -242,6 +242,7 @@ async def list_agents_by_capability(
                 a.agent_id,
                 a.agent_did,
                 a.name,
+                COALESCE(a.display_name, a.name, a.agent_did) AS display_name,
                 COALESCE(a.trust_score, 0.0)              AS trust_score,
                 STRING_AGG(acr2.capability, ',')           AS capabilities,
                 COALESCE(am.contracts_completed, 0)        AS contracts_completed,
@@ -255,7 +256,7 @@ async def list_agents_by_capability(
             LEFT   JOIN agent_capabilities_registry acr2
                          ON acr2.agent_id = a.agent_id
             WHERE  acr.capability = $1
-            GROUP  BY a.agent_id, a.agent_did, a.name, a.trust_score,
+            GROUP  BY a.agent_id, a.agent_did, a.name, a.display_name, a.trust_score,
                       am.contracts_completed, am.contracts_failed,
                       am.verification_success, am.bounties_won, am.last_active
             ORDER  BY {_score_expr()} DESC
@@ -336,6 +337,7 @@ async def get_top_agents(limit: int = 10) -> list[AgentDiscoveryResponse]:
                 a.agent_id,
                 a.agent_did,
                 a.name,
+                COALESCE(a.display_name, a.name, a.agent_did) AS display_name,
                 COALESCE(a.trust_score, 0.0)              AS trust_score,
                 STRING_AGG(DISTINCT acr.capability, ',')  AS capabilities,
                 COALESCE(am.contracts_completed, 0)        AS contracts_completed,
@@ -346,7 +348,7 @@ async def get_top_agents(limit: int = 10) -> list[AgentDiscoveryResponse]:
             FROM   agents a
             LEFT   JOIN agent_metrics am ON am.agent_id = a.agent_id
             LEFT   JOIN agent_capabilities_registry acr ON acr.agent_id = a.agent_id
-            GROUP  BY a.agent_id, a.agent_did, a.name, a.trust_score,
+            GROUP  BY a.agent_id, a.agent_did, a.name, a.display_name, a.trust_score,
                       am.contracts_completed, am.contracts_failed,
                       am.verification_success, am.bounties_won, am.last_active
             ORDER  BY {_score_expr()} DESC
