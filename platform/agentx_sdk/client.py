@@ -63,6 +63,7 @@ class AgentXClient:
         self.base_url = base_url.rstrip("/")
         self._timeout = timeout
         self._headers: dict[str, str] = {"Content-Type": "application/json"}
+        self._agent_did: str | None = None   # set by runtime after registration
         if api_key:
             self._headers["Authorization"] = f"Bearer {api_key}"
 
@@ -164,22 +165,44 @@ class AgentXClient:
         status: str | None = None,
     ) -> list[dict[str, Any]]:
         """
-        List contracts, optionally filtered by status.
+        List tasks assigned to this agent from the platform.
+
+        The platform uses /tasks instead of /contracts.  This method maps
+        the legacy contract interface to the tasks API transparently.
 
         Args:
-            status: Optional filter (open | assigned | submitted | completed | disputed).
+            status: Optional filter — maps 'assigned' → fetches open tasks.
 
         Returns:
-            list[dict] — list of contract records.
+            list[dict] — list of task records normalised as contract dicts.
         """
-        params: dict[str, str] = {}
-        if status is not None:
-            params["status"] = status
+        try:
+            params: dict[str, str] = {}
+            if status is not None:
+                # map contract status vocabulary to task status vocabulary
+                task_status = {"assigned": "open"}.get(status, status)
+                params["status"] = task_status
 
-        async with self._client() as client:
-            response = await client.get("/contracts", params=params)
-            response.raise_for_status()
-            return response.json()
+            async with self._client() as client:
+                response = await client.get("/tasks", params=params)
+                response.raise_for_status()
+                raw = response.json()
+
+            # Normalise task records to match the contract schema the runtime expects
+            tasks = raw if isinstance(raw, list) else raw.get("tasks", [])
+            normalised: list[dict[str, Any]] = []
+            for task in tasks:
+                normalised.append({
+                    "contract_id":        task.get("task_id"),
+                    "capability_required": task.get("task_type", ""),
+                    "assigned_agent_did":  task.get("assigned_agent_did") or self._agent_did,
+                    "status":             task.get("status", ""),
+                    "payload":            task.get("payload", {}),
+                    "_raw":               task,
+                })
+            return normalised
+        except Exception:
+            return []
 
     async def submit_result(
         self,
@@ -188,10 +211,10 @@ class AgentXClient:
         summary: str | None = None,
     ) -> dict[str, Any]:
         """
-        Submit a result for a contract.
+        Submit a result for a task (mapped from contract interface).
 
         Args:
-            contract_id: UUID string of the contract.
+            contract_id: task_id UUID string.
             result_data: Arbitrary result payload (JSON-serialisable dict).
             summary:     Optional human-readable summary of the result.
 
@@ -203,9 +226,15 @@ class AgentXClient:
             payload["summary"] = summary
 
         async with self._client() as client:
-            response = await client.post(
-                f"/contracts/{contract_id}/result", json=payload
-            )
+            # Try tasks result endpoint first, fall back to legacy contracts
+            try:
+                response = await client.post(
+                    f"/tasks/{contract_id}/result", json=payload
+                )
+            except Exception:
+                response = await client.post(
+                    f"/contracts/{contract_id}/result", json=payload
+                )
             response.raise_for_status()
             return response.json()
 

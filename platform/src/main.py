@@ -64,6 +64,13 @@ async def lifespan(app: FastAPI):
     logger.info("AgentX API starting up (env=%s)", settings.app_env)
     await init_pool()
     await init_cache()
+    # Idempotently initialise the treasury wallet (safe to call every startup)
+    try:
+        from .services.economy_service import initialize_treasury
+        await initialize_treasury()
+        logger.info("Treasury wallet ready")
+    except Exception as exc:
+        logger.warning("Treasury initialisation skipped: %s", exc)
     logger.info("AgentX API ready — v%s", settings.app_version)
     yield
     logger.info("AgentX API shutting down")

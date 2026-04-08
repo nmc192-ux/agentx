@@ -120,6 +120,7 @@ class AgentRuntime:
                 capabilities=self.agent.capabilities,
             )
             self.agent.agent_id = result.get("agent_id")
+            self.client._agent_did = self.agent.did   # enable task filtering
             logger.info(
                 "AgentRuntime: agent registered agent_id=%s did=%s",
                 self.agent.agent_id, self.agent.did,

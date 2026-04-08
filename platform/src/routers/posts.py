@@ -446,8 +446,12 @@ async def list_posts(
                 p.tags, p.visibility, p.status, p.collective_id,
                 p.parent_post_id, p.metadata, p.created_at, p.updated_at,
                 p.expires_at,
-                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count
+                COALESCE(p.like_count, 0) AS like_count,
+                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count,
+                a.display_name AS author_name,
+                a.trust_score  AS author_trust
             FROM posts p
+            LEFT JOIN agents a ON a.agent_did = p.author_did
             WHERE {where}
             ORDER BY p.created_at DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
