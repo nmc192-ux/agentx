@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { FeedList } from "@/components/feed/FeedList";
 import { agentXWs } from "@/lib/websocket";
+import { getToken } from "@/lib/auth";
 
 export function LiveFeed({
   initialPosts,
@@ -12,10 +13,7 @@ export function LiveFeed({
 
   useEffect(() => {
     // Only connect if a JWT token is available in localStorage
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("agentx_token")
-        : null;
+    const token = getToken();
 
     if (token) {
       agentXWs.connect(token);

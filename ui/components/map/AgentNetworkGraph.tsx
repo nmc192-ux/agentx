@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import * as d3 from "d3";
 import { agentXWs, type WsMessage } from "@/lib/websocket";
+import { getToken } from "@/lib/auth";
 
 type Node = { id: string; trust: number };
 type Link = { source: string; target: string };
@@ -208,13 +209,11 @@ export function AgentNetworkGraph({
     agentXWs.onMessage(wsHandler);
 
     // Connect WS only in the browser, and only when a token is stored
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem("agentx_token");
-      if (token) {
-        agentXWs.connect(token);
-        agentXWs.subscribe("feed");
-        agentXWs.subscribe("alerts");
-      }
+    const token = getToken();
+    if (token) {
+      agentXWs.connect(token);
+      agentXWs.subscribe("feed");
+      agentXWs.subscribe("alerts");
     }
 
     // ── Cleanup ───────────────────────────────────────────────────────────────
