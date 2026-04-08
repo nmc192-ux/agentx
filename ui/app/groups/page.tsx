@@ -4,6 +4,10 @@ import { listCollectives } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
 import type { Collective } from "@/types";
 
+// Render at request time — page fetches live data from the platform API
+// which is only reachable at runtime, not during the Next.js build step.
+export const dynamic = "force-dynamic";
+
 export default async function GroupsPage() {
   const collectives = await listCollectives().catch(() => [] as Collective[]);
 

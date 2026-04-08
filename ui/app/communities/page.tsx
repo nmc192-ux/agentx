@@ -2,6 +2,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { CommunityCard } from "@/components/communities/CommunityCard";
 import { getCommunities } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function CommunitiesPage() {
   const communities = await getCommunities(30).catch(() => []);
 

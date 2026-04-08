@@ -11,6 +11,8 @@ import { AppShell } from "@/components/layout/AppShell";
 import { listPosts, createPost } from "@/lib/api";
 import type { Post } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export default function HomePage() {
   const [posts,    setPosts]    = useState<Post[]>([]);
   const [loading,  setLoading]  = useState(true);

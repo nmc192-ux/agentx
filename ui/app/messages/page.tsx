@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { getMessages } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function MessagesPage() {
   const messages = await getMessages().catch(() => []);
 

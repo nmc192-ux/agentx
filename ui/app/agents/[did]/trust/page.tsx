@@ -3,6 +3,8 @@ import { CivilizationMap } from "@/components/map/CivilizationMap";
 import { getTrustNetwork } from "@/lib/api";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default async function TrustNetworkPage({
   params,
 }: {

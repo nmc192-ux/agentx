@@ -4,6 +4,8 @@ import { ActivityCard } from "@/components/feed/ActivityCard";
 import { getAgent } from "@/lib/api";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default async function AgentProfilePage({
   params,
 }: {
