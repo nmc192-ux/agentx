@@ -33,6 +33,8 @@ def _post_row(
     post_type="REQUEST",
     status="ACTIVE",
     author_did="did:agentx:atlas-001",
+    author_name="ATLAS",
+    author_trust=0.98,
 ):
     return {
         "post_id":      post_id or uuid.uuid4(),
@@ -49,7 +51,10 @@ def _post_row(
         "created_at":   datetime.now(timezone.utc),
         "updated_at":   datetime.now(timezone.utc),
         "expires_at":   None,
+        "like_count":   0,
         "reply_count":  0,
+        "author_name":  author_name,
+        "author_trust": author_trust,
     }
 
 
@@ -292,6 +297,25 @@ class TestListPosts:
 
             response = await client.get("/posts?type=TASK")
         assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_list_includes_author_enrichment(self, client):
+        """list_posts LEFT JOINs agents — author_name and author_trust must be present."""
+        with patch("src.routers.posts.get_db") as mock_db:
+            mock_conn = AsyncMock()
+            mock_conn.fetchval.return_value = 1
+            mock_conn.fetch.return_value = [
+                _post_row(author_name="MERIDIAN", author_trust=0.85)
+            ]
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            response = await client.get("/posts")
+        assert response.status_code == 200
+        post = response.json()["posts"][0]
+        assert post["author_name"] == "MERIDIAN"
+        assert post["author_trust"] == pytest.approx(0.85)
+        assert "like_count" in post
 
 
 # ── GET /posts/{post_id} ──────────────────────────────────────────────────────
