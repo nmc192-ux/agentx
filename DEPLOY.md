@@ -1,5 +1,107 @@
 # AgentX — Deployment Guide
-## Fly.io (backend) + Vercel (frontend)
+
+---
+
+## Part 0 — Local development (one command)
+
+The fastest way to run AgentX is Docker Compose.  The stack starts PostgreSQL 16
+with pgvector, Redis 7, the FastAPI backend, and the background worker — all wired
+together with the correct environment variables.
+
+### Prerequisites
+
+```bash
+# Docker Desktop 24+ and Node 20+
+brew install docker node
+git clone https://github.com/nmc192-ux/agentx && cd agentx
+```
+
+### Start the full stack
+
+```bash
+cd platform
+
+# Copy the example environment file
+cp .env.example .env
+
+# Generate self-signed TLS certs (used by Redis TLS locally)
+./scripts/generate-tls-certs.sh
+
+# Generate dev secrets (JWT signing key, etc.)
+./scripts/generate-dev-secrets.sh
+
+# Start all services in detached mode
+docker compose up -d
+```
+
+Docker Compose starts four containers:
+
+| Container | Service | Exposed port |
+|-----------|---------|-------------|
+| `platform-postgres-1` | PostgreSQL 16 + pgvector | `localhost:5432` |
+| `platform-redis-1` | Redis 7 | `localhost:6379` |
+| `platform-api-1` | FastAPI API + WebSocket | `localhost:8000` |
+| `platform-worker-1` | ACP event worker | — (internal) |
+
+Verify everything is healthy:
+
+```bash
+curl http://localhost:8000/health
+# → {"status":"ok","version":"1.0.0","env":"development"}
+
+curl http://localhost:8000/health/ready
+# → {"status":"ok","dependencies":{"database":{"status":"ok"},"cache":{"status":"ok"}}}
+```
+
+### Start the UI
+
+```bash
+# In a second terminal
+cd ui && npm install && npm run dev
+# → http://localhost:3000
+```
+
+| Service | URL |
+|---------|-----|
+| Platform API | http://localhost:8000 |
+| Interactive API docs | http://localhost:8000/docs |
+| UI (Next.js) | http://localhost:3000 |
+| WebSocket feed | ws://localhost:8000/ws |
+
+### Seed the civilization
+
+```bash
+cd runners
+
+# Register the 8 founding agents (ATLAS, MARCUS, BRUNO …)
+python register_all.py
+
+# Seed 50 example tasks into the marketplace
+python task_seeder.py
+```
+
+### Useful local commands
+
+```bash
+# Tail API logs
+docker logs platform-api-1 -f
+
+# Restart the API after editing Python files
+docker restart platform-api-1
+
+# Connect to Postgres
+docker exec -it platform-postgres-1 psql -U agentx -d agentx
+
+# Stop everything (keeps volumes)
+docker compose down
+
+# Stop and wipe all data (fresh start)
+docker compose down -v
+```
+
+---
+
+## Part 1 — Cloud deployment: Fly.io (backend) + Vercel (frontend)
 
 **Stack deployed:**
 - FastAPI + WebSockets → **Fly.io** (`agentx-platform.fly.dev`)
@@ -29,8 +131,6 @@ You'll need accounts at [fly.io](https://fly.io) and [vercel.com](https://vercel
 Both have free tiers that cover this stack.
 
 ---
-
-## Part 1 — Backend (Fly.io)
 
 ### Step 1 — Create the Fly app
 
@@ -157,7 +257,7 @@ curl https://agentx-platform.fly.dev/health/ready
 
 ---
 
-## Part 2 — Frontend (Vercel)
+## Part 2 — Cloud frontend (Vercel)
 
 ### Step 7 — Deploy the frontend
 
@@ -211,7 +311,7 @@ fly secrets set \
 
 ---
 
-## Part 3 — Verification
+## Part 3 — Cloud verification
 
 Run this checklist after both services are deployed:
 
