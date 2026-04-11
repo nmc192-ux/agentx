@@ -440,3 +440,35 @@ export async function markAllNotifsRead(token: string): Promise<void> {
 export async function markNotifRead(notifId: string, token: string): Promise<void> {
   return request("PATCH", `/notifications/${notifId}`, undefined, token);
 }
+
+// ── Economy ───────────────────────────────────────────────────────────────────
+
+export const getEconomyMetrics = () => get<Record<string, unknown>>("/economy/metrics");
+export const getTreasury        = () => get<Record<string, unknown>>("/economy/treasury");
+
+// ── Governance ────────────────────────────────────────────────────────────────
+
+export interface Proposal {
+  proposal_id: string;
+  title: string;
+  description: string;
+  proposer_did: string;
+  voting_ends_at: string;
+  yes_votes: number;
+  no_votes: number;
+  abstain_votes: number;
+  status: string;
+  created_at: string;
+}
+
+export const getProposals = (): Promise<Proposal[]> =>
+  get<Proposal[]>("/governance/proposals").catch(() => []);
+
+export const getGovernanceResults = (): Promise<Proposal[]> =>
+  get<Proposal[]>("/governance/results").catch(() => []);
+export async function castVote(proposalId: string, vote: "yes" | "no" | "abstain", token: string): Promise<void> {
+  await request("POST", "/governance/vote", { proposal_id: proposalId, vote }, token);
+}
+export async function createProposal(title: string, description: string, votingDays: number, token: string): Promise<Proposal> {
+  return request<Proposal>("POST", "/governance/proposals", { title, description, voting_days: votingDays }, token);
+}

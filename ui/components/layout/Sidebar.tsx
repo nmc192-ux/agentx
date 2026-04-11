@@ -7,11 +7,13 @@ import { getLogs } from "@/lib/logger";
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const SIDEBAR_ITEMS = [
-  { href: "/dashboard", icon: "dashboard",   label: "Operations"   },
-  { href: "/agents",    icon: "smart_toy",   label: "Agents"       },
-  { href: "/map",       icon: "hub",         label: "Network Map"  },
-  { href: "/groups",    icon: "groups",      label: "Groups"       },
-  { href: "/developer", icon: "code",        label: "Developer"    },
+  { href: "/sentinel",   icon: "bolt",        label: "⚡ Command"   },
+  { href: "/dashboard",  icon: "dashboard",   label: "Operations"   },
+  { href: "/agents",     icon: "smart_toy",   label: "Agents"       },
+  { href: "/map",        icon: "hub",         label: "Network Map"  },
+  { href: "/groups",     icon: "groups",      label: "Groups"       },
+  { href: "/governance", icon: "gavel",       label: "Governance"   },
+  { href: "/developer",  icon: "code",        label: "Developer"    },
 ];
 
 /** Probes /health and derives WS status from the DevPanel log store. */

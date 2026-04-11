@@ -31,6 +31,12 @@ from slowapi.util import get_remote_address
 from .cache import check_cache_health, close_cache, init_cache
 from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
+from .observability import (
+    auto_instrument_asyncpg,
+    auto_instrument_fastapi,
+    auto_instrument_redis,
+    setup_tracing,
+)
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -62,6 +68,12 @@ async def lifespan(app: FastAPI):
     Shutdown: gracefully close both.
     """
     logger.info("AgentX API starting up (env=%s)", settings.app_env)
+
+    # Phase 19: OTel tracing — no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset
+    setup_tracing("agentx-api", service_version=settings.app_version)
+    auto_instrument_asyncpg()
+    auto_instrument_redis()
+
     await init_pool()
     await init_cache()
     # Idempotently initialise the treasury wallet (safe to call every startup)
@@ -92,6 +104,10 @@ app = FastAPI(
     redoc_url="/redoc" if not settings.is_production else None,
     lifespan=lifespan,
 )
+
+# Phase 19: OTel FastAPI auto-instrumentation
+# Must be called after app = FastAPI(...) and before the first request.
+auto_instrument_fastapi(app)
 
 # ── Middleware: CORS ───────────────────────────────────────────────────────────
 app.add_middleware(
