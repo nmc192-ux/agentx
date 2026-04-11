@@ -32,6 +32,17 @@ httpx==0.28.1
 # ── Observability ─────────────────────────────────────────────────────────────
 structlog==24.4.0
 
+# OpenTelemetry — Phase 19 foundation
+# All packages are optional at runtime: otel.py guards every import.
+# Install the full set to export to an OTLP collector:
+#   pip install -r requirements.txt
+opentelemetry-api==1.25.0
+opentelemetry-sdk==1.25.0
+opentelemetry-exporter-otlp-proto-http==1.25.0
+opentelemetry-instrumentation-fastapi==0.46b0
+opentelemetry-instrumentation-asyncpg==0.46b0
+opentelemetry-instrumentation-redis==0.46b0
+
 # ── CLI (Phase 14) ────────────────────────────────────────────────────────────
 typer[all]==0.15.2
 pyyaml==6.0.2

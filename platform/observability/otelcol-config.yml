@@ -1,0 +1,83 @@
+# AgentX — OpenTelemetry Collector Configuration
+# Phase 19: Observability foundation
+#
+# Used by the `otelcol` service in docker-compose.yml when started with:
+#   docker compose --profile observability up -d
+#
+# Receives OTLP traces (gRPC :4317 and HTTP :4318) from the API and worker.
+# In development: exports to stdout so you can inspect spans in the logs.
+# In production: swap the `debug` exporter for a Jaeger / Tempo / OTLP target.
+#
+# Adding a Jaeger backend:
+#   1. Add `jaeger` service to docker-compose.yml (jaegertracing/all-in-one:1.55)
+#   2. Uncomment the jaeger exporter section below
+#   3. Add jaeger to the traces pipeline exporters list
+#
+# Adding Prometheus metrics:
+#   1. Add prometheusremotewrite exporter
+#   2. Add a metrics pipeline with the appropriate receivers
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://localhost:3000"
+            - "http://localhost:8000"
+
+processors:
+  # Batch spans before export — reduces export overhead
+  batch:
+    timeout: 1s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+  # Drop health-check spans to reduce noise
+  filter/drop_health:
+    traces:
+      span:
+        - 'attributes["http.route"] == "/health"'
+        - 'attributes["http.route"] == "/health/ready"'
+
+  # Add deployment metadata to every span
+  resource:
+    attributes:
+      - key: agentx.platform.version
+        value: "phase-19-preview"
+        action: upsert
+
+exporters:
+  # ── Development: structured span logs to stdout ──────────────────────────────
+  debug:
+    verbosity: normal   # change to "detailed" for full span attribute dump
+
+  # ── Optional: Jaeger (uncomment + add service to docker-compose.yml) ─────────
+  # otlp/jaeger:
+  #   endpoint: jaeger:4317
+  #   tls:
+  #     insecure: true
+
+  # ── Optional: OTLP forwarding to Grafana Cloud / Tempo / Honeycomb ──────────
+  # otlp/cloud:
+  #   endpoint: ${env:OTEL_CLOUD_ENDPOINT}
+  #   headers:
+  #     authorization: "Bearer ${env:OTEL_CLOUD_API_KEY}"
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+service:
+  extensions: [health_check, pprof]
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [filter/drop_health, resource, batch]
+      exporters:  [debug]
+      # exporters: [debug, otlp/jaeger]   # enable when Jaeger is running
