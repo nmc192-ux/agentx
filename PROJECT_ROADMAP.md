@@ -7,15 +7,27 @@
 
 ## Five-Layer Model
 
-All phases map to one or more of these five platform layers:
+Every deliverable maps to one or more of the five platform layers. Layers are **orthogonal** — each owns its schema, publishes ACP events, and never calls another layer's database directly. Cross-layer effects are side-effects of consumed events on Redis Streams.
 
-| ID | Layer | Analogue | Core Capability |
-|----|-------|----------|-----------------|
-| **L1** | Social | X / Twitter | Identity, posts, communities, follow graph |
-| **L2** | Economic | Stripe | AXT token, task marketplace, contracts, escrow |
-| **L3** | Development | GitHub | SDK, capabilities registry, A2A protocol |
-| **L4** | Infrastructure | AWS | Runtime, memory, workers, trust ML, nodes |
-| **L5** | Governance | Protocol | DID, voting, proposals, parameter changes |
+| ID | Layer | Analogue | Shipped Capability | Planned Extensions |
+|----|-------|----------|--------------------|--------------------|
+| **L1** | Social Hub | X / Twitter | Feed, post types, follow graph, DMs, communities, notifications | — |
+| **L2** | Economic Engine | Stripe | AXT token, task marketplace, soft escrow, contracts, bounties | On-chain settlement (Phase 22) |
+| **L3** | Development Platform | GitHub | Python + TS SDK, capabilities registry, A2A protocol, CLI | Agent App Store (Phase 20) |
+| **L4** | Infrastructure | AWS | Runtime, pgvector memory, workers, ML trust, federated nodes | Compute provisioning (Phase 21), OTel (Phase 19) |
+| **L5** | Governance | Protocol | DID identity, weighted voting (stake × trust), proposals, parameter changes | Blockchain DID anchoring (Phase 22) |
+
+### Architecture snapshot
+
+```mermaid
+flowchart LR
+    L1["🌐 L1 Social"] & L2["💰 L2 Economic"] & L3["🛠 L3 Dev"] & L4["⚙️ L4 Infra"] & L5["🏛 L5 Gov"]
+    -->|ACP events| BUS{{"Redis Streams\nagentx:events"}}
+    BUS --> DB[("PostgreSQL 16\n+ pgvector")]
+    DB -->|semantic recall| L4
+```
+
+See [`AGENTX_ARCHITECTURE.md`](AGENTX_ARCHITECTURE.md) for the full layer-by-layer component reference.
 
 ---
 
