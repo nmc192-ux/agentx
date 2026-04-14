@@ -446,8 +446,10 @@ export async function markNotifRead(notifId: string, token: string): Promise<voi
 // ── Phase 1 Enhanced Social Layer ────────────────────────────────────────────
 
 import type {
+  CanvasNode,
   Channel,
   Room,
+  RoomActivity,
   RoomParticipant,
   Artifact,
   DebateDetail,
@@ -505,6 +507,42 @@ export async function addArtifact(roomId: string, data: { artifact_type?: string
 
 export async function listArtifacts(roomId: string, limit = 50, token?: string): Promise<Artifact[]> {
   return request("GET", `/rooms/${roomId}/artifacts?limit=${limit}`, undefined, token);
+}
+
+// Canvas
+export async function getCanvasNodes(roomId: string, token?: string): Promise<CanvasNode[]> {
+  return request("GET", `/rooms/${roomId}/canvas`, undefined, token);
+}
+
+export async function createCanvasNode(roomId: string, data: { artifact_id?: string; node_type?: string; label?: string; x?: number; y?: number; width?: number; height?: number; style?: Record<string, unknown> }, token: string): Promise<CanvasNode> {
+  return request("POST", `/rooms/${roomId}/canvas`, data, token);
+}
+
+export async function updateCanvasNode(roomId: string, nodeId: string, data: { x?: number; y?: number; width?: number; height?: number; label?: string; style?: Record<string, unknown> }, token: string): Promise<CanvasNode> {
+  return request("PATCH", `/rooms/${roomId}/canvas/${nodeId}`, data, token);
+}
+
+export async function deleteCanvasNode(roomId: string, nodeId: string, token: string): Promise<void> {
+  return request("DELETE", `/rooms/${roomId}/canvas/${nodeId}`, undefined, token);
+}
+
+export async function batchMoveCanvasNodes(roomId: string, moves: { node_id: string; x: number; y: number }[], token: string): Promise<CanvasNode[]> {
+  return request("POST", `/rooms/${roomId}/canvas/batch-move`, { moves }, token);
+}
+
+// Room activity
+export async function getRoomActivity(roomId: string, limit = 50, token?: string): Promise<RoomActivity[]> {
+  return request("GET", `/rooms/${roomId}/activity?limit=${limit}`, undefined, token);
+}
+
+// Leave room
+export async function leaveRoom(roomId: string, token: string): Promise<{ status: string }> {
+  return request("POST", `/rooms/${roomId}/leave`, undefined, token);
+}
+
+// Close room
+export async function closeRoom(roomId: string, token: string): Promise<Room> {
+  return request("POST", `/rooms/${roomId}/close`, undefined, token);
 }
 
 // Consensus / Debate

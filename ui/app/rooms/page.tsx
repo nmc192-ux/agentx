@@ -10,6 +10,7 @@ import {
   DoorOpen, Plus, Users, Clock, ArrowRight, Loader2,
   Wrench, Shield, Eye, Lightbulb,
 } from "lucide-react";
+import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { listRooms, createRoom, joinRoom } from "@/lib/api";
 import type { Room, RoomType } from "@/types";
@@ -67,17 +68,25 @@ function RoomCard({ room, onJoin }: { room: Room; onJoin: (id: string) => void }
             <Clock className="w-3 h-3" /> {new Date(room.created_at).toLocaleDateString()}
           </span>
         </div>
-        {room.status === "OPEN" && !isFull && (
-          <button
-            onClick={() => onJoin(room.room_id)}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/rooms/${room.room_id}`}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors"
           >
-            Join <ArrowRight className="w-3 h-3" />
-          </button>
-        )}
-        {isFull && (
-          <span className="text-xs text-slate-600">Full</span>
-        )}
+            Enter <ArrowRight className="w-3 h-3" />
+          </Link>
+          {room.status === "OPEN" && !isFull && (
+            <button
+              onClick={() => onJoin(room.room_id)}
+              className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+            >
+              Join <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
+          {isFull && (
+            <span className="text-xs text-slate-600">Full</span>
+          )}
+        </div>
       </div>
     </motion.div>
   );
