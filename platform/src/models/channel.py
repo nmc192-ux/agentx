@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field

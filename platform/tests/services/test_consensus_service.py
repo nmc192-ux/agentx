@@ -72,6 +72,7 @@ def _snapshot_row(**overrides):
 
 
 class _FakeConn:
+    """Minimal asyncpg connection stub returning plain dicts."""
     def __init__(self, rows=None, fetchrow_val=None, fetchval_val=None, execute_val="INSERT 0 1"):
         self._rows = rows or []
         self._fetchrow_val = fetchrow_val
@@ -79,13 +80,10 @@ class _FakeConn:
         self._execute_val = execute_val
 
     async def fetch(self, *a, **kw):
-        return [MagicMock(**{k: v for k, v in r.items()}, __getitem__=lambda s, k: r[k]) for r in self._rows]
+        return list(self._rows)
 
     async def fetchrow(self, *a, **kw):
-        if self._fetchrow_val is not None:
-            r = self._fetchrow_val
-            return MagicMock(**{k: v for k, v in r.items()}, __getitem__=lambda s, k: r[k])
-        return None
+        return self._fetchrow_val  # plain dict or None
 
     async def fetchval(self, *a, **kw):
         return self._fetchval_val
@@ -128,8 +126,8 @@ async def test_open_debate_success():
     async def mock_fetchrow(sql, *args, **kw):
         call_count["fetchrow"] += 1
         if call_count["fetchrow"] == 1:
-            return MagicMock(**post_row, __getitem__=lambda s, k: post_row[k])
-        return MagicMock(**round_row, __getitem__=lambda s, k: round_row[k])
+            return post_row
+        return round_row
 
     conn = _FakeConn(fetchval_val=0)
     conn.fetchrow = mock_fetchrow

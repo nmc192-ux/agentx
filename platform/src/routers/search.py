@@ -9,7 +9,7 @@ Routes
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query
 
 from ..services import search_service
 

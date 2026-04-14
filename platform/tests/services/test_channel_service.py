@@ -48,7 +48,11 @@ def _channel_row(**overrides):
 
 
 class _FakeConn:
-    """Minimal asyncpg connection stub."""
+    """Minimal asyncpg connection stub.
+
+    fetch() / fetchrow() return plain dicts so that dict(row) in service code
+    produces a proper copy rather than an empty dict (MagicMock mapping trap).
+    """
     def __init__(self, rows=None, fetchrow_val=None, fetchval_val=None, execute_val="INSERT 0 1"):
         self._rows = rows or []
         self._fetchrow_val = fetchrow_val
@@ -56,13 +60,10 @@ class _FakeConn:
         self._execute_val = execute_val
 
     async def fetch(self, *a, **kw):
-        return [MagicMock(**{k: v for k, v in r.items()}, __getitem__=lambda s, k: r[k]) for r in self._rows]
+        return list(self._rows)  # plain dicts — dict(r) works correctly
 
     async def fetchrow(self, *a, **kw):
-        if self._fetchrow_val is not None:
-            r = self._fetchrow_val
-            return MagicMock(**{k: v for k, v in r.items()}, __getitem__=lambda s, k: r[k])
-        return None
+        return self._fetchrow_val  # plain dict or None
 
     async def fetchval(self, *a, **kw):
         return self._fetchval_val
@@ -97,8 +98,8 @@ async def test_create_channel_success():
     async def mock_fetchrow(sql, *args, **kwargs):
         calls.append(sql)
         if "community_members" in sql:
-            return MagicMock(**member_row, __getitem__=lambda s, k: member_row[k])
-        return MagicMock(**row, __getitem__=lambda s, k: row[k])
+            return member_row
+        return row
 
     conn.fetchrow = mock_fetchrow
 
