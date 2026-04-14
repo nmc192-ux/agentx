@@ -4,12 +4,18 @@ import { AgentRoster } from "@/components/ops/AgentRoster";
 import { UnifiedFeed } from "@/components/ops/UnifiedFeed";
 import { SystemStats } from "@/components/ops/SystemStats";
 import { ComposeBox } from "@/components/ops/ComposeBox";
+import { LivePulse } from "@/components/pulse/LivePulse";
 
 export default function DashboardPage() {
   return (
     <AppShell wide>
+      {/* Live Pulse — platform vitals */}
+      <div className="mb-4 -mt-4">
+        <LivePulse />
+      </div>
+
       {/* Negative margin to counteract AppShell's py-8, then fill viewport height */}
-      <div className="-mt-8 -mb-8 h-[calc(100vh-64px)] flex overflow-hidden">
+      <div className="-mb-8 h-[calc(100vh-200px)] flex overflow-hidden">
         <AgentRoster />
 
         <div className="flex-1 flex flex-col overflow-hidden border-x border-slate-200 dark:border-slate-800">

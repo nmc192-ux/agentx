@@ -232,3 +232,141 @@ export function postTypeColor(type: PostType): string {
   };
   return map[type];
 }
+
+// ── Phase 1 Enhanced Social Layer Types ──────────────────────────────────────
+
+// Channels
+export type ChannelType = "GENERAL" | "ANNOUNCEMENT" | "DEBATE" | "WORKSPACE";
+
+export interface Channel {
+  channel_id:   string;
+  community_id: string;
+  name:         string;
+  slug:         string;
+  description:  string;
+  channel_type: ChannelType;
+  is_default:   boolean;
+  post_count:   number;
+  created_at:   string;
+}
+
+// Rooms
+export type RoomType   = "WORKSHOP" | "WAR_ROOM" | "REVIEW" | "BRAINSTORM";
+export type RoomStatus = "OPEN" | "IN_PROGRESS" | "CLOSED" | "ARCHIVED";
+export type ArtifactType = "NOTE" | "CODE" | "DIAGRAM" | "LOG" | "WORKFLOW" | "RAG_SNIPPET";
+
+export interface Room {
+  room_id:           string;
+  name:              string;
+  description:       string;
+  community_id:      string | null;
+  room_type:         RoomType;
+  status:            RoomStatus;
+  max_participants:  number;
+  creator_did:       string;
+  participant_count: number;
+  created_at:        string;
+  closed_at:         string | null;
+}
+
+export interface RoomParticipant {
+  room_id:   string;
+  agent_did: string;
+  role:      "HOST" | "PARTICIPANT" | "OBSERVER";
+  joined_at: string;
+}
+
+export interface Artifact {
+  artifact_id:   string;
+  room_id:       string;
+  author_did:    string;
+  artifact_type: ArtifactType;
+  title:         string;
+  content:       Record<string, unknown>;
+  created_at:    string;
+}
+
+// Consensus
+export type DebatePhase = "OPENING" | "REBUTTAL" | "CLOSING" | "VOTING";
+
+export interface DebateRound {
+  round_id:     string;
+  proposal_id:  string;
+  round_number: number;
+  phase:        DebatePhase;
+  starts_at:    string;
+  ends_at:      string | null;
+  created_at:   string;
+}
+
+export interface DebateStatement {
+  statement_id:  string;
+  round_id:      string;
+  author_did:    string;
+  position:      "FOR" | "AGAINST" | "NEUTRAL";
+  content:       string;
+  evidence_refs: Record<string, unknown>[];
+  created_at:    string;
+}
+
+export interface ConsensusSnapshot {
+  snapshot_id:      string;
+  proposal_id:      string;
+  vote_tally:       Record<string, number>;
+  weighted_tally:   Record<string, number>;
+  total_voters:     number;
+  quorum_met:       boolean;
+  quorum_threshold: number;
+  created_at:       string;
+}
+
+export interface DebateDetail {
+  proposal_id: string;
+  rounds:      DebateRound[];
+  statements:  DebateStatement[];
+  snapshot:    ConsensusSnapshot | null;
+}
+
+// Graph
+export interface ConstellationNode {
+  did:            string;
+  name:           string;
+  trust:          number;
+  tier:           string;
+  bio:            string;
+  specialization: string;
+  depth:          number;
+}
+
+export interface ConstellationEdge {
+  source: string;
+  target: string;
+  type:   string;
+}
+
+export interface ConstellationGraph {
+  nodes: ConstellationNode[];
+  edges: ConstellationEdge[];
+}
+
+// Pulse
+export interface PulseData {
+  agents_active:      number;
+  posts_last_hour:    number;
+  active_proposals:   number;
+  active_rooms:       number;
+  active_communities: number;
+  transactions_24h:   number;
+  trending_tags:      { tag: string; count: number }[];
+}
+
+export interface TrendingPost {
+  post_id:     string;
+  title:       string;
+  post_type:   PostType;
+  author_did:  string;
+  author_name: string;
+  like_count:  number;
+  reply_count: number;
+  velocity:    number;
+}

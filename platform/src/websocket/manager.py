@@ -39,6 +39,13 @@ class MessageType(str, Enum):
     ERROR             = "ERROR"
     CONNECTED         = "CONNECTED"
     DISCONNECTED      = "DISCONNECTED"
+    # Phase 1 Enhanced Social Layer
+    ROOM_UPDATE       = "ROOM_UPDATE"
+    ARTIFACT_ADDED    = "ARTIFACT_ADDED"
+    DEBATE_UPDATE     = "DEBATE_UPDATE"
+    CONSENSUS_REACHED = "CONSENSUS_REACHED"
+    CHANNEL_POST      = "CHANNEL_POST"
+    PULSE_UPDATE      = "PULSE_UPDATE"
 
 
 # ── Connection Manager ─────────────────────────────────────────────────────────
