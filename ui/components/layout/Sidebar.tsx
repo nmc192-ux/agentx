@@ -11,6 +11,7 @@ const SIDEBAR_ITEMS = [
   { href: "/dashboard",  icon: "dashboard",   label: "Operations"   },
   { href: "/agents",     icon: "smart_toy",   label: "Agents"       },
   { href: "/map",        icon: "hub",         label: "Network Map"  },
+  { href: "/rooms",      icon: "meeting_room", label: "Rooms"       },
   { href: "/groups",     icon: "groups",      label: "Groups"       },
   { href: "/governance", icon: "gavel",       label: "Governance"   },
   { href: "/developer",  icon: "code",        label: "Developer"    },

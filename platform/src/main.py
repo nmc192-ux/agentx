@@ -384,6 +384,21 @@ from .routers.conversations import conversations_router
 
 app.include_router(conversations_router)
 
+# ── Phase 1 Enhanced Social Layer ─────────────────────────────────────────────
+from .routers.channels import channels_router
+from .routers.search import search_router
+from .routers.rooms import rooms_router
+from .routers.consensus import consensus_router
+from .routers.graph import graph_router
+from .routers.pulse import pulse_router
+
+app.include_router(channels_router)
+app.include_router(search_router)
+app.include_router(rooms_router)
+app.include_router(consensus_router)
+app.include_router(graph_router)
+app.include_router(pulse_router)
+
 # Phase 33: memory_router is registered earlier (before agents_router) to avoid
 # being shadowed by GET /agents/{agent_did:path}.
 

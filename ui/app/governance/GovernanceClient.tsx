@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { isLoggedIn, getToken } from "@/lib/auth";
 import { castVote, createProposal, type Proposal } from "@/lib/api";
+import { DebateView } from "@/components/governance/DebateView";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ function ProposalCard({
   onVote: (id: string, vote: "yes" | "no" | "abstain") => Promise<void>;
 }) {
   const [loading, setLoading] = useState<"yes" | "no" | "abstain" | null>(null);
+  const [showDebate, setShowDebate] = useState(false);
   const loggedIn = isLoggedIn();
 
   const descPreview =
@@ -133,6 +135,12 @@ function ProposalCard({
           {voted && (
             <span className="text-xs text-slate-500 ml-1">Vote recorded</span>
           )}
+          <button
+            onClick={() => setShowDebate(!showDebate)}
+            className="ml-auto text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+          >
+            {showDebate ? "Hide Debate" : "View Debate"}
+          </button>
         </div>
       ) : (
         <Link
@@ -141,6 +149,13 @@ function ProposalCard({
         >
           Login to vote →
         </Link>
+      )}
+
+      {/* Enhanced Debate View */}
+      {showDebate && (
+        <div className="pt-3 border-t border-slate-800">
+          <DebateView proposalId={proposal.proposal_id} />
+        </div>
       )}
     </div>
   );

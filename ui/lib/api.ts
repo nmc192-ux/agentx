@@ -443,6 +443,111 @@ export async function markNotifRead(notifId: string, token: string): Promise<voi
 
 // ── Economy ───────────────────────────────────────────────────────────────────
 
+// ── Phase 1 Enhanced Social Layer ────────────────────────────────────────────
+
+import type {
+  Channel,
+  Room,
+  RoomParticipant,
+  Artifact,
+  DebateDetail,
+  DebateRound,
+  DebateStatement,
+  ConsensusSnapshot as ConsensusSnapshotType,
+  ConstellationGraph,
+  PulseData,
+  TrendingPost,
+} from "@/types";
+
+// Channels
+export async function listChannels(communityId: string, token?: string): Promise<Channel[]> {
+  return request("GET", `/communities/${communityId}/channels`, undefined, token);
+}
+
+export async function getChannelFeed(channelId: string, limit = 50, token?: string): Promise<Post[]> {
+  const data = await request<Post[] | { posts: Post[] }>("GET", `/channels/${channelId}/feed?limit=${limit}`, undefined, token);
+  return Array.isArray(data) ? data : (data as { posts: Post[] }).posts ?? [];
+}
+
+// Search
+export async function searchAll(q: string, type = "all", limit = 20): Promise<Record<string, unknown>> {
+  return get<Record<string, unknown>>("/search", { q, type, limit });
+}
+
+// Rooms
+export async function listRooms(params: { community_id?: string; status?: string; limit?: number } = {}, token?: string): Promise<Room[]> {
+  const qs = new URLSearchParams();
+  if (params.community_id) qs.set("community_id", params.community_id);
+  if (params.status)       qs.set("status", params.status);
+  if (params.limit)        qs.set("limit", String(params.limit));
+  return request("GET", `/rooms?${qs}`, undefined, token);
+}
+
+export async function getRoom(roomId: string, token?: string): Promise<Room> {
+  return request("GET", `/rooms/${roomId}`, undefined, token);
+}
+
+export async function createRoom(data: { name: string; description?: string; community_id?: string; room_type?: string; max_participants?: number }, token: string): Promise<Room> {
+  return request("POST", "/rooms", data, token);
+}
+
+export async function joinRoom(roomId: string, token: string): Promise<RoomParticipant> {
+  return request("POST", `/rooms/${roomId}/join`, undefined, token);
+}
+
+export async function getRoomParticipants(roomId: string, token?: string): Promise<RoomParticipant[]> {
+  return request("GET", `/rooms/${roomId}/participants`, undefined, token);
+}
+
+export async function addArtifact(roomId: string, data: { artifact_type?: string; title?: string; content?: Record<string, unknown> }, token: string): Promise<Artifact> {
+  return request("POST", `/rooms/${roomId}/artifacts`, data, token);
+}
+
+export async function listArtifacts(roomId: string, limit = 50, token?: string): Promise<Artifact[]> {
+  return request("GET", `/rooms/${roomId}/artifacts?limit=${limit}`, undefined, token);
+}
+
+// Consensus / Debate
+export async function getDebate(proposalId: string, token?: string): Promise<DebateDetail> {
+  return request("GET", `/governance/proposals/${proposalId}/debate`, undefined, token);
+}
+
+export async function openDebate(proposalId: string, token: string): Promise<DebateRound> {
+  return request("POST", `/governance/proposals/${proposalId}/debate`, { proposal_id: proposalId }, token);
+}
+
+export async function addDebateStatement(roundId: string, data: { position: string; content: string; evidence_refs?: Record<string, unknown>[] }, token: string): Promise<DebateStatement> {
+  return request("POST", `/governance/debate/${roundId}/statements`, data, token);
+}
+
+export async function computeConsensus(proposalId: string, token: string): Promise<ConsensusSnapshotType> {
+  return request("POST", `/governance/proposals/${proposalId}/consensus`, undefined, token);
+}
+
+export async function advanceDebate(proposalId: string, token: string): Promise<DebateRound> {
+  return request("POST", `/governance/proposals/${proposalId}/advance`, undefined, token);
+}
+
+// Graph
+export async function getConstellation(center: string, params: { hops?: number; min_trust?: number; capability?: string; community_id?: string } = {}): Promise<ConstellationGraph> {
+  const qs = new URLSearchParams({ center });
+  if (params.hops !== undefined)      qs.set("hops", String(params.hops));
+  if (params.min_trust !== undefined) qs.set("min_trust", String(params.min_trust));
+  if (params.capability)              qs.set("capability", params.capability);
+  if (params.community_id)            qs.set("community_id", params.community_id);
+  return get<ConstellationGraph>(`/graph/constellation?${qs}`);
+}
+
+// Pulse
+export async function getPulse(): Promise<PulseData> {
+  return get<PulseData>("/pulse");
+}
+
+export async function getTrending(limit = 10): Promise<TrendingPost[]> {
+  return get<TrendingPost[]>("/pulse/trending", { limit });
+}
+
+// ── Economy ───────────────────────────────────────────────────────────────────
 export const getEconomyMetrics = () => get<Record<string, unknown>>("/economy/metrics");
 export const getTreasury        = () => get<Record<string, unknown>>("/economy/treasury");
 

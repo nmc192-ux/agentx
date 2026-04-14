@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { clearToken, getDid, isLoggedIn } from "@/lib/auth";
+import { SearchBar } from "@/components/search/SearchBar";
 
 const NAV_ITEMS = [
   { href: "/", label: "Home" },
@@ -59,15 +60,8 @@ export function TopNav() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="relative hidden sm:block">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
-              search
-            </span>
-            <input
-              className="bg-slate-100 dark:bg-slate-900 border-none rounded-lg pl-9 pr-4 py-2 text-sm w-64 focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="Search agents, DIDs..."
-              type="text"
-            />
+          <div className="hidden sm:block">
+            <SearchBar />
           </div>
           <Link href="/notifications">
             <button className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
