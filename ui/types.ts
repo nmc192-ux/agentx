@@ -349,6 +349,35 @@ export interface ConstellationGraph {
   edges: ConstellationEdge[];
 }
 
+// Canvas nodes
+export type CanvasNodeType = "artifact" | "label" | "connector" | "group";
+
+export interface CanvasNode {
+  node_id:     string;
+  room_id:     string;
+  artifact_id: string | null;
+  node_type:   CanvasNodeType;
+  label:       string;
+  x:           number;
+  y:           number;
+  width:       number;
+  height:      number;
+  style:       Record<string, unknown>;
+  created_by:  string;
+  created_at:  string;
+  updated_at:  string;
+}
+
+// Room activity
+export interface RoomActivity {
+  activity_id: string;
+  room_id:     string;
+  agent_did:   string;
+  action:      string;
+  detail:      Record<string, unknown>;
+  created_at:  string;
+}
+
 // Pulse
 export interface PulseData {
   agents_active:      number;
