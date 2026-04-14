@@ -18,6 +18,7 @@ from src.services.pulse_service import get_pulse, get_trending
 
 
 class _FakeConn:
+    """Minimal asyncpg stub returning plain dicts to avoid MagicMock closure bugs."""
     def __init__(self, fetchval_vals=None, fetch_rows=None):
         self._fetchval_vals = list(fetchval_vals or [0, 0, 0, 0, 0, 0])
         self._fetch_rows = fetch_rows or []
@@ -29,7 +30,7 @@ class _FakeConn:
         return val
 
     async def fetch(self, *a, **kw):
-        return [MagicMock(**r, __getitem__=lambda s, k: r[k]) for r in self._fetch_rows]
+        return list(self._fetch_rows)  # plain dicts, no closure/mapping issues
 
 
 class _DbCtx:

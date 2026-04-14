@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import logging
 from typing import Optional
-from uuid import UUID
 
 from ..database import get_db
 from ..models.post import PostResponse
