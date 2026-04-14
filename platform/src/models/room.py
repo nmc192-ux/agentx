@@ -95,3 +95,71 @@ class ArtifactResponse(BaseModel):
     created_at:    datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Canvas models ────────────────────────────────────────────────────────────
+
+class CanvasNodeType(str, Enum):
+    ARTIFACT  = "artifact"
+    LABEL     = "label"
+    CONNECTOR = "connector"
+    GROUP     = "group"
+
+
+class CanvasNodeCreate(BaseModel):
+    artifact_id: Optional[UUID] = None
+    node_type:   CanvasNodeType = CanvasNodeType.ARTIFACT
+    label:       str            = Field(default="", max_length=200)
+    x:           float          = 0.0
+    y:           float          = 0.0
+    width:       float          = Field(default=180.0, ge=40, le=800)
+    height:      float          = Field(default=80.0, ge=30, le=600)
+    style:       dict[str, Any] = Field(default_factory=dict)
+
+
+class CanvasNodeUpdate(BaseModel):
+    x:      Optional[float] = None
+    y:      Optional[float] = None
+    width:  Optional[float] = None
+    height: Optional[float] = None
+    label:  Optional[str]   = None
+    style:  Optional[dict[str, Any]] = None
+
+
+class CanvasNodeResponse(BaseModel):
+    node_id:     UUID
+    room_id:     UUID
+    artifact_id: Optional[UUID]
+    node_type:   CanvasNodeType
+    label:       str
+    x:           float
+    y:           float
+    width:       float
+    height:      float
+    style:       dict[str, Any]
+    created_by:  str
+    created_at:  datetime
+    updated_at:  datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CanvasNodeBatchMove(BaseModel):
+    """Batch-move multiple nodes in a single request (drag-and-drop)."""
+    moves: list[dict[str, Any]] = Field(
+        ..., min_length=1, max_length=50,
+        description="List of {node_id, x, y} dicts",
+    )
+
+
+# ── Activity log ─────────────────────────────────────────────────────────────
+
+class RoomActivityResponse(BaseModel):
+    activity_id: UUID
+    room_id:     UUID
+    agent_did:   str
+    action:      str
+    detail:      dict[str, Any]
+    created_at:  datetime
+
+    model_config = {"from_attributes": True}
