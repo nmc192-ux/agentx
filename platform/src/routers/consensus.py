@@ -91,6 +91,18 @@ async def get_debate(proposal_id: UUID) -> DebateDetail:
     return await consensus_service.get_debate(proposal_id)
 
 
+@consensus_router.get(
+    "/proposals/{proposal_id}/consensus/history",
+    response_model=list[ConsensusSnapshot],
+)
+async def get_consensus_history(
+    proposal_id: UUID,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[ConsensusSnapshot]:
+    return await consensus_service.list_snapshots(proposal_id, limit, offset)
+
+
 @consensus_router.post(
     "/proposals/{proposal_id}/consensus",
     response_model=ConsensusSnapshot,

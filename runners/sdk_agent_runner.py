@@ -829,8 +829,60 @@ class SDKAgentRunner:
         self._task_stats["delegated"] += 1
         self._save_memory()
 
+    # -- Consensus helpers --------------------------------------------------------
+
+    def _http_json(self, method: str, path: str, body: dict | None = None) -> dict | None:
+        """Fire an HTTP request to the platform and return parsed JSON (or None on error)."""
+        base = self.client._config.base_url.rstrip("/")
+        data = _json.dumps(body).encode() if body else None
+        req = urllib.request.Request(
+            f"{base}{path}",
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.client._token.access_token}",
+            },
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return _json.loads(r.read())
+        except _uerr.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")[:200]
+            print(f"  [{self.name}] {method} {path}: {exc.code} {detail}", flush=True)
+        except Exception as exc:
+            print(f"  [{self.name}] {method} {path}: {exc}", flush=True)
+        return None
+
+    def _generate_debate_statement(self, proposal_title: str, proposal_desc: str, phase: str) -> tuple[str, str]:
+        """Use LLM to craft a debate statement. Returns (position, content)."""
+        prompt = (
+            f"You are an AI agent named {self.name} with expertise in: {', '.join(self.capabilities)}.\n"
+            f"A governance proposal is being debated (phase: {phase}):\n"
+            f"  Title: {proposal_title}\n"
+            f"  Description: {proposal_desc}\n\n"
+            f"Write a concise debate statement (2-4 sentences). "
+            f"First line must be exactly one of: FOR, AGAINST, or NEUTRAL\n"
+            f"Then your argument on the next lines."
+        )
+        try:
+            response = self.think(prompt)
+            lines = response.strip().split("\n", 1)
+            position = lines[0].strip().upper()
+            if position not in ("FOR", "AGAINST", "NEUTRAL"):
+                position = "NEUTRAL"
+            content = lines[1].strip() if len(lines) > 1 else response.strip()
+            # Clamp content to valid range (10-4000 chars)
+            if len(content) < 10:
+                content = content + " " * (10 - len(content))
+            return position, content[:4000]
+        except Exception as exc:
+            print(f"  [{self.name}] LLM debate statement failed: {exc}", flush=True)
+            return "NEUTRAL", f"Agent {self.name} acknowledges this proposal and is evaluating its merits."
+
     def _governance_participation(self) -> None:
-        """Periodically create proposals and vote on active ones.
+        """Periodically create proposals, vote, open debates, submit statements,
+        compute consensus snapshots, and advance debate phases.
 
         Called from background thread. Each agent contributes to governance
         based on its domain expertise — security agents propose security policies,
@@ -875,6 +927,9 @@ class SDKAgentRunner:
         }
 
         proposal_created = False
+        # Track proposals we've already debated to avoid duplicate statements
+        debated_proposals: set[str] = set()
+
         while True:
             try:
                 time.sleep(120)  # check every 2 minutes
@@ -883,22 +938,28 @@ class SDKAgentRunner:
                 try:
                     proposals = self.client.governance.list_proposals(status="active")
                     for p in proposals:
+                        pid = str(p.proposal_id)
                         # Simple heuristic: vote yes if proposal matches our domain
                         proposal_text = f"{p.title} {p.description}".lower()
                         relevance = any(cap in proposal_text for cap in self.capabilities)
                         try:
                             vote = "yes" if relevance else "abstain"
-                            self.client.governance.vote(str(p.proposal_id), vote)
+                            self.client.governance.vote(pid, vote)
                             print(
                                 f"  [{self.name}] Voted '{vote}' on: {p.title[:50]}",
                                 flush=True,
                             )
                         except Exception:
                             pass  # already voted or other error
+
+                        # 2. Participate in debate rounds
+                        if pid not in debated_proposals:
+                            self._participate_in_debate(p, pid, debated_proposals)
+
                 except Exception:
                     pass
 
-                # 2. Create one proposal (only once per session)
+                # 3. Create one proposal (only once per session)
                 if not proposal_created:
                     for cap in self.capabilities:
                         templates = PROPOSALS.get(cap, [])
@@ -922,6 +983,68 @@ class SDKAgentRunner:
 
             except Exception:
                 pass  # governance may not be available
+
+    def _participate_in_debate(self, proposal: object, pid: str, debated: set[str]) -> None:
+        """Open debate, submit LLM-generated statement, compute consensus, advance phase."""
+        title = getattr(proposal, "title", "")
+        desc = getattr(proposal, "description", "")
+
+        # Fetch or open a debate
+        debate = self._http_json("GET", f"/governance/proposals/{pid}/debate")
+        if not debate:
+            return
+
+        rounds = debate.get("rounds", [])
+        current_phase = "OPENING"
+        current_round_id = None
+
+        if rounds:
+            latest = rounds[-1]
+            current_phase = latest.get("phase", "OPENING")
+            current_round_id = latest.get("round_id")
+        else:
+            # No debate yet — open the first round
+            result = self._http_json("POST", f"/governance/proposals/{pid}/debate", {
+                "phase": "OPENING",
+                "duration_hrs": 24,
+            })
+            if result:
+                current_round_id = result.get("round_id")
+                current_phase = result.get("phase", "OPENING")
+                print(f"  [{self.name}] Opened debate on: {title[:50]}", flush=True)
+
+        # Submit a statement if we have a round and debate is not in VOTING
+        if current_round_id and current_phase != "VOTING":
+            position, content = self._generate_debate_statement(title, desc, current_phase)
+            stmt_result = self._http_json("POST", f"/governance/debate/{current_round_id}/statements", {
+                "position": position,
+                "content": content,
+                "evidence_refs": [],
+            })
+            if stmt_result:
+                print(
+                    f"  [{self.name}] Debate statement ({position}): {content[:60]}...",
+                    flush=True,
+                )
+
+        # Compute a consensus snapshot
+        snap = self._http_json("POST", f"/governance/proposals/{pid}/consensus")
+        if snap:
+            quorum = snap.get("quorum_met", False)
+            voters = snap.get("total_voters", 0)
+            print(
+                f"  [{self.name}] Consensus snapshot: {voters} voters, quorum={'YES' if quorum else 'NO'}",
+                flush=True,
+            )
+
+        # Try to advance the phase if we've been in it long enough
+        if current_phase in ("OPENING", "REBUTTAL", "CLOSING"):
+            adv = self._http_json("POST", f"/governance/proposals/{pid}/advance")
+            if adv:
+                new_phase = adv.get("phase", "?")
+                print(f"  [{self.name}] Advanced debate → {new_phase}", flush=True)
+
+        debated.add(pid)
 
     def _evaluate_task_fit(self, task_tags: set[str]) -> float:
         """Score how well this agent's capabilities match a task. 0.0-1.0."""

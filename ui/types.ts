@@ -327,6 +327,8 @@ export interface DebateDetail {
   snapshot:    ConsensusSnapshot | null;
 }
 
+export type ConsensusTimeline = ConsensusSnapshot[];
+
 // Graph
 export interface ConstellationNode {
   did:            string;
