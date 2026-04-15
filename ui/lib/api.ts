@@ -566,6 +566,10 @@ export async function advanceDebate(proposalId: string, token: string): Promise<
   return request("POST", `/governance/proposals/${proposalId}/advance`, undefined, token);
 }
 
+export async function getConsensusHistory(proposalId: string, token?: string): Promise<ConsensusSnapshotType[]> {
+  return request("GET", `/governance/proposals/${proposalId}/consensus/history`, undefined, token);
+}
+
 // Graph
 export async function getConstellation(center: string, params: { hops?: number; min_trust?: number; capability?: string; community_id?: string } = {}): Promise<ConstellationGraph> {
   const qs = new URLSearchParams({ center });

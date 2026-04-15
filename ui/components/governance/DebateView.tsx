@@ -7,11 +7,12 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  MessageSquare, ThumbsUp, ThumbsDown, Minus, Clock,
-  CheckCircle, AlertCircle, ChevronRight,
+  MessageSquare, ThumbsUp, ThumbsDown, Minus,
+  ChevronRight,
 } from "lucide-react";
 import { getDebate } from "@/lib/api";
 import type { DebateDetail, DebatePhase, DebateStatement } from "@/types";
+import { ConsensusMeter } from "./ConsensusMeter";
 
 const PHASE_META: Record<DebatePhase, { color: string; label: string }> = {
   OPENING:  { color: "#3B82F6", label: "Opening Statements" },
@@ -107,53 +108,8 @@ export function DebateView({ proposalId }: { proposalId: string }) {
         )}
       </div>
 
-      {/* Consensus snapshot */}
-      {snapshot && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl border border-slate-800 bg-slate-900 p-4"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            {snapshot.quorum_met
-              ? <CheckCircle className="w-4 h-4 text-green-400" />
-              : <AlertCircle className="w-4 h-4 text-yellow-400" />
-            }
-            <span className="text-sm font-medium">
-              Consensus {snapshot.quorum_met ? "Reached" : "Pending"}
-            </span>
-            <span className="text-xs text-slate-500 ml-auto">
-              {snapshot.total_voters} voters · Quorum: {(snapshot.quorum_threshold * 100).toFixed(0)}%
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            {(["FOR", "AGAINST", "ABSTAIN"] as const).map((choice) => {
-              const count = snapshot.vote_tally[choice] ?? 0;
-              const weight = snapshot.weighted_tally[choice] ?? 0;
-              const total = Object.values(snapshot.vote_tally).reduce((s, v) => s + (v as number), 0);
-              const pct = total > 0 ? (count / total) * 100 : 0;
-              const meta = choice === "FOR" ? POSITION_META.FOR : choice === "AGAINST" ? POSITION_META.AGAINST : POSITION_META.NEUTRAL;
-              return (
-                <div key={choice} className="text-center">
-                  <div className="text-2xl font-bold" style={{ color: meta.color }}>{count}</div>
-                  <div className="text-[10px] text-slate-500">{choice} ({pct.toFixed(0)}%)</div>
-                  <div className="h-1.5 rounded-full bg-slate-800 mt-1 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.5 }}
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: meta.color }}
-                    />
-                  </div>
-                  <div className="text-[10px] text-slate-600 mt-0.5">w: {weight.toFixed(1)}</div>
-                </div>
-              );
-            })}
-          </div>
-        </motion.div>
-      )}
+      {/* Consensus Meter with replay */}
+      <ConsensusMeter proposalId={proposalId} latestSnapshot={snapshot} />
     </div>
   );
 }

@@ -240,6 +240,25 @@ async def compute_consensus(proposal_id: UUID) -> ConsensusSnapshot:
         return _snapshot_from_row(dict(row))
 
 
+async def list_snapshots(
+    proposal_id: UUID,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[ConsensusSnapshot]:
+    """Return historical consensus snapshots for a proposal, ordered by created_at ASC (oldest first)."""
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM consensus_snapshots
+            WHERE proposal_id = $1
+            ORDER BY created_at ASC
+            LIMIT $2 OFFSET $3
+            """,
+            proposal_id, limit, offset,
+        )
+        return [_snapshot_from_row(dict(r)) for r in rows]
+
+
 async def advance_round(proposal_id: UUID) -> DebateRoundResponse:
     """Advance to the next debate phase for a proposal."""
     phase_order = ["OPENING", "REBUTTAL", "CLOSING", "VOTING"]
