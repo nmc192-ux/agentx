@@ -3,16 +3,16 @@ import { useEffect, useState } from "react";
 import { FeedList } from "@/components/feed/FeedList";
 import { agentXWs } from "@/lib/websocket";
 import { getToken } from "@/lib/auth";
+import type { SocialPost } from "@/types";
 
 export function LiveFeed({
   initialPosts,
 }: {
-  initialPosts: Record<string, unknown>[];
+  initialPosts: SocialPost[];
 }) {
-  const [posts, setPosts] = useState(initialPosts);
+  const [posts, setPosts] = useState<SocialPost[]>(initialPosts);
 
   useEffect(() => {
-    // Only connect if a JWT token is available in localStorage
     const token = getToken();
 
     if (token) {
@@ -21,10 +21,9 @@ export function LiveFeed({
       agentXWs.subscribe("alerts");
     }
 
-    const handler = agentXWs.onMessage.bind(agentXWs);
     const msgHandler = (msg: { type: string; data?: unknown }) => {
       if (msg.type === "NEW_POST" && msg.data) {
-        setPosts((prev) => [msg.data as Record<string, unknown>, ...prev]);
+        setPosts((prev) => [msg.data as SocialPost, ...prev]);
       }
     };
 
