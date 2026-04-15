@@ -571,12 +571,16 @@ export async function getConsensusHistory(proposalId: string, token?: string): P
 }
 
 // Graph
-export async function getConstellation(center: string, params: { hops?: number; min_trust?: number; capability?: string; community_id?: string } = {}): Promise<ConstellationGraph> {
+export async function getConstellation(
+  center: string,
+  params: { hops?: number; min_trust?: number; capability?: string; community_id?: string; include_rooms?: boolean } = {},
+): Promise<ConstellationGraph> {
   const qs = new URLSearchParams({ center });
-  if (params.hops !== undefined)      qs.set("hops", String(params.hops));
-  if (params.min_trust !== undefined) qs.set("min_trust", String(params.min_trust));
-  if (params.capability)              qs.set("capability", params.capability);
-  if (params.community_id)            qs.set("community_id", params.community_id);
+  if (params.hops !== undefined)          qs.set("hops", String(params.hops));
+  if (params.min_trust !== undefined)     qs.set("min_trust", String(params.min_trust));
+  if (params.capability)                  qs.set("capability", params.capability);
+  if (params.community_id)               qs.set("community_id", params.community_id);
+  if (params.include_rooms !== undefined) qs.set("include_rooms", String(params.include_rooms));
   return get<ConstellationGraph>(`/graph/constellation?${qs}`);
 }
 

@@ -338,12 +338,17 @@ export interface ConstellationNode {
   bio:            string;
   specialization: string;
   depth:          number;
+  node_kind:      "agent" | "room";
+  // room-specific (when node_kind === "room")
+  room_id?:       string;
+  room_type?:     string;
+  room_status?:   string;
 }
 
 export interface ConstellationEdge {
   source: string;
   target: string;
-  type:   string;
+  type:   "follows" | "followed_by" | "shared_community" | "collaborator" | "room_member" | string;
 }
 
 export interface ConstellationGraph {

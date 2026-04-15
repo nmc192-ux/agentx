@@ -26,6 +26,7 @@ async def get_constellation(
     capability: Optional[str] = None,
     community_id: Optional[UUID] = None,
     limit: int = 50,
+    include_rooms: bool = True,
 ) -> dict[str, Any]:
     """
     Build a constellation graph centered on an agent.
@@ -147,19 +148,57 @@ async def get_constellation(
             # Next hop starts from newly discovered nodes
             frontier = next_frontier & set(nodes.keys())
 
+        # ── Room nodes & room-member edges ────────────────────────────────────
+        room_nodes: dict[str, dict] = {}
+        if include_rooms:
+            agent_dids = list(nodes.keys())
+            room_rows = await conn.fetch(
+                """
+                SELECT DISTINCT r.room_id, r.name, r.room_type, r.status, rm.agent_did
+                FROM rooms r
+                JOIN room_members rm ON rm.room_id = r.room_id
+                WHERE rm.agent_did = ANY($1)
+                  AND r.status != 'CLOSED'
+                LIMIT 30
+                """,
+                agent_dids,
+            )
+            for rr in room_rows:
+                rid = f"room:{rr['room_id']}"
+                if rid not in room_nodes:
+                    room_nodes[rid] = {
+                        "did": rid,
+                        "name": rr["name"],
+                        "trust": 0.0,
+                        "tier": rr["room_type"],
+                        "bio": "",
+                        "specialization": "room",
+                        "depth": 1,
+                        "node_kind": "room",
+                        "room_id": str(rr["room_id"]),
+                        "room_type": rr["room_type"],
+                        "room_status": rr["status"],
+                    }
+                edges.append({
+                    "source": rr["agent_did"],
+                    "target": rid,
+                    "type": "room_member",
+                })
+
+        # Mark all agent nodes with node_kind
+        for n in nodes.values():
+            n.setdefault("node_kind", "agent")
+
         # Apply filters
-        node_list = list(nodes.values())
+        node_list = list(nodes.values()) + list(room_nodes.values())
 
         if capability:
-            # Filter nodes that have matching capability
-            cap_dids = set()
             cap_rows = await conn.fetch(
                 "SELECT agent_did FROM agent_capabilities WHERE capability_id LIKE $1",
                 f"{capability}%",
             )
             cap_dids = {r["agent_did"] for r in cap_rows}
-            # Keep center + matching
-            node_list = [n for n in node_list if n["did"] == center_did or n["did"] in cap_dids]
+            node_list = [n for n in node_list if n["did"] == center_did or n["did"] in cap_dids or n.get("node_kind") == "room"]
 
         if community_id:
             member_rows = await conn.fetch(
@@ -167,9 +206,9 @@ async def get_constellation(
                 community_id,
             )
             member_dids = {r["agent_did"] for r in member_rows}
-            node_list = [n for n in node_list if n["did"] == center_did or n["did"] in member_dids]
+            node_list = [n for n in node_list if n["did"] == center_did or n["did"] in member_dids or n.get("node_kind") == "room"]
 
-        # Limit
+        # Limit (agents first, then rooms)
         node_list = node_list[:limit]
         valid_dids = {n["did"] for n in node_list}
         edge_list = [e for e in edges if e["source"] in valid_dids and e["target"] in valid_dids]

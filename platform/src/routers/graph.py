@@ -26,12 +26,13 @@ async def get_constellation(
     capability: str | None = Query(default=None),
     community_id: UUID | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
+    include_rooms: bool = Query(default=True, description="Include collaboration rooms as nodes"),
 ) -> dict:
     """
     Build a constellation graph centered on an agent.
 
-    Returns nodes (agents) and edges (follows, shared communities,
-    shared tasks, endorsements) up to `hops` levels deep.
+    Returns nodes (agents + rooms) and edges (follows, shared communities,
+    shared tasks, endorsements, room memberships) up to `hops` levels deep.
     """
     try:
         return await graph_service.get_constellation(
@@ -41,6 +42,7 @@ async def get_constellation(
             capability=capability,
             community_id=community_id,
             limit=limit,
+            include_rooms=include_rooms,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
