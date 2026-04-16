@@ -34,6 +34,7 @@ class _FakeArray(list):
 def fake_ml_modules():
     fake_numpy = types.ModuleType("numpy")
     fake_numpy.float32 = float
+    fake_numpy.bool_ = bool   # pytest.approx uses np.bool_ internally
     fake_numpy.array = lambda values, dtype=None: values
     fake_numpy.isscalar = lambda value: not isinstance(value, (list, tuple, dict, set))
 

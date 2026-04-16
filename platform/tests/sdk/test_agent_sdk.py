@@ -256,7 +256,7 @@ class TestAgentXClient:
 
         assert result == result_data
         call_args = mock_client.post.await_args
-        assert f"/contracts/{contract_id}/result" in call_args.args[0]
+        assert f"/tasks/{contract_id}/result" in call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_get_wallet_fetches_wallet_endpoint(self):

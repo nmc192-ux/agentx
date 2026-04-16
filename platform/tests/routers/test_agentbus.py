@@ -41,16 +41,18 @@ def _message(
     receiver_did="did:agentx:receiver",
     channel="default",
 ):
-    from src.models.agentbus import AgentMessageResponse
-    return AgentMessageResponse(
+    from src.models.acp import ACPMessageResponse
+    return ACPMessageResponse(
+        protocol_version="ACP-1.0",
         message_id=uuid4(),
-        sender_did=sender_did,
+        timestamp=_now(),
+        agent_id=sender_did,
+        type="channel_message",
+        human_summary="Hello, agent!",
+        machine_payload={},
+        metadata={},
         receiver_did=receiver_did,
-        content="Hello, agent!",
         channel=channel,
-        status="sent",
-        metadata=None,
-        created_at=_now(),
     )
 
 
@@ -82,7 +84,7 @@ class TestSendMessage:
         msg = _message()
 
         with patch(
-            "src.routers.agentbus.agentbus_service.send_message",
+            "src.routers.agentbus.agentbus_service.send_acp_message",
             new=AsyncMock(return_value=msg),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
@@ -90,8 +92,11 @@ class TestSendMessage:
                 resp = await client.post(
                     "/agentbus/send",
                     json={
+                        "agent_id": "did:agentx:sender",
+                        "type": "channel_message",
+                        "human_summary": "Hello, agent!",
+                        "machine_payload": {},
                         "receiver_did": "did:agentx:receiver",
-                        "content": "Hello, agent!",
                     },
                 )
             finally:
@@ -99,9 +104,8 @@ class TestSendMessage:
 
         assert resp.status_code == 201
         data = resp.json()
-        assert data["sender_did"] == "did:agentx:sender"
-        assert data["content"] == "Hello, agent!"
-        assert data["status"] == "sent"
+        assert data["agent_id"] == "did:agentx:sender"
+        assert data["human_summary"] == "Hello, agent!"
 
     @pytest.mark.asyncio
     async def test_requires_auth(self, client):
@@ -116,14 +120,20 @@ class TestSendMessage:
         from src.auth.middleware import get_current_agent
 
         with patch(
-            "src.routers.agentbus.agentbus_service.send_message",
+            "src.routers.agentbus.agentbus_service.send_acp_message",
             new=AsyncMock(side_effect=ValueError("Receiver agent not found")),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
             try:
                 resp = await client.post(
                     "/agentbus/send",
-                    json={"receiver_did": "did:agentx:ghost", "content": "hi"},
+                    json={
+                        "agent_id": "did:agentx:sender",
+                        "type": "channel_message",
+                        "human_summary": "hi",
+                        "machine_payload": {},
+                        "receiver_did": "did:agentx:ghost",
+                    },
                 )
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
@@ -135,14 +145,20 @@ class TestSendMessage:
         from src.auth.middleware import get_current_agent
 
         with patch(
-            "src.routers.agentbus.agentbus_service.send_message",
+            "src.routers.agentbus.agentbus_service.send_acp_message",
             new=AsyncMock(side_effect=ValueError("invalid channel")),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
             try:
                 resp = await client.post(
                     "/agentbus/send",
-                    json={"receiver_did": "did:agentx:receiver", "content": "hi"},
+                    json={
+                        "agent_id": "did:agentx:sender",
+                        "type": "channel_message",
+                        "human_summary": "hi",
+                        "machine_payload": {},
+                        "receiver_did": "did:agentx:receiver",
+                    },
                 )
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
@@ -155,7 +171,7 @@ class TestSendMessage:
         msg = _message(channel="announcements")
 
         with patch(
-            "src.routers.agentbus.agentbus_service.send_message",
+            "src.routers.agentbus.agentbus_service.send_acp_message",
             new=AsyncMock(return_value=msg),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
@@ -163,8 +179,11 @@ class TestSendMessage:
                 resp = await client.post(
                     "/agentbus/send",
                     json={
+                        "agent_id": "did:agentx:sender",
+                        "type": "channel_message",
+                        "human_summary": "Announcement",
+                        "machine_payload": {},
                         "receiver_did": "did:agentx:receiver",
-                        "content": "Announcement",
                         "channel": "announcements",
                     },
                 )
@@ -181,14 +200,20 @@ class TestSendMessage:
         msg = _message(sender_did="did:agentx:caller-001")
 
         with patch(
-            "src.routers.agentbus.agentbus_service.send_message",
+            "src.routers.agentbus.agentbus_service.send_acp_message",
             new=AsyncMock(return_value=msg),
         ) as mock_svc:
             app.dependency_overrides[get_current_agent] = lambda: _make_agent("did:agentx:caller-001")
             try:
                 resp = await client.post(
                     "/agentbus/send",
-                    json={"receiver_did": "did:agentx:receiver", "content": "hi"},
+                    json={
+                        "agent_id": "did:agentx:caller-001",
+                        "type": "channel_message",
+                        "human_summary": "hi",
+                        "machine_payload": {},
+                        "receiver_did": "did:agentx:receiver",
+                    },
                 )
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
@@ -209,7 +234,7 @@ class TestGetInbox:
         messages = [_message(), _message()]
 
         with patch(
-            "src.routers.agentbus.agentbus_service.get_inbox",
+            "src.routers.agentbus.agentbus_service.get_acp_inbox",
             new=AsyncMock(return_value=messages),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
@@ -231,7 +256,7 @@ class TestGetInbox:
         from src.auth.middleware import get_current_agent
 
         with patch(
-            "src.routers.agentbus.agentbus_service.get_inbox",
+            "src.routers.agentbus.agentbus_service.get_acp_inbox",
             new=AsyncMock(return_value=[]),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
@@ -248,7 +273,7 @@ class TestGetInbox:
         from src.auth.middleware import get_current_agent
 
         with patch(
-            "src.routers.agentbus.agentbus_service.get_inbox",
+            "src.routers.agentbus.agentbus_service.get_acp_inbox",
             new=AsyncMock(return_value=[]),
         ) as mock_svc:
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
@@ -262,6 +287,8 @@ class TestGetInbox:
             agent_did="did:agentx:caller-001",
             limit=10,
             offset=0,
+            acp_type=None,
+            since=None,
         )
 
     @pytest.mark.asyncio
@@ -269,7 +296,7 @@ class TestGetInbox:
         from src.auth.middleware import get_current_agent
 
         with patch(
-            "src.routers.agentbus.agentbus_service.get_inbox",
+            "src.routers.agentbus.agentbus_service.get_acp_inbox",
             new=AsyncMock(return_value=[]),
         ) as mock_svc:
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
@@ -283,6 +310,8 @@ class TestGetInbox:
             agent_did="did:agentx:caller-001",
             limit=50,
             offset=25,
+            acp_type=None,
+            since=None,
         )
 
     @pytest.mark.asyncio
@@ -290,7 +319,7 @@ class TestGetInbox:
         from src.auth.middleware import get_current_agent
 
         with patch(
-            "src.routers.agentbus.agentbus_service.get_inbox",
+            "src.routers.agentbus.agentbus_service.get_acp_inbox",
             new=AsyncMock(return_value=[]),
         ) as mock_svc:
             app.dependency_overrides[get_current_agent] = lambda: _make_agent("did:agentx:specific-agent")
@@ -303,6 +332,8 @@ class TestGetInbox:
             agent_did="did:agentx:specific-agent",
             limit=50,
             offset=0,
+            acp_type=None,
+            since=None,
         )
 
 

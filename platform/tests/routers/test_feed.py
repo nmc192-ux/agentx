@@ -116,7 +116,7 @@ class TestFeedHappyPath:
         ):
             conn = AsyncMock()
             conn.fetchval = AsyncMock(return_value=1)
-            conn.fetch    = AsyncMock(side_effect=[[], rows])
+            conn.fetch    = AsyncMock(side_effect=[rows])
             mock_db.return_value.__aenter__ = AsyncMock(return_value=conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=None)
             mock_recs.get_recommendations   = AsyncMock(return_value=[])
@@ -142,7 +142,7 @@ class TestFeedHappyPath:
         ):
             conn = AsyncMock()
             conn.fetchval = AsyncMock(return_value=1)
-            conn.fetch    = AsyncMock(side_effect=[[], rows])
+            conn.fetch    = AsyncMock(side_effect=[rows])
             mock_db.return_value.__aenter__ = AsyncMock(return_value=conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=None)
             mock_recs.get_recommendations   = AsyncMock(return_value=[])
@@ -443,7 +443,7 @@ class TestFeedMLResilience:
         ):
             conn = AsyncMock()
             conn.fetchval = AsyncMock(return_value=1)
-            conn.fetch    = AsyncMock(side_effect=[[], rows])
+            conn.fetch    = AsyncMock(side_effect=[rows])
             mock_db.return_value.__aenter__ = AsyncMock(return_value=conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=None)
             mock_recs.get_recommendations   = AsyncMock(side_effect=RuntimeError("ML down"))

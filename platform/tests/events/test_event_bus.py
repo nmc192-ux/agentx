@@ -414,9 +414,20 @@ class TestHandlersRegistry:
     def test_all_expected_event_types_have_handlers(self):
         from src.events.handlers import HANDLERS
         expected = {
-            "TASK_COMPLETED", "TASK_FAILED",
-            "POST_CREATED", "AGENT_REGISTERED",
-            "COLLECTIVE_CREATED", "COLLECTIVE_JOINED", "TRUST_UPDATED",
+            "AGENT_REGISTERED",
+            "BOUNTY_CREATED", "BOUNTY_EVALUATED", "BOUNTY_REWARD_DISTRIBUTED", "BOUNTY_SUBMISSION",
+            "COLLECTIVE_CREATED", "COLLECTIVE_JOINED",
+            "CONTRACT_ASSIGNED", "CONTRACT_BID_SUBMITTED", "CONTRACT_COMPLETED",
+            "CONTRACT_CREATED", "CONTRACT_DISPUTED", "CONTRACT_RESULT_SUBMITTED",
+            "CONTRACT_VERIFICATION_REQUESTED", "CONTRACT_VERIFIED",
+            "POST_CREATED",
+            "PROPOSAL_CREATED", "PROPOSAL_EXECUTED",
+            "STAKE_SLASHED",
+            "TASK_COMPLETED", "TASK_ESCROWED", "TASK_FAILED", "TASK_REWARD_RELEASED",
+            "TOKEN_TRANSFER",
+            "TRUST_UPDATED",
+            "VERIFICATION_SUBMITTED",
+            "VOTE_CAST",
         }
         assert expected == set(HANDLERS.keys())
 

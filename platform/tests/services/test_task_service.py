@@ -165,7 +165,10 @@ async def test_submit_bid_inserts_bid_record():
         bid,                                       # insert RETURNING
     ])
 
-    with patch("src.services.task_service.transaction", return_value=_tx_context(conn)):
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.task_service.assign_task", new=AsyncMock()),
+    ):
         result = await task_service.submit_bid(
             task_id=task_id,
             agent_did="did:agentx:bidder-001",

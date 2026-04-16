@@ -1,22 +1,70 @@
 """
 Tests: src/services/agentbus_service.py + workers/executor.execute_agentbus_message
-Phase 11 -- Agent Bus
+Phase 11 -- Agent Bus  (updated for ACP-1.0 rename)
 
 Covers:
-  send_message()              -- resolves DIDs, inserts message, publishes event + Redis
-  get_inbox()                 -- queries messages by receiver_did with pagination
+  send_acp_message()          -- resolves DIDs, inserts message, publishes event + Redis
+  get_acp_inbox()             -- queries messages by receiver_did with pagination
   stream_messages()           -- Redis pub/sub SSE generator
   execute_agentbus_message()  -- worker function, publishes AGENT_MESSAGE_RECEIVED
 """
 from __future__ import annotations
 
+import sys
+import types
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from src.models.agentbus import AgentMessageCreate
+# ---------------------------------------------------------------------------
+# Stub opentelemetry so workers/executor.py can be imported without the
+# real SDK installed.  Must be done before any import of workers.executor.
+# ---------------------------------------------------------------------------
+def _make_otel_stubs() -> None:
+    if "opentelemetry" not in sys.modules:
+        sys.modules["opentelemetry"] = types.ModuleType("opentelemetry")
+
+    if "opentelemetry.trace" not in sys.modules:
+        _mod = types.ModuleType("opentelemetry.trace")
+
+        class _SpanKind:
+            INTERNAL = "INTERNAL"
+            CONSUMER = "CONSUMER"
+            PRODUCER = "PRODUCER"
+            CLIENT   = "CLIENT"
+            SERVER   = "SERVER"
+
+        class _StatusCode:
+            OK = "OK"
+            ERROR = "ERROR"
+
+        class _Span:
+            def set_attribute(self, *a, **kw): pass
+            def set_status(self, *a, **kw): pass
+            def record_exception(self, *a, **kw): pass
+
+        class _Tracer:
+            @contextmanager
+            def start_as_current_span(self, *args, **kwargs):
+                yield _Span()
+
+        _mod.SpanKind = _SpanKind
+        _mod.StatusCode = _StatusCode
+        _mod.get_tracer = lambda *a, **kw: _Tracer()
+        sys.modules["opentelemetry.trace"] = _mod
+
+    # Make opentelemetry.trace accessible as an attribute of the top-level module
+    otel = sys.modules["opentelemetry"]
+    otel.trace = sys.modules["opentelemetry.trace"]  # type: ignore[attr-defined]
+
+
+_make_otel_stubs()
+
+# Now safe to import the ACP models
+from src.models.acp import ACPMessageCreate, ACPMessageResponse
 from src.services import agentbus_service
 
 
@@ -44,19 +92,49 @@ def _message_row(
     channel="default",
     status="sent",
 ):
+    """Build a DB-row dict that _row_to_acp() can process."""
+    mid = message_id or uuid4()
     return {
-        "message_id":   message_id or uuid4(),
-        "sender_did":   sender_did,
-        "receiver_did": receiver_did,
-        "content":      "Hello, agent!",
-        "channel":      channel,
-        "status":       status,
-        "metadata":     None,
-        "created_at":   _now(),
+        # Legacy columns
+        "message_id":       mid,
+        "sender_did":       sender_did,
+        "receiver_did":     receiver_did,
+        "content":          "Hello, agent!",
+        "channel":          channel,
+        "status":           status,
+        "metadata":         None,
+        "created_at":       _now(),
+        # ACP-1.0 columns
+        "acp_message_id":   mid,
+        "agent_id":         sender_did,   # ACP agent_id == sender DID
+        "acp_type":         "channel_message",
+        "human_summary":    "Hello, agent!",
+        "machine_payload":  None,
+        "acp_timestamp":    None,
+        "protocol_version": "ACP-1.0",
     }
 
 
-# -- send_message -------------------------------------------------------------
+def _acp_create(
+    sender_did: str = "did:agentx:sender",
+    receiver_did: str = "did:agentx:receiver",
+    summary: str = "Hello, agent!",
+    channel: str = "default",
+    metadata=None,
+) -> ACPMessageCreate:
+    """Convenience factory for ACPMessageCreate with sensible defaults."""
+    return ACPMessageCreate(
+        agent_id=sender_did,
+        type="channel_message",
+        human_summary=summary,
+        machine_payload={},
+        receiver_did=receiver_did,
+        channel=channel,
+        metadata=metadata or {},
+    )
+
+
+# -- send_acp_message ---------------------------------------------------------
 
 class TestSendMessage:
 
@@ -74,15 +152,14 @@ class TestSendMessage:
             patch("src.services.agentbus_service.publish_event", new=AsyncMock()),
             patch("src.services.agentbus_service.get_cache", return_value=None),
         ):
-            result = await agentbus_service.send_message(
+            result = await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(receiver_did="did:agentx:receiver", content="Hello, agent!"),
+                _acp_create(),
             )
 
-        assert result.sender_did == "did:agentx:sender"
+        assert result.agent_id == "did:agentx:sender"
         assert result.receiver_did == "did:agentx:receiver"
-        assert result.content == "Hello, agent!"
-        assert result.status == "sent"
+        assert result.human_summary == "Hello, agent!"
 
     @pytest.mark.asyncio
     async def test_raises_if_receiver_not_found(self):
@@ -96,9 +173,9 @@ class TestSendMessage:
             patch("src.services.agentbus_service.transaction", return_value=_tx_context(conn)),
             pytest.raises(ValueError, match="not found"),
         ):
-            await agentbus_service.send_message(
+            await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(receiver_did="did:agentx:ghost", content="hi"),
+                _acp_create(receiver_did="did:agentx:ghost"),
             )
 
     @pytest.mark.asyncio
@@ -118,9 +195,9 @@ class TestSendMessage:
             ),
             patch("src.services.agentbus_service.get_cache", return_value=None),
         ):
-            result = await agentbus_service.send_message(
+            result = await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(receiver_did="did:agentx:receiver", content="hi"),
+                _acp_create(summary="hi"),
             )
 
         assert result.message_id is not None
@@ -142,9 +219,9 @@ class TestSendMessage:
             patch("src.services.agentbus_service.publish_event", new=AsyncMock()),
             patch("src.services.agentbus_service.get_cache", return_value=mock_redis),
         ):
-            result = await agentbus_service.send_message(
+            result = await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(receiver_did="did:agentx:receiver", content="hi"),
+                _acp_create(summary="hi"),
             )
 
         assert result.message_id is not None
@@ -163,13 +240,9 @@ class TestSendMessage:
             patch("src.services.agentbus_service.publish_event", new=AsyncMock()),
             patch("src.services.agentbus_service.get_cache", return_value=None),
         ):
-            result = await agentbus_service.send_message(
+            result = await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(
-                    receiver_did="did:agentx:receiver",
-                    content="Announcement",
-                    channel="announcements",
-                ),
+                _acp_create(summary="Announcement", channel="announcements"),
             )
 
         assert result.channel == "announcements"
@@ -189,13 +262,9 @@ class TestSendMessage:
             patch("src.services.agentbus_service.publish_event", new=AsyncMock()),
             patch("src.services.agentbus_service.get_cache", return_value=None),
         ):
-            result = await agentbus_service.send_message(
+            result = await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(
-                    receiver_did="did:agentx:receiver",
-                    content="Urgent",
-                    metadata={"priority": "high"},
-                ),
+                _acp_create(summary="Urgent", metadata={"priority": "high"}),
             )
 
         assert result.metadata == {"priority": "high"}
@@ -215,9 +284,12 @@ class TestSendMessage:
             patch("src.services.agentbus_service.publish_event", new=AsyncMock()),
             patch("src.services.agentbus_service.get_cache", return_value=None),
         ):
-            result = await agentbus_service.send_message(
+            result = await agentbus_service.send_acp_message(
                 "did:agentx:unknown-sender",
-                AgentMessageCreate(receiver_did="did:agentx:receiver", content="hi"),
+                _acp_create(
+                    sender_did="did:agentx:unknown-sender",
+                    summary="hi",
+                ),
             )
 
         assert result.message_id is not None
@@ -238,9 +310,9 @@ class TestSendMessage:
             patch("src.services.agentbus_service.publish_event", new=AsyncMock()),
             patch("src.services.agentbus_service.get_cache", return_value=mock_redis),
         ):
-            await agentbus_service.send_message(
+            await agentbus_service.send_acp_message(
                 "did:agentx:sender",
-                AgentMessageCreate(receiver_did="did:agentx:bob", content="ping"),
+                _acp_create(receiver_did="did:agentx:bob", summary="ping"),
             )
 
         # Should publish to agentbus:did:agentx:bob
@@ -249,7 +321,7 @@ class TestSendMessage:
         assert call_args[0][0] == "agentbus:did:agentx:bob"
 
 
-# -- get_inbox ----------------------------------------------------------------
+# -- get_acp_inbox ------------------------------------------------------------
 
 class TestGetInbox:
 
@@ -260,7 +332,7 @@ class TestGetInbox:
         conn.fetch = AsyncMock(return_value=rows)
 
         with patch("src.services.agentbus_service.get_db", return_value=_tx_context(conn)):
-            result = await agentbus_service.get_inbox("did:agentx:receiver")
+            result = await agentbus_service.get_acp_inbox("did:agentx:receiver")
 
         assert len(result) == 3
 
@@ -270,7 +342,7 @@ class TestGetInbox:
         conn.fetch = AsyncMock(return_value=[])
 
         with patch("src.services.agentbus_service.get_db", return_value=_tx_context(conn)):
-            result = await agentbus_service.get_inbox("did:agentx:nobody")
+            result = await agentbus_service.get_acp_inbox("did:agentx:nobody")
 
         assert result == []
 
@@ -280,7 +352,7 @@ class TestGetInbox:
         conn.fetch = AsyncMock(return_value=[])
 
         with patch("src.services.agentbus_service.get_db", return_value=_tx_context(conn)):
-            await agentbus_service.get_inbox("did:agentx:agent")
+            await agentbus_service.get_acp_inbox("did:agentx:agent")
 
         # Verify fetch was called with limit=50 and offset=0
         call_args = conn.fetch.call_args
@@ -293,7 +365,7 @@ class TestGetInbox:
         conn.fetch = AsyncMock(return_value=rows)
 
         with patch("src.services.agentbus_service.get_db", return_value=_tx_context(conn)):
-            result = await agentbus_service.get_inbox(
+            result = await agentbus_service.get_acp_inbox(
                 "did:agentx:agent", limit=10, offset=20
             )
 
@@ -309,11 +381,12 @@ class TestGetInbox:
         conn.fetch = AsyncMock(return_value=[row])
 
         with patch("src.services.agentbus_service.get_db", return_value=_tx_context(conn)):
-            result = await agentbus_service.get_inbox("did:agentx:bob")
+            result = await agentbus_service.get_acp_inbox("did:agentx:bob")
 
-        assert result[0].sender_did == "did:agentx:alice"
+        # ACPMessageResponse uses agent_id (DID of sender) and human_summary
+        assert result[0].agent_id == "did:agentx:alice"
         assert result[0].receiver_did == "did:agentx:bob"
-        assert result[0].content == "Hello, agent!"
+        assert result[0].human_summary == "Hello, agent!"
 
     @pytest.mark.asyncio
     async def test_decodes_json_metadata(self):
@@ -323,7 +396,7 @@ class TestGetInbox:
         conn.fetch = AsyncMock(return_value=[row])
 
         with patch("src.services.agentbus_service.get_db", return_value=_tx_context(conn)):
-            result = await agentbus_service.get_inbox("did:agentx:receiver")
+            result = await agentbus_service.get_acp_inbox("did:agentx:receiver")
 
         assert result[0].metadata == {"key": "value"}
 
@@ -610,15 +683,16 @@ class TestAgentbusChannelKey:
         key = agentbus_service._agentbus_channel("did:agentx:agent")
         assert key.startswith("agentbus:")
 
-    def test_row_to_message_handles_dict_metadata(self):
-        """_row_to_message should accept dict metadata (not just str)."""
+    def test_row_to_acp_handles_dict_metadata(self):
+        """_row_to_acp should accept dict metadata (not just str)."""
         row = _message_row()
         row["metadata"] = {"nested": True}  # dict, not str
-        msg = agentbus_service._row_to_message(row)
+        msg = agentbus_service._row_to_acp(row)
         assert msg.metadata == {"nested": True}
 
-    def test_row_to_message_handles_none_metadata(self):
+    def test_row_to_acp_handles_none_metadata(self):
+        """_row_to_acp converts None metadata to an empty dict."""
         row = _message_row()
         row["metadata"] = None
-        msg = agentbus_service._row_to_message(row)
-        assert msg.metadata is None
+        msg = agentbus_service._row_to_acp(row)
+        assert msg.metadata == {}
