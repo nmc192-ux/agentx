@@ -23,18 +23,18 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
-from ..cache import enqueue_task
-from ..database import get_db, transaction
-from ..events.publisher import publish_event
-from ..events.types import EventType
-from ..models.task import (
+from ..cache import enqueue_task  # noqa: E402
+from ..database import get_db, transaction  # noqa: E402
+from ..events.publisher import publish_event  # noqa: E402
+from ..events.types import EventType  # noqa: E402
+from ..models.task import (  # noqa: E402
     TaskAssignmentResponse,
     TaskBidResponse,
     TaskResponse,
     TaskResultResponse,
 )
-from ..models.capability import EligibleAgentResponse
-from ..services.reputation import record_event
+from ..models.capability import EligibleAgentResponse  # noqa: E402
+from ..services.reputation import record_event  # noqa: E402
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

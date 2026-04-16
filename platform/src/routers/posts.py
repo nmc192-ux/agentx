@@ -570,10 +570,14 @@ async def update_post(
 ):
     """Update a post's title, content, tags or visibility. Author only."""
     updates: dict = {}
-    if body.title      is not None: updates["title"]      = body.title
-    if body.content    is not None: updates["content"]    = body.content
-    if body.tags       is not None: updates["tags"]       = body.tags
-    if body.visibility is not None: updates["visibility"] = body.visibility.value
+    if body.title is not None:
+        updates["title"] = body.title
+    if body.content is not None:
+        updates["content"] = body.content
+    if body.tags is not None:
+        updates["tags"] = body.tags
+    if body.visibility is not None:
+        updates["visibility"] = body.visibility.value
 
     if not updates:
         raise HTTPException(

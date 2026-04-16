@@ -259,8 +259,8 @@ async def health_ready(request: Request):
 # ── Phase 20: Reputation Graph (also registered BEFORE agents_router so that
 #              /agents/{id}/trust-network, /top-collaborators, etc. take
 #              priority over the agents router's /{agent_did:path} catch-all)
-from .routers.discovery import discovery_router
-from .routers.reputation_graph import router as reputation_graph_router
+from .routers.discovery import discovery_router  # noqa: E402
+from .routers.reputation_graph import router as reputation_graph_router  # noqa: E402
 
 app.include_router(discovery_router)
 app.include_router(reputation_graph_router)
@@ -268,7 +268,7 @@ app.include_router(reputation_graph_router)
 # ── Phase 21: Social-Economic Integration ──────────────────────────────────────
 # Registered BEFORE agents_router so that /agents/{did}/activity-stream
 # and /agents/{did}/achievements take priority over /{agent_did:path} catch-all
-from .routers.activity_stream import router as activity_stream_router
+from .routers.activity_stream import router as activity_stream_router  # noqa: E402
 
 app.include_router(activity_stream_router)
 
@@ -276,20 +276,20 @@ app.include_router(activity_stream_router)
 # because agents_router contains a GET /agents/{agent_did:path} catch-all that
 # would shadow the memory sub-routes (GET /agents/{did}/memory[/{key}]) if
 # registered after.
-from .routers.memory import router as memory_router
+from .routers.memory import router as memory_router  # noqa: E402
 
 app.include_router(memory_router)
 
 # ── Sprint 2: Agent Identity & Trust ──────────────────────────────────────────
-from .routers.agents import router as agents_router
+from .routers.agents import router as agents_router  # noqa: E402
 
 app.include_router(agents_router)
 
 # ── Sprint 3: Core Social Features ────────────────────────────────────────────
-from .routers.feed         import router as personalized_feed_router
-from .routers.posts        import router as posts_router
-from .routers.capabilities import router as caps_router, agent_caps as agent_caps_router
-from .routers.collectives  import router as collectives_router
+from .routers.feed         import router as personalized_feed_router  # noqa: E402
+from .routers.posts        import router as posts_router  # noqa: E402
+from .routers.capabilities import router as caps_router, agent_caps as agent_caps_router  # noqa: E402
+from .routers.collectives  import router as collectives_router  # noqa: E402
 
 app.include_router(posts_router)
 app.include_router(personalized_feed_router)
@@ -298,25 +298,25 @@ app.include_router(agent_caps_router)   # /agents/{did}/capabilities sub-routes
 app.include_router(collectives_router)
 
 # ── Sprint 5: WebSocket real-time layer ───────────────────────────────────────
-from .routers.ws import router as ws_router
+from .routers.ws import router as ws_router  # noqa: E402
 
 app.include_router(ws_router)
 
 # ── Sprint 7: Auth token endpoint + personalised feed ─────────────────────────
-from .routers.auth import router as auth_router
+from .routers.auth import router as auth_router  # noqa: E402
 
 app.include_router(auth_router)
 
 # ── Sprint 8: Social graph (follows, likes, notifications, open registration) ──
-from .routers.dashboard     import router as dashboard_router
-from .routers.events        import router as events_router
-from .routers.follows       import router as follows_router
-from .routers.messages      import router as messages_router
-from .routers.notifications import router as notifs_router
-from .routers.reputation    import router as reputation_router
-from .routers.services      import router as services_router
-from .routers.tasks         import router as tasks_router
-from .routers.workflows     import router as workflows_router
+from .routers.dashboard     import router as dashboard_router  # noqa: E402
+from .routers.events        import router as events_router  # noqa: E402
+from .routers.follows       import router as follows_router  # noqa: E402
+from .routers.messages      import router as messages_router  # noqa: E402
+from .routers.notifications import router as notifs_router  # noqa: E402
+from .routers.reputation    import router as reputation_router  # noqa: E402
+from .routers.services      import router as services_router  # noqa: E402
+from .routers.tasks         import router as tasks_router  # noqa: E402
+from .routers.workflows     import router as workflows_router  # noqa: E402
 
 app.include_router(dashboard_router)
 app.include_router(events_router)
@@ -329,68 +329,68 @@ app.include_router(tasks_router)
 app.include_router(workflows_router)
 
 # ── Phase 8: Token Economy ─────────────────────────────────────────────────────
-from .routers.tokens import wallets_router, stakes_router
+from .routers.tokens import wallets_router, stakes_router  # noqa: E402
 
 app.include_router(wallets_router)
 app.include_router(stakes_router)
 
 # ── Phase 8.5: Economic Engine ─────────────────────────────────────────────────
-from .routers.economy import economy_router
+from .routers.economy import economy_router  # noqa: E402
 
 app.include_router(economy_router)
 
 # ── Phase 9: Governance Layer ──────────────────────────────────────────────────
-from .routers.governance import governance_router
+from .routers.governance import governance_router  # noqa: E402
 
 app.include_router(governance_router)
 
 # ── Phase 10: Contract Engine ──────────────────────────────────────────────────
-from .routers.contracts import contracts_router
+from .routers.contracts import contracts_router  # noqa: E402
 
 app.include_router(contracts_router)
 
 # ── Phase 11: Agent Bus ────────────────────────────────────────────────────────
-from .routers.agentbus import agentbus_router
+from .routers.agentbus import agentbus_router  # noqa: E402
 
 app.include_router(agentbus_router)
 
 # ── Phase 12: Result Verification Engine ───────────────────────────────────────
-from .routers.verifications import verifications_router
+from .routers.verifications import verifications_router  # noqa: E402
 
 app.include_router(verifications_router)
 
 # ── Phase 15: Autonomous Agent Markets ─────────────────────────────────────────
-from .routers.markets import markets_router
+from .routers.markets import markets_router  # noqa: E402
 
 app.include_router(markets_router)
 
 # ── Phase 17: Federated AgentX Nodes ───────────────────────────────────────────
-from .routers.node_router import nodes_router
+from .routers.node_router import nodes_router  # noqa: E402
 
 app.include_router(nodes_router)
 
 # ── Phase 19: Autonomous Agent Economies ───────────────────────────────────────
-from .routers.agent_economy import agent_economy_router
+from .routers.agent_economy import agent_economy_router  # noqa: E402
 
 app.include_router(agent_economy_router)
 
 # ── Phase 22: Agent Communities ────────────────────────────────────────────────
-from .routers.communities import communities_router
+from .routers.communities import communities_router  # noqa: E402
 
 app.include_router(communities_router)
 
 # ── Phase 23: Community Conversations ─────────────────────────────────────────
-from .routers.conversations import conversations_router
+from .routers.conversations import conversations_router  # noqa: E402
 
 app.include_router(conversations_router)
 
 # ── Phase 1 Enhanced Social Layer ─────────────────────────────────────────────
-from .routers.channels import channels_router
-from .routers.search import search_router
-from .routers.rooms import rooms_router
-from .routers.consensus import consensus_router
-from .routers.graph import graph_router
-from .routers.pulse import pulse_router
+from .routers.channels import channels_router  # noqa: E402
+from .routers.search import search_router  # noqa: E402
+from .routers.rooms import rooms_router  # noqa: E402
+from .routers.consensus import consensus_router  # noqa: E402
+from .routers.graph import graph_router  # noqa: E402
+from .routers.pulse import pulse_router  # noqa: E402
 
 app.include_router(channels_router)
 app.include_router(search_router)
@@ -406,8 +406,8 @@ app.include_router(pulse_router)
 # Registered AFTER agents_router so the per-agent card route
 # /agents/{agent_did}/.well-known/agent.json is handled correctly.
 # The platform card /.well-known/agent.json has no conflict.
-from .a2a.router import a2a_router
-from .a2a.skill import skill_router
+from .a2a.router import a2a_router  # noqa: E402
+from .a2a.skill import skill_router  # noqa: E402
 
 app.include_router(a2a_router)
 
@@ -420,14 +420,14 @@ app.include_router(skill_router)
 # ── Heartbeat — stateless agent participation ──────────────────────────────────
 # POST /heartbeat — agents without persistent WS connections call this every
 # 1–4 hours to update last_seen_at and receive a curated work batch.
-from .routers.heartbeat import heartbeat_router
+from .routers.heartbeat import heartbeat_router  # noqa: E402
 
 app.include_router(heartbeat_router)
 
 # ── Onboarding — one-shot registration for high-volume agent onboarding ────────
 # POST /onboard — register + wallet + first post in a single HTTP call.
 # No auth required. Idempotent by display_name.
-from .routers.onboard import onboard_router
+from .routers.onboard import onboard_router  # noqa: E402
 
 app.include_router(onboard_router)
 
