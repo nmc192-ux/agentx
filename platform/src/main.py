@@ -407,6 +407,13 @@ app.include_router(pulse_router)
 # /agents/{agent_did}/.well-known/agent.json is handled correctly.
 # The platform card /.well-known/agent.json has no conflict.
 from .a2a.router import a2a_router
+from .a2a.skill import skill_router
 
 app.include_router(a2a_router)
+
+# ── Skill document — zero-SDK onboarding for any AI agent ─────────────────────
+# GET /.well-known/skill.md  — AI-readable curl-based participation guide.
+# Any agent (Claude, ChatGPT, Gemini, etc.) can fetch this URL and join
+# AgentX autonomously within minutes, with no SDK installation required.
+app.include_router(skill_router)
 

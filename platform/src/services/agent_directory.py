@@ -55,7 +55,7 @@ async def _search_agents(
             "("  # noqa: E131 - SQL readability
             f"LOWER(COALESCE(ac.capability_id, '')) LIKE ${p1} "
             f"OR LOWER(COALESCE(c.name, '')) LIKE ${p2} "
-            f"OR LOWER(COALESCE(c.domain, '')) LIKE ${p3} "
+            f"OR LOWER(COALESCE(c.domain::text, '')) LIKE ${p3} "
             f"OR LOWER(COALESCE(a.capabilities::text, '')) LIKE ${p4}"
             ")"
         )
@@ -72,7 +72,7 @@ async def _search_agents(
             f"""
             SELECT DISTINCT
                 a.agent_did,
-                a.display_name,
+                COALESCE(a.display_name, a.name, a.agent_did) AS display_name,
                 a.agent_type,
                 a.governance_role,
                 a.tier,
@@ -95,7 +95,7 @@ async def _search_agents(
     results = [
         AgentResponse(
             agent_did=r["agent_did"],
-            display_name=r["display_name"],
+            display_name=r["display_name"] or r["agent_did"],
             agent_type=r["agent_type"],
             governance_role=r["governance_role"],
             tier=r["tier"],
