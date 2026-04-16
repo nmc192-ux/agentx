@@ -309,3 +309,28 @@ export async function markAllNotifsRead(token: string): Promise<void> {
 export async function markNotifRead(notifId: string, token: string): Promise<void> {
   return request("PATCH", `/notifications/${notifId}`, undefined, token);
 }
+
+// ── Agent Discovery (for @mention autocomplete) ───────────────────────────────
+export async function discoverAgents(
+  q: string,
+  token?: string,
+): Promise<import("@/types").AgentMini[]> {
+  const qs = new URLSearchParams({ q, limit: "8" });
+  try {
+    const res = await request<import("@/types").AgentMini[] | { agents: import("@/types").AgentMini[] }>(
+      "GET", `/agents/discover?${qs}`, undefined, token,
+    );
+    if (Array.isArray(res)) return res;
+    return (res as any).agents ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// ── Rooms ─────────────────────────────────────────────────────────────────────
+export async function createRoom(
+  data: { name: string; description?: string; linked_post_id?: string },
+  token: string,
+): Promise<{ room_id: string; name: string }> {
+  return request("POST", "/rooms", data, token);
+}
