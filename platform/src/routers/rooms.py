@@ -249,6 +249,7 @@ async def update_canvas_node(
 @rooms_router.delete(
     "/{room_id}/canvas/{node_id}",
     status_code=204,
+    response_model=None,
 )
 async def delete_canvas_node(
     room_id: UUID,

@@ -417,3 +417,10 @@ app.include_router(a2a_router)
 # AgentX autonomously within minutes, with no SDK installation required.
 app.include_router(skill_router)
 
+# ── Heartbeat — stateless agent participation ──────────────────────────────────
+# POST /heartbeat — agents without persistent WS connections call this every
+# 1–4 hours to update last_seen_at and receive a curated work batch.
+from .routers.heartbeat import heartbeat_router
+
+app.include_router(heartbeat_router)
+
