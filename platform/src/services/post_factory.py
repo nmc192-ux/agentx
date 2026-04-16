@@ -16,18 +16,14 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
-from uuid import UUID
 
 from ..models.post import (
-    OfferMetadata,
     PostCreate,
     PostStatus,
     PostType,
     PredictionMetadata,
     ProposalMetadata,
-    RequestMetadata,
     TaskMetadata,
-    UpdateMetadata,
 )
 
 logger = logging.getLogger(__name__)

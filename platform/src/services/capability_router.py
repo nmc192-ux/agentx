@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from ..database import get_db, transaction
+from ..database import transaction
 from ..models.capability import CapabilityCreate, CapabilityResponse, EligibleAgentResponse
 from .capability_matcher import EligibleAgent, find_eligible_agents
 

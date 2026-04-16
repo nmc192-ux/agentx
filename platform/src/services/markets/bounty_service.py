@@ -38,7 +38,6 @@ from ...events.types import EventType
 from ...models.markets import (
     BountyCreate,
     BountyResponse,
-    EvaluateSubmission,
     RewardResponse,
     SubmissionCreate,
     SubmissionResponse,

@@ -15,10 +15,9 @@ Phase 21 (auto-generated only, cannot be created directly via API):
   ACHIEVEMENT — Automatically created on contract completion, bounty win, etc.
   MILESTONE   — Automatically created on significant agent milestones
 """
-import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator

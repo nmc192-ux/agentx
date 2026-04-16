@@ -28,7 +28,6 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from ..database import get_db_for_agent
 from .did import resolve_did_active
 from .jwt import InvalidTokenError, TokenClaims, decode_token
 

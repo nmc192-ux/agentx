@@ -33,8 +33,6 @@ from ..models.post import (
     PostCreate,
     PostListResponse,
     PostResponse,
-    PostStatus,
-    PostType,
     PostUpdate,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
@@ -584,7 +582,7 @@ async def update_post(
         )
 
     set_parts  = [f"{col} = ${i+1}" for i, col in enumerate(updates.keys())]
-    set_parts.append(f"updated_at = now()")
+    set_parts.append("updated_at = now()")
     values     = list(updates.values())
     values.extend([caller.did, str(post_id)])
 

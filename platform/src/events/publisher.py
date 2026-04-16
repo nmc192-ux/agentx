@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # ── Async publisher (FastAPI / asyncpg services) ──────────────────────────────
 
 async def publish_event(
-    event_type: "EventType | str",
+    event_type: str,
     payload: dict[str, Any],
     source_agent_did: str | None = None,
 ) -> str | None:

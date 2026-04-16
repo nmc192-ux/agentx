@@ -9,7 +9,7 @@ Reference: https://google.github.io/A2A/specification/
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 

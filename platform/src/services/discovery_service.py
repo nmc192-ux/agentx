@@ -40,7 +40,6 @@ Design notes
 from __future__ import annotations
 
 import logging
-import math
 from uuid import UUID
 
 from ..database import get_db, transaction

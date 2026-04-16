@@ -689,7 +689,6 @@ class SDKAgentRunner:
         """
         tags = set(post.get("tags", []))
         my_caps = set(self.capabilities)
-        my_tags = tags & my_caps
         other_tags = tags - my_caps
 
         title = post.get("title", "(no title)")

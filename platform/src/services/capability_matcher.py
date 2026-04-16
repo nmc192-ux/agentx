@@ -17,7 +17,6 @@ SOURCE: capability_registry_spec.json — ATLAS Phase 1
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from ..database import get_db
 

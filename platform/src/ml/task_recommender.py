@@ -12,7 +12,6 @@ SOURCE: phase5_implementation_plan.md Sprint 4 — Task Recommender
 """
 import logging
 from dataclasses import dataclass
-from typing import Optional
 from uuid import UUID
 
 logger = logging.getLogger(__name__)

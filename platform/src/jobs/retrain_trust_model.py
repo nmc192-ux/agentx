@@ -14,7 +14,6 @@ SOURCE: phase5_implementation_plan.md Sprint 4 — Data Pipeline
 import asyncio
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 from .celery_app import celery_app
 

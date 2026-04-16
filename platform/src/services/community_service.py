@@ -34,7 +34,6 @@ from uuid import UUID
 
 from ..database import get_db, transaction
 from ..models.community import (
-    AddPostToCommunityRequest,
     CommunityCreate,
     CommunityMember,
     CommunityPost,

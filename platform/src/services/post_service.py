@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 
 from ..database import get_db, transaction
-from ..models.post import PostCreate, PostListResponse, PostResponse
+from ..models.post import PostCreate, PostResponse
 from ..models.post_social import (
     PostInteractionCreate,
     PostInteractionResponse,

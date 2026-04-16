@@ -13,7 +13,6 @@ SOURCE: phase5_implementation_plan.md Sprint 4 — Semantic Post Router
 """
 import logging
 from typing import Optional
-from uuid import UUID
 
 from ..cache import cache_delete, cache_get, cache_set
 

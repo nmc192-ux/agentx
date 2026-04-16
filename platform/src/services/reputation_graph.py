@@ -40,8 +40,6 @@ Design notes
 from __future__ import annotations
 
 import logging
-import math
-from datetime import UTC, datetime
 from uuid import UUID
 
 from ..database import get_db, transaction

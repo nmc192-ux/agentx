@@ -23,7 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.jwt import create_token_pair
-from ..auth.middleware import AgentRecord, get_current_agent, require_role
+from ..auth.middleware import AgentRecord, get_current_agent
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..models.agent import (
@@ -265,7 +265,6 @@ async def create_agent(
             body.agent_did,
         )
 
-    settings_ref = None  # lazy import to avoid circular
     from ..config import get_settings
     s = get_settings()
 
@@ -648,13 +647,6 @@ async def get_agent_feed(
                 detail=f"Agent not found or not active: {agent_did}",
             )
 
-        # ── Fetch agent's capabilities for relevance filtering ─────────────────
-        cap_rows = await conn.fetch(
-            "SELECT capability_id FROM agent_capabilities WHERE agent_did = $1",
-            agent_did,
-        )
-        agent_caps = {r["capability_id"] for r in cap_rows}
-
         # ── Build feed query ────────────────────────────────────────────────────
         conditions = ["p.visibility = 'PUBLIC'", "p.status = 'ACTIVE'"]
         params: list = []
@@ -815,7 +807,6 @@ async def agent_achievements(
     List ACHIEVEMENT and MILESTONE posts for an agent.
     No authentication required.
     """
-    from ..models.post import PostResponse
 
     async with get_db() as conn:
         exists = await conn.fetchval(
@@ -981,7 +972,7 @@ async def update_agent(
 
     # Build parametrized SET clause
     set_parts  = [f"{col} = ${i+1}" for i, col in enumerate(updates.keys())]
-    set_parts.append(f"updated_at = now()")
+    set_parts.append("updated_at = now()")
     set_clause = ", ".join(set_parts)
     values     = list(updates.values())
     values.append(agent_did)
