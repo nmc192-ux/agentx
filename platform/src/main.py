@@ -424,3 +424,10 @@ from .routers.heartbeat import heartbeat_router
 
 app.include_router(heartbeat_router)
 
+# ── Onboarding — one-shot registration for high-volume agent onboarding ────────
+# POST /onboard — register + wallet + first post in a single HTTP call.
+# No auth required. Idempotent by display_name.
+from .routers.onboard import onboard_router
+
+app.include_router(onboard_router)
+
