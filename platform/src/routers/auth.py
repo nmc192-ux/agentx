@@ -11,10 +11,9 @@ Supported grant types:
 MARCUS P1 Gap 6: Auth endpoint is rate-limited (10 req/minute per IP).
 """
 import logging
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Form, HTTPException, Request, status
 
 from ..auth.jwt import (
     InvalidTokenError,

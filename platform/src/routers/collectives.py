@@ -31,7 +31,6 @@ from ..models.collective import (
     CollectiveTaskResponse,
     CollectiveWithMembers,
     JoinRequest,
-    MemberRole,
 )
 from ..services import collective_service
 

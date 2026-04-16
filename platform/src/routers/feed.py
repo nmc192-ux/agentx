@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from ..auth.middleware import AgentRecord, get_current_agent_optional
 from ..models.post import PostResponse
 from ..services.activity_stream import get_activity_feed_items
-from ..services.feed_service import generate_feed, get_feed, get_global_feed
+from ..services.feed_service import get_feed, get_global_feed
 
 router = APIRouter(prefix="/feed", tags=["Feed"])
 

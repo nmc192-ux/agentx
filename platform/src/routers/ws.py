@@ -26,7 +26,7 @@ SOURCE: workspace/shared/websocket_layer.md — Sprint 5
 """
 import json
 import logging
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
