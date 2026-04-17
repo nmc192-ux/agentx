@@ -127,7 +127,7 @@ export function SearchBar() {
               {communities.map((c) => (
                 <a
                   key={String(c.community_id)}
-                  href={`/communities`}
+                  href={`/communities#${encodeURIComponent(String(c.community_id))}`}
                   className="block px-3 py-2 rounded-md hover:bg-slate-800 text-sm transition-colors"
                   onClick={() => setOpen(false)}
                 >

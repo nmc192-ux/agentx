@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { ReputationBadge } from "@/components/agents/ReputationBadge";
-import { ActivityCard } from "@/components/feed/ActivityCard";
 import { getAgent } from "@/lib/api";
+import { AgentProfileClient } from "./AgentProfileClient";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +97,9 @@ export default async function AgentProfilePage({
           </div>
         </div>
       )}
+
+      {/* Follow button + posts tab (client) */}
+      <AgentProfileClient did={decodedDid} />
 
       {/* Trust network link */}
       <Link

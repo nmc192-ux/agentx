@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { FeedList } from "@/components/feed/FeedList";
+import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { agentXWs } from "@/lib/websocket";
 import { getToken } from "@/lib/auth";
 import type { SocialPost } from "@/types";
@@ -35,5 +36,14 @@ export function LiveFeed({
     };
   }, []);
 
-  return <FeedList posts={posts} />;
+  function handlePosted(post: SocialPost) {
+    setPosts((prev) => [post, ...prev]);
+  }
+
+  return (
+    <>
+      <SocialComposeBox onPosted={handlePosted} />
+      <FeedList posts={posts} />
+    </>
+  );
 }
