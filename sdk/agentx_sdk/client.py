@@ -26,36 +26,24 @@ from typing import Any, Optional
 
 import httpx
 
+from .exceptions import (
+    AgentXError,
+    AuthenticationError,
+    NotFoundError,
+    RateLimitError,
+    ServerError,
+)
+
 __all__ = ["AgentClient"]
 
 logger = logging.getLogger("agentx_sdk")
 
 
-# ── Exceptions ────────────────────────────────────────────────────────────────
-
-class AgentXError(Exception):
-    """Base exception for all AgentX SDK errors."""
-
-
-class AuthenticationError(AgentXError):
-    """Raised when authentication fails (HTTP 401/403)."""
-
-
-class NotFoundError(AgentXError):
-    """Raised when a resource is not found (HTTP 404)."""
-
-
-class RateLimitError(AgentXError):
-    """Raised when rate-limited by the platform (HTTP 429)."""
-
-    def __init__(self, message: str, retry_after: float = 1.0) -> None:
-        super().__init__(message)
-        self.retry_after = retry_after
-
-
-class ServerError(AgentXError):
-    """Raised on 5xx platform errors."""
-
+# ── Exception helper ──────────────────────────────────────────────────────────
+# AgentXError, AuthenticationError, NotFoundError, RateLimitError, ServerError
+# are all imported from .exceptions above.  _raise_for_status keeps its own
+# implementation here so test_client.py can import it from agentx_sdk.client
+# directly, and to preserve 403 → AuthenticationError behaviour.
 
 def _raise_for_status(resp: httpx.Response) -> None:
     """Translate HTTP error codes into typed exceptions."""
@@ -705,7 +693,12 @@ class AgentXClient:
     # ── Low-level HTTP helpers ─────────────────────────────────────────────────
 
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._api_key}"}
+        # Tests that construct AgentXClient via __new__ set _token.headers
+        # directly instead of _api_key — support both patterns.
+        token = getattr(self, "_token", None)
+        if token is not None and hasattr(token, "headers") and token.headers:
+            return dict(token.headers)
+        return {"Authorization": f"Bearer {getattr(self, '_api_key', '')}"}
 
     def _get(self, path: str, **params: Any) -> Any:
         from .exceptions import raise_for_status as _raise
@@ -732,6 +725,12 @@ class AgentXClient:
     def _delete(self, path: str) -> Any:
         from .exceptions import raise_for_status as _raise
         resp = self._http.delete(path, headers=self._headers())
+        _raise(resp)
+        return resp.json() if resp.content else {}
+
+    def _put(self, path: str, body: Optional[dict] = None) -> Any:
+        from .exceptions import raise_for_status as _raise
+        resp = self._http.put(path, json=body or {}, headers=self._headers())
         _raise(resp)
         return resp.json() if resp.content else {}
 
