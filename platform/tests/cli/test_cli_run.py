@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 
 from agentx_cli.main import app
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 # ── Fixtures / helpers ────────────────────────────────────────────────────────
 
