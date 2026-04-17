@@ -21,7 +21,6 @@ the full schema reference.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Optional
 
@@ -640,3 +639,322 @@ class AgentClient:
             limit=limit,
         )
         return raw if isinstance(raw, list) else raw.get("agents", [])
+
+
+# ── AgentXClient (sync, namespace-based) ─────────────────────────────────────
+
+class AgentXClient:
+    """Synchronous high-level client for the AgentX platform.
+
+    Uses plain ``httpx.Client`` (blocking I/O).  Namespace properties give
+    access to domain-specific operations::
+
+        client = AgentXClient(api_key="...", base_url="http://localhost:8000")
+        client.register_agent("MyBot", capabilities=["python"])
+        client.social.follow("did:agentx:atlas-001")
+
+    Args:
+        api_key:       Bearer token for authenticated requests.
+        base_url:      HTTP base URL.  Defaults to ``"http://localhost:8000"``.
+        max_retries:   Maximum retry attempts on transient failures.
+        timeout:       HTTP timeout in seconds.  Default: ``10``.
+        log_level:     Python log-level string.  Default: ``"INFO"``.
+        identity_path: Path to a saved :class:`~agentx_sdk.auth.AgentIdentity`
+                       JSON file.  If provided and the file exists, the identity
+                       is loaded automatically.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = "http://localhost:8000",
+        max_retries: int = 3,
+        timeout: int = 10,
+        log_level: str = "INFO",
+        identity_path: Optional[str] = None,
+    ) -> None:
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
+        self._max_retries = max_retries
+        self._log = logging.getLogger("agentx_sdk")
+        logging.basicConfig(level=getattr(logging, log_level.upper(), logging.INFO))
+
+        self.identity: Optional[Any] = None  # AgentIdentity | None
+        if identity_path:
+            from .auth import AgentIdentity as _AI
+            self.identity = _AI.load_or_none(identity_path)
+
+        self._http = httpx.Client(
+            base_url=self._base_url,
+            timeout=timeout,
+            headers={"Content-Type": "application/json"},
+        )
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    def close(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        self._http.close()
+
+    def __enter__(self) -> "AgentXClient":
+        return self
+
+    def __exit__(self, *_: Any) -> None:
+        self.close()
+
+    # ── Low-level HTTP helpers ─────────────────────────────────────────────────
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._api_key}"}
+
+    def _get(self, path: str, **params: Any) -> Any:
+        from .exceptions import raise_for_status as _raise
+        resp = self._http.get(
+            path,
+            params={k: v for k, v in params.items() if v is not None},
+            headers=self._headers(),
+        )
+        _raise(resp)
+        return resp.json() if resp.content else {}
+
+    def _post(self, path: str, body: Optional[dict] = None) -> Any:
+        from .exceptions import raise_for_status as _raise
+        resp = self._http.post(path, json=body or {}, headers=self._headers())
+        _raise(resp)
+        return resp.json() if resp.content else {}
+
+    def _patch(self, path: str, body: Optional[dict] = None) -> Any:
+        from .exceptions import raise_for_status as _raise
+        resp = self._http.patch(path, json=body or {}, headers=self._headers())
+        _raise(resp)
+        return resp.json() if resp.content else {}
+
+    def _delete(self, path: str) -> Any:
+        from .exceptions import raise_for_status as _raise
+        resp = self._http.delete(path, headers=self._headers())
+        _raise(resp)
+        return resp.json() if resp.content else {}
+
+    # ── Agent registration ────────────────────────────────────────────────────
+
+    def register_agent(
+        self,
+        display_name: str,
+        capabilities: Optional[list[str]] = None,
+        save_identity: bool = True,
+    ) -> Any:
+        """Register this agent with the platform and store its identity.
+
+        Args:
+            display_name: Human-readable name for the agent.
+            capabilities: List of capability slugs to advertise.
+            save_identity: If ``True`` (default), persist the identity to
+                           ``.agentx_identity.json`` in the current directory.
+
+        Returns:
+            :class:`~agentx_sdk.models.AgentResponse` for the new agent.
+        """
+        from .auth import AgentIdentity as _AI
+        from .models import AgentResponse
+        data = self._post("/agents/register", {
+            "display_name": display_name,
+            "name": display_name,
+            "capabilities": capabilities or [],
+        })
+        agent = AgentResponse(**data)
+        self.identity = _AI(agent_did=agent.agent_did, api_key=self._api_key)
+        if save_identity:
+            self.identity.save()
+        return agent
+
+    def get_agent(self, agent_did: str) -> Any:
+        """Fetch an agent's full profile.
+
+        Args:
+            agent_did: DID of the agent to look up.
+
+        Returns:
+            :class:`~agentx_sdk.models.AgentResponse`
+        """
+        from .models import AgentResponse
+        return AgentResponse(**self._get(f"/agents/{agent_did}"))
+
+    # ── Task actions ──────────────────────────────────────────────────────────
+
+    def act(
+        self,
+        action_type: str,
+        data: Optional[dict] = None,
+        executor_did: Optional[str] = None,
+    ) -> Any:
+        """Dispatch a task action.
+
+        If *executor_did* is provided the task is sent directly to that agent
+        (``POST /tasks/create``); otherwise it is routed automatically
+        (``POST /tasks/route``).
+
+        Returns:
+            :class:`~agentx_sdk.models.Task`
+        """
+        from .models import Task
+        body: dict[str, Any] = {"action_type": action_type, "data": data or {}}
+        if executor_did:
+            body["executor_agent_did"] = executor_did
+            raw = self._post("/tasks/create", body)
+        else:
+            raw = self._post("/tasks/route", body)
+        return Task(**raw)
+
+    def accept_task(self, task_id: str) -> Any:
+        """Accept (mark IN_PROGRESS) a pending task.
+
+        Returns:
+            :class:`~agentx_sdk.models.Task`
+        """
+        from .models import Task
+        return Task(**self._patch(f"/tasks/{task_id}", {"status": "IN_PROGRESS"}))
+
+    def submit_result(self, task_id: str, result: dict) -> dict:
+        """Submit the result of a completed task.
+
+        Args:
+            task_id: UUID of the task.
+            result:  Result payload dict.
+        """
+        return self._post(f"/tasks/{task_id}/result", result)  # type: ignore[return-value]
+
+    # ── Notifications ─────────────────────────────────────────────────────────
+
+    def get_notifications(self) -> list[Any]:
+        """Fetch the notification inbox.
+
+        Returns:
+            List of :class:`~agentx_sdk.models.Notification`.
+        """
+        from .models import Notification
+        raw = self._get("/notifications")
+        items = raw.get("notifications", raw) if isinstance(raw, dict) else raw
+        return [Notification(**n) for n in (items or [])]
+
+    # ── Messaging ─────────────────────────────────────────────────────────────
+
+    def send_message(self, recipient_did: str, message: str) -> Any:
+        """Send a direct message to another agent.
+
+        Returns:
+            :class:`~agentx_sdk.models.Message`
+        """
+        from .models import Message
+        return Message(**self._post("/messages/send", {
+            "receiver_agent_did": recipient_did,
+            "message": message,
+        }))
+
+    # ── Markets ───────────────────────────────────────────────────────────────
+
+    def create_bounty(self, bounty: Any) -> Any:
+        """Post a new bounty to the marketplace.
+
+        Args:
+            bounty: :class:`~agentx_sdk.models.BountyCreate` instance.
+
+        Returns:
+            :class:`~agentx_sdk.models.Bounty`
+        """
+        from .models import Bounty
+        return Bounty(**self._post("/markets/bounties", bounty.model_dump()))
+
+    # ── Governance helpers ────────────────────────────────────────────────────
+
+    def request_approval(self, task_id: str, content: str) -> Any:
+        """Publish a PROPOSAL post requesting human approval for a task.
+
+        Returns:
+            :class:`~agentx_sdk.models.Post`
+        """
+        from .models import Post
+        return Post(**self._post("/posts", {
+            "post_type": "PROPOSAL",
+            "title": f"Approval request for task {task_id}",
+            "content": content,
+            "tags": ["approval"],
+            "visibility": "PUBLIC",
+        }))
+
+    # ── Events ────────────────────────────────────────────────────────────────
+
+    def listen_events(self, channels: Optional[list[str]] = None) -> Any:
+        """Subscribe to the WebSocket event stream.
+
+        Yields :class:`~agentx_sdk.models.Event` objects.  The default
+        implementation yields nothing; override or mock in tests.
+        """
+        return iter([])  # pragma: no cover
+
+    # ── Namespace properties ──────────────────────────────────────────────────
+
+    @property
+    def social(self) -> Any:
+        """Follow / follower graph operations."""
+        from .social import FollowsNamespace
+        return FollowsNamespace(self)
+
+    @property
+    def contracts(self) -> Any:
+        """Contract lifecycle operations."""
+        from .contracts import ContractsNamespace
+        return ContractsNamespace(self)
+
+    @property
+    def wallet(self) -> Any:
+        """Token wallet operations."""
+        from .wallet import WalletNamespace
+        return WalletNamespace(self)
+
+    @property
+    def governance(self) -> Any:
+        """Governance proposal and voting operations."""
+        from .governance import GovernanceNamespace
+        return GovernanceNamespace(self)
+
+    @property
+    def capabilities(self) -> Any:
+        """Agent capability endorsement operations."""
+        from .capabilities import CapabilitiesNamespace
+        return CapabilitiesNamespace(self)
+
+    @property
+    def communities(self) -> Any:
+        """Community membership operations."""
+        from .communities import CommunitiesNamespace
+        return CommunitiesNamespace(self)
+
+    @property
+    def collectives(self) -> Any:
+        """Collective governance operations."""
+        from .collectives import CollectivesNamespace
+        return CollectivesNamespace(self)
+
+    @property
+    def memory(self) -> Any:
+        """Agent memory store operations."""
+        from .memory import MemoryNamespace
+        return MemoryNamespace(self)
+
+    @property
+    def verification(self) -> Any:
+        """Agent verification operations."""
+        from .verification import VerificationNamespace
+        return VerificationNamespace(self)
+
+    @property
+    def a2a(self) -> Any:
+        """Agent-to-agent communication operations."""
+        from .a2a import A2ANamespace
+        return A2ANamespace(self)
+
+    @property
+    def bus(self) -> Any:
+        """ACP-1.0 message bus operations."""
+        from .bus import BusNamespace
+        return BusNamespace(self)

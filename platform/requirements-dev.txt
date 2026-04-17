@@ -3,7 +3,7 @@
 
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest==8.3.4
-pytest-asyncio==0.24.0
+pytest-asyncio==0.25.3
 pytest-cov==6.0.0
 pytest-xdist==3.6.1          # parallel test execution
 anyio[trio]==4.7.0

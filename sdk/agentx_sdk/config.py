@@ -1,5 +1,5 @@
 """AgentX SDK — configuration dataclass."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
