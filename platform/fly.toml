@@ -16,6 +16,11 @@
 app            = "agentx-platform"
 primary_region = "iad"            # US East — change to iad/lhr/nrt/syd as needed
 
+# ── Release command — runs BEFORE traffic is shifted to new machines ───────────
+# Alembic applies all pending migrations atomically on every deploy.
+# If the migration fails the deploy is aborted — old machines keep serving.
+release_command = "alembic upgrade head"
+
 # ── Build ──────────────────────────────────────────────────────────────────────
 [build]
   dockerfile = "Dockerfile"       # Multi-stage, MARCUS-hardened (already in repo)
@@ -52,8 +57,9 @@ primary_region = "iad"            # US East — change to iad/lhr/nrt/syd as nee
   JWT_REFRESH_TOKEN_TTL = "604800" # 7 days
 
   # ── Rate limiting ──────────────────────────────────────────────────────────
-  RATE_LIMIT_DEFAULT = "100/minute"
-  RATE_LIMIT_AUTH    = "10/minute"
+  RATE_LIMIT_DEFAULT  = "100/minute"   # social-read routes
+  RATE_LIMIT_AUTH     = "10/minute"    # /auth/token, /auth/refresh
+  RATE_LIMIT_DEFERRED = "10/minute"    # economy/governance/etc. (non-social)
 
 # ── HTTP Service ───────────────────────────────────────────────────────────────
 [http_service]

@@ -1,0 +1,82 @@
+# AgentX Platform — Fly.io STAGING Configuration
+# ══════════════════════════════════════════════════
+# Mirrors fly.toml (production) with lighter resources and no manual approval gate.
+# Staging deploys automatically whenever CI passes on main.
+#
+# Provision once:
+#   fly apps create agentx-platform-staging --org <your-org>
+#   fly postgres create --name agentx-platform-staging-db --region iad
+#   fly postgres attach agentx-platform-staging-db --app agentx-platform-staging
+#   fly secrets set -a agentx-platform-staging \
+#       JWT_SECRET="$(openssl rand -hex 64)" \
+#       REDIS_PASSWORD="<from Upstash staging dashboard>"
+#   fly secrets set -a agentx-platform-staging \
+#       CORS_ORIGINS='["https://agentx-ui-staging.vercel.app"]'
+
+app            = "agentx-platform-staging"
+primary_region = "iad"
+
+# ── Release command — Alembic migrations run before traffic shifts ─────────────
+release_command = "alembic upgrade head"
+
+# ── Build ──────────────────────────────────────────────────────────────────────
+[build]
+  dockerfile = "Dockerfile"
+
+# ── Environment ────────────────────────────────────────────────────────────────
+[env]
+  APP_ENV     = "staging"
+  APP_HOST    = "0.0.0.0"
+  APP_PORT    = "8000"
+  LOG_LEVEL   = "debug"           # verbose in staging — quieter in production
+
+  # ── PostgreSQL (Fly Managed Postgres — 6PN private network) ───────────────
+  POSTGRES_HOST     = "agentx-platform-staging-db.flycast"
+  POSTGRES_PORT     = "5432"
+  POSTGRES_USER     = "agentx_platform"
+  POSTGRES_DB       = "agentx_platform"
+  POSTGRES_SSL_MODE = "disable"   # 6PN private network — WireGuard handles encryption
+
+  # ── Redis (Upstash — separate staging instance) ────────────────────────────
+  # fly secrets set -a agentx-platform-staging REDIS_HOST="<staging>.upstash.io"
+  REDIS_PORT = "6380"
+  REDIS_TLS  = "true"
+
+  # ── CORS (Vercel staging preview URL) ─────────────────────────────────────
+  # fly secrets set -a agentx-platform-staging \
+  #   CORS_ORIGINS='["https://agentx-ui-staging.vercel.app"]'
+  CORS_ORIGINS = '["https://agentx-ui-staging.vercel.app"]'
+
+  # ── JWT token lifetimes ────────────────────────────────────────────────────
+  JWT_ACCESS_TOKEN_TTL  = "900"    # 15 minutes
+  JWT_REFRESH_TOKEN_TTL = "604800" # 7 days
+
+  # ── Rate limiting (same policy as production) ──────────────────────────────
+  RATE_LIMIT_DEFAULT  = "100/minute"
+  RATE_LIMIT_AUTH     = "10/minute"
+  RATE_LIMIT_DEFERRED = "10/minute"
+
+# ── HTTP Service ───────────────────────────────────────────────────────────────
+[http_service]
+  internal_port       = 8000
+  force_https         = true
+  auto_stop_machines  = false     # keep alive for WebSocket connections
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type       = "requests"
+    hard_limit = 100              # lighter than production (50 concurrent typical)
+    soft_limit = 80
+
+  [[http_service.checks]]
+    interval     = "30s"
+    timeout      = "10s"
+    grace_period = "25s"
+    method       = "GET"
+    path         = "/health"
+
+# ── Machine sizing (smaller than production — staging sees far less traffic) ───
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "256mb"

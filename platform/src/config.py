@@ -94,9 +94,11 @@ class Settings(BaseSettings):
     jwt_secret:        str = ""
 
     # ── Rate limiting (MARCUS P1 Gap 5) ─────────────────────────────────────
-    rate_limit_default:       str = "100/minute"
-    rate_limit_auth:          str = "1000/minute"
-    rate_limit_health:        str = "10000/minute"
+    # Overridden per-environment via fly.toml [env] or RATE_LIMIT_* env vars.
+    rate_limit_default:       str = "100/minute"   # social-read routes
+    rate_limit_auth:          str = "10/minute"    # /auth/token, /auth/refresh
+    rate_limit_health:        str = "10000/minute" # /health probes
+    rate_limit_deferred:      str = "10/minute"    # economy/governance/etc. (non-social)
 
     # ── CORS ─────────────────────────────────────────────────────────────────
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]

@@ -1,22 +1,23 @@
 name: Deploy
 
+# Trigger only when the CI workflow succeeds on main.
+# This guarantees the deploy never runs on a broken build.
 on:
-  # Trigger only when the CI workflow succeeds on the main branch.
-  # This guarantees the deploy never runs on a broken build.
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
 
-# Only one deploy may run at a time; subsequent pushes cancel the queued one.
+# Only one deploy pipeline may run at a time.
+# A new push cancels the queued staging job but never an in-flight production job.
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false   # never cancel an in-flight deploy
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
   # Gate: only proceed if the triggering CI run actually passed
-  # ───────────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────────────────────
   check-ci:
     name: Verify CI passed
     runs-on: ubuntu-latest
@@ -25,55 +26,134 @@ jobs:
       - name: CI passed — proceeding to deploy
         run: echo "CI run ${{ github.event.workflow_run.id }} succeeded ✓"
 
-  # ───────────────────────────────────────────────────────────────────────────
-  # Deploy to Fly.io
-  # Requires GitHub environment "production" to be configured with:
-  #   - Required reviewers (manual approval gate)
-  #   - Secret: FLY_API_TOKEN
-  # ───────────────────────────────────────────────────────────────────────────
-  deploy:
-    name: Deploy to Fly.io (production)
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Staging deploy — automatic, no approval required
+  # Platform: Fly.io   App: agentx-platform-staging
+  # Migrations: handled by fly.staging.toml release_command = "alembic upgrade head"
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging (Fly.io)
     runs-on: ubuntu-latest
     needs: check-ci
 
-    # The "production" environment enforces manual approval before this job runs.
-    # Configure at: Settings → Environments → production → Required reviewers
     environment:
-      name: production
-      url: https://agentx.fly.dev   # update to match your actual Fly.io app URL
+      name: staging
+      url: https://agentx-platform-staging.fly.dev
 
     steps:
       - uses: actions/checkout@v4
         with:
-          # Check out the exact commit that passed CI, not whatever HEAD is now
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Authenticate with Fly.io
+      - name: Deploy to Fly.io (staging)
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl auth whoami
-
-      - name: Deploy to Fly.io
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN_STAGING }}
+        working-directory: platform
         run: |
           flyctl deploy \
+            --config fly.staging.toml \
             --remote-only \
-            --dockerfile platform/Dockerfile \
-            --build-arg BUILD_SHA=${{ github.event.workflow_run.head_sha }} \
             --strategy rolling \
             --wait-timeout 300
 
-      - name: Verify deployment health
+      - name: Verify staging health
+        run: |
+          echo "Waiting for health check…"
+          sleep 15
+          STATUS=$(curl -sf https://agentx-platform-staging.fly.dev/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','unknown'))" 2>/dev/null || echo "unreachable")
+          echo "Health: $STATUS"
+          [ "$STATUS" = "ok" ] || exit 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # UI staging deploy — Vercel preview branch tied to staging
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-ui-staging:
+    name: Deploy UI to Vercel (staging)
+    runs-on: ubuntu-latest
+    needs: check-ci
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy UI to Vercel (preview)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_API_URL: https://agentx-platform-staging.fly.dev
+          NEXT_PUBLIC_FEATURE_ECONOMY: "true"
+          NEXT_PUBLIC_FEATURE_GOVERNANCE: "true"
+          NEXT_PUBLIC_FEATURE_COLLECTIVES: "true"
+          NEXT_PUBLIC_FEATURE_SENTINEL: "true"
+          NEXT_PUBLIC_FEATURE_CONSTELLATION: "true"
+        working-directory: ui
+        run: |
+          vercel deploy \
+            --token "$VERCEL_TOKEN" \
+            --yes \
+            --env NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+            --env NEXT_PUBLIC_FEATURE_ECONOMY="$NEXT_PUBLIC_FEATURE_ECONOMY" \
+            --env NEXT_PUBLIC_FEATURE_GOVERNANCE="$NEXT_PUBLIC_FEATURE_GOVERNANCE" \
+            --env NEXT_PUBLIC_FEATURE_COLLECTIVES="$NEXT_PUBLIC_FEATURE_COLLECTIVES" \
+            --env NEXT_PUBLIC_FEATURE_SENTINEL="$NEXT_PUBLIC_FEATURE_SENTINEL" \
+            --env NEXT_PUBLIC_FEATURE_CONSTELLATION="$NEXT_PUBLIC_FEATURE_CONSTELLATION"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Production backend deploy — requires manual approval via GitHub Environment
+  # Platform: Fly.io   App: agentx-platform
+  # Migrations: handled by fly.toml release_command = "alembic upgrade head"
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production (Fly.io)
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]   # staging must succeed before production unlocks
+
+    # The "production" environment enforces manual approval before this job runs.
+    # Configure at: Settings → Environments → production → Required reviewers
+    environment:
+      name: production
+      url: https://agentx-platform.fly.dev
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io (production)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        working-directory: platform
+        run: |
+          flyctl deploy \
+            --config fly.toml \
+            --remote-only \
+            --strategy rolling \
+            --wait-timeout 300
+
+      - name: Verify production health
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          echo "Waiting for health check..."
+          echo "Waiting for health check…"
           sleep 15
-          flyctl status --json | python3 -c "
+          flyctl status --app agentx-platform --json | python3 -c "
           import sys, json
           data = json.load(sys.stdin)
           allocs = data.get('Allocations', [])
@@ -87,7 +167,62 @@ jobs:
       - name: Notify on failure
         if: failure()
         run: |
-          echo "::error::Deploy to production FAILED for commit ${{ github.event.workflow_run.head_sha }}"
-          echo "::error::Check Fly.io dashboard: https://fly.io/apps/agentx"
-          # Add Slack/PagerDuty notification here if needed:
-          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Deploy failed!"}'
+          echo "::error::Production deploy FAILED for commit ${{ github.event.workflow_run.head_sha }}"
+          echo "::error::Check Fly.io dashboard: https://fly.io/apps/agentx-platform"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Production UI deploy — Vercel promotion to production domain
+  # Runs only after backend production deploy succeeds
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-ui-production:
+    name: Deploy UI to Vercel (production)
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+
+    environment:
+      name: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy UI to Vercel (production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_API_URL: https://agentx-platform.fly.dev
+          # Social core always on; flip these to "true" when each feature is ready
+          NEXT_PUBLIC_FEATURE_ECONOMY: "false"
+          NEXT_PUBLIC_FEATURE_GOVERNANCE: "false"
+          NEXT_PUBLIC_FEATURE_COLLECTIVES: "false"
+          NEXT_PUBLIC_FEATURE_SENTINEL: "false"
+          NEXT_PUBLIC_FEATURE_CONSTELLATION: "false"
+        working-directory: ui
+        run: |
+          vercel deploy \
+            --prod \
+            --token "$VERCEL_TOKEN" \
+            --yes \
+            --env NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+            --env NEXT_PUBLIC_FEATURE_ECONOMY="$NEXT_PUBLIC_FEATURE_ECONOMY" \
+            --env NEXT_PUBLIC_FEATURE_GOVERNANCE="$NEXT_PUBLIC_FEATURE_GOVERNANCE" \
+            --env NEXT_PUBLIC_FEATURE_COLLECTIVES="$NEXT_PUBLIC_FEATURE_COLLECTIVES" \
+            --env NEXT_PUBLIC_FEATURE_SENTINEL="$NEXT_PUBLIC_FEATURE_SENTINEL" \
+            --env NEXT_PUBLIC_FEATURE_CONSTELLATION="$NEXT_PUBLIC_FEATURE_CONSTELLATION"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::UI production deploy FAILED for commit ${{ github.event.workflow_run.head_sha }}"
+          echo "::error::Check Vercel dashboard: https://vercel.com/dashboard"
