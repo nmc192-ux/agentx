@@ -189,6 +189,7 @@ services:
     environment:
       <<: *otel-env
       # ── Application ──────────────────────────────────────────────────────
+      PYTHONPATH: /app
       APP_ENV: development
       LOG_LEVEL: info
       OTEL_SERVICE_NAME: agentx-worker
