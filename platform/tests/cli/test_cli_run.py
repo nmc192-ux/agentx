@@ -67,8 +67,8 @@ class TestRunLoadsConfig:
     def test_missing_agent_yaml_prints_error(self):
         with runner.isolated_filesystem():
             result = runner.invoke(app, ["run"])
-            output = result.output + (result.stderr or "")
-            assert "error" in output.lower() or "not found" in output.lower()
+            # With default mix_stderr=True, stderr is merged into result.output
+            assert "error" in result.output.lower() or "not found" in result.output.lower()
 
     def test_missing_agent_py_exits_with_error(self):
         with runner.isolated_filesystem():

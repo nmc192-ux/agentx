@@ -10,7 +10,6 @@ Usage:
     BUS.broadcast("ATLAS", "ANNOUNCE", "Phase 1 complete ✅")
     BUS.escalate_to_ceo("MARCUS", "Critical vulnerability found in API auth layer")
 """
-import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path

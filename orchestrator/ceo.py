@@ -10,7 +10,6 @@ The CEO observes, reviews artifacts, and unlocks phase transitions.
 """
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 

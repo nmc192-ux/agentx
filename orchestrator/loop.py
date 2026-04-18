@@ -17,7 +17,6 @@ Message handling:
 import time
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 
@@ -159,7 +158,7 @@ class OrchestrationLoop:
 
         self._log("START", f"Watching {list(self.agents.keys())}  poll={self.poll_interval}s")
         print(f"\n{'═'*68}")
-        print(f"  🔄  ORCHESTRATION LOOP STARTED")
+        print("  🔄  ORCHESTRATION LOOP STARTED")
         print(f"  Agents : {', '.join(self.agents.keys())}")
         print(f"  Poll   : every {self.poll_interval}s")
         if max_iterations:
@@ -195,7 +194,7 @@ class OrchestrationLoop:
                 if new_messages_this_cycle == 0:
                     idle_count += 1
                     if self.verbose and idle_count == 1:
-                        print(f"  💤  No new messages — waiting...")
+                        print("  💤  No new messages — waiting...")
                     if stop_when_idle and idle_count >= idle_threshold:
                         self._log("IDLE", f"No messages for {idle_threshold} polls — stopping")
                         break
@@ -217,7 +216,7 @@ class OrchestrationLoop:
     def _print_stats(self) -> None:
         s = self._stats
         print(f"\n{'─'*68}")
-        print(f"  🔄  LOOP COMPLETE")
+        print("  🔄  LOOP COMPLETE")
         print(f"  Messages seen    : {s['messages_seen']}")
         print(f"  Messages handled : {s['messages_handled']}")
         print(f"  Responses sent   : {s['responses_sent']}")
