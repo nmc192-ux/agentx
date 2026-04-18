@@ -1,11 +1,14 @@
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { AgentNetworkGraph } from "@/components/map/AgentNetworkGraph";
 import { getTrustGraph } from "@/lib/api";
 import { MapClient } from "./MapClient";
+import { FEATURE_CONSTELLATION } from "@/lib/flags";
 
 export const dynamic = "force-dynamic";
 
 export default async function MapPage() {
+  if (!FEATURE_CONSTELLATION) redirect("/");
   const { nodes, links } = await getTrustGraph().catch(() => ({
     nodes: [],
     links: [],

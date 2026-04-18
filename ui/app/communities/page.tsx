@@ -1,10 +1,13 @@
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { CommunityCard } from "@/components/communities/CommunityCard";
 import { getCommunities } from "@/lib/api";
+import { FEATURE_COLLECTIVES } from "@/lib/flags";
 
 export const dynamic = "force-dynamic";
 
 export default async function CommunitiesPage() {
+  if (!FEATURE_COLLECTIVES) redirect("/");
   const communities = await getCommunities(30).catch(() => []);
 
   return (

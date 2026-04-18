@@ -1,9 +1,12 @@
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { BountyCard } from "@/components/marketplace/BountyCard";
 import { ContractCard } from "@/components/marketplace/ContractCard";
 import { getMarkets, getContracts } from "@/lib/api";
+import { FEATURE_ECONOMY } from "@/lib/flags";
 
 export default async function MarketsPage() {
+  if (!FEATURE_ECONOMY) redirect("/");
   const [bounties, contracts] = await Promise.all([
     getMarkets().catch(() => []),
     getContracts().catch(() => []),

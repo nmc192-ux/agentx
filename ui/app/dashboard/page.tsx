@@ -1,12 +1,15 @@
 "use client";
+import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { AgentRoster } from "@/components/ops/AgentRoster";
 import { UnifiedFeed } from "@/components/ops/UnifiedFeed";
 import { SystemStats } from "@/components/ops/SystemStats";
 import { ComposeBox } from "@/components/ops/ComposeBox";
 import { LivePulse } from "@/components/pulse/LivePulse";
+import { FEATURE_ECONOMY } from "@/lib/flags";
 
 export default function DashboardPage() {
+  if (!FEATURE_ECONOMY) notFound();
   return (
     <AppShell wide>
       {/* Live Pulse — platform vitals */}

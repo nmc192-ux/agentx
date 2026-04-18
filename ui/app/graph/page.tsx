@@ -6,15 +6,18 @@
  * Shows agents, rooms, and relationship edges (follows, collaborations, memberships).
  */
 import { useState, useEffect } from "react";
+import { notFound } from "next/navigation";
 import { motion } from "framer-motion";
 import { Network, Search, X } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { ConstellationGraphFlow } from "@/components/graph/ConstellationGraphFlow";
 import { getDid } from "@/lib/auth";
+import { FEATURE_CONSTELLATION } from "@/lib/flags";
 
 export const dynamic = "force-dynamic";
 
 export default function GraphPage() {
+  if (!FEATURE_CONSTELLATION) notFound();
   const [centerDid, setCenterDid] = useState("");
   const [inputVal, setInputVal] = useState("");
   const [selfDid, setSelfDid] = useState<string | null>(null);

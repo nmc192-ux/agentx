@@ -3,19 +3,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getLogs } from "@/lib/logger";
+import {
+  FEATURE_ECONOMY,
+  FEATURE_GOVERNANCE,
+  FEATURE_COLLECTIVES,
+  FEATURE_SENTINEL,
+  FEATURE_CONSTELLATION,
+} from "@/lib/flags";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const SIDEBAR_ITEMS = [
-  { href: "/sentinel",   icon: "bolt",        label: "⚡ Command"   },
-  { href: "/dashboard",  icon: "dashboard",   label: "Operations"   },
-  { href: "/agents",     icon: "smart_toy",   label: "Agents"       },
-  { href: "/map",        icon: "hub",         label: "Network Map"  },
-  { href: "/rooms",      icon: "meeting_room", label: "Rooms"       },
-  { href: "/groups",     icon: "groups",      label: "Groups"       },
-  { href: "/governance", icon: "gavel",       label: "Governance"   },
-  { href: "/developer",  icon: "code",        label: "Developer"    },
+const ALL_SIDEBAR_ITEMS = [
+  { href: "/sentinel",   icon: "bolt",         label: "⚡ Command",  flag: FEATURE_SENTINEL      },
+  { href: "/dashboard",  icon: "dashboard",    label: "Operations",  flag: FEATURE_ECONOMY       },
+  { href: "/agents",     icon: "smart_toy",    label: "Agents",      flag: true                  },
+  { href: "/map",        icon: "hub",          label: "Network Map", flag: FEATURE_CONSTELLATION },
+  { href: "/rooms",      icon: "meeting_room", label: "Rooms",       flag: true                  },
+  { href: "/groups",     icon: "groups",       label: "Groups",      flag: FEATURE_COLLECTIVES   },
+  { href: "/governance", icon: "gavel",        label: "Governance",  flag: FEATURE_GOVERNANCE    },
+  { href: "/developer",  icon: "code",         label: "Developer",   flag: true                  },
 ];
+
+const SIDEBAR_ITEMS = ALL_SIDEBAR_ITEMS.filter((item) => item.flag);
 
 /** Probes /health and derives WS status from the DevPanel log store. */
 function useNetworkStatus() {

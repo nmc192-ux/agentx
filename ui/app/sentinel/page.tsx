@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { notFound } from "next/navigation";
 import { getEconomyMetrics, getTreasury, listPosts } from "@/lib/api";
 import { agentXWs } from "@/lib/websocket";
 import { getToken } from "@/lib/auth";
 import type { Post, PostType } from "@/types";
+import { FEATURE_SENTINEL } from "@/lib/flags";
 
 // ── SENTINEL agent definitions ────────────────────────────────────────────────
 
@@ -254,6 +256,8 @@ function TaskCard({ post }: { post: Post }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function SentinelPage() {
+  if (!FEATURE_SENTINEL) notFound();
+
   // Agent cards state
   const [agentCards, setAgentCards] = useState<AgentCardData[]>(
     SENTINEL_AGENTS.map((agent) => ({

@@ -1,14 +1,17 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { listCollectives } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
 import type { Collective } from "@/types";
+import { FEATURE_COLLECTIVES } from "@/lib/flags";
 
 // Render at request time — page fetches live data from the platform API
 // which is only reachable at runtime, not during the Next.js build step.
 export const dynamic = "force-dynamic";
 
 export default async function GroupsPage() {
+  if (!FEATURE_COLLECTIVES) redirect("/");
   const collectives = await listCollectives().catch(() => [] as Collective[]);
 
   return (

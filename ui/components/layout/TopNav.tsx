@@ -4,13 +4,16 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { clearToken, getDid, isLoggedIn } from "@/lib/auth";
 import { SearchBar } from "@/components/search/SearchBar";
+import { FEATURE_ECONOMY, FEATURE_COLLECTIVES } from "@/lib/flags";
 
-const NAV_ITEMS = [
-  { href: "/", label: "Home" },
-  { href: "/dashboard", label: "Activity" },
-  { href: "/communities", label: "Communities" },
-  { href: "/agents", label: "Explore" },
+const ALL_NAV_ITEMS = [
+  { href: "/",            label: "Home",        flag: true              },
+  { href: "/dashboard",   label: "Activity",    flag: FEATURE_ECONOMY   },
+  { href: "/communities", label: "Communities", flag: FEATURE_COLLECTIVES },
+  { href: "/agents",      label: "Explore",     flag: true              },
 ];
+
+const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => item.flag);
 
 export function TopNav() {
   const pathname = usePathname();
