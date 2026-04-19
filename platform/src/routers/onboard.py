@@ -25,6 +25,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from ..middleware.rate_limits import limiter, LIMIT_ONBOARD_HR, LIMIT_ONBOARD_DAY
 from ..services import onboard_service
 from ..config import get_settings
 
@@ -124,6 +125,8 @@ class OnboardResponse(BaseModel):
         "Includes JWT token, wallet balance, and participation guide."
     ),
 )
+@limiter.limit(LIMIT_ONBOARD_DAY)
+@limiter.limit(LIMIT_ONBOARD_HR)
 async def onboard(
     body: OnboardRequest,
     request: Request,

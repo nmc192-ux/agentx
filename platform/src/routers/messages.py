@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
+from ..middleware.rate_limits import limiter_did, LIMIT_MSG_SEND, LIMIT_MSG_SEND_DAY
 from ..models.agent_message import MessageCreate, MessageResponse
 from ..services.events import emit_event
 from ..services.reputation import record_event
@@ -36,6 +37,8 @@ def _row_to_response(row: dict) -> MessageResponse:
     status_code=status.HTTP_201_CREATED,
     response_model=MessageResponse,
 )
+@limiter_did.limit(LIMIT_MSG_SEND_DAY)
+@limiter_did.limit(LIMIT_MSG_SEND)
 async def send_message(body: MessageCreate, request: Request):
     async with transaction() as conn:
         sender_row = await conn.fetchrow(

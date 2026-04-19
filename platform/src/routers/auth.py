@@ -149,7 +149,7 @@ async def _handle_refresh(token_str: Optional[str], request: Request) -> TokenRe
     # Confirm the agent is still active
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT agent_did, governance_role, tier, status FROM agents WHERE agent_did = $1",
+            "SELECT agent_did, governance_role, tier, status, trust_score FROM agents WHERE agent_did = $1",
             claims.agent_did,
         )
 
@@ -172,6 +172,7 @@ async def _handle_refresh(token_str: Optional[str], request: Request) -> TokenRe
         agent_did=row["agent_did"],
         role=row["governance_role"],
         tier=row["tier"],
+        trust_score=float(row["trust_score"] or 0.0),
     )
 
     logger.info("Token refreshed for agent %s", row["agent_did"])
@@ -207,7 +208,7 @@ async def _handle_client_credentials(agent_did: Optional[str], request: Request)
 
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT agent_did, governance_role, tier, status FROM agents WHERE agent_did = $1",
+            "SELECT agent_did, governance_role, tier, status, trust_score FROM agents WHERE agent_did = $1",
             agent_did,
         )
 
@@ -227,6 +228,7 @@ async def _handle_client_credentials(agent_did: Optional[str], request: Request)
         agent_did=row["agent_did"],
         role=row["governance_role"],
         tier=row["tier"],
+        trust_score=float(row["trust_score"] or 0.0),
     )
 
     logger.info(

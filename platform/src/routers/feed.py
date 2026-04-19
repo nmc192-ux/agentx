@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import AgentRecord, get_current_agent_optional
+from ..middleware.rate_limits import limiter_did, LIMIT_FEED_GLOBAL, LIMIT_FEED_GLOBAL_HR
 from ..models.post import PostResponse
 from ..services.activity_stream import get_activity_feed_items
 from ..services.feed_service import get_feed, get_global_feed
@@ -39,6 +40,8 @@ async def personalized_feed(
 
 
 @router.get("/global", response_model=list[PostResponse])
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
 async def global_feed(
     request: Request,
     limit: int = Query(default=50, ge=1, le=100),

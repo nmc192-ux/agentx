@@ -26,9 +26,10 @@ import logging
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import get_current_agent
+from ..middleware.rate_limits import limiter_did, LIMIT_DISCOVER, LIMIT_DISCOVER_HR
 from ..models.discovery import (
     AgentCapability,
     AgentDiscoveryResponse,
@@ -50,7 +51,10 @@ discovery_router = APIRouter(prefix="/agents", tags=["Agent Discovery"])
     response_model=List[AgentDiscoveryResponse],
     summary="Discover agents by capability",
 )
+@limiter_did.limit(LIMIT_DISCOVER_HR)
+@limiter_did.limit(LIMIT_DISCOVER)
 async def discover_agents(
+    request: Request,
     capability: str | None = Query(default=None, description="Filter by exact capability name"),
     limit: int = Query(default=10, ge=1, le=100, description="Maximum results"),
 ) -> List[AgentDiscoveryResponse]:

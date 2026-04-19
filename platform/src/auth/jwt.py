@@ -30,30 +30,40 @@ from ..config import get_settings
 
 class TokenClaims:
     """Parsed claims from a validated JWT."""
-    __slots__ = ("sub", "role", "tier", "token_type", "jti", "iat", "exp")
+    __slots__ = ("sub", "role", "tier", "token_type", "jti", "iat", "exp", "_trust_score")
 
     def __init__(self, payload: dict):
-        self.sub        = payload["sub"]
-        self.role       = payload.get("role", "MEMBER")
-        self.tier       = payload.get("tier", "BOOTSTRAP")
-        self.token_type = payload.get("type", "access")
-        self.jti        = payload.get("jti", "")
-        self.iat        = payload.get("iat")
-        self.exp        = payload.get("exp")
+        self.sub         = payload["sub"]
+        self.role        = payload.get("role", "MEMBER")
+        self.tier        = payload.get("tier", "BOOTSTRAP")
+        self.token_type  = payload.get("type", "access")
+        self.jti         = payload.get("jti", "")
+        self.iat         = payload.get("iat")
+        self.exp         = payload.get("exp")
+        # tsc — trust score at token-issue time (0.0–1.0).
+        # Used by the rate-limit middleware for the continuous trust multiplier.
+        # Absent in tokens issued before this field was added → default 0.0.
+        self._trust_score = float(payload.get("tsc", 0.0))
 
     @property
     def agent_did(self) -> str:
         return self.sub
 
+    @property
+    def trust_score(self) -> float:
+        """Trust score at token-issue time, clamped to [0.0, 1.0]."""
+        return max(0.0, min(1.0, self._trust_score))
+
 
 # ── Token generation ──────────────────────────────────────────────────────────
 
 def _make_payload(
-    agent_did: str,
-    role:       str,
-    tier:       str,
-    token_type: Literal["access", "refresh"],
+    agent_did:   str,
+    role:        str,
+    tier:        str,
+    token_type:  Literal["access", "refresh"],
     ttl_seconds: int,
+    trust_score: float = 0.0,
 ) -> dict:
     """Build JWT payload dict."""
     now = datetime.now(UTC)
@@ -62,6 +72,7 @@ def _make_payload(
         "role": role,
         "tier": tier,
         "type": token_type,
+        "tsc":  round(max(0.0, min(1.0, trust_score)), 4),   # trust score claim
         "jti":  str(uuid.uuid4()),
         "iat":  int(now.timestamp()),
         "exp":  int((now + timedelta(seconds=ttl_seconds)).timestamp()),
@@ -69,9 +80,10 @@ def _make_payload(
 
 
 def create_access_token(
-    agent_did: str,
-    role:      str = "MEMBER",
-    tier:      str = "BOOTSTRAP",
+    agent_did:    str,
+    role:         str = "MEMBER",
+    tier:         str = "BOOTSTRAP",
+    trust_score:  float = 0.0,
     ttl_override: Optional[int] = None,
 ) -> str:
     """
@@ -88,14 +100,15 @@ def create_access_token(
     """
     settings = get_settings()
     ttl = ttl_override if ttl_override is not None else settings.jwt_access_token_ttl
-    payload = _make_payload(agent_did, role, tier, "access", ttl)
+    payload = _make_payload(agent_did, role, tier, "access", ttl, trust_score)
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 def create_refresh_token(
-    agent_did: str,
-    role:      str = "MEMBER",
-    tier:      str = "BOOTSTRAP",
+    agent_did:   str,
+    role:        str = "MEMBER",
+    tier:        str = "BOOTSTRAP",
+    trust_score: float = 0.0,
 ) -> str:
     """
     Generate a signed JWT refresh token (longer TTL, type='refresh').
@@ -109,23 +122,28 @@ def create_refresh_token(
         Signed JWT string.
     """
     settings = get_settings()
-    payload = _make_payload(agent_did, role, tier, "refresh", settings.jwt_refresh_token_ttl)
+    payload = _make_payload(agent_did, role, tier, "refresh", settings.jwt_refresh_token_ttl, trust_score)
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
 def create_token_pair(
-    agent_did: str,
-    role:      str = "MEMBER",
-    tier:      str = "BOOTSTRAP",
+    agent_did:   str,
+    role:        str = "MEMBER",
+    tier:        str = "BOOTSTRAP",
+    trust_score: float = 0.0,
 ) -> tuple[str, str]:
     """
     Create an (access_token, refresh_token) pair.
 
+    The ``trust_score`` is embedded in both tokens as the ``tsc`` claim so
+    the rate-limit middleware can apply the continuous trust multiplier
+    without an extra DB lookup on every request.
+
     Returns:
         Tuple of (access_jwt, refresh_jwt).
     """
-    access  = create_access_token(agent_did, role, tier)
-    refresh = create_refresh_token(agent_did, role, tier)
+    access  = create_access_token(agent_did, role, tier, trust_score)
+    refresh = create_refresh_token(agent_did, role, tier, trust_score)
     return access, refresh
 
 

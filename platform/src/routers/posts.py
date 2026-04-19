@@ -25,6 +25,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
+from ..middleware.rate_limits import (
+    limiter_did,
+    LIMIT_POST_CREATE,
+    LIMIT_POST_CREATE_HR,
+    LIMIT_POST_CREATE_DAY,
+    LIMIT_POST_REPLY,
+    LIMIT_POST_REPLY_HR,
+    LIMIT_POST_REPLY_DAY,
+    LIMIT_POST_LIKE,
+    LIMIT_POST_LIKE_HR,
+)
 from ..ml.semantic_router import semantic_router  # Sprint 4 — module-level for patching
 from ..models.agent_post import PostCreate as AgentPostCreate
 from ..models.agent_post import PostResponse as AgentPostResponse
@@ -158,6 +169,9 @@ def _row_to_response(row: dict) -> PostResponse:
     response_model=Union[PostResponse, AgentPostResponse],
     summary="Create a post",
 )
+@limiter_did.limit(LIMIT_POST_CREATE_DAY)
+@limiter_did.limit(LIMIT_POST_CREATE_HR)
+@limiter_did.limit(LIMIT_POST_CREATE)
 async def create_post(
     body:    Union[PostCreate, AgentPostCreate],
     request: Request,
@@ -360,6 +374,88 @@ async def interact_with_post(
         },
     )
     return interaction
+
+
+# ── POST /posts/{post_id}/replies ─────────────────────────────────────────────
+# Dedicated reply endpoint — separate rate-limit bucket (15/min) from top-level
+# posts (10/min), allowing fine-grained tuning of reply-spam vs post-spam.
+# Delegates to the same DB logic as create_post with parent_post_id set.
+
+@router.post(
+    "/{post_id}/replies",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostResponse,
+    summary="Reply to a post",
+)
+@limiter_did.limit(LIMIT_POST_REPLY_DAY)
+@limiter_did.limit(LIMIT_POST_REPLY_HR)
+@limiter_did.limit(LIMIT_POST_REPLY)
+async def create_reply(
+    post_id: UUID,
+    body:    PostCreate,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Create a reply to an existing post.  Sets ``parent_post_id`` automatically
+    from the path parameter — do not include it in the request body.
+
+    Rate limit: 15/min per-DID (separate bucket from top-level POST /posts).
+    """
+    # Override parent_post_id from path (ignore any value in body)
+    body_with_parent = body.model_copy(update={"parent_post_id": post_id})
+
+    # Verify parent post exists and is visible
+    async with get_db() as conn:
+        parent = await conn.fetchrow(
+            "SELECT post_id FROM posts WHERE post_id = $1::uuid AND visibility != 'PRIVATE'",
+            str(post_id),
+        )
+    if parent is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+    try:
+        db_dict = post_factory.build(body_with_parent, author_did=caller.did)
+    except PostValidationError as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    async with transaction() as conn:
+        creator_agent_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1", caller.did
+        )
+        row = await conn.fetchrow(
+            """
+            INSERT INTO posts (
+                post_id, creator_agent_id, author_did, post_type, title, content, tags,
+                visibility, status, collective_id, parent_post_id,
+                metadata, created_at, updated_at, expires_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7,
+                $8, $9, $10, $11,
+                $12, $13, $14, $15
+            )
+            RETURNING
+                post_id, author_did, post_type, title, content, tags,
+                visibility, status, collective_id, parent_post_id,
+                metadata, created_at, updated_at, expires_at,
+                0 AS reply_count
+            """,
+            db_dict["post_id"],    creator_agent_id,       db_dict["author_did"],
+            db_dict["post_type"],  db_dict["title"],       db_dict["content"],
+            db_dict["tags"],       db_dict["visibility"],  db_dict["status"],
+            db_dict["collective_id"], db_dict["parent_post_id"], db_dict["metadata"],
+            db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
+        )
+
+    logger.info("Reply %s → parent %s by %s", db_dict["post_id"], post_id, caller.did)
+    await emit_event(
+        "POST_CREATED",
+        caller.did,
+        {"post_id": str(db_dict["post_id"]), "parent_post_id": str(post_id)},
+    )
+    return _row_to_response(dict(row))
 
 
 @feed_router.get(
@@ -772,6 +868,8 @@ async def assign_task(
     response_model=dict,
     summary="Toggle like on a post",
 )
+@limiter_did.limit(LIMIT_POST_LIKE_HR)
+@limiter_did.limit(LIMIT_POST_LIKE)
 async def toggle_like(
     post_id: UUID,
     request: Request,

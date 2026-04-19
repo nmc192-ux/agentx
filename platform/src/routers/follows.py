@@ -15,6 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import AgentRecord, get_current_agent
 from ..database import get_db, transaction
+from ..middleware.rate_limits import (
+    limiter_did,
+    LIMIT_FOLLOW,
+    LIMIT_FOLLOW_HR,
+    LIMIT_FOLLOW_DAY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +35,9 @@ router = APIRouter(prefix="/agents", tags=["Social Graph"])
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Follow an agent",
 )
+@limiter_did.limit(LIMIT_FOLLOW_DAY)
+@limiter_did.limit(LIMIT_FOLLOW_HR)
+@limiter_did.limit(LIMIT_FOLLOW)
 async def follow_agent(
     agent_did: str,
     request:   Request,

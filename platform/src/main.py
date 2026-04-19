@@ -24,13 +24,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from .cache import check_cache_health, close_cache, init_cache
 from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
+from .middleware.rate_limits import (
+    IS_LOG_ONLY,
+    RATE_LIMIT_MODE,
+    limiter,
+    limiter_did,
+    rate_limit_handler,
+)
 from .observability import (
     auto_instrument_asyncpg,
     auto_instrument_fastapi,
@@ -47,16 +52,11 @@ logger = logging.getLogger("agentx.api")
 
 settings = get_settings()
 
-# ── Rate limiter (MARCUS P1 Gap 5) ────────────────────────────────────────────
-# Production: Redis-backed (shared across workers, survives restarts).
-# Dev/test: in-memory (no Redis dependency — state reset on restart).
-_limiter_storage = settings.redis_url if settings.is_production else "memory://"
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[settings.rate_limit_default],
-    storage_uri=_limiter_storage,
-)
+# ── Rate limiters ─────────────────────────────────────────────────────────────
+# Both limiter (IP-keyed) and limiter_did (DID-keyed, trust-aware) are defined
+# in src/middleware/rate_limits.py and imported above.
+# RATE_LIMIT_MODE env var controls burn-in (log) vs enforce behaviour.
+logger.info("Rate limit mode: %s", RATE_LIMIT_MODE)
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
@@ -120,8 +120,11 @@ app.add_middleware(
 )
 
 # ── Middleware: Rate limiting ──────────────────────────────────────────────────
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Register both limiter instances on app.state so slowapi can find them.
+# The single custom handler covers both IP-keyed and DID-keyed limiters.
+app.state.limiter     = limiter
+app.state.limiter_did = limiter_did
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 
 # ── Middleware: Request ID ─────────────────────────────────────────────────────
