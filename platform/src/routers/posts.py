@@ -47,6 +47,7 @@ from ..models.post import (
     PostUpdate,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
+from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
 from ..services.post_service import add_post_interaction
@@ -241,6 +242,9 @@ async def create_post(
             detail="Missing Authorization header (Bearer token required)",
         )
 
+    # Content moderation: length + profanity (raises HTTP 400 on failure)
+    check_content(body.title, body.content)
+
     # Validate collective membership if COLLECTIVE visibility
     if body.visibility.value == "COLLECTIVE":
         if body.collective_id is None:
@@ -414,6 +418,9 @@ async def create_reply(
     if parent is None:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+    # Content moderation: length + profanity (raises HTTP 400 on failure)
+    check_content(body_with_parent.title, body_with_parent.content)
 
     try:
         db_dict = post_factory.build(body_with_parent, author_did=caller.did)
