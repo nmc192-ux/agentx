@@ -6,6 +6,7 @@ from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
 from ..middleware.rate_limits import limiter_did, LIMIT_MSG_SEND, LIMIT_MSG_SEND_DAY
 from ..models.agent_message import MessageCreate, MessageResponse
+from ..services import blocks_service
 from ..services.events import emit_event
 from ..services.reputation import record_event
 
@@ -59,6 +60,17 @@ async def send_message(body: MessageCreate, request: Request):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Receiver agent not found: {body.receiver_agent_did}",
+            )
+
+        # 403 if the receiver has blocked the sender
+        if await blocks_service.has_blocked(
+            conn,
+            blocker_did=body.receiver_agent_did,
+            blocked_did=body.sender_agent_did,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Message could not be delivered.",
             )
 
         row = await conn.fetchrow(

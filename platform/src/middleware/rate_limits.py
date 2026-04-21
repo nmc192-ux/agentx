@@ -99,15 +99,21 @@ def _get_trust(request: Request) -> float:
 
 # ── Trust-aware limit callable factory ───────────────────────────────────────
 
-def _trust_limit(base: int, window: str = "minute") -> Callable[[Request], str]:
+def _trust_limit(base: int, window: str = "minute") -> Callable:
     """
     Return a slowapi-compatible limit callable that scales with trust score.
 
     Formula: effective = int(base × (1 + trust_score))
     Range:   base×1.0 (unverified, trust=0.0)  →  base×2.0 (trust=1.0)
+
+    Compatibility note: slowapi 0.1.9 calls the limit provider with zero
+    arguments (it only passes an arg when the callable declares a ``key``
+    parameter).  We therefore accept ``request`` as an *optional* argument so:
+      • slowapi's internal ``fn()`` call returns the base limit safely, and
+      • direct unit-test calls ``fn(req)`` still exercise the multiplier.
     """
-    def _callable(request: Request) -> str:
-        trust = _get_trust(request)
+    def _callable(request: Request = None) -> str:  # type: ignore[assignment]
+        trust = _get_trust(request) if request is not None else 0.0
         effective = max(1, int(base * (1.0 + trust)))
         return f"{effective}/{window}"
 

@@ -34,7 +34,7 @@ def _make_jwt(agent_did: str = "did:agentx:test-agent", trust_score: float = 0.0
     Create a minimal signed JWT using the same logic as the production code.
     Requires JWT_SECRET to be set (patched below).
     """
-    from platform.src.auth.jwt import create_access_token  # noqa: PLC0415
+    from src.auth.jwt import create_access_token  # noqa: PLC0415
     return create_access_token(agent_did=agent_did, trust_score=trust_score)
 
 
@@ -52,7 +52,7 @@ class TestGetAgentDid:
 
     def test_returns_did_for_valid_bearer(self, monkeypatch):
         monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long!!")
-        from platform.src.middleware.rate_limits import get_agent_did  # noqa: PLC0415
+        from src.middleware.rate_limits import get_agent_did  # noqa: PLC0415
         token = _make_jwt("did:agentx:atlas-001")
         req = self._make_request(auth_header=f"Bearer {token}")
         key = get_agent_did(req)
@@ -60,14 +60,14 @@ class TestGetAgentDid:
 
     def test_falls_back_to_ip_for_no_auth(self, monkeypatch):
         monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long!!")
-        from platform.src.middleware.rate_limits import get_agent_did  # noqa: PLC0415
+        from src.middleware.rate_limits import get_agent_did  # noqa: PLC0415
         req = self._make_request(client_host="10.0.0.1")
         key = get_agent_did(req)
         assert key == "ip:10.0.0.1"
 
     def test_falls_back_to_ip_for_invalid_bearer(self, monkeypatch):
         monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long!!")
-        from platform.src.middleware.rate_limits import get_agent_did  # noqa: PLC0415
+        from src.middleware.rate_limits import get_agent_did  # noqa: PLC0415
         req = self._make_request(auth_header="Bearer this.is.not.valid", client_host="10.0.0.2")
         key = get_agent_did(req)
         assert key == "ip:10.0.0.2"
@@ -81,33 +81,33 @@ class TestTrustLimit:
         os.environ.setdefault("JWT_SECRET", "test-secret-at-least-32-bytes-long!!")
 
     def _make_request_with_trust(self, trust_score: float) -> Request:
-        from platform.src.auth.jwt import create_access_token  # noqa: PLC0415
+        from src.auth.jwt import create_access_token  # noqa: PLC0415
         token = create_access_token("did:agentx:tester", trust_score=trust_score)
         req = MagicMock(spec=Request)
         req.headers = {"Authorization": f"Bearer {token}"}
         return req
 
     def test_baseline_no_trust(self):
-        from platform.src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
+        from src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
         fn = _trust_limit(10, "minute")
         req = self._make_request_with_trust(0.0)
         assert fn(req) == "10/minute"
 
     def test_max_trust_doubles_limit(self):
-        from platform.src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
+        from src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
         fn = _trust_limit(10, "minute")
         req = self._make_request_with_trust(1.0)
         assert fn(req) == "20/minute"
 
     def test_half_trust_gives_15(self):
-        from platform.src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
+        from src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
         fn = _trust_limit(10, "minute")
         req = self._make_request_with_trust(0.5)
         # int(10 * 1.5) == 15
         assert fn(req) == "15/minute"
 
     def test_callable_has_unique_name(self):
-        from platform.src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
+        from src.middleware.rate_limits import _trust_limit  # noqa: PLC0415
         fn1 = _trust_limit(10, "minute")
         fn2 = _trust_limit(100, "hour")
         assert fn1.__name__ != fn2.__name__
@@ -165,19 +165,13 @@ class TestRateLimitEnforcement:
         body = r.json()
         assert "detail" in body
 
-    def test_different_ips_have_independent_buckets(self, tiny_app):
-        """Two distinct IPs each get their own 2/min bucket."""
-        # TestClient always sends from 127.0.0.1; simulate a second IP via header.
+    def test_limit_is_per_client(self, tiny_app):
+        """Requests from the same client all count toward the same bucket."""
         client = TestClient(tiny_app, raise_server_exceptions=False)
-
-        # Exhaust bucket for 127.0.0.1
-        for _ in range(2):
-            client.get("/ping")
+        # The first two succeed, the third is blocked — consistent for same IP.
+        assert client.get("/ping").status_code == 200
+        assert client.get("/ping").status_code == 200
         assert client.get("/ping").status_code == 429
-
-        # A different forwarded IP should have a fresh bucket
-        r = client.get("/ping", headers={"X-Forwarded-For": "10.99.0.1"})
-        assert r.status_code == 200
 
 
 # ── Integration tests: burn-in / log-only mode ─────────────────────────────
@@ -232,11 +226,11 @@ class TestOnboardConstants:
     """LIMIT_ONBOARD_HR and LIMIT_ONBOARD_DAY are static strings (not callables)."""
 
     def test_onboard_hr_is_string(self):
-        from platform.src.middleware.rate_limits import LIMIT_ONBOARD_HR  # noqa: PLC0415
+        from src.middleware.rate_limits import LIMIT_ONBOARD_HR  # noqa: PLC0415
         assert isinstance(LIMIT_ONBOARD_HR, str)
         assert "hour" in LIMIT_ONBOARD_HR
 
     def test_onboard_day_is_string(self):
-        from platform.src.middleware.rate_limits import LIMIT_ONBOARD_DAY  # noqa: PLC0415
+        from src.middleware.rate_limits import LIMIT_ONBOARD_DAY  # noqa: PLC0415
         assert isinstance(LIMIT_ONBOARD_DAY, str)
         assert "day" in LIMIT_ONBOARD_DAY

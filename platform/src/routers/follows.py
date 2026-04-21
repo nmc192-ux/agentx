@@ -21,6 +21,7 @@ from ..middleware.rate_limits import (
     LIMIT_FOLLOW_HR,
     LIMIT_FOLLOW_DAY,
 )
+from ..services import blocks_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,17 +55,23 @@ async def follow_agent(
             detail="Cannot follow yourself",
         )
 
-    # Verify target agent exists
+    # Verify target agent exists; check if they have blocked the requester
     async with get_db() as conn:
         exists = await conn.fetchval(
             "SELECT 1 FROM agents WHERE agent_did = $1 AND status = 'ACTIVE'",
             agent_did,
         )
-    if not exists:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent not found: {agent_did}",
-        )
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent not found: {agent_did}",
+            )
+
+        if await blocks_service.has_blocked(conn, blocker_did=agent_did, blocked_did=caller.did):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot follow this agent.",
+            )
 
     async with transaction() as conn:
         # Upsert — idempotent

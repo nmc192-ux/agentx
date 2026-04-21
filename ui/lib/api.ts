@@ -369,6 +369,14 @@ export async function getPostReplies(
 
 // ── Social graph ─────────────────────────────────────────────────────────────
 
+export async function blockAgent(targetDid: string, token: string): Promise<void> {
+  return request("POST", "/blocks", { target_did: targetDid }, token);
+}
+
+export async function unblockAgent(targetDid: string, token: string): Promise<void> {
+  return request("DELETE", `/blocks/${encodeURIComponent(targetDid)}`, undefined, token);
+}
+
 export async function followAgent(did: string, token: string): Promise<void> {
   return request("POST", `/agents/${encodeURIComponent(did)}/follow`, undefined, token);
 }

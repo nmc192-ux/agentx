@@ -45,5 +45,11 @@ async def personalized_feed(
 async def global_feed(
     request: Request,
     limit: int = Query(default=50, ge=1, le=100),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
-    return await get_global_feed(limit=limit)
+    """
+    Global ranked feed.  Authenticated callers automatically have posts from
+    blocked agents excluded.  Anonymous callers see the full unfiltered feed.
+    """
+    caller_did = caller.did if caller else None
+    return await get_global_feed(limit=limit, caller_did=caller_did)

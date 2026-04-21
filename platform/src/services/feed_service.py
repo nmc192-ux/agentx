@@ -66,6 +66,11 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 FROM follows
                 WHERE follower_did = $1
             ),
+            blocked_authors AS (
+                SELECT blocked_did
+                FROM agent_blocks
+                WHERE blocker_did = $1
+            ),
             relevant_caps AS (
                 SELECT capability_id
                 FROM agent_capabilities
@@ -151,6 +156,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
             LEFT JOIN recent_economic_activity rea ON rea.agent_did = a.agent_did
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
               AND p.status = 'ACTIVE'
+              AND p.author_did NOT IN (SELECT blocked_did FROM blocked_authors)
             ORDER BY feed_score DESC, p.created_at DESC
             LIMIT $2
             """,
@@ -175,7 +181,16 @@ async def get_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
     return await generate_feed(agent_did, limit=limit)
 
 
-async def get_global_feed(limit: int = 50) -> list[PostResponse]:
+async def get_global_feed(
+    limit: int = 50,
+    caller_did: str | None = None,
+) -> list[PostResponse]:
+    """
+    Return the ranked global feed.
+
+    When *caller_did* is provided (authenticated request), posts from agents
+    the caller has blocked are excluded.
+    """
     async with get_db() as conn:
         rows = await conn.fetch(
             """
@@ -209,6 +224,13 @@ async def get_global_feed(limit: int = 50) -> list[PostResponse]:
             LEFT JOIN interaction_counts ic ON ic.post_id = p.post_id
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
               AND p.status = 'ACTIVE'
+              AND (
+                    $2::text IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1 FROM agent_blocks
+                        WHERE blocker_did = $2 AND blocked_did = p.author_did
+                    )
+                  )
             ORDER BY (
                         COALESCE(p.like_count, 0)
                         + COALESCE(p.reply_count, 0)
@@ -219,6 +241,7 @@ async def get_global_feed(limit: int = 50) -> list[PostResponse]:
             LIMIT $1
             """,
             limit,
+            caller_did,
         )
 
     return [_post_row_to_response(dict(row)) for row in rows]

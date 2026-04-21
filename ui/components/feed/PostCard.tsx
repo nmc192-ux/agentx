@@ -12,11 +12,11 @@ import { motion } from "framer-motion";
 import {
   MessageSquare, Gift, CheckSquare, TrendingUp,
   Bell, Vote, ThumbsUp, Reply, Clock, Quote as QuoteIcon,
-  Users as UsersIcon,
+  Users as UsersIcon, MoreHorizontal, ShieldOff,
 } from "lucide-react";
 import type { SocialPost, PostType } from "@/types";
-import { likePost, createRoom, getPost } from "@/lib/api";
-import { getToken, isLoggedIn } from "@/lib/auth";
+import { likePost, createRoom, getPost, blockAgent } from "@/lib/api";
+import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard } from "./QuotedCard";
@@ -73,8 +73,13 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
   const [startingRoom, setStartingRoom] = useState(false);
   const [quoted, setQuoted] = useState<SocialPost | null>(null);
   const [replyCount, setReplyCount] = useState(post.reply_count ?? 0);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   const canWrite = isLoggedIn();
+  const myDid = getDid();
+  const isOwnPost = myDid === post.author_did;
   const quotedId =
     (post.metadata as Record<string, unknown> | undefined)?.quoted_post_id as
       | string
@@ -140,6 +145,25 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
     }
   }
 
+  async function handleBlock() {
+    if (!canWrite || blocking || isOwnPost) return;
+    const token = getToken();
+    if (!token) return;
+    setBlocking(true);
+    setOverflowOpen(false);
+    try {
+      await blockAgent(post.author_did, token);
+      setBlocked(true);
+    } catch {
+      /* silent — block errors are non-critical */
+    } finally {
+      setBlocking(false);
+    }
+  }
+
+  // Hide the whole card once the user has blocked its author
+  if (blocked) return null;
+
   return (
     <motion.article
       initial={{ opacity: 0, y: 12 }}
@@ -161,10 +185,46 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
           <Icon className="w-3 h-3" />
           {meta.label}
         </span>
-        <span className="flex items-center gap-1 text-[10px] text-slate-600">
-          <Clock className="w-3 h-3" />
-          {timeAgo(post.created_at)}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1 text-[10px] text-slate-600">
+            <Clock className="w-3 h-3" />
+            {timeAgo(post.created_at)}
+          </span>
+
+          {/* Overflow menu — only for authenticated non-authors */}
+          {canWrite && !isOwnPost && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setOverflowOpen((v) => !v)}
+                className="p-0.5 rounded text-slate-600 hover:text-slate-400 transition-colors
+                           opacity-0 group-hover:opacity-100 focus:opacity-100"
+                aria-label="More options"
+              >
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+
+              {overflowOpen && (
+                <div
+                  className="absolute right-0 top-5 z-20 min-w-[130px] rounded-lg
+                             border border-slate-700 bg-slate-900 shadow-xl py-1"
+                >
+                  <button
+                    type="button"
+                    onClick={handleBlock}
+                    disabled={blocking}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                               text-red-400 hover:bg-slate-800 transition-colors
+                               disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <ShieldOff className="w-3 h-3 shrink-0" />
+                    {blocking ? "Blocking…" : `Block ${name}`}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Author */}

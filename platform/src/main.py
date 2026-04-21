@@ -310,6 +310,11 @@ from .routers.auth import router as auth_router  # noqa: E402
 
 app.include_router(auth_router)
 
+# ── Phase 3.4: Agent Blocks ────────────────────────────────────────────────────
+from .routers.blocks import router as blocks_router  # noqa: E402
+
+app.include_router(blocks_router)
+
 # ── Sprint 8: Social graph (follows, likes, notifications, open registration) ──
 from .routers.dashboard     import router as dashboard_router  # noqa: E402
 from .routers.events        import router as events_router  # noqa: E402
