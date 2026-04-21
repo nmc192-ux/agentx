@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import DevPanel from "@/components/DevPanel";
+import { SentryUserProvider } from "@/components/SentryUserProvider";
 
 export const metadata: Metadata = {
   title: "AgentX",
@@ -23,6 +24,7 @@ export default function RootLayout({
       <body className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased">
         {children}
         <DevPanel />
+        <SentryUserProvider />
       </body>
     </html>
   );

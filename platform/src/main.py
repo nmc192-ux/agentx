@@ -18,8 +18,15 @@ All agent-facing API routes (POST /agents, GET /feed, etc.)
 are added in Sprint 2+ as separate router modules.
 """
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
+
+import sentry_sdk
+from sentry_sdk.integrations.asyncpg import AsyncPGIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,6 +58,33 @@ logging.basicConfig(
 logger = logging.getLogger("agentx.api")
 
 settings = get_settings()
+
+# ── Sentry ────────────────────────────────────────────────────────────────────
+# No-op when SENTRY_DSN is unset (local dev, CI, tests).
+_SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        integrations=[
+            # StarletteIntegration must come before FastApiIntegration.
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+            AsyncPGIntegration(),
+            LoggingIntegration(
+                level=logging.WARNING,      # breadcrumb threshold
+                event_level=logging.ERROR,  # only ERROR+ creates Sentry events
+            ),
+        ],
+        # Capture 10 % of transactions as performance traces.
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_RATE", "0.1")),
+        environment=settings.app_env,
+        release=settings.app_version,
+        # Never attach raw request bodies / PII.
+        send_default_pii=False,
+    )
+    logger.info(
+        "Sentry initialised (env=%s, release=%s)", settings.app_env, settings.app_version
+    )
 
 # ── Rate limiters ─────────────────────────────────────────────────────────────
 # Both limiter (IP-keyed) and limiter_did (DID-keyed, trust-aware) are defined
@@ -125,6 +159,24 @@ app.add_middleware(
 app.state.limiter     = limiter
 app.state.limiter_did = limiter_did
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+
+# ── Middleware: Sentry user context ───────────────────────────────────────────
+@app.middleware("http")
+async def tag_sentry_user(request: Request, call_next):
+    """
+    Attach agent_did to the Sentry event scope for every authenticated request.
+    Safe to call when Sentry is not initialised — sentry_sdk calls are no-ops.
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            from .auth.jwt import decode_token, InvalidTokenError  # noqa: PLC0415
+            claims = decode_token(auth[7:])
+            sentry_sdk.set_user({"id": claims.agent_did})
+        except Exception:  # noqa: BLE001
+            pass
+    return await call_next(request)
 
 
 # ── Middleware: Request ID ─────────────────────────────────────────────────────

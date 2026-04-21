@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // ── Standalone output ───────────────────────────────────────────────────────
@@ -21,4 +22,23 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // ── Sentry build-time options ───────────────────────────────────────────────
+  // Suppress the Sentry CLI output during local builds; keep it in CI.
+  silent: !process.env.CI,
+
+  // Source map upload requires SENTRY_AUTH_TOKEN — set in CI/CD only.
+  // Locally this step is a no-op.
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+
+  // Keep source maps out of the browser bundle.
+  hideSourceMaps: true,
+
+  // Opt out of Sentry's anonymous build telemetry.
+  telemetry: false,
+
+  // Not using Vercel Cron Monitors.
+  automaticVercelMonitors: false,
+});
