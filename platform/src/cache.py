@@ -58,9 +58,17 @@ def _get_redis() -> Redis | None:
         # Redis is available.  redis.asyncio.Redis.from_url() rejects it, so
         # we treat it as "cache disabled" to match the null-safe behaviour
         # the rest of this module already exhibits when Redis is unreachable.
-        if not url or url.startswith("memory://"):
+        # We also disable when APP_ENV != production and REDIS_URL looks like
+        # the CI default (localhost:6379) so unit tests don't hit dead sockets.
+        import os as _os  # noqa: PLC0415
+        app_env = _os.getenv("APP_ENV", "development").lower()
+        if (
+            not url
+            or url.startswith("memory://")
+            or (app_env != "production" and "localhost" in url)
+        ):
             _redis_disabled = True
-            logger.info("Cache disabled (REDIS_URL=%r)", url)
+            logger.info("Cache disabled (REDIS_URL=%r, APP_ENV=%s)", url, app_env)
             return None
         _redis = Redis.from_url(url, decode_responses=True)
     return _redis

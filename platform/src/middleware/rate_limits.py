@@ -61,6 +61,15 @@ IS_LOG_ONLY: bool = RATE_LIMIT_MODE == "log"
 # Falls back to in-process memory:// only when no Redis config is present at all.
 def _resolve_storage() -> str:
     explicit = os.getenv("REDIS_URL")
+    # A memory:// URL is the slowapi in-process backend — keep it as-is.
+    if explicit == "memory://":
+        return "memory://"
+    # In test/dev the CI workflow sets REDIS_URL=redis://localhost:6379/0 but
+    # no Redis runs in that job, so slowapi would throw ConnectionError on
+    # every limited endpoint.  Force memory:// unless we're clearly in prod.
+    app_env = os.getenv("APP_ENV", "development").lower()
+    if app_env != "production":
+        return "memory://"
     if explicit:
         return explicit
     try:
