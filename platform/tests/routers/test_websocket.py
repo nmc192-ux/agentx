@@ -34,6 +34,7 @@ class TestConnectionManager:
         ws = AsyncMock()
         ws.send_json = AsyncMock()
         ws.accept    = AsyncMock()
+        ws.close     = AsyncMock()
         return ws
 
     @pytest.mark.asyncio
@@ -173,8 +174,8 @@ class TestConnectionManager:
         assert "named_channels"      in s
 
     @pytest.mark.asyncio
-    async def test_multiple_connections_per_agent(self):
-        """An agent can have multiple browser-tab connections."""
+    async def test_max_one_connection_per_did_evicts_old(self):
+        """A new connection for the same DID closes the previous one (max-1 policy)."""
         mgr = ConnectionManager()
         ws1 = self._make_ws()
         ws2 = self._make_ws()
@@ -182,20 +183,36 @@ class TestConnectionManager:
         await mgr.connect(ws1, AGENT_DID)
         await mgr.connect(ws2, AGENT_DID)
 
-        assert len(mgr._agent_connections[AGENT_DID]) == 2
+        # ws1 should have been evicted; only ws2 remains
+        assert len(mgr._agent_connections[AGENT_DID]) == 1
+        assert ws2 in mgr._agent_connections[AGENT_DID]
+        assert ws1 not in mgr._agent_connections.get(AGENT_DID, [])
+        # ws1.close was called with supersede code
+        ws1.close.assert_called_once_with(code=4008, reason="Superseded by new connection")
 
     @pytest.mark.asyncio
-    async def test_disconnect_one_tab_leaves_other_open(self):
+    async def test_expired_token_stored_on_connect(self):
+        """token_exp is persisted in _conn_token_exp when provided."""
+        import time
         mgr = ConnectionManager()
-        ws1 = self._make_ws()
-        ws2 = self._make_ws()
+        ws  = self._make_ws()
+        exp = time.time() + 900  # 15 min from now
 
-        await mgr.connect(ws1, AGENT_DID)
-        await mgr.connect(ws2, AGENT_DID)
-        await mgr.disconnect(ws1, AGENT_DID)
+        await mgr.connect(ws, AGENT_DID, token_exp=exp)
 
-        assert AGENT_DID in mgr._agent_connections
-        assert ws2 in mgr._agent_connections[AGENT_DID]
+        assert mgr._conn_token_exp[ws] == exp
+
+    @pytest.mark.asyncio
+    async def test_token_exp_cleared_on_disconnect(self):
+        """_conn_token_exp entry is removed when the socket disconnects."""
+        import time
+        mgr = ConnectionManager()
+        ws  = self._make_ws()
+
+        await mgr.connect(ws, AGENT_DID, token_exp=time.time() + 900)
+        await mgr.disconnect(ws, AGENT_DID)
+
+        assert ws not in mgr._conn_token_exp
 
     @pytest.mark.asyncio
     async def test_failed_send_disconnects_socket(self):
@@ -237,19 +254,22 @@ class TestWsStatsEndpoint:
 
 class TestWsAuthHelper:
     @pytest.mark.asyncio
-    async def test_valid_token_returns_agent_did(self):
+    async def test_valid_token_returns_agent_did_and_exp(self):
         from src.routers.ws import _authenticate_ws
-        did = await _authenticate_ws(TOKEN)
+        did, exp = await _authenticate_ws(TOKEN)
         assert did == AGENT_DID
+        assert exp is not None and exp > 0
 
     @pytest.mark.asyncio
-    async def test_invalid_token_returns_none(self):
+    async def test_invalid_token_returns_none_tuple(self):
         from src.routers.ws import _authenticate_ws
-        did = await _authenticate_ws("not.a.valid.token")
+        did, exp = await _authenticate_ws("not.a.valid.token")
         assert did is None
+        assert exp is None
 
     @pytest.mark.asyncio
-    async def test_empty_token_returns_none(self):
+    async def test_empty_token_returns_none_tuple(self):
         from src.routers.ws import _authenticate_ws
-        did = await _authenticate_ws("")
+        did, exp = await _authenticate_ws("")
         assert did is None
+        assert exp is None

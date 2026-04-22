@@ -4,16 +4,18 @@ AgentX Platform — WebSocket Connection Manager
 Manages real-time WebSocket connections with multi-channel support.
 
 Features:
-  - Per-agent connection tracking (supports multiple tabs)
+  - One connection per agent DID (new connection evicts the previous one)
   - Collective-channel subscriptions
   - Named-channel subscriptions (feed, alerts, governance)
   - 30-second heartbeat to detect dead connections
+  - Graceful disconnect when the JWT expires mid-session (code 4001)
   - Thread-safe broadcast helpers
 
 SOURCE: workspace/shared/websocket_layer.md — DARIA Sprint 5
 """
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
@@ -61,8 +63,11 @@ class ConnectionManager:
       - Automatic heartbeat + cleanup on dead connections
     """
 
+    #: Maximum simultaneous connections per agent DID.
+    MAX_CONNS_PER_DID = 1
+
     def __init__(self) -> None:
-        # agent_did → list of open WebSocket connections
+        # agent_did → list of open WebSocket connections (max MAX_CONNS_PER_DID)
         self._agent_connections: Dict[str, List[WebSocket]] = {}
 
         # collective_id (UUID) → set of agent_dids subscribed
@@ -77,23 +82,49 @@ class ConnectionManager:
         # websocket → heartbeat asyncio.Task
         self._heartbeat_tasks: Dict[WebSocket, asyncio.Task] = {}
 
+        # websocket → JWT expiry (UNIX timestamp float)
+        self._conn_token_exp: Dict[WebSocket, float] = {}
+
         logger.info("WebSocket ConnectionManager initialised")
 
     # ── Connect / Disconnect ───────────────────────────────────────────────────
 
     async def connect(
         self,
-        websocket:    WebSocket,
-        agent_did:    str,
+        websocket:      WebSocket,
+        agent_did:      str,
+        token_exp:      Optional[float] = None,
         collective_ids: Optional[List[UUID]] = None,
         channels:       Optional[List[str]]  = None,
     ) -> None:
-        """Accept a WebSocket and register all subscriptions."""
+        """
+        Accept a WebSocket and register all subscriptions.
+
+        Enforces MAX_CONNS_PER_DID: if the agent already has an open
+        connection, it is closed with code 4008 ("superseded") before the
+        new one is accepted.  token_exp (UNIX timestamp) is stored so the
+        heartbeat loop can close the socket when the JWT expires.
+        """
+        # ── Evict existing connections for this DID ────────────────────────
+        existing = list(self._agent_connections.get(agent_did, []))
+        for old_ws in existing:
+            logger.info("WS evicting previous connection for %s (max %d)",
+                        agent_did, self.MAX_CONNS_PER_DID)
+            try:
+                await old_ws.close(code=4008, reason="Superseded by new connection")
+            except Exception:
+                pass  # already closed — ignore
+            await self.disconnect(old_ws, agent_did)
+
         await websocket.accept()
 
         # Register agent → websocket
         self._agent_connections.setdefault(agent_did, []).append(websocket)
         self._ws_to_agent[websocket] = agent_did
+
+        # Store token expiry for mid-session validation
+        if token_exp is not None:
+            self._conn_token_exp[websocket] = token_exp
 
         # Subscribe to collectives
         for cid in (collective_ids or []):
@@ -103,7 +134,7 @@ class ConnectionManager:
         for ch in (channels or []):
             self._channel_subs.setdefault(ch, set()).add(agent_did)
 
-        # Kick off heartbeat
+        # Kick off heartbeat (also handles token-expiry enforcement)
         task = asyncio.create_task(self._heartbeat_loop(websocket, agent_did))
         self._heartbeat_tasks[websocket] = task
 
@@ -155,6 +186,7 @@ class ConnectionManager:
                     del self._channel_subs[ch]
 
         self._ws_to_agent.pop(websocket, None)
+        self._conn_token_exp.pop(websocket, None)
         logger.info("WS disconnected: %s  (agents online: %d)",
                     agent_did, len(self._agent_connections))
 
@@ -230,10 +262,33 @@ class ConnectionManager:
         await websocket.send_json(message)
 
     async def _heartbeat_loop(self, websocket: WebSocket, agent_did: str) -> None:
-        """Ping client every 30 s; disconnect on failure."""
+        """
+        Ping client every 30 s; disconnect on failure.
+
+        Also checks token expiry on every tick.  If the JWT has expired the
+        socket is closed with code 4001 ("token expired") before the next
+        heartbeat would fire.
+        """
         try:
             while True:
                 await asyncio.sleep(30)
+
+                # ── Token-expiry guard ─────────────────────────────────────
+                exp = self._conn_token_exp.get(websocket)
+                if exp is not None and time.time() > exp:
+                    logger.info(
+                        "WS token expired for %s — closing with 4001", agent_did
+                    )
+                    try:
+                        await websocket.close(
+                            code=4001, reason="Token expired"
+                        )
+                    except Exception:
+                        pass
+                    await self.disconnect(websocket, agent_did)
+                    break
+
+                # ── Heartbeat ping ─────────────────────────────────────────
                 try:
                     await websocket.send_json({
                         "type": MessageType.HEARTBEAT,

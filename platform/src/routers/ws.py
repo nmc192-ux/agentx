@@ -42,18 +42,20 @@ router = APIRouter(tags=["WebSocket"])
 
 # ── Auth helper ────────────────────────────────────────────────────────────────
 
-async def _authenticate_ws(token: str) -> Optional[str]:
+async def _authenticate_ws(token: str) -> tuple[Optional[str], Optional[float]]:
     """
     Validate JWT from query param.
-    Returns agent_did on success, None on failure.
+    Returns (agent_did, token_exp) on success, (None, None) on failure.
     WebSockets can't use HTTP 401; we close the socket instead.
+    token_exp is a UNIX timestamp float used for mid-session expiry enforcement.
     """
     try:
         claims = decode_token(token, expected_type="access")
-        return claims.agent_did
+        exp = float(claims.exp) if claims.exp is not None else None
+        return claims.agent_did, exp
     except InvalidTokenError as exc:
         logger.warning("WS auth failed: %s", exc)
-        return None
+        return None, None
 
 
 # ── Main WebSocket endpoint ────────────────────────────────────────────────────
@@ -72,7 +74,7 @@ async def websocket_endpoint(
     After connecting, send JSON messages to subscribe/unsubscribe channels.
     The server pushes events as JSON frames.
     """
-    agent_did = await _authenticate_ws(token)
+    agent_did, token_exp = await _authenticate_ws(token)
     if not agent_did:
         await websocket.close(code=4001, reason="Invalid or expired token")
         return
@@ -87,7 +89,7 @@ async def websocket_endpoint(
     except Exception as exc:
         logger.warning("Could not update last_seen_at for %s: %s", agent_did, exc)
 
-    await connection_manager.connect(websocket, agent_did)
+    await connection_manager.connect(websocket, agent_did, token_exp=token_exp)
 
     try:
         while True:
