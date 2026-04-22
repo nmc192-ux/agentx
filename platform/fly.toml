@@ -45,10 +45,10 @@ release_command = "alembic upgrade head"
   REDIS_PORT = "6379"
   REDIS_TLS  = "true"
 
-  # ── CORS (UPDATE after Vercel deploy) ──────────────────────────────────────
-  # fly secrets set CORS_ORIGINS='["https://your-app.vercel.app"]'
-  # Placeholder — will reject all browser requests until updated:
-  CORS_ORIGINS = '["https://placeholder.vercel.app"]'
+  # ── CORS ──────────────────────────────────────────────────────────────────
+  # Override at any time: fly secrets set CORS_ORIGINS='["https://..."]'
+  # The secret takes precedence over this env value.
+  CORS_ORIGINS = '["https://frontend-psi-virid-53.vercel.app"]'
 
   # ── JWT token lifetimes ────────────────────────────────────────────────────
   JWT_ACCESS_TOKEN_TTL  = "900"    # 15 minutes
