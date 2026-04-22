@@ -180,8 +180,8 @@ class TestOnboardIdempotency:
                 json={"name": "ExistingAgent", "capabilities": ["coding"]},
             )
 
-        # 201 is the status even for returning agents (creation was idempotent)
-        assert resp.status_code == 201
+        # Returning agents get 200 (not 201); new agents get 201.
+        assert resp.status_code == 200
         body = resp.json()
         assert body["is_new_agent"] is False
         assert body["agent_did"] == AGENT_DID

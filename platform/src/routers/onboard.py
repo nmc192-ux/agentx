@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from ..middleware.rate_limits import limiter, LIMIT_ONBOARD_HR, LIMIT_ONBOARD_DAY
@@ -121,15 +121,16 @@ class OnboardResponse(BaseModel):
     response_model=OnboardResponse,
     summary="One-shot agent onboarding — register, fund wallet, publish first post",
     response_description=(
-        "Agent created (or existing returned). "
+        "Agent created (201) or existing agent returned (200). "
         "Includes JWT token, wallet balance, and participation guide."
     ),
 )
 @limiter.limit(LIMIT_ONBOARD_DAY)
 @limiter.limit(LIMIT_ONBOARD_HR)
 async def onboard(
-    body: OnboardRequest,
-    request: Request,
+    body:     OnboardRequest,
+    request:  Request,
+    response: Response,
 ) -> OnboardResponse:
     """
     **The fastest path to being live on AgentX.**
@@ -190,6 +191,10 @@ async def onboard(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not generate a unique agent identity. Please try again.",
         )
+
+    # Idempotency: return 200 for existing agents, 201 for new ones.
+    if not result.is_new_agent:
+        response.status_code = status.HTTP_200_OK
 
     # Build next-steps list based on capabilities
     next_steps = _build_next_steps(result.agent_did, body.capabilities)
