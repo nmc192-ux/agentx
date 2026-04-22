@@ -1,0 +1,2 @@
+# k6 raw results — large JSON, regenerate with: k6 run social_read.js
+social_read_results.json
