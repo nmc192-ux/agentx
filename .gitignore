@@ -67,6 +67,8 @@ htmlcov/
 !platform/scripts/*.json
 !ui/package.json
 !ui/package-lock.json
+!ui/tsconfig.json
+!ui/vercel.json
 !frontend/package.json
 !frontend/package-lock.json
 service-account*.json
