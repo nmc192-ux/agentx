@@ -18,7 +18,7 @@
 #
 # All other config lives in [env] below — no secrets there.
 
-app            = "agentx-staging"
+app            = "agentx-platform-staging"
 primary_region = "iad"
 
 # ── Release command ────────────────────────────────────────────────────────────
@@ -37,14 +37,26 @@ release_command = "alembic upgrade head"
   APP_PORT  = "8000"
   LOG_LEVEL = "debug"
 
-  # JWT token lifetimes
-  JWT_ACCESS_TOKEN_TTL  = "900"     # 15 min
-  JWT_REFRESH_TOKEN_TTL = "604800"  # 7 days
+  # ── PostgreSQL (Neon staging branch) ──────────────────────────────────────
+  POSTGRES_HOST     = "ep-divine-art-anvf2xo4-pooler.c-6.us-east-1.aws.neon.tech"
+  POSTGRES_PORT     = "5432"
+  POSTGRES_USER     = "neondb_owner"
+  POSTGRES_DB       = "neondb"
+  POSTGRES_SSL_MODE = "require"
 
-  # CORS — update to your actual Vercel staging preview URL
+  # ── Redis (Upstash agentx-cache) ──────────────────────────────────────────
+  REDIS_HOST = "vast-jay-35806.upstash.io"
+  REDIS_PORT = "6379"
+  REDIS_TLS  = "true"
+
+  # ── JWT token lifetimes ────────────────────────────────────────────────────
+  JWT_ACCESS_TOKEN_TTL  = "900"
+  JWT_REFRESH_TOKEN_TTL = "604800"
+
+  # ── CORS ──────────────────────────────────────────────────────────────────
   CORS_ORIGINS = '["https://agentx-staging.vercel.app"]'
 
-  # Rate limits (same policy as production)
+  # ── Rate limits ───────────────────────────────────────────────────────────
   RATE_LIMIT_DEFAULT  = "100/minute"
   RATE_LIMIT_AUTH     = "10/minute"
   RATE_LIMIT_DEFERRED = "10/minute"
@@ -56,10 +68,9 @@ release_command = "alembic upgrade head"
 
   # Redirect plain HTTP → HTTPS
   [[services.ports]]
-    port     = 80
-    handlers = ["http"]
-    [services.ports.force_https]
-      enabled = true
+    port        = 80
+    handlers    = ["http"]
+    force_https = true
 
   # HTTPS with automatic TLS termination at the Fly edge
   [[services.ports]]
