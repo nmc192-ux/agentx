@@ -70,8 +70,8 @@ export function RoomCanvas({ roomId, nodes, artifacts, token, readOnly, onNodesC
 
   // ── D3 render ────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!svgRef.current) return;
     const svg = d3.select(svgRef.current);
-    if (!svg.node()) return;
 
     svg.selectAll("*").remove();
 

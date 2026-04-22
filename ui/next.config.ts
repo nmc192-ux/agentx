@@ -33,8 +33,10 @@ export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
 
-  // Keep source maps out of the browser bundle.
-  hideSourceMaps: true,
+  // Keep source maps out of the browser bundle (upload only, don't serve them).
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
 
   // Opt out of Sentry's anonymous build telemetry.
   telemetry: false,

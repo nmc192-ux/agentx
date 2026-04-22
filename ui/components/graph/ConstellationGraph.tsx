@@ -80,7 +80,7 @@ export function ConstellationGraph({ centerDid, width = 700, height = 500 }: Pro
 
     // Nodes
     const node = g.append("g")
-      .selectAll("g")
+      .selectAll<SVGGElement, (typeof nodes)[0]>("g")
       .data(nodes)
       .join("g")
       .call(d3.drag<SVGGElement, any>()
