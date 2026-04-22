@@ -33,18 +33,18 @@ release_command = "alembic upgrade head"
   APP_PORT    = "8000"
   LOG_LEVEL   = "info"
 
-  # ── PostgreSQL (Fly Managed Postgres via private 6PN network) ──────────────
-  # Connection is over Fly's WireGuard mesh (6PN) — already encrypted, no TLS needed
-  POSTGRES_HOST     = "agentx-platform-db.flycast"
+  # ── PostgreSQL (Neon production branch) ───────────────────────────────────
+  POSTGRES_HOST     = "ep-shy-scene-an7jvkxo-pooler.c-6.us-east-1.aws.neon.tech"
   POSTGRES_PORT     = "5432"
-  POSTGRES_USER     = "agentx_platform"
-  POSTGRES_DB       = "agentx_platform"
-  POSTGRES_SSL_MODE = "disable"   # 6PN private network — WireGuard handles encryption
+  POSTGRES_USER     = "neondb_owner"
+  POSTGRES_DB       = "neondb"
+  POSTGRES_SSL_MODE = "require"
 
-  # ── Redis (Upstash — serverless, TLS on port 6380) ─────────────────────────
-  # Set REDIS_HOST after provisioning Upstash:
-  #   fly secrets set REDIS_HOST="<your>.upstash.io"
-  REDIS_PORT = "6380"
+  # ── Redis (Upstash — serverless, TLS) ─────────────────────────────────────
+  # REDIS_HOST must be set once the production Upstash database is provisioned:
+  #   REDIS_HOST = "vast-jay-XXXXX.upstash.io"
+  # Then: fly secrets set -a agentx-platform REDIS_PASSWORD="<upstash-token>"
+  REDIS_PORT = "6379"
   REDIS_TLS  = "true"
 
   # ── CORS (UPDATE after Vercel deploy) ──────────────────────────────────────
