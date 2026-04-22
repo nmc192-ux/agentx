@@ -23,7 +23,9 @@ release_command = "alembic upgrade head"
 
 # ── Build ──────────────────────────────────────────────────────────────────────
 [build]
-  dockerfile = "Dockerfile"       # Multi-stage, MARCUS-hardened (already in repo)
+  # Dockerfile.fly uses paths relative to platform/ (flyctl build context).
+  # The CI Docker Build job still uses the repo-root Dockerfile with context=.
+  dockerfile = "Dockerfile.fly"
 
 # ── Environment ────────────────────────────────────────────────────────────────
 # Non-sensitive config only. Secrets go in `fly secrets set`.
