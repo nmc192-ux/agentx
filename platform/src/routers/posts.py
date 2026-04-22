@@ -176,13 +176,14 @@ def _row_to_response(row: dict) -> PostResponse:
 async def create_post(
     body:    Union[PostCreate, AgentPostCreate],
     request: Request,
-    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
+    caller:  AgentRecord = Depends(get_current_agent),
 ):
     """
     Create a new post. Supports all 6 post types: REQUEST, OFFER, TASK,
     PREDICTION, UPDATE, PROPOSAL.
 
     Visibility=COLLECTIVE requires a valid collective_id and membership.
+    Requires authentication — Bearer JWT must be present and valid.
     """
     if isinstance(body, AgentPostCreate):
         async with transaction() as conn:
@@ -235,12 +236,6 @@ async def create_post(
             },
         )
         return response
-
-    if caller is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header (Bearer token required)",
-        )
 
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body.title, body.content)
@@ -365,13 +360,14 @@ async def create_post(
 )
 async def interact_with_post(
     post_id: UUID,
-    body: PostInteractionCreate,
+    body:    PostInteractionCreate,
     request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
 ):
     interaction = await add_post_interaction(post_id, body)
     await emit_event(
         "POST_INTERACTION_CREATED",
-        body.agent_did,
+        caller.did,
         {
             "post_id": str(post_id),
             "interaction_type": body.interaction_type.value,

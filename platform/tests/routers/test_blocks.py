@@ -252,20 +252,25 @@ class TestMessageBlocked:
     @pytest.mark.asyncio
     async def test_send_message_blocked_by_receiver_returns_403(self, client):
         """If NOVA has blocked ATLAS, ATLAS cannot message NOVA."""
-        with (
-            patch("src.routers.messages.transaction") as mock_tx,
-            patch("src.routers.messages.blocks_service.has_blocked",
-                  new_callable=AsyncMock, return_value=True),
-        ):
-            conn = AsyncMock()
-            conn.fetchrow = AsyncMock(side_effect=[
-                {"agent_id": uuid4()},   # sender exists
-                {"agent_id": uuid4()},   # receiver exists
-            ])
-            mock_tx.return_value.__aenter__ = AsyncMock(return_value=conn)
-            mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
+        caller = _make_caller(ATLAS)
+        _override_auth(caller)
+        try:
+            with (
+                patch("src.routers.messages.transaction") as mock_tx,
+                patch("src.routers.messages.blocks_service.has_blocked",
+                      new_callable=AsyncMock, return_value=True),
+            ):
+                conn = AsyncMock()
+                conn.fetchrow = AsyncMock(side_effect=[
+                    {"agent_id": uuid4()},   # sender exists
+                    {"agent_id": uuid4()},   # receiver exists
+                ])
+                mock_tx.return_value.__aenter__ = AsyncMock(return_value=conn)
+                mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            resp = await client.post("/messages/send", json=self._body())
+                resp = await client.post("/messages/send", json=self._body())
+        finally:
+            _clear_overrides()
 
         assert resp.status_code == 403
 
@@ -274,31 +279,36 @@ class TestMessageBlocked:
         """Normal message (no block) returns 201."""
         msg_id = uuid4()
         now = datetime.now(timezone.utc)
-        with (
-            patch("src.routers.messages.transaction") as mock_tx,
-            patch("src.routers.messages.blocks_service.has_blocked",
-                  new_callable=AsyncMock, return_value=False),
-            patch("src.routers.messages.emit_event", new_callable=AsyncMock),
-            patch("src.routers.messages.record_event", new_callable=AsyncMock),
-            patch("src.routers.messages.cache_delete", new_callable=AsyncMock),
-        ):
-            conn = AsyncMock()
-            conn.fetchrow = AsyncMock(side_effect=[
-                {"agent_id": uuid4()},
-                {"agent_id": uuid4()},
-                {
-                    "message_id":         msg_id,
-                    "sender_agent_did":   ATLAS,
-                    "receiver_agent_did": NOVA,
-                    "message":            "Hello there!",
-                    "metadata":           json.dumps({}),
-                    "created_at":         now,
-                },
-            ])
-            mock_tx.return_value.__aenter__ = AsyncMock(return_value=conn)
-            mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
+        caller = _make_caller(ATLAS)
+        _override_auth(caller)
+        try:
+            with (
+                patch("src.routers.messages.transaction") as mock_tx,
+                patch("src.routers.messages.blocks_service.has_blocked",
+                      new_callable=AsyncMock, return_value=False),
+                patch("src.routers.messages.emit_event", new_callable=AsyncMock),
+                patch("src.routers.messages.record_event", new_callable=AsyncMock),
+                patch("src.routers.messages.cache_delete", new_callable=AsyncMock),
+            ):
+                conn = AsyncMock()
+                conn.fetchrow = AsyncMock(side_effect=[
+                    {"agent_id": uuid4()},
+                    {"agent_id": uuid4()},
+                    {
+                        "message_id":         msg_id,
+                        "sender_agent_did":   ATLAS,
+                        "receiver_agent_did": NOVA,
+                        "message":            "Hello there!",
+                        "metadata":           json.dumps({}),
+                        "created_at":         now,
+                    },
+                ])
+                mock_tx.return_value.__aenter__ = AsyncMock(return_value=conn)
+                mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            resp = await client.post("/messages/send", json=self._body())
+                resp = await client.post("/messages/send", json=self._body())
+        finally:
+            _clear_overrides()
 
         assert resp.status_code == 201
 

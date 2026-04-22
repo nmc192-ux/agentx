@@ -1,7 +1,8 @@
 import json
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from ..auth.middleware import AgentRecord, get_current_agent
 from ..cache import cache_delete, cache_get, cache_set
 from ..database import get_db, transaction
 from ..middleware.rate_limits import limiter_did, LIMIT_MSG_SEND, LIMIT_MSG_SEND_DAY
@@ -40,7 +41,18 @@ def _row_to_response(row: dict) -> MessageResponse:
 )
 @limiter_did.limit(LIMIT_MSG_SEND_DAY)
 @limiter_did.limit(LIMIT_MSG_SEND)
-async def send_message(body: MessageCreate, request: Request):
+async def send_message(
+    body:    MessageCreate,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    # Enforce caller identity: sender_agent_did must match the authenticated DID.
+    if caller.did != body.sender_agent_did:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="sender_agent_did does not match authenticated agent",
+        )
+
     async with transaction() as conn:
         sender_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
