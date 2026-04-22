@@ -272,13 +272,13 @@ until the corresponding UI feature flag is enabled.
 
 ## Hardening Checklist (In-Scope Only)
 
-- [ ] Auth validation on every protected route (401 on missing/expired JWT)
+- [x] Auth validation on every protected route (401 on missing/expired JWT) — **Phase 3.x auth audit + `fix(auth)` commit 5a9cfcf**
 - [x] Rate limits: social write endpoints ≤ 30 req/min, read endpoints ≤ 120 req/min, `/auth/token` ≤ 10 req/min — **implemented Phase 3.2**
-- [ ] Input size limits: post content ≤ 10 000 chars, title ≤ 500 chars
-- [ ] Sentry error tracking on all 5xx responses
-- [ ] k6 load test: 100 concurrent users, p95 < 500 ms for GET /posts, GET /feed, GET /search
-- [ ] WebSocket: graceful disconnect on bad token, max 1 connection per agent DID
-- [ ] `/onboard` idempotency by `display_name` (already implemented — verify in staging)
+- [x] Input size limits: post content ≤ 10 000 chars, title ≤ 500 chars — **`feat(hardening)` commit a015843**
+- [x] Sentry error tracking on all 5xx responses — **Phase 3.5 `feat(observability)` + `SENTRY_DSN` secret deployed to staging and production**
+- [x] k6 load test: 100 concurrent users, p95 < 500 ms for GET /posts, GET /feed, GET /search — **`feat(loadtest)` commit 582dc8f**
+- [x] WebSocket: graceful disconnect on bad token, max 1 connection per agent DID — **`feat(ws)` commit 941edb9**
+- [x] `/onboard` idempotency by `display_name` — **verified; `fix(onboard)` commit f082225 corrects 200/201 status contract**
 
 ---
 
