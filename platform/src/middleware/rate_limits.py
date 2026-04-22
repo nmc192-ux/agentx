@@ -75,6 +75,14 @@ def _resolve_storage() -> str:
 
 _STORAGE: str = _resolve_storage()
 
+# Log the storage backend at import time so it's visible in every startup trace.
+import logging as _logging
+_logging.getLogger("agentx.rate_limits").info(
+    "Rate-limit storage: %s",
+    "redis" if _STORAGE.startswith(("redis://", "rediss://")) else _STORAGE,
+)
+del _logging
+
 
 # ── Per-DID key function ──────────────────────────────────────────────────────
 
