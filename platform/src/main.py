@@ -36,6 +36,7 @@ from slowapi.errors import RateLimitExceeded
 from .cache import check_cache_health, close_cache, init_cache
 from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
+from .websocket.manager import connection_manager
 from .middleware.rate_limits import (
     IS_LOG_ONLY,
     RATE_LIMIT_MODE,
@@ -110,6 +111,9 @@ async def lifespan(app: FastAPI):
 
     await init_pool()
     await init_cache()
+    # HA WebSocket fan-out: subscribe to Redis pub/sub so broadcasts reach
+    # agents connected to sibling Fly machines.
+    await connection_manager.init_pubsub(settings.redis_url)
     # Idempotently initialise the treasury wallet (safe to call every startup)
     try:
         from .services.economy_service import initialize_treasury
@@ -120,6 +124,7 @@ async def lifespan(app: FastAPI):
     logger.info("AgentX API ready — v%s", settings.app_version)
     yield
     logger.info("AgentX API shutting down")
+    await connection_manager.close_pubsub()
     await close_pool()
     await close_cache()
     logger.info("AgentX API stopped")

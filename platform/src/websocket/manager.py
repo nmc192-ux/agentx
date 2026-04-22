@@ -11,10 +11,31 @@ Features:
   - Graceful disconnect when the JWT expires mid-session (code 4001)
   - Thread-safe broadcast helpers
 
+HA / Redis pub/sub fan-out:
+  On startup, call ``await connection_manager.init_pubsub(redis_url)``.
+  Each Fly.io machine subscribes to the ``agentx:ws:*`` Redis pattern.
+  All broadcast_* methods deliver locally *and* publish to Redis so that
+  agents connected to sibling machines receive every event.
+
+  Channel layout:
+    agentx:ws:global          — broadcast_global
+    agentx:ws:ch:{name}       — broadcast_to_channel("feed", …)
+    agentx:ws:col:{uuid}      — broadcast_to_collective(uuid, …)
+    agentx:ws:did:{agent_did} — broadcast_to_agent(did, …)
+
+  Deduplication: each publish envelope carries ``_src = socket.gethostname()``.
+  The subscriber on the publishing machine skips messages from itself so
+  agents on that machine are *not* double-delivered.
+
+  Fallback: when ``redis_url`` starts with ``memory://`` (dev / test) the
+  pub/sub layer is silently skipped and delivery is local-only.
+
 SOURCE: workspace/shared/websocket_layer.md — DARIA Sprint 5
 """
 import asyncio
+import json
 import logging
+import socket
 import time
 from datetime import datetime, timezone
 from enum import Enum
@@ -24,6 +45,16 @@ from uuid import UUID
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
+
+# ── Machine identity (unique per Fly.io VM) ────────────────────────────────────
+_MACHINE_ID: str = socket.gethostname()
+
+# ── Redis pub/sub channel names ────────────────────────────────────────────────
+_PUB_GLOBAL      = "agentx:ws:global"
+_PUB_CHANNEL_PFX = "agentx:ws:ch:"      # + channel name
+_PUB_COLL_PFX    = "agentx:ws:col:"     # + str(collective UUID)
+_PUB_AGENT_PFX   = "agentx:ws:did:"     # + agent DID
+_PUB_PATTERN     = "agentx:ws:*"
 
 
 # ── Message types ──────────────────────────────────────────────────────────────
@@ -61,6 +92,7 @@ class ConnectionManager:
       - Collective subscriptions (broadcast to all collective members online)
       - Named-channel subscriptions (e.g. "feed", "governance", "alerts")
       - Automatic heartbeat + cleanup on dead connections
+      - Redis pub/sub fan-out for HA (2+ Fly machines)
     """
 
     #: Maximum simultaneous connections per agent DID.
@@ -85,7 +117,139 @@ class ConnectionManager:
         # websocket → JWT expiry (UNIX timestamp float)
         self._conn_token_exp: Dict[WebSocket, float] = {}
 
-        logger.info("WebSocket ConnectionManager initialised")
+        # Redis connection used for PUBLISH (HA fan-out); None = local-only
+        self._redis_pub: Optional[Any] = None  # redis.asyncio.Redis
+
+        # Background task running the pub/sub listener loop
+        self._pubsub_task: Optional[asyncio.Task] = None
+
+        logger.info("WebSocket ConnectionManager initialised (machine=%s)", _MACHINE_ID)
+
+    # ── Pub/Sub lifecycle ──────────────────────────────────────────────────────
+
+    async def init_pubsub(self, redis_url: str) -> None:
+        """
+        Start the Redis pub/sub fan-out layer.
+
+        Creates two Redis connections:
+          1. ``_redis_pub`` — used by broadcast methods to PUBLISH
+          2. A private subscriber connection running ``_pubsub_listener``
+
+        Safe no-op when ``redis_url`` is ``memory://`` (dev / CI).
+        """
+        if redis_url.startswith("memory://"):
+            logger.info("WS pub/sub: memory:// backend — local-only mode")
+            return
+
+        from redis.asyncio import Redis as AIORedis  # noqa: PLC0415
+
+        try:
+            # Publisher connection (shared pool)
+            self._redis_pub = AIORedis.from_url(redis_url, decode_responses=True)
+            await self._redis_pub.ping()
+
+            # Dedicated subscriber connection
+            sub_redis = AIORedis.from_url(redis_url, decode_responses=True)
+            pubsub = sub_redis.pubsub()
+            await pubsub.psubscribe(_PUB_PATTERN)
+
+            self._pubsub_task = asyncio.create_task(
+                self._pubsub_listener(pubsub, sub_redis),
+                name="ws-pubsub-listener",
+            )
+            # Mask the password portion of the URL in logs
+            safe_url = redis_url.split("@")[-1] if "@" in redis_url else redis_url
+            logger.info(
+                "WS pub/sub: subscribed to %s on %s (machine=%s)",
+                _PUB_PATTERN, safe_url, _MACHINE_ID,
+            )
+        except Exception as exc:
+            logger.warning(
+                "WS pub/sub: init failed — falling back to local-only delivery: %s", exc
+            )
+            self._redis_pub = None
+
+    async def close_pubsub(self) -> None:
+        """Stop the pub/sub subscriber loop and close Redis connections."""
+        if self._pubsub_task is not None:
+            self._pubsub_task.cancel()
+            try:
+                await self._pubsub_task
+            except asyncio.CancelledError:
+                pass
+            self._pubsub_task = None
+
+        if self._redis_pub is not None:
+            try:
+                await self._redis_pub.aclose()
+            except Exception as exc:
+                logger.warning("WS pub/sub Redis close failed: %s", exc)
+            self._redis_pub = None
+
+        logger.info("WS pub/sub: closed")
+
+    async def _pubsub_listener(self, pubsub: Any, sub_redis: Any) -> None:
+        """
+        Background loop: receive Redis pub/sub messages and fan-out locally.
+
+        Each message envelope is ``{"_src": machine_id, "payload": {...}}``.
+        Messages from this machine are skipped (already delivered locally).
+        """
+        try:
+            async for message in pubsub.listen():
+                if message.get("type") != "pmessage":
+                    continue
+                channel: str = message["channel"]
+                raw: str     = message["data"]
+                try:
+                    envelope = json.loads(raw)
+                    if envelope.get("_src") == _MACHINE_ID:
+                        continue  # we published this — skip to avoid double-delivery
+                    payload = envelope.get("payload", envelope)
+                except Exception:
+                    continue
+                try:
+                    await self._dispatch_pubsub(channel, payload)
+                except Exception as exc:
+                    logger.warning("WS pub/sub dispatch error on %s: %s", channel, exc)
+        except asyncio.CancelledError:
+            logger.info("WS pub/sub listener cancelled (machine=%s)", _MACHINE_ID)
+            raise
+        except Exception as exc:
+            logger.error("WS pub/sub listener crashed: %s", exc)
+        finally:
+            try:
+                await pubsub.punsubscribe(_PUB_PATTERN)
+            except Exception:
+                pass
+            try:
+                await sub_redis.aclose()
+            except Exception:
+                pass
+
+    async def _dispatch_pubsub(self, channel: str, payload: Dict[str, Any]) -> None:
+        """Route an inbound Redis pub/sub message to local WebSocket connections."""
+        if channel == _PUB_GLOBAL:
+            for did in list(self._agent_connections):
+                await self._local_broadcast_to_agent(did, payload)
+
+        elif channel.startswith(_PUB_CHANNEL_PFX):
+            ch_name = channel[len(_PUB_CHANNEL_PFX):]
+            for did in list(self._channel_subs.get(ch_name, set())):
+                await self._local_broadcast_to_agent(did, payload)
+
+        elif channel.startswith(_PUB_COLL_PFX):
+            try:
+                col_id = UUID(channel[len(_PUB_COLL_PFX):])
+            except ValueError:
+                logger.warning("WS pub/sub: invalid collective UUID in channel %s", channel)
+                return
+            for did in list(self._collective_subs.get(col_id, set())):
+                await self._local_broadcast_to_agent(did, payload)
+
+        elif channel.startswith(_PUB_AGENT_PFX):
+            did = channel[len(_PUB_AGENT_PFX):]
+            await self._local_broadcast_to_agent(did, payload)
 
     # ── Connect / Disconnect ───────────────────────────────────────────────────
 
@@ -190,10 +354,15 @@ class ConnectionManager:
         logger.info("WS disconnected: %s  (agents online: %d)",
                     agent_did, len(self._agent_connections))
 
-    # ── Broadcast helpers ──────────────────────────────────────────────────────
+    # ── Local delivery (this machine only) ────────────────────────────────────
 
-    async def broadcast_to_agent(self, agent_did: str, message: Dict[str, Any]) -> int:
-        """Send to all open connections of one agent. Returns connections reached."""
+    async def _local_broadcast_to_agent(
+        self, agent_did: str, message: Dict[str, Any]
+    ) -> int:
+        """
+        Deliver ``message`` to all WebSocket connections for ``agent_did``
+        **on this machine only**.  Returns the number of sockets reached.
+        """
         sent = 0
         for ws in list(self._agent_connections.get(agent_did, [])):
             try:
@@ -204,30 +373,86 @@ class ConnectionManager:
                 await self.disconnect(ws, agent_did)
         return sent
 
+    # ── Broadcast helpers (local + Redis fan-out) ──────────────────────────────
+
+    async def broadcast_to_agent(self, agent_did: str, message: Dict[str, Any]) -> int:
+        """
+        Send to all open connections of one agent across **all machines**.
+
+        Delivers locally first, then publishes to Redis so sibling machines
+        can reach agents connected there.
+        """
+        sent = await self._local_broadcast_to_agent(agent_did, message)
+        if self._redis_pub is not None:
+            try:
+                envelope = {"_src": _MACHINE_ID, "payload": message}
+                await self._redis_pub.publish(
+                    f"{_PUB_AGENT_PFX}{agent_did}",
+                    json.dumps(envelope, default=str),
+                )
+            except Exception as exc:
+                logger.warning("Redis publish (agent:%s) failed: %s", agent_did, exc)
+        return sent
+
     async def broadcast_to_collective(
         self, collective_id: UUID, message: Dict[str, Any]
     ) -> int:
         """Send to all online agents subscribed to a collective."""
+        # Local delivery
         sent = 0
         for did in list(self._collective_subs.get(collective_id, set())):
-            if await self.broadcast_to_agent(did, message):
+            if await self._local_broadcast_to_agent(did, message):
                 sent += 1
+        # Remote fan-out
+        if self._redis_pub is not None:
+            try:
+                envelope = {"_src": _MACHINE_ID, "payload": message}
+                await self._redis_pub.publish(
+                    f"{_PUB_COLL_PFX}{collective_id}",
+                    json.dumps(envelope, default=str),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Redis publish (collective:%s) failed: %s", collective_id, exc
+                )
         return sent
 
     async def broadcast_to_channel(self, channel: str, message: Dict[str, Any]) -> int:
         """Send to all agents subscribed to a named channel."""
+        # Local delivery
         sent = 0
         for did in list(self._channel_subs.get(channel, set())):
-            if await self.broadcast_to_agent(did, message):
+            if await self._local_broadcast_to_agent(did, message):
                 sent += 1
+        # Remote fan-out
+        if self._redis_pub is not None:
+            try:
+                envelope = {"_src": _MACHINE_ID, "payload": message}
+                await self._redis_pub.publish(
+                    f"{_PUB_CHANNEL_PFX}{channel}",
+                    json.dumps(envelope, default=str),
+                )
+            except Exception as exc:
+                logger.warning("Redis publish (channel:%s) failed: %s", channel, exc)
         return sent
 
     async def broadcast_global(self, message: Dict[str, Any]) -> int:
-        """Send to every connected agent."""
+        """Send to every connected agent across all machines."""
+        # Local delivery
         sent = 0
         for did in list(self._agent_connections.keys()):
-            if await self.broadcast_to_agent(did, message):
+            if await self._local_broadcast_to_agent(did, message):
                 sent += 1
+        # Remote fan-out
+        if self._redis_pub is not None:
+            try:
+                envelope = {"_src": _MACHINE_ID, "payload": message}
+                await self._redis_pub.publish(
+                    _PUB_GLOBAL,
+                    json.dumps(envelope, default=str),
+                )
+            except Exception as exc:
+                logger.warning("Redis publish (global) failed: %s", exc)
         return sent
 
     # ── Subscription management ────────────────────────────────────────────────
@@ -253,6 +478,9 @@ class ConnectionManager:
             "collective_channels":    len(self._collective_subs),
             "named_channels":         len(self._channel_subs),
             "active_heartbeats":      len(self._heartbeat_tasks),
+            "pubsub_active":          self._pubsub_task is not None
+                                      and not self._pubsub_task.done(),
+            "machine_id":             _MACHINE_ID,
         }
 
     # ── Internal helpers ───────────────────────────────────────────────────────

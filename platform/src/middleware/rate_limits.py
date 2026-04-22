@@ -75,11 +75,18 @@ def _resolve_storage() -> str:
 
 _STORAGE: str = _resolve_storage()
 
+# ── Key prefix (namespace isolation) ──────────────────────────────────────────
+# Set REDIS_KEY_PREFIX=prd: in fly.toml and REDIS_KEY_PREFIX=stg: in
+# fly.staging.toml so staging and production rate-limit counters never bleed
+# into each other even though they share the same Upstash Free-Tier instance.
+_KEY_PREFIX: str = os.getenv("REDIS_KEY_PREFIX", "")
+
 # Log the storage backend at import time so it's visible in every startup trace.
 import logging as _logging
 _logging.getLogger("agentx.rate_limits").info(
-    "Rate-limit storage: %s",
+    "Rate-limit storage: %s  key_prefix=%r",
     "redis" if _STORAGE.startswith(("redis://", "rediss://")) else _STORAGE,
+    _KEY_PREFIX,
 )
 del _logging
 
@@ -153,11 +160,13 @@ def _trust_limit(base: int, window: str = "minute") -> Callable:
 limiter = Limiter(
     key_func=get_remote_address,
     storage_uri=_STORAGE,
+    key_prefix=_KEY_PREFIX,
 )
 
 limiter_did = Limiter(
     key_func=get_agent_did,
     storage_uri=_STORAGE,
+    key_prefix=_KEY_PREFIX,
 )
 
 

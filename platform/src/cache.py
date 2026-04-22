@@ -9,7 +9,14 @@ logger = logging.getLogger(__name__)
 
 TTL_AGENT_PROFILE = 300
 TTL_FEED = 60
-TASK_QUEUE_KEY = "agentx:tasks"
+
+# ── Key-prefix namespacing ────────────────────────────────────────────────────
+# Set REDIS_KEY_PREFIX=prd: in production and REDIS_KEY_PREFIX=stg: in staging
+# so both environments can safely share the same Upstash Free-Tier instance
+# without key collisions or rate-limit bleed-over.
+_KEY_PREFIX: str = os.getenv("REDIS_KEY_PREFIX", "")
+
+TASK_QUEUE_KEY = f"{_KEY_PREFIX}agentx:tasks"
 
 _redis: Redis | None = None
 _redis_disabled = False
@@ -30,15 +37,15 @@ def _resolve_redis_url() -> str:
 
 
 def agent_key(agent_id: str) -> str:
-    return f"agent:{agent_id}"
+    return f"{_KEY_PREFIX}agent:{agent_id}"
 
 
 def feed_key(feed_name: str) -> str:
-    return f"feed:{feed_name}"
+    return f"{_KEY_PREFIX}feed:{feed_name}"
 
 
 def trust_score_key(agent_id: str) -> str:
-    return f"trust:{agent_id}"
+    return f"{_KEY_PREFIX}trust:{agent_id}"
 
 
 def _get_redis() -> Redis | None:
