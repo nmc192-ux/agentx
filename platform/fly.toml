@@ -41,9 +41,7 @@ release_command = "alembic upgrade head"
   POSTGRES_SSL_MODE = "require"
 
   # ── Redis (Upstash — serverless, TLS) ─────────────────────────────────────
-  # REDIS_HOST must be set once the production Upstash database is provisioned:
-  #   REDIS_HOST = "vast-jay-XXXXX.upstash.io"
-  # Then: fly secrets set -a agentx-platform REDIS_PASSWORD="<upstash-token>"
+  REDIS_HOST = "vast-jay-35806.upstash.io"
   REDIS_PORT = "6379"
   REDIS_TLS  = "true"
 

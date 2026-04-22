@@ -56,8 +56,24 @@ RATE_LIMIT_MODE: str = os.getenv("RATE_LIMIT_MODE", "enforce").lower()
 IS_LOG_ONLY: bool = RATE_LIMIT_MODE == "log"
 
 # ── Redis storage URI ─────────────────────────────────────────────────────────
-# Read directly from env to avoid loading all platform secrets at import time.
-_STORAGE: str = os.getenv("REDIS_URL", "memory://")
+# Prefer explicit REDIS_URL; fall back to settings-derived URL (reads individual
+# REDIS_HOST / REDIS_PORT / REDIS_TLS / REDIS_PASSWORD vars via pydantic-settings).
+# Falls back to in-process memory:// only when no Redis config is present at all.
+def _resolve_storage() -> str:
+    explicit = os.getenv("REDIS_URL")
+    if explicit:
+        return explicit
+    try:
+        from src.config import get_settings  # noqa: PLC0415
+        url = get_settings().redis_url
+        # Only use it if it looks like a real Redis URL (not the docker-compose default)
+        if url and not url.startswith("redis://:@redis:"):
+            return url
+    except Exception:
+        pass
+    return "memory://"
+
+_STORAGE: str = _resolve_storage()
 
 
 # ── Per-DID key function ──────────────────────────────────────────────────────

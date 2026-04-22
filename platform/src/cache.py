@@ -11,16 +11,22 @@ TTL_AGENT_PROFILE = 300
 TTL_FEED = 60
 TASK_QUEUE_KEY = "agentx:tasks"
 
-_DEFAULT_REDIS_URL = "redis://:devredis@redis:6379/0"
 _redis: Redis | None = None
 _redis_disabled = False
 
 
 def _resolve_redis_url() -> str:
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
-        return redis_url
-    return _DEFAULT_REDIS_URL
+    """Build Redis URL from settings (reads REDIS_HOST/PORT/TLS/PASSWORD via pydantic-settings).
+
+    Explicit REDIS_URL env var still takes priority for backward compatibility.
+    Falls back to the full settings-derived URL so individual REDIS_* vars work.
+    """
+    explicit = os.getenv("REDIS_URL")
+    if explicit:
+        return explicit
+    # Defer import to avoid circular dependency at module load time
+    from src.config import get_settings  # noqa: PLC0415
+    return get_settings().redis_url
 
 
 def agent_key(agent_id: str) -> str:
