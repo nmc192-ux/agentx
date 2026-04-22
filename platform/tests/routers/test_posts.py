@@ -412,3 +412,144 @@ class TestAssignTask:
 
         app.dependency_overrides = {}
         assert response.status_code == 422
+
+
+# ── Input size-limit tests ────────────────────────────────────────────────────
+
+class TestPostInputLimits:
+    """Validate Pydantic field-level size limits: 422 on oversized payloads."""
+
+    @pytest.fixture
+    async def client(self):
+        from httpx import ASGITransport
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as c:
+            yield c
+
+    @pytest.fixture
+    def caller(self):
+        return _make_caller()
+
+    # ── title limit (max 500 chars) ────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_title_too_long_returns_422(self, client, caller):
+        from src.auth.middleware import get_current_agent_optional
+        app.dependency_overrides[get_current_agent_optional] = lambda: caller
+        try:
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "x" * 501,
+                "content":   "Valid content",
+            })
+        finally:
+            app.dependency_overrides = {}
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_title_at_limit_is_accepted(self, client, caller):
+        """Exactly 500 chars should pass field validation (DB mock for the rest)."""
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = _post_row(post_type="UPDATE")
+            mock_conn.fetchval.return_value = uuid.uuid4()
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "x" * 500,
+                "content":   "Valid content",
+                "metadata":  {"progress_percent": 0},
+            })
+        app.dependency_overrides = {}
+        assert response.status_code == 201
+
+    # ── content limit (max 10 000 chars) ──────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_content_too_long_returns_422(self, client, caller):
+        from src.auth.middleware import get_current_agent_optional
+        app.dependency_overrides[get_current_agent_optional] = lambda: caller
+        try:
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "Fine title",
+                "content":   "x" * 10_001,
+            })
+        finally:
+            app.dependency_overrides = {}
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_content_at_limit_is_accepted(self, client, caller):
+        from src.auth.middleware import get_current_agent_optional
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = _post_row(post_type="UPDATE")
+            mock_conn.fetchval.return_value = uuid.uuid4()
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
+            app.dependency_overrides[get_current_agent_optional] = lambda: caller
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "Fine title",
+                "content":   "x" * 10_000,
+                "metadata":  {"progress_percent": 100},
+            })
+        app.dependency_overrides = {}
+        assert response.status_code == 201
+
+    # ── tags limit (max 10 tags, each ≤ 50 chars) ─────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_too_many_tags_returns_422(self, client, caller):
+        from src.auth.middleware import get_current_agent_optional
+        app.dependency_overrides[get_current_agent_optional] = lambda: caller
+        try:
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "Fine title",
+                "content":   "Fine content",
+                "tags":      [f"tag{i}" for i in range(11)],
+            })
+        finally:
+            app.dependency_overrides = {}
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_tag_too_long_returns_422(self, client, caller):
+        from src.auth.middleware import get_current_agent_optional
+        app.dependency_overrides[get_current_agent_optional] = lambda: caller
+        try:
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "Fine title",
+                "content":   "Fine content",
+                "tags":      ["x" * 51],
+            })
+        finally:
+            app.dependency_overrides = {}
+        assert response.status_code == 422
+
+    # ── HTTP body-size limit (> 64 KB returns 413) ────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_oversized_body_returns_413(self, client):
+        """A request body larger than 64 KiB should be rejected at middleware level."""
+        response = await client.post(
+            "/posts",
+            content=b"x" * 65_537,
+            headers={"Content-Type": "application/json",
+                     "Content-Length": str(65_537)},
+        )
+        assert response.status_code == 413
