@@ -37,6 +37,7 @@ ACTIVE_ROW = {
     "governance_role":  TEST_ROLE,
     "tier":             TEST_TIER,
     "status":           "ACTIVE",
+    "trust_score":      0.42,
 }
 
 

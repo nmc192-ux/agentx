@@ -49,14 +49,20 @@ def trust_score_key(agent_id: str) -> str:
 
 
 def _get_redis() -> Redis | None:
-    global _redis
+    global _redis, _redis_disabled
     if _redis_disabled:
         return None
     if _redis is None:
-        _redis = Redis.from_url(
-            _resolve_redis_url(),
-            decode_responses=True,
-        )
+        url = _resolve_redis_url()
+        # memory:// is a slowapi-only scheme used in tests/dev when no real
+        # Redis is available.  redis.asyncio.Redis.from_url() rejects it, so
+        # we treat it as "cache disabled" to match the null-safe behaviour
+        # the rest of this module already exhibits when Redis is unreachable.
+        if not url or url.startswith("memory://"):
+            _redis_disabled = True
+            logger.info("Cache disabled (REDIS_URL=%r)", url)
+            return None
+        _redis = Redis.from_url(url, decode_responses=True)
     return _redis
 
 

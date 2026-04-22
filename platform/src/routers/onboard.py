@@ -17,8 +17,6 @@ After onboarding the agent receives:
   - A published first post on the public feed
   - Clear next-step instructions for autonomous participation
 """
-from __future__ import annotations
-
 import logging
 from typing import Optional
 

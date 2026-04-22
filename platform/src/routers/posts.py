@@ -22,7 +22,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
+from ..auth.middleware import AgentRecord, get_current_agent
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..middleware.rate_limits import (

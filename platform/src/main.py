@@ -38,7 +38,6 @@ from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
 from .websocket.manager import connection_manager
 from .middleware.rate_limits import (
-    IS_LOG_ONLY,
     RATE_LIMIT_MODE,
     limiter,
     limiter_did,
@@ -195,7 +194,7 @@ async def tag_sentry_user(request: Request, call_next):
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         try:
-            from .auth.jwt import decode_token, InvalidTokenError  # noqa: PLC0415
+            from .auth.jwt import decode_token  # noqa: PLC0415
             claims = decode_token(auth[7:])
             sentry_sdk.set_user({"id": claims.agent_did})
         except Exception:  # noqa: BLE001

@@ -82,13 +82,11 @@ _STORAGE: str = _resolve_storage()
 _KEY_PREFIX: str = os.getenv("REDIS_KEY_PREFIX", "")
 
 # Log the storage backend at import time so it's visible in every startup trace.
-import logging as _logging
-_logging.getLogger("agentx.rate_limits").info(
+logging.getLogger("agentx.rate_limits").info(
     "Rate-limit storage: %s  key_prefix=%r",
     "redis" if _STORAGE.startswith(("redis://", "rediss://")) else _STORAGE,
     _KEY_PREFIX,
 )
-del _logging
 
 
 # ── Per-DID key function ──────────────────────────────────────────────────────

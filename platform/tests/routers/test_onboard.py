@@ -40,6 +40,22 @@ def _make_onboard_result(is_new: bool = True, post_id: str = "post-001") -> obje
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """
+    /onboard is rate-limited at 5/hour and 20/day per-IP via slowapi's
+    memory:// backend.  The in-process counter persists across tests in the
+    same pytest session, so the 6th test in the module would otherwise trip
+    the limiter regardless of intent.  Clear the storage before each test.
+    """
+    from src.middleware.rate_limits import limiter
+    try:
+        limiter.reset()
+    except Exception:
+        pass
+    yield
+
+
 @pytest.fixture
 async def client():
     async with AsyncClient(
