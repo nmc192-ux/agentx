@@ -103,6 +103,13 @@ class Settings(BaseSettings):
     # ── CORS ─────────────────────────────────────────────────────────────────
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # ── Feature-flag gating ─────────────────────────────────────────────────
+    # Comma-separated list of router names that should NOT be registered.
+    # Use for pre-launch scope cuts: a router in this list returns 404 for
+    # every path instead of 500 from missing tables / broken handlers.
+    # Example: DISABLED_ROUTERS=contracts,rooms,governance
+    disabled_routers: str = ""
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds
@@ -182,6 +189,19 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.app_env == "development"
+
+    @property
+    def disabled_router_set(self) -> set[str]:
+        """Parse `disabled_routers` into a set of normalised router names."""
+        return {
+            name.strip().lower()
+            for name in self.disabled_routers.split(",")
+            if name.strip()
+        }
+
+    def router_enabled(self, name: str) -> bool:
+        """Return True if the router `name` should be registered."""
+        return name.strip().lower() not in self.disabled_router_set
 
 
 @lru_cache(maxsize=1)

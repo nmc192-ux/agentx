@@ -337,6 +337,18 @@ async def health_ready(request: Request):
     )
 
 
+# ── Router gating helper ──────────────────────────────────────────────────────
+# Routers listed in settings.disabled_routers (comma-separated, via env
+# DISABLED_ROUTERS) are skipped. Every path they own returns 404 instead of
+# 500 — a clean failure mode for pre-launch scope cuts.
+def _include_if_enabled(router, name: str) -> None:
+    """Register `router` unless `name` is in DISABLED_ROUTERS."""
+    if settings.router_enabled(name):
+        app.include_router(router)
+    else:
+        logger.info("Router '%s' DISABLED via DISABLED_ROUTERS env — skipping registration", name)
+
+
 # ── Phase 16: Agent Discovery (registered BEFORE agents_router so that
 #              /agents/discover, /agents/top, /agents/search take priority
 #              over the /{agent_id} parameterised route) ────────────────────────
@@ -362,7 +374,7 @@ app.include_router(activity_stream_router)
 # registered after.
 from .routers.memory import router as memory_router  # noqa: E402
 
-app.include_router(memory_router)
+_include_if_enabled(memory_router, "memory")
 
 # ── Sprint 2: Agent Identity & Trust ──────────────────────────────────────────
 from .routers.agents import router as agents_router  # noqa: E402
@@ -379,7 +391,7 @@ app.include_router(posts_router)
 app.include_router(personalized_feed_router)
 app.include_router(caps_router)
 app.include_router(agent_caps_router)   # /agents/{did}/capabilities sub-routes
-app.include_router(collectives_router)
+_include_if_enabled(collectives_router, "collectives")
 
 # ── Sprint 5: WebSocket real-time layer ───────────────────────────────────────
 from .routers.ws import router as ws_router  # noqa: E402
@@ -420,58 +432,58 @@ app.include_router(workflows_router)
 # ── Phase 8: Token Economy ─────────────────────────────────────────────────────
 from .routers.tokens import wallets_router, stakes_router  # noqa: E402
 
-app.include_router(wallets_router)
-app.include_router(stakes_router)
+_include_if_enabled(wallets_router, "wallets")
+_include_if_enabled(stakes_router, "stakes")
 
 # ── Phase 8.5: Economic Engine ─────────────────────────────────────────────────
 from .routers.economy import economy_router  # noqa: E402
 
-app.include_router(economy_router)
+_include_if_enabled(economy_router, "economy")
 
 # ── Phase 9: Governance Layer ──────────────────────────────────────────────────
 from .routers.governance import governance_router  # noqa: E402
 
-app.include_router(governance_router)
+_include_if_enabled(governance_router, "governance")
 
 # ── Phase 10: Contract Engine ──────────────────────────────────────────────────
 from .routers.contracts import contracts_router  # noqa: E402
 
-app.include_router(contracts_router)
+_include_if_enabled(contracts_router, "contracts")
 
 # ── Phase 11: Agent Bus ────────────────────────────────────────────────────────
 from .routers.agentbus import agentbus_router  # noqa: E402
 
-app.include_router(agentbus_router)
+_include_if_enabled(agentbus_router, "agentbus")
 
 # ── Phase 12: Result Verification Engine ───────────────────────────────────────
 from .routers.verifications import verifications_router  # noqa: E402
 
-app.include_router(verifications_router)
+_include_if_enabled(verifications_router, "verifications")
 
 # ── Phase 15: Autonomous Agent Markets ─────────────────────────────────────────
 from .routers.markets import markets_router  # noqa: E402
 
-app.include_router(markets_router)
+_include_if_enabled(markets_router, "markets")
 
 # ── Phase 17: Federated AgentX Nodes ───────────────────────────────────────────
 from .routers.node_router import nodes_router  # noqa: E402
 
-app.include_router(nodes_router)
+_include_if_enabled(nodes_router, "nodes")
 
 # ── Phase 19: Autonomous Agent Economies ───────────────────────────────────────
 from .routers.agent_economy import agent_economy_router  # noqa: E402
 
-app.include_router(agent_economy_router)
+_include_if_enabled(agent_economy_router, "agent_economy")
 
 # ── Phase 22: Agent Communities ────────────────────────────────────────────────
 from .routers.communities import communities_router  # noqa: E402
 
-app.include_router(communities_router)
+_include_if_enabled(communities_router, "communities")
 
 # ── Phase 23: Community Conversations ─────────────────────────────────────────
 from .routers.conversations import conversations_router  # noqa: E402
 
-app.include_router(conversations_router)
+_include_if_enabled(conversations_router, "conversations")
 
 # ── Phase 1 Enhanced Social Layer ─────────────────────────────────────────────
 from .routers.channels import channels_router  # noqa: E402
@@ -481,12 +493,12 @@ from .routers.consensus import consensus_router  # noqa: E402
 from .routers.graph import graph_router  # noqa: E402
 from .routers.pulse import pulse_router  # noqa: E402
 
-app.include_router(channels_router)
-app.include_router(search_router)
-app.include_router(rooms_router)
-app.include_router(consensus_router)
-app.include_router(graph_router)
-app.include_router(pulse_router)
+_include_if_enabled(channels_router, "channels")
+app.include_router(search_router)   # search stays (pure read, no DB writes)
+_include_if_enabled(rooms_router, "rooms")
+_include_if_enabled(consensus_router, "consensus")
+app.include_router(graph_router)    # graph stays (reputation read)
+app.include_router(pulse_router)    # pulse stays (activity feed read)
 
 # Phase 33: memory_router is registered earlier (before agents_router) to avoid
 # being shadowed by GET /agents/{agent_did:path}.
