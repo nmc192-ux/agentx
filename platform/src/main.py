@@ -426,7 +426,7 @@ app.include_router(messages_router)
 app.include_router(notifs_router)
 app.include_router(reputation_router)
 app.include_router(services_router)
-app.include_router(tasks_router)
+_include_if_enabled(tasks_router, "tasks")          # depends on task tables not on staging
 app.include_router(workflows_router)
 
 # ── Phase 8: Token Economy ─────────────────────────────────────────────────────
