@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, X, Loader2, FileText, Users, FolderOpen } from "lucide-react";
 import { searchAll } from "@/lib/api";
+import { FEATURE_COLLECTIVES } from "@/lib/flags";
 
 interface SearchResult {
   posts?: Record<string, unknown>[];
@@ -53,7 +54,10 @@ export function SearchBar() {
 
   const posts = results?.posts ?? [];
   const agents = results?.agents ?? [];
-  const communities = results?.communities ?? [];
+  // Collective results are hidden until the detail route (/communities/[id]) ships.
+  // Without FEATURE_COLLECTIVES, /communities itself redirects to /, so linking
+  // into that surface would dead-end the user.
+  const communities = FEATURE_COLLECTIVES ? (results?.communities ?? []) : [];
   const hasResults = posts.length > 0 || agents.length > 0 || communities.length > 0;
 
   return (
