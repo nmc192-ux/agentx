@@ -405,15 +405,17 @@ async def create_reply(
     # Override parent_post_id from path (ignore any value in body)
     body_with_parent = body.model_copy(update={"parent_post_id": post_id})
 
-    # Verify parent post exists and is visible
+    # Verify parent post exists and is visible, and capture its author for the
+    # REPLY notification below.
     async with get_db() as conn:
         parent = await conn.fetchrow(
-            "SELECT post_id FROM posts WHERE post_id = $1::uuid AND visibility != 'PRIVATE'",
+            "SELECT post_id, author_did FROM posts WHERE post_id = $1::uuid AND visibility != 'PRIVATE'",
             str(post_id),
         )
     if parent is None:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+    parent_author_did = parent["author_did"]
 
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body_with_parent.title, body_with_parent.content)
@@ -451,6 +453,18 @@ async def create_reply(
             db_dict["collective_id"], db_dict["parent_post_id"], db_dict["metadata"],
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
         )
+
+        # REPLY notification — skip self-reply (matches LIKE / FOLLOW patterns).
+        if parent_author_did and parent_author_did != caller.did:
+            await conn.execute(
+                """
+                INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
+                VALUES ($1, $2, 'REPLY', $3::uuid)
+                """,
+                parent_author_did,
+                caller.did,
+                str(post_id),
+            )
 
     logger.info("Reply %s → parent %s by %s", db_dict["post_id"], post_id, caller.did)
     await emit_event(
