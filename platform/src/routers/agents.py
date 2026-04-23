@@ -415,7 +415,7 @@ async def search_agents(
 
 
 @router.get(
-    "/{agent_id}/trust",
+    "/{agent_id:uuid}/trust",
     response_model=AgentTrustScoreResponse,
     summary="Get agent trust score by UUID",
 )
@@ -433,7 +433,7 @@ async def get_agent_trust_endpoint(
 
 
 @router.get(
-    "/{agent_id}/reputation-history",
+    "/{agent_id:uuid}/reputation-history",
     response_model=list[ReputationHistoryEntry],
     summary="Get agent reputation history by UUID",
 )
@@ -451,7 +451,7 @@ async def get_agent_reputation_history_endpoint(
 
 
 @router.get(
-    "/{agent_id}",
+    "/{agent_id:uuid}",
     response_model=RegistryAgentResponse,
     summary="Get agent registry profile by UUID",
 )
@@ -490,11 +490,12 @@ async def get_registered_agent(
 
 
 # ── GET /agents/{agent_did}/trust ─────────────────────────────────────────────
-# IMPORTANT: Specific sub-routes MUST be declared before /{agent_did:path}
-# because {agent_did:path} is a greedy converter that absorbs all path segments.
+# Uses the custom `:did` converter (see path_converters.py) so:
+#   1. UUID-typed `/{agent_id}` routes above won't catch DID strings (falls through)
+#   2. The converter refuses `/` so `/followers`, `/trust` etc. stay routable
 
 @router.get(
-    "/{agent_did:path}/trust",
+    "/{agent_did:did}/trust",
     response_model=AgentWithTrust,
     summary="Get agent trust score breakdown",
 )
@@ -547,7 +548,7 @@ async def get_trust_score_endpoint(
 # ── GET /agents/{agent_did}/recommended-tasks ─────────────────────────────────
 
 @router.get(
-    "/{agent_did:path}/recommended-tasks",
+    "/{agent_did:did}/recommended-tasks",
     response_model=list[dict],
     summary="Get personalised task recommendations (Sprint 4)",
 )
@@ -598,7 +599,7 @@ async def get_recommended_tasks(
 # ── GET /agents/{agent_did}/feed ──────────────────────────────────────────────
 
 @router.get(
-    "/{agent_did:path}/feed",
+    "/{agent_did:did}/feed",
     response_model=list[dict],
     summary="Get personalised post feed for an agent (Sprint 7)",
 )
@@ -762,7 +763,7 @@ async def get_agent_feed(
 # ── GET /agents/{agent_did}/activity (Phase 21) ───────────────────────────────
 
 @router.get(
-    "/{agent_did:path}/activity",
+    "/{agent_did:did}/activity",
     response_model=list[dict],
     summary="Agent activity timeline",
 )
@@ -793,7 +794,7 @@ async def agent_activity_timeline(
 
 
 @router.get(
-    "/{agent_did:path}/achievements",
+    "/{agent_did:did}/achievements",
     response_model=list[dict],
     summary="Agent achievement posts",
 )
@@ -865,7 +866,7 @@ async def agent_achievements(
 # ── GET /agents/{agent_did} ───────────────────────────────────────────────────
 
 @router.get(
-    "/{agent_did:path}",
+    "/{agent_did:did}",
     response_model=AgentResponse,
     summary="Get agent profile",
 )
@@ -918,7 +919,7 @@ async def get_agent(
 # ── PATCH /agents/{agent_did} ─────────────────────────────────────────────────
 
 @router.patch(
-    "/{agent_did:path}",
+    "/{agent_did:did}",
     response_model=AgentResponse,
     summary="Update agent profile",
 )

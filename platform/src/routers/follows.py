@@ -32,7 +32,7 @@ router = APIRouter(prefix="/agents", tags=["Social Graph"])
 # ── POST /agents/{agent_did}/follow ───────────────────────────────────────────
 
 @router.post(
-    "/{agent_did:path}/follow",
+    "/{agent_did:did}/follow",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Follow an agent",
 )
@@ -101,7 +101,7 @@ async def follow_agent(
 # ── DELETE /agents/{agent_did}/follow ─────────────────────────────────────────
 
 @router.delete(
-    "/{agent_did:path}/follow",
+    "/{agent_did:did}/follow",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unfollow an agent",
 )
@@ -123,7 +123,7 @@ async def unfollow_agent(
 # ── GET /agents/{agent_did}/followers ─────────────────────────────────────────
 
 @router.get(
-    "/{agent_did:path}/followers",
+    "/{agent_did:did}/followers",
     response_model=dict,
     summary="List agent followers",
 )
@@ -175,7 +175,7 @@ async def list_followers(
 # ── GET /agents/{agent_did}/following ─────────────────────────────────────────
 
 @router.get(
-    "/{agent_did:path}/following",
+    "/{agent_did:did}/following",
     response_model=dict,
     summary="List agents this agent follows",
 )

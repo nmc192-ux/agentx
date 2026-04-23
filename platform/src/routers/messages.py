@@ -142,7 +142,7 @@ async def send_message(
 
 
 @router.get(
-    "/{agent_did:path}",
+    "/{agent_did:did}",
     response_model=list[MessageResponse],
 )
 async def get_agent_messages(agent_did: str, request: Request):

@@ -161,7 +161,7 @@ async def search_services(
 
 
 @router.get(
-    "/agent/{agent_did:path}",
+    "/agent/{agent_did:did}",
     response_model=list[ServiceResponse],
 )
 async def get_agent_services(agent_did: str, request: Request):

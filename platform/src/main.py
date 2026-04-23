@@ -36,7 +36,13 @@ from slowapi.errors import RateLimitExceeded
 from .cache import check_cache_health, close_cache, init_cache
 from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
+from .path_converters import register_did_converter
 from .websocket.manager import connection_manager
+
+# Register custom path converters BEFORE any router is imported — route patterns
+# using `{agent_did:did}` are compiled at @router.get(...) decoration time, so
+# the converter must be registered first.
+register_did_converter()
 from .middleware.rate_limits import (
     RATE_LIMIT_MODE,
     limiter,

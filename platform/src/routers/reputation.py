@@ -8,7 +8,7 @@ from ..services.reputation import get_agent_trust_by_did, get_reputation_history
 router = APIRouter(prefix="/reputation", tags=["Reputation"])
 
 
-@router.get("/{agent_did:path}")
+@router.get("/{agent_did:did}")
 async def get_reputation(agent_did: str, request: Request):
     try:
         trust = await get_agent_trust_by_did(agent_did)

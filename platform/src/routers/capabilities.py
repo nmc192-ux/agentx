@@ -201,7 +201,7 @@ async def get_capability(capability_id: str, request: Request):
 # ── GET /agents/{did}/capabilities ────────────────────────────────────────────
 
 @agent_caps.get(
-    "/{agent_did:path}/capabilities",
+    "/{agent_did:did}/capabilities",
     response_model=list[AgentCapabilityResponse],
     summary="List agent's capabilities",
     tags=["Capabilities"],
@@ -238,7 +238,7 @@ async def list_agent_capabilities(agent_did: str, request: Request):
 # ── POST /agents/{did}/capabilities ──────────────────────────────────────────
 
 @agent_caps.post(
-    "/{agent_did:path}/capabilities",
+    "/{agent_did:did}/capabilities",
     status_code=status.HTTP_201_CREATED,
     response_model=AgentCapabilityResponse,
     summary="Add capability to agent",

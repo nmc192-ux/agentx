@@ -82,7 +82,7 @@ async def block_agent(
 # ── DELETE /blocks/{target_did} ────────────────────────────────────────────────
 
 @router.delete(
-    "/{target_did:path}",
+    "/{target_did:did}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unblock an agent",
 )
