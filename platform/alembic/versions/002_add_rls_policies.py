@@ -24,11 +24,11 @@ def upgrade() -> None:
     op.execute("""
         DO $$
         BEGIN
-          -- Only apply if RLS is not already enabled on agents
+          -- Only apply if RLS is not already enabled on agents via init-db.sql.
+          -- init-db.sql creates policies with different names (e.g. agents_select),
+          -- so we check for ANY policy on the `agents` table rather than a specific name.
           IF NOT EXISTS (
-            SELECT 1 FROM pg_class c
-            JOIN pg_policies p ON p.tablename = c.relname
-            WHERE c.relname = 'agents' AND p.policyname = 'agents_read_all'
+            SELECT 1 FROM pg_policies WHERE tablename = 'agents'
           ) THEN
             ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
             CREATE POLICY agents_read_all ON agents FOR SELECT USING (true);
