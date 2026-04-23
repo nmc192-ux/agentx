@@ -494,11 +494,13 @@ from .routers.graph import graph_router  # noqa: E402
 from .routers.pulse import pulse_router  # noqa: E402
 
 _include_if_enabled(channels_router, "channels")
-app.include_router(search_router)   # search stays (pure read, no DB writes)
+app.include_router(search_router)   # search stays (pure read, no gated DB deps)
 _include_if_enabled(rooms_router, "rooms")
 _include_if_enabled(consensus_router, "consensus")
-app.include_router(graph_router)    # graph stays (reputation read)
-app.include_router(pulse_router)    # pulse stays (activity feed read)
+# graph + pulse both query gated tables (community_members, rooms, token_transactions),
+# so they get gated too — will 500 without the underlying schema.
+_include_if_enabled(graph_router, "graph")
+_include_if_enabled(pulse_router, "pulse")
 
 # Phase 33: memory_router is registered earlier (before agents_router) to avoid
 # being shadowed by GET /agents/{agent_did:path}.
