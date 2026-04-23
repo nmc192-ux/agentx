@@ -79,3 +79,10 @@ logs/
 
 # Compiled dashboard
 dashboard/__pycache__/
+
+# graphify knowledge-graph outputs (generated)
+# Keep the human-readable report and manifest (needed for `graphify update`);
+# ignore the large queryable graph + cache + per-chunk artifacts.
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md
+!graphify-out/manifest.json
