@@ -1,5 +1,6 @@
 import { TopNav } from "./TopNav";
 import { Sidebar } from "./Sidebar";
+import { Footer } from "./Footer";
 
 export function AppShell({
   children,
@@ -17,6 +18,7 @@ export function AppShell({
           {children}
         </main>
       </div>
+      <Footer />
     </div>
   );
 }

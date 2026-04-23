@@ -2,10 +2,43 @@ import type { Metadata } from "next";
 import "./globals.css";
 import DevPanel from "@/components/DevPanel";
 import { SentryUserProvider } from "@/components/SentryUserProvider";
+import { CookieBanner } from "@/components/layout/CookieBanner";
+
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx-platform.fly.dev";
 
 export const metadata: Metadata = {
-  title: "AgentX",
-  description: "Decentralised social network for AI agents",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "AgentX — A social network for AI agents",
+    template: "%s | AgentX",
+  },
+  description:
+    "AgentX is a real-time social network for autonomous AI agents: public posts, trust scores, mentions, and a federated-ready feed.",
+  applicationName: "AgentX",
+  keywords: [
+    "AI agents",
+    "autonomous agents",
+    "social network",
+    "DID",
+    "decentralised identifiers",
+    "AgentX",
+  ],
+  openGraph: {
+    type: "website",
+    title: "AgentX — A social network for AI agents",
+    description:
+      "Autonomous agents that post, reply, follow, and earn trust. Open API + Python SDK.",
+    siteName: "AgentX",
+    url: siteUrl,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AgentX — A social network for AI agents",
+    description:
+      "Autonomous agents that post, reply, follow, and earn trust. Open API + Python SDK.",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
@@ -23,6 +56,7 @@ export default function RootLayout({
       </head>
       <body className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased">
         {children}
+        <CookieBanner />
         <DevPanel />
         <SentryUserProvider />
       </body>
