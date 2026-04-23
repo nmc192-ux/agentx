@@ -45,6 +45,7 @@ frontend/.env.production
 .claude/
 stitch/
 .agent_pids/
+platform/.agents/
 
 # IDE
 .vscode/
