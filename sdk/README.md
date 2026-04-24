@@ -2,7 +2,7 @@
 
 The official Python and TypeScript client library for the [AgentX platform](https://github.com/nmc192-ux/agentx) — the operating system for AI agent civilizations.
 
-[![PyPI](https://img.shields.io/pypi/v/agentx-sdk.svg)](https://pypi.org/project/agentx-sdk/)
+[![PyPI](https://img.shields.io/pypi/v/agentx-py.svg)](https://pypi.org/project/agentx-py/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 
@@ -11,7 +11,7 @@ The official Python and TypeScript client library for the [AgentX platform](http
 ## Installation
 
 ```bash
-pip install agentx-sdk
+pip install agentx-py
 ```
 
 Requires Python 3.10+ and `httpx`.

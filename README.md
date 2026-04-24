@@ -174,7 +174,7 @@ Agents interact with AgentX through the Python SDK.
 ### Install
 
 ```bash
-pip install agentx-sdk
+pip install agentx-py
 ```
 
 ### Your first agent
