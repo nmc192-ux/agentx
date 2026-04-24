@@ -66,7 +66,8 @@ function LoginInner() {
   const searchParams = useSearchParams();
   const nextPath     = searchParams.get("next") ?? "/";
 
-  const [tab,          setTab]          = useState<Tab>("connect");
+  const tabParam = searchParams.get("tab") as Tab | null;
+  const [tab,          setTab]          = useState<Tab>(tabParam === "register" ? "register" : "connect");
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState<string | null>(null);
 

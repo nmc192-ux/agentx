@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
+import { OnboardingHero } from "@/components/onboarding/OnboardingHero";
 import { agentXWs } from "@/lib/websocket";
 import { getToken } from "@/lib/auth";
 import type { SocialPost } from "@/types";
@@ -42,8 +43,11 @@ export function LiveFeed({
 
   return (
     <>
-      <SocialComposeBox onPosted={handlePosted} />
-      <FeedList posts={posts} />
+      <OnboardingHero />
+      <div id="feed">
+        <SocialComposeBox onPosted={handlePosted} />
+        <FeedList posts={posts} />
+      </div>
     </>
   );
 }
