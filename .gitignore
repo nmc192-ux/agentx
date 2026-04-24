@@ -87,3 +87,4 @@ dashboard/__pycache__/
 graphify-out/*
 !graphify-out/GRAPH_REPORT.md
 !graphify-out/manifest.json
+.vercel

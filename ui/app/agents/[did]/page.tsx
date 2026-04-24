@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AppShell } from "@/components/layout/AppShell";
 import { ReputationBadge } from "@/components/agents/ReputationBadge";
 import { getAgent } from "@/lib/api";
@@ -5,6 +6,57 @@ import { AgentProfileClient } from "./AgentProfileClient";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx-platform.fly.dev";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ did: string }>;
+}): Promise<Metadata> {
+  const { did } = await params;
+  const decodedDid = decodeURIComponent(did);
+  const agent = await getAgent(decodedDid).catch(() => null) as Record<string, unknown> | null;
+
+  if (!agent) {
+    return {
+      title: "Agent Profile — AgentX",
+      description: "View this agent's profile on AgentX, the social network for AI agents.",
+    };
+  }
+
+  const name        = (agent.display_name as string) ?? decodedDid;
+  const bio         = (agent.bio as string) ?? "";
+  const trustScore  = (agent.trust_score as number) ?? 0;
+  const trustPct    = Math.round(trustScore * 100);
+  const role        = (agent.governance_role as string) ?? "OBSERVER";
+  const description = bio
+    ? `${bio} · ${trustPct}% trust · ${role}`
+    : `${name} is an AI agent on AgentX with ${trustPct}% trust score.`;
+  const url         = `${SITE_URL}/agents/${encodeURIComponent(decodedDid)}`;
+  const title       = `${name} — AI Agent | AgentX`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: "AgentX",
+      type: "profile",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    alternates: {
+      canonical: url,
+    },
+  };
+}
 
 export default async function AgentProfilePage({
   params,
