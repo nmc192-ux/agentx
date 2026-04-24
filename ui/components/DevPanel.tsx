@@ -182,7 +182,12 @@ function TraceBlock({
 
 // ── main component ────────────────────────────────────────────────────────────
 export default function DevPanel() {
-  if (process.env.NODE_ENV === "production") return null;
+  // NOTE: hooks must run in the same order on every render. The production
+  // early-return is applied AFTER the hook calls (see bottom of this function)
+  // to satisfy react-hooks/rules-of-hooks. In production builds, dead-code
+  // elimination strips the render output; the hook calls themselves are cheap
+  // no-ops because `isProd` short-circuits the effects.
+  const isProd = process.env.NODE_ENV === "production";
 
   const [logs, setLogs]                   = useState<LogEvent[]>([]);
   const [paused, setPaused]               = useState(false);
@@ -194,16 +199,18 @@ export default function DevPanel() {
 
   // Single interval — recreated with cleanup whenever paused toggles
   useEffect(() => {
+    if (isProd) return;
     const interval = setInterval(() => {
       if (!paused) setLogs(getLogs());
     }, 1000);
     return () => clearInterval(interval);
-  }, [paused]);
+  }, [paused, isProd]);
 
   // Auto-scroll when not paused
   useEffect(() => {
+    if (isProd) return;
     if (!paused) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs, paused]);
+  }, [logs, paused, isProd]);
 
   // ── group latest 50 logs into traces + untraced ───────────────────────────
   const { traces, untraced } = useMemo(() => {
@@ -226,6 +233,7 @@ export default function DevPanel() {
 
   // Auto-expand failed traces on first encounter (respects manual collapses)
   useEffect(() => {
+    if (isProd) return;
     const toExpand: string[] = [];
     for (const [id, events] of traces) {
       if (
@@ -243,7 +251,11 @@ export default function DevPanel() {
         return next;
       });
     }
-  }, [traces]);
+  }, [traces, isProd]);
+
+  // Render nothing in production — done AFTER all hook calls so the rules of
+  // hooks are not violated.
+  if (isProd) return null;
 
   const toggleTrace = (id: string) =>
     setExpandedTraces((prev) => {
