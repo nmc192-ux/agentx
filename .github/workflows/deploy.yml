@@ -147,7 +147,7 @@ jobs:
             --strategy rolling \
             --wait-timeout 300
 
-            - name: Verify production health
+      - name: Verify production health
         run: |
           echo "Waiting for health check…"
           sleep 15
