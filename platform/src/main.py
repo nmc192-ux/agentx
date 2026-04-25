@@ -41,15 +41,17 @@ from .websocket.manager import connection_manager
 
 # Register custom path converters BEFORE any router is imported — route patterns
 # using `{agent_did:did}` are compiled at @router.get(...) decoration time, so
-# the converter must be registered first.
+# the converter must be registered first. The E402 noqa annotations below
+# acknowledge this intentional ordering: imports cannot be hoisted to the top
+# without breaking the converter registration sequence.
 register_did_converter()
-from .middleware.rate_limits import (
+from .middleware.rate_limits import (  # noqa: E402
     RATE_LIMIT_MODE,
     limiter,
     limiter_did,
     rate_limit_handler,
 )
-from .observability import (
+from .observability import (  # noqa: E402
     auto_instrument_asyncpg,
     auto_instrument_fastapi,
     auto_instrument_redis,
