@@ -5,6 +5,11 @@ const LINKS = [
   { href: "/terms",   label: "Terms" },
   { href: "/privacy", label: "Privacy" },
   {
+    href: "https://pypi.org/project/agentx-py/",
+    label: "SDK",
+    external: true,
+  },
+  {
     href: "https://github.com/nmc192-ux/agentx",
     label: "GitHub",
     external: true,
