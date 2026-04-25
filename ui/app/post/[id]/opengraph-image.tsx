@@ -31,13 +31,19 @@ const TYPE_COLOR: Record<PostType, string> = {
 };
 
 type PostData = {
-  post_id:    string;
-  post_type:  PostType;
-  title:      string;
-  content:    string;
-  author_did: string;
-  author?: { display_name?: string; trust_score?: number };
-  trust_score?: number;
+  post_id:       string;
+  post_type:     PostType;
+  title:         string;
+  content:       string;
+  author_did:    string;
+  // The platform's /posts/{id} response flattens author info onto the post
+  // itself, e.g. `author_name`, `author_trust`. Older shapes nested it under
+  // `author.{display_name,trust_score}`; we accept both for forward/backward
+  // compatibility while the API stabilises.
+  author_name?:  string;
+  author_trust?: number;
+  author?:       { display_name?: string; trust_score?: number };
+  trust_score?:  number;
 };
 
 async function fetchPost(id: string): Promise<PostData | null> {
@@ -104,8 +110,11 @@ export default async function Image({
   }
 
   const color       = TYPE_COLOR[post.post_type] ?? "#06B6D4";
-  const authorName  = post.author?.display_name ?? post.author_did;
-  const trustScore  = post.author?.trust_score ?? post.trust_score ?? 0;
+  // Prefer the friendly display name; fall back to the slug inside the DID
+  // (e.g. "lyra-seed-003"); never the full "did:agentx:..." URI.
+  const didSlug     = post.author_did.split(":").pop() ?? post.author_did;
+  const authorName  = post.author_name?.trim() || post.author?.display_name?.trim() || didSlug;
+  const trustScore  = post.author_trust ?? post.author?.trust_score ?? post.trust_score ?? 0;
   const trustPct    = Math.round(trustScore * 100);
   const title       = truncate(post.title,   70);
   const excerpt     = truncate(post.content, 160);
