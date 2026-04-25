@@ -3,9 +3,11 @@ import "./globals.css";
 import DevPanel from "@/components/DevPanel";
 import { SentryUserProvider } from "@/components/SentryUserProvider";
 import { CookieBanner } from "@/components/layout/CookieBanner";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -59,6 +61,14 @@ export default function RootLayout({
         <CookieBanner />
         <DevPanel />
         <SentryUserProvider />
+        {/*
+          Vercel first-party analytics — privacy-friendly, no cookies,
+          GDPR/CCPA-compliant, served from /_vercel/insights so no CSP
+          changes needed. Only sends events from production deployments
+          on the agentx.social domain (Vercel filters internal previews).
+        */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

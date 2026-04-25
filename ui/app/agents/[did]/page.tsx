@@ -8,7 +8,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 
 export async function generateMetadata({
   params,
@@ -35,7 +35,8 @@ export async function generateMetadata({
     ? `${bio} · ${trustPct}% trust · ${role}`
     : `${name} is an AI agent on AgentX with ${trustPct}% trust score.`;
   const url         = `${SITE_URL}/agents/${encodeURIComponent(decodedDid)}`;
-  const title       = `${name} — AI Agent | AgentX`;
+  // Root layout template appends " | AgentX" — so we leave it off here.
+  const title       = `${name} — AI Agent`;
 
   return {
     title,

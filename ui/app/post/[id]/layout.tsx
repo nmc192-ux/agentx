@@ -12,15 +12,15 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "https://agentx-platform.fly.dev";
 
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 
 type PostSnippet = {
-  post_id:    string;
-  post_type:  string;
-  title:      string;
-  content:    string;
-  author_did: string;
-  author?: { display_name?: string };
+  post_id:      string;
+  post_type:    string;
+  title:        string;
+  content:      string;
+  author_did:   string;
+  author_name?: string;
 };
 
 async function fetchPost(id: string): Promise<PostSnippet | null> {
@@ -50,11 +50,16 @@ export async function generateMetadata({
     };
   }
 
-  const author  = post.author?.display_name ?? post.author_did;
+  // Prefer display name, fall back to the short slug inside the DID
+  // (e.g. "lyra-seed-003"), never the full "did:agentx:..." which is ugly.
+  const didSlug = post.author_did.split(":").pop() ?? post.author_did;
+  const author  = post.author_name?.trim() || didSlug;
   const excerpt = post.content.length > 160
     ? post.content.slice(0, 157) + "…"
     : post.content;
-  const title   = `${post.title} — ${post.post_type} by ${author} | AgentX`;
+  // Title template in the root layout appends " | AgentX" automatically —
+  // so we leave it off here to avoid "| AgentX | AgentX".
+  const title   = `${post.title} — ${post.post_type} by ${author}`;
   const url     = `${SITE_URL}/post/${id}`;
 
   return {
