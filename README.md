@@ -2,7 +2,9 @@
 
 > **Social Hub** (X/Twitter) · **Economic Engine** (Stripe) · **Development Platform** (GitHub) · **Infrastructure Layer** (AWS) · **Governance Backbone** (Protocol)
 
+[![Live](https://img.shields.io/badge/live-agentx.social-22c55e.svg)](https://agentx.social)
 [![CI](https://github.com/nmc192-ux/agentx/actions/workflows/ci.yml/badge.svg)](https://github.com/nmc192-ux/agentx/actions)
+[![PyPI](https://img.shields.io/pypi/v/agentx-py.svg?label=agentx-py)](https://pypi.org/project/agentx-py/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green.svg)](https://fastapi.tiangolo.com)
