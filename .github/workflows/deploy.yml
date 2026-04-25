@@ -2,6 +2,14 @@ name: Deploy
 
 # Trigger only when the CI workflow succeeds on main.
 # This guarantees the deploy never runs on a broken build.
+#
+# UI deploys are NOT handled by this workflow.
+# The Next.js frontend in ui/ is deployed by Vercel's native Git integration:
+#   • Pushes to main          → automatic production deploy → agentx.social
+#   • Pull requests           → automatic preview deploy
+# Configure environment variables (NEXT_PUBLIC_*) in the Vercel project
+# settings, not here. CI on GitHub still gates that deploy via Vercel's
+# "wait for CI to succeed" Git Integration option (Project → Settings → Git).
 on:
   workflow_run:
     workflows: [CI]
@@ -68,51 +76,6 @@ jobs:
           [ "$STATUS" = "ok" ] || exit 1
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # UI staging deploy — Vercel preview branch tied to staging
-  # ─────────────────────────────────────────────────────────────────────────────
-  deploy-ui-staging:
-    name: Deploy UI to Vercel (staging)
-    runs-on: ubuntu-latest
-    needs: check-ci
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-
-      - name: Deploy UI to Vercel (preview)
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          NEXT_PUBLIC_API_URL: https://agentx-platform-staging.fly.dev
-          NEXT_PUBLIC_FEATURE_ECONOMY: "true"
-          NEXT_PUBLIC_FEATURE_GOVERNANCE: "true"
-          NEXT_PUBLIC_FEATURE_COLLECTIVES: "true"
-          NEXT_PUBLIC_FEATURE_SENTINEL: "true"
-          NEXT_PUBLIC_FEATURE_CONSTELLATION: "true"
-        working-directory: ui
-        run: |
-          vercel deploy \
-            --token "$VERCEL_TOKEN" \
-            --yes \
-            --env NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
-            --env NEXT_PUBLIC_FEATURE_ECONOMY="$NEXT_PUBLIC_FEATURE_ECONOMY" \
-            --env NEXT_PUBLIC_FEATURE_GOVERNANCE="$NEXT_PUBLIC_FEATURE_GOVERNANCE" \
-            --env NEXT_PUBLIC_FEATURE_COLLECTIVES="$NEXT_PUBLIC_FEATURE_COLLECTIVES" \
-            --env NEXT_PUBLIC_FEATURE_SENTINEL="$NEXT_PUBLIC_FEATURE_SENTINEL" \
-            --env NEXT_PUBLIC_FEATURE_CONSTELLATION="$NEXT_PUBLIC_FEATURE_CONSTELLATION"
-
-  # ─────────────────────────────────────────────────────────────────────────────
   # Production backend deploy — requires manual approval via GitHub Environment
   # Platform: Fly.io   App: agentx-platform
   # Migrations: handled by fly.toml release_command = "alembic upgrade head"
@@ -162,60 +125,3 @@ jobs:
         run: |
           echo "::error::Production deploy FAILED for commit ${{ github.event.workflow_run.head_sha }}"
           echo "::error::Check Fly.io dashboard: https://fly.io/apps/agentx-platform"
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Production UI deploy — Vercel promotion to production domain
-  # Runs only after backend production deploy succeeds
-  # ─────────────────────────────────────────────────────────────────────────────
-  deploy-ui-production:
-    name: Deploy UI to Vercel (production)
-    runs-on: ubuntu-latest
-    needs: [deploy-production]
-
-    environment:
-      name: production
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-
-      - name: Deploy UI to Vercel (production)
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          NEXT_PUBLIC_API_URL: https://agentx-platform.fly.dev
-          # Social core always on; flip these to "true" when each feature is ready
-          NEXT_PUBLIC_FEATURE_ECONOMY: "false"
-          NEXT_PUBLIC_FEATURE_GOVERNANCE: "false"
-          NEXT_PUBLIC_FEATURE_COLLECTIVES: "false"
-          NEXT_PUBLIC_FEATURE_SENTINEL: "false"
-          NEXT_PUBLIC_FEATURE_CONSTELLATION: "false"
-        working-directory: ui
-        run: |
-          vercel deploy \
-            --prod \
-            --token "$VERCEL_TOKEN" \
-            --yes \
-            --env NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
-            --env NEXT_PUBLIC_FEATURE_ECONOMY="$NEXT_PUBLIC_FEATURE_ECONOMY" \
-            --env NEXT_PUBLIC_FEATURE_GOVERNANCE="$NEXT_PUBLIC_FEATURE_GOVERNANCE" \
-            --env NEXT_PUBLIC_FEATURE_COLLECTIVES="$NEXT_PUBLIC_FEATURE_COLLECTIVES" \
-            --env NEXT_PUBLIC_FEATURE_SENTINEL="$NEXT_PUBLIC_FEATURE_SENTINEL" \
-            --env NEXT_PUBLIC_FEATURE_CONSTELLATION="$NEXT_PUBLIC_FEATURE_CONSTELLATION"
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "::error::UI production deploy FAILED for commit ${{ github.event.workflow_run.head_sha }}"
-          echo "::error::Check Vercel dashboard: https://vercel.com/dashboard"
