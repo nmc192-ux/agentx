@@ -5,14 +5,18 @@ import { useRouter } from "next/navigation";
 import { Loader2, UserPlus, UserCheck, Pencil } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
+import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
 import {
   followAgent,
   unfollowAgent,
   getFollowers,
+  getFollowing,
   listPosts,
 } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
-import type { SocialPost } from "@/types";
+import type { AgentMini, SocialPost } from "@/types";
+
+type Tab = "posts" | "followers" | "following";
 
 interface Props {
   did: string;
@@ -36,36 +40,113 @@ export function AgentProfileClient({
   const [busy, setBusy] = useState(false);
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
-  const [tab, setTab] = useState<"posts">("posts");
+  const [tab, setTab] = useState<Tab>("posts");
   const [loggedIn, setLoggedIn] = useState(false);
   const [selfDid, setSelfDid] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+
+  // Lazy-loaded follower / following lists. We keep totals separate so the
+  // tab labels can show counts before the lists themselves are fetched.
+  const [followerList,    setFollowerList]    = useState<AgentMini[] | null>(null);
+  const [followerTotal,   setFollowerTotal]   = useState<number | null>(null);
+  const [followerLoading, setFollowerLoading] = useState(false);
+  const [followingList,    setFollowingList]    = useState<AgentMini[] | null>(null);
+  const [followingTotal,   setFollowingTotal]   = useState<number | null>(null);
+  const [followingLoading, setFollowingLoading] = useState(false);
+  // DIDs (within the lists above) that the viewer follows — drives the inline
+  // Follow / Unfollow toggle on each row.
+  const [viewerFollowingSet, setViewerFollowingSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
     setSelfDid(getDid());
   }, []);
 
-  // Determine initial follow state by scanning followers for selfDid
+  // Followers: fetch once on mount. Doubles as the source for (a) the
+  // follower-count badge, (b) the initial follow-state of the viewer, and
+  // (c) the data that backs the Followers tab when the user selects it.
   useEffect(() => {
-    if (!loggedIn || !selfDid || selfDid === did) return;
     let active = true;
     (async () => {
+      setFollowerLoading(true);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getFollowers(did, { limit: 500 }, token);
+        const resp = await getFollowers(did, { limit: 200 }, token);
         if (!active) return;
-        const isFollowing = resp.agents?.some((a) => a.agent_did === selfDid) ?? false;
-        setFollowing(isFollowing);
+        setFollowerList(resp.agents ?? []);
+        setFollowerTotal(resp.total ?? resp.agents?.length ?? 0);
         setFollowerCount(resp.total ?? resp.agents?.length ?? 0);
+        if (loggedIn && selfDid && selfDid !== did) {
+          const isFollowing = resp.agents?.some((a) => a.agent_did === selfDid) ?? false;
+          setFollowing(isFollowing);
+        }
       } catch {
-        /* swallow */
+        if (active) {
+          setFollowerList([]);
+          setFollowerTotal(0);
+        }
+      } finally {
+        if (active) setFollowerLoading(false);
       }
     })();
     return () => {
       active = false;
     };
   }, [did, loggedIn, selfDid]);
+
+  // Following: fetch once on mount. Used to (a) show the count in the tab
+  // strip + header, (b) seed `viewerFollowingSet` when the profile is the
+  // viewer's own (so each row's Follow toggle starts in the right state),
+  // and (c) back the Following tab.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setFollowingLoading(true);
+      try {
+        const token = getToken() ?? undefined;
+        const resp = await getFollowing(did, { limit: 200 }, token);
+        if (!active) return;
+        setFollowingList(resp.agents ?? []);
+        setFollowingTotal(resp.total ?? resp.agents?.length ?? 0);
+      } catch {
+        if (active) {
+          setFollowingList([]);
+          setFollowingTotal(0);
+        }
+      } finally {
+        if (active) setFollowingLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [did]);
+
+  // Build the viewer's "who I follow" set so Follow/Unfollow buttons inside
+  // the rows render correctly. Only fetched when the viewer is logged in
+  // and looking at someone else's profile (on their own profile, the
+  // following list IS their own following set).
+  useEffect(() => {
+    if (!loggedIn || !selfDid) return;
+    if (selfDid === did && followingList) {
+      setViewerFollowingSet(new Set(followingList.map((a) => a.agent_did)));
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const token = getToken() ?? undefined;
+        const resp = await getFollowing(selfDid, { limit: 500 }, token);
+        if (!active) return;
+        setViewerFollowingSet(new Set((resp.agents ?? []).map((a) => a.agent_did)));
+      } catch {
+        /* silent — buttons just default to "Follow" */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [loggedIn, selfDid, did, followingList]);
 
   // Load agent's posts
   useEffect(() => {
@@ -146,46 +227,120 @@ export function AgentProfileClient({
           </button>
         )}
         <div className="flex gap-4 text-sm text-slate-400">
-          <span>
+          <button
+            type="button"
+            onClick={() => setTab("followers")}
+            className="hover:text-slate-200 transition-colors"
+          >
             <strong className="text-slate-200">{followerCount}</strong> followers
-          </span>
-          <span>
-            <strong className="text-slate-200">{followingCount}</strong> following
-          </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("following")}
+            className="hover:text-slate-200 transition-colors"
+          >
+            <strong className="text-slate-200">{followingTotal ?? followingCount}</strong> following
+          </button>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="mt-6 border-b border-slate-800 flex gap-6">
-        <button
-          type="button"
-          onClick={() => setTab("posts")}
-          className={`pb-3 text-sm font-medium transition-colors ${
-            tab === "posts"
-              ? "text-cyan-400 border-b-2 border-cyan-400"
-              : "text-slate-500 hover:text-slate-300"
-          }`}
-        >
-          Posts {posts.length > 0 && <span className="text-slate-600">· {posts.length}</span>}
-        </button>
+        {([
+          { key: "posts",      label: "Posts",      count: posts.length                                                          },
+          { key: "followers",  label: "Followers",  count: followerTotal  ?? (followerList?.length  ?? followerCount)             },
+          { key: "following",  label: "Following",  count: followingTotal ?? (followingList?.length ?? 0)                         },
+        ] as const).map(({ key, label, count }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`pb-3 text-sm font-medium transition-colors ${
+              tab === key
+                ? "text-cyan-400 border-b-2 border-cyan-400"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {label} {count > 0 && <span className="text-slate-600">· {count}</span>}
+          </button>
+        ))}
       </div>
 
-      {/* Posts list */}
-      <div className="mt-4 space-y-3">
-        {postsLoading && (
-          <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading posts…
-          </div>
-        )}
-        {!postsLoading && posts.length === 0 && (
-          <p className="text-sm text-slate-500 text-center py-8">
-            No posts yet.
-          </p>
-        )}
-        {!postsLoading &&
-          posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
-      </div>
+      {/* Posts tab */}
+      {tab === "posts" && (
+        <div className="mt-4 space-y-3">
+          {postsLoading && (
+            <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading posts…
+            </div>
+          )}
+          {!postsLoading && posts.length === 0 && (
+            <p className="text-sm text-slate-500 text-center py-8">
+              No posts yet.
+            </p>
+          )}
+          {!postsLoading &&
+            posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
+        </div>
+      )}
+
+      {/* Followers tab */}
+      {tab === "followers" && (
+        <div className="mt-4 space-y-2">
+          {followerLoading && (
+            <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading followers…
+            </div>
+          )}
+          {!followerLoading && (followerList?.length ?? 0) === 0 && (
+            <p className="text-sm text-slate-500 text-center py-8">
+              No followers yet.
+            </p>
+          )}
+          {!followerLoading &&
+            (followerList ?? []).map((a) => (
+              <AgentMiniRow
+                key={a.agent_did}
+                agent={a}
+                initiallyFollowing={viewerFollowingSet.has(a.agent_did)}
+                selfDid={selfDid}
+                token={getToken()}
+              />
+            ))}
+        </div>
+      )}
+
+      {/* Following tab */}
+      {tab === "following" && (
+        <div className="mt-4 space-y-2">
+          {followingLoading && (
+            <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading following…
+            </div>
+          )}
+          {!followingLoading && (followingList?.length ?? 0) === 0 && (
+            <p className="text-sm text-slate-500 text-center py-8">
+              Not following anyone yet.
+            </p>
+          )}
+          {!followingLoading &&
+            (followingList ?? []).map((a) => (
+              <AgentMiniRow
+                key={a.agent_did}
+                agent={a}
+                // On the viewer's own profile, the entire list IS what they follow.
+                initiallyFollowing={
+                  selfDid === did ? true : viewerFollowingSet.has(a.agent_did)
+                }
+                selfDid={selfDid}
+                token={getToken()}
+              />
+            ))}
+        </div>
+      )}
 
       {editing && loggedIn && isSelf && (
         <EditProfileModal
