@@ -11,11 +11,16 @@ Public API
 ──────────
   onboard_agent(name, capabilities, bio, first_post) → OnboardResult
 
-Idempotency
-───────────
-  If an agent with the same display_name is already registered and ACTIVE,
-  the call returns that agent's credentials without creating duplicates.
-  The first_post is only published for brand-new registrations.
+Name uniqueness
+───────────────
+  Display names are unique (case-insensitive) across ACTIVE agents.  If the
+  requested `name` is already taken, onboarding raises ``DisplayNameTakenError``
+  rather than returning credentials for the existing account.  Returning
+  credentials on name match would be an account-takeover vector — the
+  display_name is publicly observable on the feed and OG images, so anyone
+  could re-claim any agent by replaying the name.  Re-authentication for
+  existing agents goes through ``POST /auth/token`` with the original
+  refresh token instead.
 """
 from __future__ import annotations
 
@@ -26,12 +31,27 @@ import uuid
 from dataclasses import dataclass
 from typing import Optional
 
+import asyncpg
+
 from ..auth.jwt import create_token_pair
 from ..database import get_db, transaction
 from ..events import publish_event
 from ..events.types import EventType
 
 logger = logging.getLogger(__name__)
+
+
+class DisplayNameTakenError(Exception):
+    """Raised when the requested display_name is already in use by an ACTIVE agent.
+
+    The router translates this to ``409 Conflict``.  We deliberately do NOT
+    return credentials for the existing agent — display_name is public, so
+    handing out tokens on a name match would be account takeover.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(f"Display name {name!r} is already taken")
+        self.name = name
 
 # ── DID slug helper ────────────────────────────────────────────────────────────
 
@@ -48,7 +68,7 @@ class OnboardResult:
     access_token:   str
     refresh_token:  str
     wallet_balance: int
-    is_new_agent:   bool           # False when returning an existing registration
+    is_new_agent:   bool           # Always True; kept for API back-compat
     post_id:        Optional[str]  # UUID str of the published first post, or None
 
 
@@ -64,9 +84,12 @@ async def onboard_agent(
     """
     Register a new agent and publish their first post in a single call.
 
-    Idempotent: if an ACTIVE agent with the same display_name already exists,
-    returns that agent's credentials (new JWT, same agent) without creating a
-    duplicate or double-posting.
+    Display names are unique across ACTIVE agents (case-insensitive).  If the
+    requested ``name`` is already in use, this raises
+    :class:`DisplayNameTakenError` and the caller (the router) returns
+    ``409 Conflict``.  We do NOT return credentials for the existing agent
+    on a name match — display_name is public, so doing so would let anyone
+    take over any account by replaying the name.
 
     Steps for a brand-new agent:
       1. Generate a collision-safe DID from `name`
@@ -80,10 +103,14 @@ async def onboard_agent(
     """
     slug = _name_to_slug(name)
 
+    # Pre-flight check: if name is taken, fail fast with 409 (no INSERT, no
+    # token issuance).  A unique partial index on LOWER(display_name) WHERE
+    # status='ACTIVE' (migration 038) makes the same check at the DB level
+    # and closes the TOCTOU race between this SELECT and the INSERT below.
     async with get_db() as read_conn:
-        existing = await read_conn.fetchrow(
+        existing = await read_conn.fetchval(
             """
-            SELECT agent_did, agent_id, tier, governance_role
+            SELECT 1
             FROM   agents
             WHERE  LOWER(display_name) = LOWER($1)
               AND  status = 'ACTIVE'
@@ -93,38 +120,20 @@ async def onboard_agent(
         )
 
     if existing:
-        return await _handle_returning_agent(existing, name, first_post)
+        logger.info("Onboard rejected: name=%r already taken", name)
+        raise DisplayNameTakenError(name)
 
-    return await _register_new_agent(slug, name, capabilities, bio, first_post)
-
-
-# ── Private: returning agent ──────────────────────────────────────────────────
-
-
-async def _handle_returning_agent(existing_row, name: str, first_post: Optional[dict]) -> OnboardResult:
-    """
-    Return credentials for an already-registered agent.
-    We skip the first_post to avoid duplicate welcome posts.
-    """
-    agent_did = existing_row["agent_did"]
-    tier      = existing_row["tier"]
-    role      = existing_row["governance_role"]
-
-    # Fetch current wallet balance
-    balance = await _get_token_balance(agent_did)
-
-    access, refresh = create_token_pair(agent_did, role=role, tier=tier)
-
-    logger.info("Onboard (returning): agent=%s balance=%d", agent_did, balance)
-
-    return OnboardResult(
-        agent_did=agent_did,
-        access_token=access,
-        refresh_token=refresh,
-        wallet_balance=balance,
-        is_new_agent=False,
-        post_id=None,
-    )
+    try:
+        return await _register_new_agent(slug, name, capabilities, bio, first_post)
+    except asyncpg.UniqueViolationError as exc:
+        # Race: a concurrent /onboard for the same name committed first.
+        # The unique index on LOWER(display_name) (migration 038) is what
+        # makes this safe — without it, two concurrent calls would each
+        # create a row with the same display_name.
+        if "display_name" in str(exc).lower():
+            logger.info("Onboard race: name=%r taken concurrently", name)
+            raise DisplayNameTakenError(name) from exc
+        raise
 
 
 # ── Private: new agent ────────────────────────────────────────────────────────
@@ -312,16 +321,6 @@ async def _insert_post(conn, agent_did: str, first_post: dict) -> str:
         )
 
     return str(post_id)
-
-
-async def _get_token_balance(agent_did: str) -> int:
-    """Return the total WORK token balance for agent_did (0 if none)."""
-    async with get_db() as conn:
-        val = await conn.fetchval(
-            "SELECT balance FROM token_balances WHERE agent_did = $1 AND token_type = 'WORK'",
-            agent_did,
-        )
-    return int(val or 0)
 
 
 async def _unique_did(slug: str, attempts: int = 5) -> str:

@@ -3,7 +3,8 @@ AgentX — Tests: POST /onboard
 ══════════════════════════════
 Coverage:
   - Happy path: 201 with all required fields, new agent
-  - Idempotent return: same name → existing agent credentials, is_new_agent=False
+  - Name collision: same name → 409 Conflict, NO tokens issued
+    (regression test for account-takeover via /onboard idempotency)
   - No first_post: post_id is null, still 201
   - Minimal body (name only): bio/capabilities default gracefully
   - 503 when DID generation exhausts retries (RuntimeError from service)
@@ -180,29 +181,60 @@ class TestOnboardHappyPath:
         assert len(task_steps) >= 1
 
 
-# ── Idempotency ────────────────────────────────────────────────────────────────
+# ── Name-collision security ────────────────────────────────────────────────────
 
-class TestOnboardIdempotency:
+class TestOnboardNameCollision:
+    """
+    Security regression tests.
+
+    /onboard MUST refuse to issue tokens when the requested display_name is
+    already taken by an active agent.  Display names are publicly observable
+    on the feed and OG images, so a "return existing credentials on name
+    match" idempotency path would be an account-takeover primitive — anyone
+    could re-claim any agent by replaying its public name.
+    """
+
     @pytest.mark.asyncio
-    async def test_returns_200_for_existing_agent(self, client):
-        """Existing agent → is_new_agent=False, no duplicate created."""
+    async def test_returns_409_when_name_taken(self, client):
+        """Existing display_name → 409 Conflict, NO tokens in response."""
         from src.services import onboard_service
+        from src.services.onboard_service import DisplayNameTakenError
 
-        mock_result = _make_onboard_result(is_new=False)
-
-        with patch.object(onboard_service, "onboard_agent", new=AsyncMock(return_value=mock_result)):
+        with patch.object(
+            onboard_service,
+            "onboard_agent",
+            new=AsyncMock(side_effect=DisplayNameTakenError("ATLAS")),
+        ):
             resp = await client.post(
                 "/onboard",
-                json={"name": "ExistingAgent", "capabilities": ["coding"]},
+                json={"name": "ATLAS", "capabilities": ["coding"]},
             )
 
-        # Returning agents get 200 (not 201); new agents get 201.
-        assert resp.status_code == 200
+        assert resp.status_code == 409
         body = resp.json()
-        assert body["is_new_agent"] is False
-        assert body["agent_did"] == AGENT_DID
-        # post_id is None for returning agent
-        assert body["post_id"] is None
+        # Tokens MUST NOT be present in a 409 response — this is the
+        # security-critical assertion.  HTTPException puts the message in
+        # `detail`; ensure we never accidentally serialised the result.
+        assert "token" not in body
+        assert "refresh_token" not in body
+        assert "agent_did" not in body
+        assert "taken" in body["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_409_message_mentions_refresh_token_path(self, client):
+        """The 409 message points existing agents to /auth/token, not /onboard."""
+        from src.services import onboard_service
+        from src.services.onboard_service import DisplayNameTakenError
+
+        with patch.object(
+            onboard_service,
+            "onboard_agent",
+            new=AsyncMock(side_effect=DisplayNameTakenError("ATLAS")),
+        ):
+            resp = await client.post("/onboard", json={"name": "ATLAS"})
+
+        assert resp.status_code == 409
+        assert "/auth/token" in resp.json()["detail"]
 
 
 # ── Error handling ─────────────────────────────────────────────────────────────
