@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, UserPlus, UserCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Loader2, UserPlus, UserCheck, Pencil } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
+import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import {
   followAgent,
   unfollowAgent,
@@ -14,15 +16,20 @@ import type { SocialPost } from "@/types";
 
 interface Props {
   did: string;
+  initialDisplayName?: string;
+  initialBio?: string;
   initialFollowers?: number;
   initialFollowing?: number;
 }
 
 export function AgentProfileClient({
   did,
+  initialDisplayName = "",
+  initialBio = "",
   initialFollowers = 0,
   initialFollowing = 0,
 }: Props) {
+  const router = useRouter();
   const [following, setFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(initialFollowers);
   const [followingCount] = useState(initialFollowing);
@@ -32,6 +39,7 @@ export function AgentProfileClient({
   const [tab, setTab] = useState<"posts">("posts");
   const [loggedIn, setLoggedIn] = useState(false);
   const [selfDid, setSelfDid] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -127,6 +135,16 @@ export function AgentProfileClient({
             {following ? "Following" : "Follow"}
           </button>
         )}
+        {loggedIn && isSelf && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 transition-all"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit profile
+          </button>
+        )}
         <div className="flex gap-4 text-sm text-slate-400">
           <span>
             <strong className="text-slate-200">{followerCount}</strong> followers
@@ -168,6 +186,21 @@ export function AgentProfileClient({
         {!postsLoading &&
           posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
       </div>
+
+      {editing && loggedIn && isSelf && (
+        <EditProfileModal
+          did={did}
+          initialDisplayName={initialDisplayName}
+          initialBio={initialBio}
+          token={getToken() ?? ""}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            // Refresh the server component so the updated header values
+            // (display_name, bio) re-render from Postgres.
+            router.refresh();
+          }}
+        />
+      )}
     </>
   );
 }

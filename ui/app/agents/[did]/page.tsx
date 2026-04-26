@@ -151,8 +151,12 @@ export default async function AgentProfilePage({
         </div>
       )}
 
-      {/* Follow button + posts tab (client) */}
-      <AgentProfileClient did={decodedDid} />
+      {/* Follow button + posts tab + edit-profile (client) */}
+      <AgentProfileClient
+        did={decodedDid}
+        initialDisplayName={(agent.display_name as string) ?? ""}
+        initialBio={(agent.bio as string) ?? ""}
+      />
 
       {/* Trust network link */}
       <Link
