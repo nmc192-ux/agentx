@@ -12,10 +12,10 @@ import { motion } from "framer-motion";
 import {
   MessageSquare, Gift, CheckSquare, TrendingUp,
   Bell, Vote, ThumbsUp, Reply, Clock, Quote as QuoteIcon,
-  Users as UsersIcon, MoreHorizontal, ShieldOff,
+  Users as UsersIcon, MoreHorizontal, ShieldOff, Repeat2,
 } from "lucide-react";
 import type { SocialPost, PostType } from "@/types";
-import { likePost, createRoom, getPost, blockAgent } from "@/lib/api";
+import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
@@ -76,14 +76,15 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [reposting, setReposting] = useState(false);
+  const [reposted, setReposted] = useState(false);
 
   const canWrite = isLoggedIn();
   const myDid = getDid();
   const isOwnPost = myDid === post.author_did;
-  const quotedId =
-    (post.metadata as Record<string, unknown> | undefined)?.quoted_post_id as
-      | string
-      | undefined;
+  const postMeta = (post.metadata as Record<string, unknown> | undefined) ?? {};
+  const quotedId = postMeta.quoted_post_id as string | undefined;
+  const isRepost = postMeta.repost === true;
   const canStartRoom = post.post_type === "TASK" || post.post_type === "PROPOSAL";
 
   useEffect(() => {
@@ -142,6 +143,35 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
       router.push(`/rooms/${room.room_id}`);
     } catch {
       setStartingRoom(false);
+    }
+  }
+
+  async function handleRepost() {
+    if (!canWrite || reposting || reposted || isRepost || isOwnPost) return;
+    const token = getToken();
+    if (!token) return;
+    setReposting(true);
+    try {
+      // A plain repost is a tiny UPDATE post that quotes the source. Followers
+      // see it in their feed; the original surfaces inline via QuotedCard.
+      // Backend requires title+content min_length=1; we use a minimal marker
+      // so the renderer can choose to suppress them when `repost: true`.
+      await createPost(
+        {
+          post_type: "UPDATE",
+          title: "Reposted",
+          content: "↻",
+          visibility: "PUBLIC",
+          tags: [],
+          metadata: { quoted_post_id: post.post_id, repost: true },
+        },
+        token,
+      );
+      setReposted(true);
+    } catch {
+      /* swallow — non-critical action */
+    } finally {
+      setReposting(false);
     }
   }
 
@@ -248,17 +278,29 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         </div>
       </div>
 
-      {/* Title */}
-      {post.title && (
+      {/* Repost banner — suppress title/content body when it's a plain repost
+          (the source is rendered below via QuotedCard). */}
+      {isRepost && (
+        <p className="text-[11px] text-slate-500 mb-2 flex items-center gap-1">
+          <Repeat2 className="w-3 h-3" />
+          {name} reposted
+        </p>
+      )}
+
+      {/* Title — hidden on plain repost (the quoted card carries the real
+          content). */}
+      {!isRepost && post.title && (
         <h3 className="text-sm font-semibold text-slate-100 mb-1 line-clamp-1">
           {post.title}
         </h3>
       )}
 
-      {/* Content */}
-      <p className="text-sm text-slate-400 leading-relaxed line-clamp-3 mb-3">
-        {post.content}
-      </p>
+      {/* Content — hidden on plain repost. */}
+      {!isRepost && (
+        <p className="text-sm text-slate-400 leading-relaxed line-clamp-3 mb-3">
+          {post.content}
+        </p>
+      )}
 
       {/* Quoted post (if any) */}
       {quoted && <QuotedCard post={quoted} />}
@@ -267,13 +309,14 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
       {post.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3 mt-3">
           {post.tags.slice(0, 5).map((tag) => (
-            <span
+            <Link
               key={tag}
+              href={`/tag/${encodeURIComponent(tag)}`}
               className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400
-                         hover:bg-slate-700 hover:text-slate-200 transition-colors cursor-pointer"
+                         hover:bg-slate-700 hover:text-slate-200 transition-colors"
             >
               #{tag}
-            </span>
+            </Link>
           ))}
         </div>
       )}
@@ -303,6 +346,29 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         >
           <Reply className="w-3.5 h-3.5" />
           {replyCount}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleRepost}
+          disabled={!canWrite || reposting || reposted || isRepost || isOwnPost}
+          className={`flex items-center gap-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+            reposted ? "text-emerald-400" : "hover:text-emerald-300"
+          }`}
+          title={
+            isOwnPost
+              ? "Can't repost your own post"
+              : isRepost
+                ? "This is already a repost"
+                : reposted
+                  ? "Reposted"
+                  : canWrite
+                    ? "Repost"
+                    : "Log in to repost"
+          }
+        >
+          <Repeat2 className="w-3.5 h-3.5" />
+          {reposting ? "…" : reposted ? "Reposted" : "Repost"}
         </button>
 
         <button

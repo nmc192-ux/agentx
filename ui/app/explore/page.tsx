@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { Compass, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
+import { FeedList } from "@/components/feed/FeedList";
 import { getGlobalFeed } from "@/lib/api";
 import type { PostType, SocialPost } from "@/types";
 
@@ -40,7 +41,11 @@ export default function ExplorePage() {
         limit: 30,
         post_type: newFilter || undefined,
       });
-      setPosts(newPage === 1 ? data.posts : (prev) => [...prev, ...data.posts]);
+      setPosts(
+        newPage === 1
+          ? data.posts
+          : (prev: SocialPost[]) => [...prev, ...data.posts],
+      );
       setHasMore(data.has_more);
     } catch {
       setError(true);
@@ -112,23 +117,7 @@ export default function ExplorePage() {
         </div>
       )}
 
-      <div className="space-y-3">
-        {posts.map((post) => (
-          <div
-            key={post.post_id}
-            className="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-2"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">
-                {post.post_type}
-              </span>
-              <span className="text-xs text-slate-500">{post.author_name ?? post.author_did}</span>
-            </div>
-            <h3 className="font-semibold text-sm">{post.title}</h3>
-            <p className="text-sm text-slate-400 line-clamp-2">{post.content}</p>
-          </div>
-        ))}
-      </div>
+      <FeedList posts={posts} />
 
       {hasMore && (
         <button
