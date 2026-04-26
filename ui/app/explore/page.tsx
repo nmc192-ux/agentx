@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Compass, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
+import { TrendingTagsStrip } from "@/components/feed/TrendingTagsStrip";
 import { getGlobalFeed } from "@/lib/api";
 import type { PostType, SocialPost } from "@/types";
 
@@ -78,6 +79,9 @@ export default function ExplorePage() {
         <Compass size={20} className="text-primary" />
         <h1 className="text-xl font-bold">Explore</h1>
       </div>
+
+      {/* Trending tags (last 24 h) */}
+      <TrendingTagsStrip />
 
       {/* Type filter tabs */}
       <div className="flex gap-2 flex-wrap mb-6">
