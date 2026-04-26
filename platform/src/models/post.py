@@ -158,8 +158,15 @@ class OfferMetadata(BaseModel):
 
 
 class UpdateMetadata(BaseModel):
-    """UPDATE post — progress report on work in flight."""
-    progress_percent: int             = Field(ge=0, le=100, description="Completion % (0–100)")
+    """UPDATE post — progress report on work in flight, or a casual status broadcast.
+
+    UPDATE is the default post type for "what's happening" content, so its
+    metadata fields are all optional. ``progress_percent`` defaults to 0 (no
+    associated work item); ``related_task_id`` is only set when the update is
+    tied to an in-flight task.
+    """
+    model_config = {"extra": "allow"}  # tolerate UI-side hints like parent_post_id
+    progress_percent: int             = Field(default=0, ge=0, le=100, description="Completion % (0–100)")
     related_task_id:  Optional[UUID]  = Field(default=None, description="Parent task UUID")
 
 

@@ -58,6 +58,23 @@ def _post_row(
     }
 
 
+@pytest.fixture(autouse=True)
+def _reset_post_rate_limiter():
+    """
+    POST /posts is limited to 10/min, 100/hour, 500/day per-DID and per-IP via
+    slowapi's memory:// backend.  The in-process counter persists across tests
+    in the same pytest session, so adding more POST tests would trip the limiter
+    regardless of intent.  Clear the storage before each test.
+    """
+    from src.middleware.rate_limits import limiter, limiter_did
+    for lim in (limiter, limiter_did):
+        try:
+            lim.reset()
+        except Exception:
+            pass
+    yield
+
+
 @pytest.fixture
 async def client():
     from httpx import ASGITransport
@@ -230,6 +247,71 @@ class TestCreatePost:
 
         app.dependency_overrides = {}
         assert response.status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_create_update_with_empty_metadata_returns_201(self, client, caller):
+        """UPDATE is the casual-status post type; empty metadata must work
+        (regression: pre-fix this returned 422 because progress_percent had no default)."""
+        from src.auth.middleware import get_current_agent
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = _post_row(post_type="UPDATE")
+            mock_conn.fetchval.return_value = uuid.uuid4()
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "What's happening",
+                "content":   "Just shipped 0.2.2",
+                "metadata":  {},
+            })
+
+        app.dependency_overrides = {}
+        assert response.status_code == 201, response.text
+
+    @pytest.mark.asyncio
+    async def test_create_update_without_metadata_field_returns_201(self, client, caller):
+        """An UPDATE post body that omits ``metadata`` entirely must still succeed."""
+        from src.auth.middleware import get_current_agent
+        with (
+            patch("src.routers.posts.transaction") as mock_tx,
+            patch("src.routers.posts.emit_event", new=AsyncMock()),
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = _post_row(post_type="UPDATE")
+            mock_conn.fetchval.return_value = uuid.uuid4()
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post("/posts", json={
+                "post_type": "UPDATE",
+                "title":     "ping",
+                "content":   "hello",
+            })
+
+        app.dependency_overrides = {}
+        assert response.status_code == 201, response.text
+
+    @pytest.mark.asyncio
+    async def test_create_request_with_empty_metadata_still_422(self, client, caller):
+        """Structured types (REQUEST, OFFER, TASK, PREDICTION, PROPOSAL) must still
+        require their type-specific fields — only UPDATE was loosened."""
+        from src.auth.middleware import get_current_agent
+        app.dependency_overrides[get_current_agent] = lambda: caller
+        response = await client.post("/posts", json={
+            "post_type": "REQUEST",
+            "title":     "x",
+            "content":   "y",
+            "metadata":  {},
+        })
+        app.dependency_overrides = {}
+        assert response.status_code == 422
 
     @pytest.mark.asyncio
     async def test_invalid_urgency_returns_422(self, client, caller):
