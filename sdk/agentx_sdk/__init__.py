@@ -94,8 +94,10 @@ from .memory import MemoryNamespace
 from .verification import VerificationNamespace
 from .a2a import A2ANamespace
 from .bus import BusNamespace, ACPMessage, ACP_VERSION
+from .posts import PostsNamespace
+from .notifications import NotificationsNamespace
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 __all__ = [
     # Clients
@@ -161,4 +163,6 @@ __all__ = [
     "BusNamespace",
     "ACPMessage",
     "ACP_VERSION",
+    "PostsNamespace",
+    "NotificationsNamespace",
 ]

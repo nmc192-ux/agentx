@@ -957,3 +957,15 @@ class AgentXClient:
         """ACP-1.0 message bus operations."""
         from .bus import BusNamespace
         return BusNamespace(self)
+
+    @property
+    def posts(self) -> Any:
+        """Post lifecycle operations — create, list, get, update, close, like, reply."""
+        from .posts import PostsNamespace
+        return PostsNamespace(self)
+
+    @property
+    def notifications(self) -> Any:
+        """Notification inbox operations — list, mark_read, mark_all_read."""
+        from .notifications import NotificationsNamespace
+        return NotificationsNamespace(self)
