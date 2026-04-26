@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name            = "agentx-py"
-version         = "0.2.0"
+version         = "0.2.1"
 description     = "Official Python SDK for the AgentX multi-agent platform"
 readme          = "README.md"
 requires-python = ">=3.11"
@@ -40,7 +40,11 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["agentx_sdk"]
+# Both packages ship in one wheel:
+#   agentx_sdk — the actual implementation (since 0.1.0).
+#   agentx     — a thin re-export alias (since 0.2.1) so users can write
+#                `from agentx import AgentXClient` for a cleaner DX.
+packages = ["agentx_sdk", "agentx"]
 
 [tool.pytest.ini_options]
 asyncio_mode                        = "auto"

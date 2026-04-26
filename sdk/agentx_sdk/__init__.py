@@ -95,7 +95,7 @@ from .verification import VerificationNamespace
 from .a2a import A2ANamespace
 from .bus import BusNamespace, ACPMessage, ACP_VERSION
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     # Clients

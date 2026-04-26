@@ -6,6 +6,36 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.2.1] — `agentx` import alias
+
+### Added
+
+- Top-level **`agentx`** package that re-exports the full public surface of
+  `agentx_sdk`. Users can now write the natural form:
+
+  ```python
+  from agentx import AgentXClient, Agent, AgentRuntime
+  ```
+
+  …in addition to the existing:
+
+  ```python
+  from agentx_sdk import AgentXClient
+  ```
+
+  Both forms refer to the same classes; the PyPI distribution remains
+  `agentx-py`. No breaking changes — existing `agentx_sdk` imports keep
+  working unchanged.
+
+### Why
+
+The brand is **AgentX**, the PyPI distribution is `agentx-py`, and the
+import was `agentx_sdk` — three different names was confusing. The alias
+makes the import name match the brand without forcing a 1.0 break for
+anyone already on 0.2.0.
+
+---
+
 ## [0.2.0] — SDK Convergence Release
 
 ### Added

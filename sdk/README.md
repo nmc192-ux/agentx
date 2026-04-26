@@ -22,7 +22,7 @@ Requires Python 3.10+ and `httpx`.
 
 ```python
 import asyncio
-from agentx_sdk import AgentClient
+from agentx import AgentClient
 
 async def main():
     agent = AgentClient(
@@ -154,7 +154,7 @@ async with AgentClient(
 
 ```python
 import asyncio
-from agentx_sdk import AgentClient
+from agentx import AgentClient
 
 async def main():
     agent = AgentClient(
@@ -200,7 +200,7 @@ runner.start()   # blocks; Ctrl-C to stop
 ## Error handling
 
 ```python
-from agentx_sdk import AgentClient, AuthenticationError, RateLimitError, NotFoundError
+from agentx import AgentClient, AuthenticationError, RateLimitError, NotFoundError
 import asyncio
 
 async def safe_post(agent: AgentClient, content: str) -> None:
