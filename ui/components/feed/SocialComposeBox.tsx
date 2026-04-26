@@ -5,8 +5,8 @@
  * Post composer with type selector, @mention autocomplete, tags, visibility.
  * Uses plain fetch via lib/api.ts — no react-query, no next-auth.
  */
-import { useState, useRef, useEffect } from "react";
-import { Loader2, MessageSquare, Gift, CheckSquare, TrendingUp, Bell, Vote } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Loader2, MessageSquare, Gift, CheckSquare, TrendingUp, Bell, Vote, Save } from "lucide-react";
 import { createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import {
@@ -19,6 +19,7 @@ import {
   type AgentMini,
 } from "@/types";
 import { useMentionAutocomplete } from "@/lib/hooks/useMentionAutocomplete";
+import { useDraftAutosave } from "@/lib/hooks/useDraftAutosave";
 
 const POST_TYPES: { type: PostType; icon: typeof MessageSquare; label: string }[] = [
   { type: "UPDATE",     icon: Bell,          label: "Update" },
@@ -58,6 +59,28 @@ export function SocialComposeBox({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { suggestions, detect, select, dismiss } = useMentionAutocomplete();
+
+  // Persist whatever the user has typed across tab close / refresh / nav.
+  // Keyed per-composer-instance: root composer and per-reply composers
+  // each get their own slot so they don't clobber each other.
+  const draftKey = parentPostId
+    ? `agentx:draft:reply:${parentPostId}`
+    : `agentx:draft:root`;
+  const draftValues = useMemo(
+    () => ({ title, content, tagsRaw, postType, visibility }),
+    [title, content, tagsRaw, postType, visibility],
+  );
+  const { didSave, clear: clearDraft } = useDraftAutosave({
+    key:    draftKey,
+    values: draftValues,
+    onHydrate: (saved) => {
+      if (typeof saved.title      === "string") setTitle(saved.title);
+      if (typeof saved.content    === "string") setContent(saved.content);
+      if (typeof saved.tagsRaw    === "string") setTagsRaw(saved.tagsRaw);
+      if (typeof saved.postType   === "string") setPostType(saved.postType as PostType);
+      if (typeof saved.visibility === "string") setVisibility(saved.visibility as Visibility);
+    },
+  });
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -141,6 +164,11 @@ export function SocialComposeBox({
       setContent("");
       setTagsRaw("");
       if (!parentPostId) setPostType("UPDATE");
+      // Wipe the persisted draft once the post made it server-side; the
+      // post-clear values are all empty anyway, but `clear()` also resets
+      // the "Draft saved" indicator so the UI doesn't lie about there
+      // still being something stored.
+      clearDraft();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to post";
       setError(msg);
@@ -277,9 +305,20 @@ export function SocialComposeBox({
           {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
 
           <div className="flex items-center justify-between border-t border-slate-800 pt-3 mt-3">
-            <span className={`text-xs ${overLimit ? "text-red-400" : "text-slate-600"}`}>
-              {charCount}/{MAX_CHARS}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className={`text-xs ${overLimit ? "text-red-400" : "text-slate-600"}`}>
+                {charCount}/{MAX_CHARS}
+              </span>
+              {didSave && content.trim().length > 0 && (
+                <span
+                  className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500"
+                  title="Your draft is saved on this device. It'll restore if you refresh or close the tab."
+                >
+                  <Save className="w-3 h-3" />
+                  Draft saved
+                </span>
+              )}
+            </div>
             <button
               type="submit"
               disabled={!canSubmit}
