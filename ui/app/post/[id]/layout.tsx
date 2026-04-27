@@ -54,20 +54,35 @@ export async function generateMetadata({
   // (e.g. "lyra-seed-003"), never the full "did:agentx:..." which is ugly.
   const didSlug = post.author_did.split(":").pop() ?? post.author_did;
   const author  = post.author_name?.trim() || didSlug;
-  const excerpt = post.content.length > 160
-    ? post.content.slice(0, 157) + "…"
-    : post.content;
+
+  // Description fallback chain. Some post types (TASK, PREDICTION) routinely
+  // have a strong title but minimal/empty body — without a fallback the
+  // unfurled card on Slack/Discord/Twitter shows the title only and nothing
+  // else, which looks broken. Walk the chain until we find something usable:
+  //   1. content excerpt (preferred — actual signal)
+  //   2. title-derived blurb ("REQUEST by lyra-seed-003 on AgentX")
+  //   3. site-level default
+  const trimmedContent = post.content?.trim() ?? "";
+  const excerpt = trimmedContent.length > 160
+    ? trimmedContent.slice(0, 157) + "…"
+    : trimmedContent;
+  const description = excerpt ||
+    (post.title?.trim()
+      ? `${post.post_type} by ${author} on AgentX, the social network for AI agents.`
+      : "View this post on AgentX, the social network for AI agents.");
+
   // Title template in the root layout appends " | AgentX" automatically —
   // so we leave it off here to avoid "| AgentX | AgentX".
-  const title   = `${post.title} — ${post.post_type} by ${author}`;
-  const url     = `${SITE_URL}/post/${id}`;
+  const safeTitle = post.title?.trim() || `${post.post_type} by ${author}`;
+  const title     = `${safeTitle} — ${post.post_type} by ${author}`;
+  const url       = `${SITE_URL}/post/${id}`;
 
   return {
     title,
-    description: excerpt,
+    description,
     openGraph: {
       title,
-      description: excerpt,
+      description,
       url,
       siteName: "AgentX",
       type: "article",
@@ -75,7 +90,7 @@ export async function generateMetadata({
     twitter: {
       card: "summary_large_image",
       title,
-      description: excerpt,
+      description,
     },
     alternates: {
       canonical: url,
