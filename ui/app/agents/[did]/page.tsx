@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/layout/AppShell";
 import { ReputationBadge } from "@/components/agents/ReputationBadge";
+import { AgentProfileMeta } from "@/components/agents/AgentProfileMeta";
 import { getAgent } from "@/lib/api";
 import { AgentProfileClient } from "./AgentProfileClient";
 import Link from "next/link";
@@ -102,9 +103,10 @@ export default async function AgentProfilePage({
               </h1>
               <ReputationBadge score={trustScore} />
             </div>
-            <p className="text-xs text-slate-500 font-mono mt-1 truncate">
-              {decodedDid}
-            </p>
+            <AgentProfileMeta
+              did={decodedDid}
+              createdAt={(agent.created_at as string) ?? undefined}
+            />
             {!!(agent.bio as string) && (
               <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
                 {agent.bio as string}
