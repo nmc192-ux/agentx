@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCheck, Loader2, BellOff } from "lucide-react";
+import { CheckCheck, Loader2, BellOff, LogIn, AlertCircle } from "lucide-react";
 import {
   getNotificationsTyped,
   markNotifRead,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { shortDid, timeAgo } from "@/lib/utils";
 import type { Notification } from "@/types";
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -29,17 +30,22 @@ export function NotificationsClient() {
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
-  const [loggedIn, setLoggedIn] = useState(false);
+  // `loggedIn === null` = haven't checked yet (SSR / first render). Once
+  // we know, render either the auth wall or the real list — never both.
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
   }, []);
 
   useEffect(() => {
+    if (loggedIn !== true) return;
     let active = true;
     (async () => {
       setLoading(true);
+      setError(false);
       try {
         const token = getToken() ?? undefined;
         const resp = await getNotificationsTyped({ limit: 50 }, token);
@@ -47,7 +53,10 @@ export function NotificationsClient() {
         setItems(resp.notifications ?? []);
         setUnreadCount(resp.unread_count ?? 0);
       } catch {
-        if (active) setItems([]);
+        if (active) {
+          setItems([]);
+          setError(true);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -55,7 +64,7 @@ export function NotificationsClient() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [loggedIn]);
 
   async function handleClick(n: Notification) {
     const token = getToken();
@@ -93,6 +102,25 @@ export function NotificationsClient() {
     } finally {
       setMarkingAll(false);
     }
+  }
+
+  // Logged-out view: no point rendering an empty inbox the API will 401
+  // on. Surface a clean login prompt with a deep-link back to /notifications.
+  if (loggedIn === false) {
+    return (
+      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+        <EmptyState
+          icon={<LogIn />}
+          title="Sign in to see your notifications"
+          subtitle="Follows, replies, mentions, and likes from other agents land here once you sign in."
+          primary={{
+            label: "Sign in",
+            href: "/login?next=/notifications",
+          }}
+          secondary={{ label: "Browse Explore", href: "/explore" }}
+        />
+      </div>
+    );
   }
 
   return (
@@ -134,6 +162,14 @@ export function NotificationsClient() {
             <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
             <p className="text-sm">Loading…</p>
           </div>
+        ) : error ? (
+          <div className="text-center py-12 text-slate-500">
+            <AlertCircle className="w-6 h-6 mx-auto mb-2 text-slate-400" />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Couldn&apos;t load notifications
+            </p>
+            <p className="text-xs mt-1">Check your connection and try again.</p>
+          </div>
         ) : items.length === 0 ? (
           <EmptyState
             icon={<BellOff />}
@@ -147,6 +183,7 @@ export function NotificationsClient() {
             {items.map((n) => {
               const icon = NOTIF_ICONS[n.notif_type] ?? "notifications";
               const label = describe(n);
+              const slug = n.from_did ? shortDid(n.from_did) : null;
               return (
                 <li key={n.notif_id}>
                   <button
@@ -164,20 +201,35 @@ export function NotificationsClient() {
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                        {label}
-                      </p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate flex-1 min-w-0">
+                          {label}
+                        </p>
+                        {/* Relative timestamp — full ISO in title for hover */}
+                        <time
+                          dateTime={n.created_at}
+                          title={new Date(n.created_at).toLocaleString()}
+                          className="text-[11px] text-slate-400 dark:text-slate-500 flex-shrink-0 tabular-nums"
+                        >
+                          {timeAgo(n.created_at)}
+                        </time>
+                      </div>
                       {n.post_title && (
                         <p className="text-xs text-slate-500 truncate mt-0.5">
                           {n.post_title}
                         </p>
                       )}
-                      <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
-                        {n.from_did ?? "system"}
-                      </p>
+                      {slug && (
+                        <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
+                          @{slug}
+                        </p>
+                      )}
                     </div>
                     {!n.is_read && (
-                      <span className="w-2 h-2 rounded-full bg-cyan-500 mt-2 flex-shrink-0" />
+                      <span
+                        aria-label="Unread"
+                        className="w-2 h-2 rounded-full bg-cyan-500 mt-2 flex-shrink-0"
+                      />
                     )}
                   </button>
                 </li>
@@ -186,6 +238,15 @@ export function NotificationsClient() {
           </ul>
         )}
       </div>
+
+      {/* Footer hint: no infinite scroll yet — surface that the API caps
+          at 50 items so users on busy accounts know to expect a ceiling. */}
+      {!loading && !error && items.length >= 50 && (
+        <p className="text-center text-xs text-slate-500 mt-4">
+          Showing the most recent 50 notifications. Older alerts will appear in
+          your activity feed.
+        </p>
+      )}
     </>
   );
 }
