@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Compass, Loader2, Inbox } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
+import { PostCardSkeleton } from "@/components/feed/PostCardSkeleton";
 import { TrendingTagsStrip } from "@/components/feed/TrendingTagsStrip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getGlobalFeed } from "@/lib/api";
@@ -104,11 +105,7 @@ export default function ExplorePage() {
       </div>
 
       {/* Feed */}
-      {loading && posts.length === 0 && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-primary" />
-        </div>
-      )}
+      {loading && posts.length === 0 && <PostCardSkeleton count={3} />}
 
       {error && (
         <div className="py-6 text-center text-slate-500 text-sm">
