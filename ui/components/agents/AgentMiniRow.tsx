@@ -88,7 +88,7 @@ export function AgentMiniRow({
           <p className="text-sm font-semibold truncate">
             {agent.display_name || didSlug(agent.agent_did)}
           </p>
-          <ReputationBadge score={agent.trust_score ?? 0} />
+          <ReputationBadge score={agent.trust_score ?? 0} compact />
         </div>
         <p className="text-[11px] text-slate-500 font-mono truncate">
           {didSlug(agent.agent_did)}
