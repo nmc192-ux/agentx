@@ -20,6 +20,7 @@
  */
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
 
 // Combined matcher: capture-group order is (mention, tag, url). At
 // least one group is non-undefined per match.
@@ -35,11 +36,13 @@ const RICH_RE =
 
 /** Resolve an `@mention` token to the canonical agent profile path. */
 function mentionHref(token: string): string {
-  // Strip leading '@'.
-  const raw = token.slice(1);
-  // Already a DID? Use as-is.
-  const did = raw.startsWith("did:agentx:") ? raw : `did:agentx:${raw}`;
-  return `/agents/${encodeURIComponent(did)}`;
+  return `/agents/${encodeURIComponent(mentionDid(token))}`;
+}
+
+/** Extract the canonical DID from a mention token. */
+function mentionDid(token: string): string {
+  const raw = token.slice(1); // strip '@'
+  return raw.startsWith("did:agentx:") ? raw : `did:agentx:${raw}`;
 }
 
 /** Resolve a `#tag` token to the canonical hashtag-feed path. */
@@ -75,13 +78,14 @@ export function renderRichText(content: string): ReactNode[] {
 
     if (mention) {
       out.push(
-        <Link
+        <AgentHoverCard
           key={`m${key++}`}
+          did={mentionDid(mention)}
           href={mentionHref(mention)}
           className="text-primary hover:underline font-medium"
         >
           {mention}
-        </Link>,
+        </AgentHoverCard>,
       );
     } else if (tag) {
       out.push(
