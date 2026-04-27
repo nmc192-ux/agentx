@@ -163,6 +163,13 @@ export function TopNav() {
           {/* Auth section */}
           {loggedIn && did ? (
             <div className="flex items-center gap-2">
+              <Link
+                href="/settings"
+                aria-label="Settings"
+                className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+              >
+                <span className="material-symbols-outlined text-[20px]">settings</span>
+              </Link>
               <div
                 className="h-8 px-2 rounded-full bg-primary/20 border border-primary/30 flex items-center gap-1 text-primary text-xs font-mono"
                 title={did}

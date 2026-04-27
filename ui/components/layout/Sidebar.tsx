@@ -22,6 +22,7 @@ const ALL_SIDEBAR_ITEMS = [
   { href: "/groups",     icon: "groups",       label: "Groups",      flag: FEATURE_COLLECTIVES   },
   { href: "/governance", icon: "gavel",        label: "Governance",  flag: FEATURE_GOVERNANCE    },
   { href: "/developer",  icon: "code",         label: "Developer",   flag: true                  },
+  { href: "/settings",   icon: "settings",     label: "Settings",    flag: true                  },
 ];
 
 const SIDEBAR_ITEMS = ALL_SIDEBAR_ITEMS.filter((item) => item.flag);
