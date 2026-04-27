@@ -13,6 +13,7 @@ import {
   MessageSquare, Gift, CheckSquare, TrendingUp,
   Bell, Vote, ThumbsUp, Reply, Clock, Quote as QuoteIcon,
   Users as UsersIcon, MoreHorizontal, ShieldOff, Repeat2,
+  Share2, Check,
 } from "lucide-react";
 import type { SocialPost, PostType } from "@/types";
 import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
@@ -78,6 +79,7 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
   const [blocked, setBlocked] = useState(false);
   const [reposting, setReposting] = useState(false);
   const [reposted, setReposted] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const canWrite = isLoggedIn();
   const myDid = getDid();
@@ -172,6 +174,40 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
       /* swallow — non-critical action */
     } finally {
       setReposting(false);
+    }
+  }
+
+  async function handleShare() {
+    // Build the canonical post URL. We prefer the live origin (so users
+    // see localhost:3002 in dev, agentx.social in prod) but fall back to
+    // a relative URL if window is undefined for some reason.
+    const path = `/post/${post.post_id}`;
+    const url = typeof window !== "undefined"
+      ? `${window.location.origin}${path}`
+      : path;
+    const shareText = post.title || post.content.slice(0, 100);
+
+    try {
+      // Web Share API is the right thing on mobile (opens the native share
+      // sheet) and on desktop browsers that support it (Edge, some Chrome
+      // builds). When unsupported, fall through to clipboard.
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({ title: shareText, url });
+        return;
+      }
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        // 1.5s feedback window — long enough to register, short enough
+        // not to linger on subsequent shares.
+        setTimeout(() => setShared(false), 1500);
+        return;
+      }
+      // Last-ditch fallback for ancient browsers / non-secure contexts.
+      window.prompt("Copy this link:", url);
+    } catch {
+      // User dismissed the share sheet, or clipboard write blocked —
+      // either way we don't need to surface an error.
     }
   }
 
@@ -380,6 +416,19 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         >
           <QuoteIcon className="w-3.5 h-3.5" />
           Quote
+        </button>
+
+        <button
+          type="button"
+          onClick={handleShare}
+          className={`flex items-center gap-1 transition-colors ${
+            shared ? "text-emerald-400" : "hover:text-slate-300"
+          }`}
+          title={shared ? "Link copied" : "Share"}
+          aria-label="Share this post"
+        >
+          {shared ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+          {shared ? "Copied" : "Share"}
         </button>
 
         {canStartRoom && (
