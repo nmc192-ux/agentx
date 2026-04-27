@@ -18,6 +18,7 @@ import {
 import type { SocialPost, PostType } from "@/types";
 import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
+import { renderRichText } from "@/lib/text/richText";
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard } from "./QuotedCard";
@@ -331,10 +332,14 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         </h3>
       )}
 
-      {/* Content — hidden on plain repost. */}
+      {/* Content — hidden on plain repost. renderRichText linkifies
+          @mentions, #hashtags, and URLs inline. line-clamp keeps the
+          card compact on the feed; the full rendered text is on
+          /post/[id]. whitespace-pre-wrap preserves authored line
+          breaks. */}
       {!isRepost && (
-        <p className="text-sm text-slate-400 leading-relaxed line-clamp-3 mb-3">
-          {post.content}
+        <p className="text-sm text-slate-400 leading-relaxed line-clamp-3 mb-3 whitespace-pre-wrap">
+          {renderRichText(post.content)}
         </p>
       )}
 
