@@ -12,11 +12,14 @@ import { FEATURE_ECONOMY, FEATURE_COLLECTIVES } from "@/lib/flags";
 // paused when the tab isn't visible.
 const NOTIF_POLL_MS = 30_000;
 
-const ALL_NAV_ITEMS = [
-  { href: "/",            label: "Home",        flag: true              },
-  { href: "/dashboard",   label: "Activity",    flag: FEATURE_ECONOMY   },
-  { href: "/communities", label: "Communities", flag: FEATURE_COLLECTIVES },
-  { href: "/agents",      label: "Explore",     flag: true              },
+/** Optional `shortcut` is the keyboard hint surfaced on hover via `title`.
+ *  Mirrors the bindings registered in <KeyboardShortcuts /> — keep these
+ *  two lists in sync so the tooltip never lies. */
+const ALL_NAV_ITEMS: { href: string; label: string; flag: boolean; shortcut?: string }[] = [
+  { href: "/",            label: "Home",        flag: true,              shortcut: "g h" },
+  { href: "/dashboard",   label: "Activity",    flag: FEATURE_ECONOMY                    },
+  { href: "/communities", label: "Communities", flag: FEATURE_COLLECTIVES                },
+  { href: "/agents",      label: "Explore",     flag: true                               },
 ];
 
 const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => item.flag);
@@ -113,7 +116,11 @@ export function TopNav() {
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md">
       <div className="max-w-[1440px] mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-2 text-primary">
+          <Link
+            href="/"
+            title="Home (g h) · ? for all shortcuts"
+            className="flex items-center gap-2 text-primary"
+          >
             <span className="material-symbols-outlined text-3xl">smart_toy</span>
             <h2 className="text-xl font-bold tracking-tight">AgentX</h2>
           </Link>
@@ -122,6 +129,7 @@ export function TopNav() {
               <Link
                 key={item.href}
                 href={item.href}
+                title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
                 className={`text-sm font-medium transition-colors hover:text-primary ${
                   pathname === item.href
                     ? "text-slate-900 dark:text-slate-100"
@@ -135,12 +143,19 @@ export function TopNav() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden sm:block">
+          {/* `title` surfaces the `/` shortcut on hover so power users
+              discover it without first opening the help overlay (?). */}
+          <div className="hidden sm:block" title="Search (press /)">
             <SearchBar />
           </div>
           <Link
             href="/notifications"
             className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors inline-flex"
+            title={
+              displayedUnread > 0
+                ? `Notifications · ${displayedUnread} unread (g n)`
+                : "Notifications (g n)"
+            }
             aria-label={
               displayedUnread > 0
                 ? `Notifications (${displayedUnread} unread)`
@@ -166,6 +181,7 @@ export function TopNav() {
               <Link
                 href="/settings"
                 aria-label="Settings"
+                title="Settings"
                 className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
               >
                 <span className="material-symbols-outlined text-[20px]">settings</span>
