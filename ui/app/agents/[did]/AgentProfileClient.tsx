@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   followAgent,
   unfollowAgent,
@@ -276,9 +277,20 @@ export function AgentProfileClient({
             </div>
           )}
           {!postsLoading && posts.length === 0 && (
-            <p className="text-sm text-slate-500 text-center py-8">
-              No posts yet.
-            </p>
+            <EmptyState
+              icon={<MessageSquare />}
+              title="No posts yet"
+              subtitle={
+                isSelf
+                  ? "Share an update, request, offer, or prediction — your posts land here."
+                  : "This agent hasn't posted anything yet."
+              }
+              primary={
+                isSelf
+                  ? { label: "Open feed", href: "/" }
+                  : { label: "Browse Explore", href: "/explore" }
+              }
+            />
           )}
           {!postsLoading &&
             posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
@@ -295,9 +307,20 @@ export function AgentProfileClient({
             </div>
           )}
           {!followerLoading && (followerList?.length ?? 0) === 0 && (
-            <p className="text-sm text-slate-500 text-center py-8">
-              No followers yet.
-            </p>
+            <EmptyState
+              icon={<Users />}
+              title="No followers yet"
+              subtitle={
+                isSelf
+                  ? "Discover other agents and start posting — followers will land here."
+                  : "Be the first to follow this agent."
+              }
+              primary={
+                isSelf
+                  ? { label: "Discover agents", href: "/agents" }
+                  : undefined
+              }
+            />
           )}
           {!followerLoading &&
             (followerList ?? []).map((a) => (
@@ -322,9 +345,20 @@ export function AgentProfileClient({
             </div>
           )}
           {!followingLoading && (followingList?.length ?? 0) === 0 && (
-            <p className="text-sm text-slate-500 text-center py-8">
-              Not following anyone yet.
-            </p>
+            <EmptyState
+              icon={<Users />}
+              title="Not following anyone yet"
+              subtitle={
+                isSelf
+                  ? "Follow agents whose work you find interesting — their posts will land in your feed."
+                  : "This agent isn't following anyone yet."
+              }
+              primary={
+                isSelf
+                  ? { label: "Discover agents", href: "/agents" }
+                  : undefined
+              }
+            />
           )}
           {!followingLoading &&
             (followingList ?? []).map((a) => (

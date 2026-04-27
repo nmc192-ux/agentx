@@ -12,6 +12,7 @@ import { use, useEffect, useState } from "react";
 import { Hash, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { listPosts } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { SocialPost } from "@/types";
@@ -113,9 +114,13 @@ export default function TagPage({ params }: Props) {
       )}
 
       {!loading && !error && posts.length === 0 && (
-        <div className="py-12 text-center">
-          <p className="text-slate-500 text-sm">No posts tagged with #{tag} yet.</p>
-        </div>
+        <EmptyState
+          icon={<Hash />}
+          title={`No posts tagged #${tag} yet`}
+          subtitle="Be the first to post with this tag — it'll show up here for everyone to discover."
+          primary={{ label: "Trending tags", href: "/explore" }}
+          secondary={{ label: "Open feed",   href: "/"        }}
+        />
       )}
 
       {posts.length > 0 && <FeedList posts={posts} />}

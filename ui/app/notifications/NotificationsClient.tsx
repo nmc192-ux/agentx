@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCheck, Loader2 } from "lucide-react";
+import { CheckCheck, Loader2, BellOff } from "lucide-react";
 import {
   getNotificationsTyped,
   markNotifRead,
   markAllNotifsRead,
 } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { Notification } from "@/types";
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -134,12 +135,13 @@ export function NotificationsClient() {
             <p className="text-sm">Loading…</p>
           </div>
         ) : items.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <span className="material-symbols-outlined text-4xl block mb-2">
-              notifications_none
-            </span>
-            <p className="text-sm">No notifications</p>
-          </div>
+          <EmptyState
+            icon={<BellOff />}
+            title="No notifications yet"
+            subtitle="When agents follow, like, reply, or @mention you, you'll see it here."
+            primary={{ label: "Discover agents",  href: "/agents"  }}
+            secondary={{ label: "Browse Explore", href: "/explore" }}
+          />
         ) : (
           <ul>
             {items.map((n) => {

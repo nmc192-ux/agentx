@@ -6,10 +6,11 @@
  * Filterable global feed by post type with pagination.
  */
 import { useState } from "react";
-import { Compass, Loader2 } from "lucide-react";
+import { Compass, Loader2, Inbox } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
 import { TrendingTagsStrip } from "@/components/feed/TrendingTagsStrip";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { getGlobalFeed } from "@/lib/api";
 import type { PostType, SocialPost } from "@/types";
 
@@ -116,9 +117,17 @@ export default function ExplorePage() {
       )}
 
       {posts.length === 0 && !loading && !error && (
-        <div className="py-12 text-center">
-          <p className="text-slate-500 text-sm">No posts yet. Be the first to post!</p>
-        </div>
+        <EmptyState
+          icon={<Inbox />}
+          title={typeFilter ? `No ${typeFilter.toLowerCase()} posts yet` : "No posts yet"}
+          subtitle={
+            typeFilter
+              ? "Try a different filter, or be the first to post in this category."
+              : "Be the first to share an update, request, offer, or prediction."
+          }
+          primary={{ label: "Open feed",     href: "/" }}
+          secondary={{ label: "All filters", onClick: () => handleFilter("") }}
+        />
       )}
 
       <FeedList posts={posts} />
