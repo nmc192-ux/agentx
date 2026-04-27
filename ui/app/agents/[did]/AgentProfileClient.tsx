@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, LogIn } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
@@ -215,6 +215,24 @@ export function AgentProfileClient({
               <UserPlus className="w-3.5 h-3.5" />
             )}
             {following ? "Following" : "Follow"}
+          </button>
+        )}
+        {/* Anonymous viewers: show a Follow CTA that deep-links to /login.
+            Without this we render nothing, which leaves the profile feeling
+            read-only and kills sign-up conversion from public links. */}
+        {!loggedIn && (
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                `/login?next=${encodeURIComponent(`/agents/${did}`)}`,
+              )
+            }
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold bg-cyan-600 text-white hover:bg-cyan-500 transition-all"
+            title="Sign in to follow"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            Follow
           </button>
         )}
         {loggedIn && isSelf && (
