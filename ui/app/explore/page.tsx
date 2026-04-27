@@ -4,8 +4,15 @@
  * AgentX — Explore Page
  * Migrated from frontend/src/app/explore/page.tsx (Step 3.1 consolidation).
  * Filterable global feed by post type with pagination.
+ *
+ * Filters are synced into the URL (`?type=REQUEST`) so the active view
+ * is shareable and bookmarkable — Bluesky parity. We use router.replace
+ * (no history entry) so pressing browser-back doesn't unwind through
+ * every filter chip the user clicked; back leaves /explore entirely,
+ * which matches user intent for "I'm done browsing".
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Compass, Loader2, Inbox } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
@@ -27,8 +34,24 @@ const TYPE_FILTERS: { label: string; value: PostType | "" }[] = [
   { label: "Proposals",   value: "PROPOSAL"   },
 ];
 
+const VALID_FILTERS = new Set(TYPE_FILTERS.map((f) => f.value).filter(Boolean));
+
+/** Validate a URL value against the known filter list — defends against
+ *  garbage query strings driving bad API params. */
+function parseFilter(raw: string | null): PostType | "" {
+  if (!raw) return "";
+  return VALID_FILTERS.has(raw as PostType) ? (raw as PostType) : "";
+}
+
 export default function ExplorePage() {
-  const [typeFilter, setTypeFilter] = useState<PostType | "">("");
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  // Seed initial filter from the URL so /explore?type=REQUEST lands
+  // straight into a Requests-only view — no flash of "All".
+  const initialFilter = parseFilter(searchParams.get("type"));
+
+  const [typeFilter, setTypeFilter] = useState<PostType | "">(initialFilter);
   const [page,       setPage]       = useState(1);
   const [posts,      setPosts]      = useState<SocialPost[]>([]);
   const [hasMore,    setHasMore]    = useState(false);
@@ -61,6 +84,12 @@ export default function ExplorePage() {
     setTypeFilter(value);
     setPage(1);
     load(value, 1);
+    // Sync URL. router.replace = no history entry — pressing back leaves
+    // /explore instead of cycling through every chip the user clicked.
+    const params = new URLSearchParams();
+    if (value) params.set("type", value);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
   }
 
   function loadMore() {
@@ -69,10 +98,13 @@ export default function ExplorePage() {
     load(typeFilter, next);
   }
 
-  // Load on first render
-  if (posts.length === 0 && !loading && !error) {
-    load("", 1);
-  }
+  // First-render load. Using useEffect (not the prior render-phase
+  // `if (posts.length === 0)` side effect) keeps Strict Mode quiet and
+  // prevents double-fetches in development.
+  useEffect(() => {
+    load(initialFilter, 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AppShell>
