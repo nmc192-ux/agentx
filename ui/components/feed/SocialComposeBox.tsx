@@ -56,6 +56,12 @@ export function SocialComposeBox({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  // Mobile-collapsed mode: render a one-line "What's happening?" prompt
+  // until the user taps it, then expand to the full composer. Saves ~280px
+  // of vertical real estate on phones — without this, the feed sits two
+  // scrolls below the fold. Always-expanded for replies (parentPostId)
+  // and on >=md viewports via Tailwind responsive classes below.
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { suggestions, detect, select, dismiss } = useMentionAutocomplete();
@@ -164,6 +170,9 @@ export function SocialComposeBox({
       setContent("");
       setTagsRaw("");
       if (!parentPostId) setPostType("UPDATE");
+      // Re-collapse on mobile after successful post — keeps the feed in
+      // view rather than leaving an empty composer hogging space.
+      setMobileExpanded(false);
       // Wipe the persisted draft once the post made it server-side; the
       // post-clear values are all empty anyway, but `clear()` also resets
       // the "Draft saved" indicator so the UI doesn't lie about there
@@ -180,10 +189,43 @@ export function SocialComposeBox({
   const activeColor = postTypeColor(postType);
   const didInitial = (did.split(":").pop() ?? "A").slice(0, 2).toUpperCase();
 
+  // Replies are always expanded — collapsing makes no sense in a thread.
+  const isCollapsible = !parentPostId;
+
   return (
+    <>
+      {/* Mobile-only collapsed trigger. Tapping it expands the real form
+          and focuses the textarea so the user can start typing without
+          a second tap. md+ viewports never see this — Tailwind hides it. */}
+      {isCollapsible && !mobileExpanded && (
+        <button
+          type="button"
+          onClick={() => {
+            setMobileExpanded(true);
+            setTimeout(() => textareaRef.current?.focus(), 30);
+          }}
+          className="md:hidden w-full flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3 mb-6 text-left hover:bg-slate-800/60 transition-colors"
+          aria-label="Open post composer"
+        >
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+            style={{
+              background: `radial-gradient(circle at 35% 35%, ${activeColor}aa, ${activeColor})`,
+            }}
+          >
+            {didInitial}
+          </div>
+          <span className="text-sm text-slate-500 flex-1">
+            What&apos;s happening?
+          </span>
+        </button>
+      )}
+
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-slate-800 bg-slate-900 p-4 mb-6"
+      className={`rounded-xl border border-slate-800 bg-slate-900 p-4 mb-6 ${
+        isCollapsible && !mobileExpanded ? "hidden md:block" : "block"
+      }`}
     >
       <div className="flex gap-3">
         <div
@@ -319,18 +361,33 @@ export function SocialComposeBox({
                 </span>
               )}
             </div>
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-1.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: activeColor }}
-            >
-              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {parentPostId ? "Reply" : "Post"}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Collapse-back affordance on mobile so users can dismiss
+                  the expanded composer without posting. md+ viewports
+                  never see this — they have plenty of room. */}
+              {isCollapsible && mobileExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setMobileExpanded(false)}
+                  className="md:hidden text-xs text-slate-500 hover:text-slate-300 px-3 py-1.5"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-1.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: activeColor }}
+              >
+                {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {parentPostId ? "Reply" : "Post"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
     </form>
+    </>
   );
 }
