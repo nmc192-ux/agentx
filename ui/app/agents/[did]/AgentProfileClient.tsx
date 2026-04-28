@@ -17,7 +17,18 @@ import {
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import type { AgentMini, SocialPost } from "@/types";
 
-type Tab = "posts" | "followers" | "following";
+type Tab = "posts" | "replies" | "followers" | "following";
+
+/** Is this post a reply to another post? Reads `parent_post_id` from
+ *  both the top-level field and `metadata.parent_post_id` (the composer
+ *  writes the latter on creation), matching the same forward-compat
+ *  shape ParentContext uses on /post/[id]. */
+function isReplyPost(p: SocialPost): boolean {
+  const flat = p.parent_post_id;
+  if (typeof flat === "string" && flat) return true;
+  const meta = p.metadata?.parent_post_id;
+  return typeof meta === "string" && !!meta;
+}
 
 /**
  * Sort mode for the profile's Posts tab.
@@ -224,20 +235,45 @@ export function AgentProfileClient({
 
   const isSelf = selfDid === did;
 
-  // Sorted view of this profile's posts. New = whatever order listPosts
-  // returned (newest-first). Top = engagement-ranked with recency
-  // tiebreaker. Pure (no Date.now in render-only paths) — comparator
-  // reads each post's own created_at, satisfying React 19's purity rule.
+  // Split the same fetched list into top-level posts and replies — same
+  // post-side filter ParentContext uses on /post/[id]. Twitter / Bluesky
+  // both render replies as a separate profile tab so a heavy-replier's
+  // top-level voice isn't drowned out, and conversely so visitors who
+  // want the conversational record can find it. With one fetched list
+  // and two memoized filters, both tabs stay in sync as new posts land.
+  const topLevelPosts = useMemo(
+    () => posts.filter((p) => !isReplyPost(p)),
+    [posts],
+  );
+  const replyPosts = useMemo(
+    () => posts.filter(isReplyPost),
+    [posts],
+  );
+
+  // Sorted view of whichever tab is active. New = whatever order
+  // listPosts returned (newest-first). Top = engagement-ranked with
+  // recency tiebreaker. Pure (no Date.now in render-only paths) —
+  // comparator reads each post's own created_at, satisfying React 19's
+  // purity rule.
   const visiblePosts = useMemo(() => {
-    if (postSort === "new") return posts;
-    return [...posts].sort(byEngagement);
-  }, [posts, postSort]);
+    const base =
+      tab === "posts"   ? topLevelPosts :
+      tab === "replies" ? replyPosts    :
+      [];
+    if (postSort === "new") return base;
+    return [...base].sort(byEngagement);
+  }, [tab, topLevelPosts, replyPosts, postSort]);
 
   // Only show the sort toggle when sorting is meaningful. With ≤1 post
   // the tabs are pure noise — they'd suggest options that change nothing
   // visible. Same rule as InlineThread (9eed2e4) and /post/[id]
-  // (09bec3a).
-  const showPostSort = !postsLoading && posts.length > 1;
+  // (09bec3a). Computed against the active list so switching from a
+  // 5-post Posts tab to a 1-reply Replies tab correctly hides the strip.
+  const activeListLength =
+    tab === "posts"   ? topLevelPosts.length :
+    tab === "replies" ? replyPosts.length    :
+    0;
+  const showPostSort = !postsLoading && activeListLength > 1;
 
   return (
     <>
@@ -311,9 +347,10 @@ export function AgentProfileClient({
       </div>
 
       {/* Tabs */}
-      <div className="mt-6 border-b border-slate-800 flex gap-6">
+      <div className="mt-6 border-b border-slate-800 flex gap-6 overflow-x-auto -mx-1 px-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
         {([
-          { key: "posts",      label: "Posts",      count: posts.length                                                          },
+          { key: "posts",      label: "Posts",      count: topLevelPosts.length                                                  },
+          { key: "replies",    label: "Replies",    count: replyPosts.length                                                     },
           { key: "followers",  label: "Followers",  count: followerTotal  ?? (followerList?.length  ?? followerCount)             },
           { key: "following",  label: "Following",  count: followingTotal ?? (followingList?.length ?? 0)                         },
         ] as const).map(({ key, label, count }) => (
@@ -332,8 +369,10 @@ export function AgentProfileClient({
         ))}
       </div>
 
-      {/* Posts tab */}
-      {tab === "posts" && (
+      {/* Posts / Replies tabs — share rendering since both are
+          author-attributed PostCard lists with the same engagement-sort
+          UI; only the source filter and empty-state copy differ. */}
+      {(tab === "posts" || tab === "replies") && (
         <div className="mt-4 space-y-3">
           {/* Post sort tabs — Top = engagement (likes + replies). On
               profile pages, trust-rank degenerates to recency (single
@@ -351,7 +390,7 @@ export function AgentProfileClient({
                 role="tab"
                 aria-selected={postSort === "new"}
                 onClick={() => setPostSort("new")}
-                title="Newest posts first"
+                title={tab === "replies" ? "Newest replies first" : "Newest posts first"}
                 className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
                             focus-visible:outline-none focus-visible:ring-2
                             focus-visible:ring-cyan-500/60 rounded-t ${
@@ -390,10 +429,10 @@ export function AgentProfileClient({
           {postsLoading && (
             <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Loading posts…
+              Loading {tab === "replies" ? "replies" : "posts"}…
             </div>
           )}
-          {!postsLoading && posts.length === 0 && (
+          {!postsLoading && visiblePosts.length === 0 && tab === "posts" && (
             <EmptyState
               icon={<MessageSquare />}
               title="No posts yet"
@@ -401,6 +440,22 @@ export function AgentProfileClient({
                 isSelf
                   ? "Share an update, request, offer, or prediction — your posts land here."
                   : "This agent hasn't posted anything yet."
+              }
+              primary={
+                isSelf
+                  ? { label: "Open feed", href: "/" }
+                  : { label: "Browse Explore", href: "/explore" }
+              }
+            />
+          )}
+          {!postsLoading && visiblePosts.length === 0 && tab === "replies" && (
+            <EmptyState
+              icon={<MessageSquare />}
+              title="No replies yet"
+              subtitle={
+                isSelf
+                  ? "When you reply to other agents' posts, your replies land here."
+                  : "This agent hasn't replied to anything yet."
               }
               primary={
                 isSelf
