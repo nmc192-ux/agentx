@@ -62,6 +62,23 @@ function fullTimestamp(iso: string): string {
   }
 }
 
+/**
+ * Shared a11y baseline for the action-row buttons (like, reply, repost,
+ * quote, share, start-room). Previously all six relied on the browser's
+ * default focus ring, which is ~invisible on the slate-900 card background
+ * — keyboard users tab-navigating through the feed had no way to see
+ * where they were. The `-mx-1 px-1` trick "borrows" 4px from each
+ * adjacent gap-4 (16px) sibling so the ring fits without shifting the
+ * visible layout. `focus-visible` (not `focus`) means mouse clicks stay
+ * silent — the ring only appears when the user actually navigates with
+ * the keyboard.
+ */
+const ACTION_BTN_BASE =
+  "flex items-center gap-1 -mx-1 px-1 py-0.5 rounded-md transition-colors " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/50 " +
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 " +
+  "disabled:opacity-60 disabled:cursor-not-allowed";
+
 function TrustDot({ trust }: { trust: number }) {
   const color = trust >= 0.9 ? "#F59E0B" : trust >= 0.7 ? "#8B5CF6" : trust >= 0.4 ? "#22C55E" : "#6B7280";
   return (
@@ -404,9 +421,9 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
           type="button"
           onClick={handleLike}
           disabled={!canWrite || liking}
-          className={`flex items-center gap-1 transition-colors ${
+          className={`${ACTION_BTN_BASE} ${
             liked ? "text-pink-400" : "hover:text-slate-300"
-          } disabled:cursor-not-allowed disabled:opacity-60`}
+          }`}
           title={canWrite ? "Like" : "Log in to like"}
         >
           <ThumbsUp className="w-3.5 h-3.5" />
@@ -416,7 +433,7 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         <button
           type="button"
           onClick={() => setThreadOpen((v) => !v)}
-          className={`flex items-center gap-1 transition-colors ${
+          className={`${ACTION_BTN_BASE} ${
             threadOpen ? "text-cyan-400" : "hover:text-slate-300"
           }`}
           title="Replies"
@@ -429,7 +446,7 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
           type="button"
           onClick={handleRepost}
           disabled={!canWrite || reposting || reposted || isRepost || isOwnPost}
-          className={`flex items-center gap-1 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+          className={`${ACTION_BTN_BASE} ${
             reposted ? "text-emerald-400" : "hover:text-emerald-300"
           }`}
           title={
@@ -452,7 +469,7 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
           type="button"
           onClick={() => canWrite && setQuoteOpen(true)}
           disabled={!canWrite}
-          className="flex items-center gap-1 hover:text-slate-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          className={`${ACTION_BTN_BASE} hover:text-slate-300`}
           title={canWrite ? "Quote" : "Log in to quote"}
         >
           <QuoteIcon className="w-3.5 h-3.5" />
@@ -462,7 +479,7 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         <button
           type="button"
           onClick={handleShare}
-          className={`flex items-center gap-1 transition-colors ${
+          className={`${ACTION_BTN_BASE} ${
             shared ? "text-emerald-400" : "hover:text-slate-300"
           }`}
           title={shared ? "Link copied" : "Share"}
@@ -477,7 +494,7 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
             type="button"
             onClick={handleStartRoom}
             disabled={!canWrite || startingRoom}
-            className="flex items-center gap-1 hover:text-cyan-300 transition-colors disabled:opacity-60 disabled:cursor-not-allowed ml-auto"
+            className={`${ACTION_BTN_BASE} hover:text-cyan-300 ml-auto`}
             title={canWrite ? "Start a collaboration room" : "Log in to start a room"}
           >
             <UsersIcon className="w-3.5 h-3.5" />
