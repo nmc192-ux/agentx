@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, Network, LogIn, BadgeCheck } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, Network, LogIn, BadgeCheck, Plus, Check } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
@@ -16,6 +16,7 @@ import {
   listPosts,
   getAgentCapabilities,
   getAgentServices,
+  verifyAgentCapability,
 } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import type { AgentMini, Capability, CapabilityLevel, Service, SocialPost } from "@/types";
@@ -112,6 +113,23 @@ export function AgentProfileClient({
   // signal: which skills this agent claims, at what level, and whether
   // peers have endorsed or verified them.
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
+
+  // Capability endorsement local state. Two side-channels keep the chip
+  // row responsive without re-fetching capabilities after each endorse:
+  //
+  //   - `endorsing` is the per-cap in-flight set (drives the spinner
+  //     replacing the + icon).
+  //   - `endorsedThisSession` records the cap_ids the viewer has
+  //     successfully endorsed since this profile mounted, so the chip
+  //     shows "Endorsed" feedback even though the bare backend payload
+  //     can't tell us "this viewer has already endorsed this cap"
+  //     (there's no /capabilities/{id}/endorsers/{viewer_did} lookup).
+  //     Persisting across navigations would need backend support; for
+  //     this session it's the right tradeoff — visitors get the
+  //     completion feedback they expect from Twitter/Bluesky-style
+  //     reactions, and refreshing rehydrates from authoritative state.
+  const [endorsing,           setEndorsing]           = useState<Set<string>>(new Set());
+  const [endorsedThisSession, setEndorsedThisSession] = useState<Set<string>>(new Set());
 
   // Services — what this agent offers (priced, fulfillable). The
   // economic counterpart to capabilities: where capabilities are
@@ -296,6 +314,71 @@ export function AgentProfileClient({
       setFollowerCount((c) => (prev ? c + 1 : Math.max(0, c - 1)));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Endorse a capability. Server-side bumps verified_by_count and flips
+   * the row to VERIFIED once it crosses the threshold (currently 2);
+   * we mirror both into local capabilities state so the chip reflects
+   * the new count and (where applicable) the BadgeCheck immediately,
+   * without an extra round-trip.
+   *
+   * Defensive guards: ignore self-endorse attempts (server returns 422
+   * but we shouldn't even render the button in that case), ignore
+   * double-clicks via the in-flight set, and revert if the request
+   * fails. The endorsed-this-session set persists the "Endorsed"
+   * confirmation chip-state until the user navigates away — we'd love
+   * to persist across reloads but the backend can't currently answer
+   * "did this viewer endorse this cap" without a new endpoint, so
+   * session-scoped is the honest UX.
+   */
+  async function endorseCapability(capabilityId: string) {
+    const token = getToken();
+    const viewerDid = getDid();
+    if (!token || !viewerDid) return;
+    if (selfDid === did) return;            // can't endorse self
+    if (endorsing.has(capabilityId)) return; // double-click guard
+    if (endorsedThisSession.has(capabilityId)) return;
+
+    setEndorsing((s) => new Set(s).add(capabilityId));
+    try {
+      const result = await verifyAgentCapability(
+        did,
+        capabilityId,
+        viewerDid,
+        token,
+      );
+      // Reconcile local capabilities state with the authoritative
+      // post-endorse counts the server returned. The chip refreshes in
+      // place — count bumps, BadgeCheck shows up the moment the row
+      // crosses the verification threshold.
+      setCapabilities((prev) =>
+        prev.map((c) =>
+          c.capability_id === capabilityId
+            ? {
+                ...c,
+                endorsement_count: result.verified_by_count,
+                status: result.verified ? "VERIFIED" : c.status,
+              }
+            : c,
+        ),
+      );
+      setEndorsedThisSession((s) => new Set(s).add(capabilityId));
+    } catch (err) {
+      // Surface the failure so the user knows their click didn't take.
+      // Network errors / 422 (self-endorse race) / 404 (cap removed
+      // since page-load) all flow here. A toast system would be nicer
+      // but we don't have one yet — alert is a single-file ship that
+      // matches the rest of the file's error style.
+      console.error("Failed to endorse capability", err);
+      alert("Could not endorse this capability. Please try again.");
+    } finally {
+      setEndorsing((s) => {
+        const next = new Set(s);
+        next.delete(capabilityId);
+        return next;
+      });
     }
   }
 
@@ -507,9 +590,12 @@ export function AgentProfileClient({
           generalist agent with 20 capabilities doesn't blow out the
           layout, while a specialist with 2 stays compact. Each chip
           shows level (color-coded), status (VERIFIED gets a check),
-          and endorsement count when ≥1. Clicking a chip navigates to
-          the directory at /capabilities — keyboard-accessible via
-          Link's native focus styles. */}
+          and endorsement count when ≥1. Clicking the chip body
+          navigates to the directory at /capabilities; an inline +
+          button lets logged-in viewers peer-endorse the cap (the
+          AgentX-native trust primitive — no Twitter equivalent).
+          The chip body is a Link, the endorse button is a sibling
+          <button> so its click doesn't bubble up to the navigation. */}
       {visibleCapabilities.length > 0 && (
         <div
           className="mt-5 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1
@@ -525,30 +611,72 @@ export function AgentProfileClient({
               basic:        "border-slate-600     text-slate-400  bg-slate-800/40",
             };
             const isVerified = c.status === "VERIFIED";
+            // Endorse button is shown only when the viewer is logged
+            // in, viewing someone else's profile, and we know their
+            // DID (selfDid is hydrated post-mount). Server enforces
+            // the same rules but rendering the button anyway would
+            // give visitors a misleading affordance.
+            const canEndorse = loggedIn && !isSelf && !!selfDid;
+            const isEndorsing = endorsing.has(c.capability_id);
+            const isEndorsed  = endorsedThisSession.has(c.capability_id);
             return (
-              <Link
+              <div
                 key={c.capability_id}
-                href="/capabilities"
-                className={`flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+                className={`flex-shrink-0 inline-flex items-center gap-1 pl-2.5 py-1 rounded-full
                             border text-[11px] font-medium transition-colors
-                            hover:bg-slate-800/60 ${levelStyle[c.level]}`}
+                            ${canEndorse ? "pr-1" : "pr-2.5"}
+                            ${levelStyle[c.level]}`}
                 title={`${c.capability_name} · ${c.level} · ${c.status.toLowerCase()}${
                   c.endorsement_count > 0
                     ? ` · ${c.endorsement_count} endorsement${c.endorsement_count === 1 ? "" : "s"}`
                     : ""
                 }`}
               >
-                {isVerified && (
-                  <BadgeCheck
-                    className="w-3 h-3 text-emerald-400 flex-shrink-0"
-                    aria-label="verified"
-                  />
+                <Link
+                  href="/capabilities"
+                  className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
+                >
+                  {isVerified && (
+                    <BadgeCheck
+                      className="w-3 h-3 text-emerald-400 flex-shrink-0"
+                      aria-label="verified"
+                    />
+                  )}
+                  <span className="truncate max-w-[140px]">{c.capability_name}</span>
+                  {c.endorsement_count > 0 && (
+                    <span className="opacity-60 ml-0.5">{c.endorsement_count}</span>
+                  )}
+                </Link>
+                {canEndorse && (
+                  <button
+                    type="button"
+                    onClick={() => endorseCapability(c.capability_id)}
+                    disabled={isEndorsing || isEndorsed}
+                    aria-label={
+                      isEndorsed
+                        ? `Endorsed ${c.capability_name}`
+                        : `Endorse ${c.capability_name}`
+                    }
+                    title={
+                      isEndorsed
+                        ? "You endorsed this capability"
+                        : `Endorse ${c.capability_name}`
+                    }
+                    className="ml-0.5 w-5 h-5 inline-flex items-center justify-center rounded-full
+                               border border-current/40 hover:bg-current/10
+                               disabled:opacity-50 disabled:cursor-default
+                               transition-colors"
+                  >
+                    {isEndorsing ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : isEndorsed ? (
+                      <Check className="w-3 h-3" />
+                    ) : (
+                      <Plus className="w-3 h-3" />
+                    )}
+                  </button>
                 )}
-                <span className="truncate max-w-[140px]">{c.capability_name}</span>
-                {c.endorsement_count > 0 && (
-                  <span className="opacity-60 ml-0.5">{c.endorsement_count}</span>
-                )}
-              </Link>
+              </div>
             );
           })}
         </div>

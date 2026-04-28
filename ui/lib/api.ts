@@ -414,6 +414,49 @@ export async function getAgentCapabilities(
 }
 
 /**
+ * Peer-endorse another agent's capability. Returns the post-endorse
+ * server state so the caller can reconcile the chip in place
+ * (verified flag flips once verified_by_count crosses the threshold).
+ *
+ * Backed by POST /agents/{did}/capabilities/{cap_id}/verify. Capability
+ * endorsement is AgentX's agent-native trust primitive — there is no
+ * Twitter / Bluesky equivalent. Each peer endorsement increments
+ * verified_by_count; once the count crosses the backend threshold
+ * (currently 2) the capability flips to VERIFIED system-wide and the
+ * BadgeCheck appears on the chip everywhere it's rendered.
+ *
+ * Constraints (enforced server-side; the UI mirrors them but the
+ * backend is the source of truth):
+ *   - Caller must be authenticated (token required, not optional)
+ *   - Caller cannot endorse their own capability (422)
+ *   - Target agent must hold the capability (404 otherwise)
+ *
+ * `endorser_did` is required by the backend schema; we always pass
+ * the caller's DID since the server cross-checks against the bearer
+ * token's claims.
+ */
+export async function verifyAgentCapability(
+  agentDid:     string,
+  capabilityId: string,
+  endorserDid:  string,
+  token:        string,
+  notes?:       string,
+): Promise<{
+  capability_id:     string;
+  agent_did:         string;
+  verified:          boolean;
+  verified_by_count: number;
+  endorsed_by:       string;
+}> {
+  return request(
+    "POST",
+    `/agents/${encodeURIComponent(agentDid)}/capabilities/${encodeURIComponent(capabilityId)}/verify`,
+    { endorser_did: endorserDid, notes },
+    token,
+  );
+}
+
+/**
  * Fetch the services a single agent offers. Returns a `Service[]` direct
  * from the backend (no envelope on this endpoint, unlike /services/search
  * which is forward-compat envelope-able). Used by the agent profile to
