@@ -73,7 +73,115 @@ export const getAgents     = (limit = 20, offset = 0) => getList("/agents", { li
 export const getAgent      = (did: string)         => get<Record<string, unknown>>(`/agents/${did}`);
 export const discoverAgents = (q?: string)         => getList("/agents/discover", q ? { q } : undefined);
 export const getTopAgents  = ()                    => getList("/agents/top");
-export const getTrustNetwork = (did: string)       => get<Record<string, unknown>>(`/agents/${did}/trust-network`);
+/**
+ * Fetch the trust network rooted at this agent — adapted for the UI
+ * consumer at /agents/{did}/trust.
+ *
+ * The naive `get('/agents/{did}/trust-network')` was wrong: backend's
+ * `agent_id` route param is UUID-formatted (openapi: format=uuid), so
+ * passing a DID 422'd silently and the consumer's `.catch(() => null)`
+ * swallowed it — the page rendered "0 connected nodes" forever. Mirror
+ * the DID→UUID resolution from getTrustGraph below, then enrich peers
+ * (which arrive as UUID-only GraphEdge records) back to DID +
+ * display_name so the CivilizationMap visualisation has labels instead
+ * of opaque UUIDs.
+ *
+ * Returns the seed agent as the centre node plus one node per peer.
+ * Promise.allSettled on the per-peer profile lookups so a single
+ * failed enrichment doesn't sink the whole network. Caller-side shape
+ * stays envelope-compatible (`{ nodes }`) with the existing page.
+ */
+export interface TrustNetworkNode {
+  agent_did:    string;
+  trust_score:  number;
+  display_name: string | null;
+}
+
+export interface TrustNetworkPayload {
+  seed_did:   string;
+  peer_count: number;
+  nodes:      TrustNetworkNode[];
+}
+
+export async function getTrustNetwork(
+  did: string,
+): Promise<TrustNetworkPayload> {
+  // Step 1: resolve DID → UUID via the public /agents/{did} lookup. The
+  // response also gives us the seed agent's display_name + trust_score
+  // for the centre node.
+  const seedAgent = await get<Record<string, unknown>>(
+    `/agents/${did}`,
+  ).catch(() => null);
+  const seedUuid  = seedAgent?.agent_id as string | undefined;
+  const seedName  = (seedAgent?.display_name as string | null) ?? null;
+  const seedTrust = (seedAgent?.trust_score as number) ?? 1.0;
+  if (!seedUuid) {
+    return { seed_did: did, peer_count: 0, nodes: [] };
+  }
+
+  // Step 2: trust-network via UUID. Soft-fail (empty peers) so the page
+  // can still render the centre node when the agent has no edges yet.
+  const network = await get<Record<string, unknown>>(
+    `/agents/${seedUuid}/trust-network`,
+  ).catch(() => null);
+  const peers      = (network?.peers as Record<string, unknown>[]) ?? [];
+  const peerCount  = (network?.peer_count as number) ?? peers.length;
+
+  // Step 3: enrich peer UUIDs → agent records (DID + display_name).
+  // Parallel fetches with Promise.allSettled so a missing or 404'd peer
+  // doesn't cascade. De-dup peer UUIDs first because a peer can appear
+  // on multiple edges in unusual graphs.
+  const peerUuids = Array.from(
+    new Set(
+      peers
+        .map((p) => p.peer_agent_id as string | undefined)
+        .filter((u): u is string => Boolean(u)),
+    ),
+  );
+  const settled = await Promise.allSettled(
+    peerUuids.map((uuid) =>
+      get<Record<string, unknown>>(`/agents/${uuid}`),
+    ),
+  );
+  const uuidToAgent = new Map<string, Record<string, unknown>>();
+  settled.forEach((res, idx) => {
+    if (res.status === "fulfilled" && res.value) {
+      uuidToAgent.set(peerUuids[idx], res.value);
+    }
+  });
+
+  const peerNodes: TrustNetworkNode[] = peers
+    .map((p): TrustNetworkNode | null => {
+      const peerUuid = p.peer_agent_id as string;
+      const agent    = uuidToAgent.get(peerUuid);
+      const peerDid  = (agent?.agent_did as string) ?? "";
+      // No DID = enrichment failed; drop the node rather than render an
+      // unclickable opaque-UUID label.
+      if (!peerDid) return null;
+      return {
+        agent_did:    peerDid,
+        trust_score:  (p.trust_weight as number) ?? 0,
+        display_name: (agent?.display_name as string | null) ?? null,
+      };
+    })
+    .filter((n): n is TrustNetworkNode => n !== null);
+
+  return {
+    seed_did:   did,
+    peer_count: peerCount,
+    nodes: [
+      // Seed at the centre — always included so the visualisation has a
+      // root even when peer_count === 0 (otherwise the page would render
+      // an empty map for any agent without trust edges yet).
+      {
+        agent_did:    did,
+        trust_score:  seedTrust,
+        display_name: seedName,
+      },
+      ...peerNodes,
+    ],
+  };
+}
 
 // ── Trust Graph ──────────────────────────────────────────────────────────────
 // Fetches /agents/{did}/trust-network and adapts the real backend shape:
