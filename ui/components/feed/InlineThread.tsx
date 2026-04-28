@@ -12,6 +12,17 @@
  *
  * The trust-ranked formula lives in lib/feed/trustRank.ts (extracted on
  * the third caller per rule-of-three).
+ *
+ * 2-LEVEL CONVERSATION VIEW (depth-1 nesting): top-level threads
+ * auto-display each reply's *direct children* indented beneath it (read-
+ * only, no compose, no sort) so users can scan a conversation without
+ * clicking each reply's expand button. Same as Bluesky / Twitter — the
+ * thread renders 2 levels by default; deeper drill-down requires opening
+ * the child's permalink (Reply button on an in-thread PostCard becomes
+ * a Link to /post/[id], suppressing the duplicate inline-thread render
+ * that would otherwise stack the same children twice). Limit on the
+ * nested fetch is small (3) so a heavy-replied subthread doesn't dump
+ * the entire chain inline.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -25,9 +36,22 @@ import { SocialComposeBox } from "./SocialComposeBox";
 interface Props {
   postId: string;
   onReplyPosted?: () => void;
+  /**
+   * Read-only nested-children view rendered under a parent reply. When
+   * true: no compose box, no sort tabs, smaller fetch limit, deeper
+   * indent — and we don't recurse another level (caps the thread at 2
+   * visible levels). When false: full root-level thread UI.
+   */
+  nested?: boolean;
 }
 
-export function InlineThread({ postId, onReplyPosted }: Props) {
+// How many grandchildren to fetch in nested mode. Small on purpose — a
+// chain with hundreds of grandchildren shouldn't dump the whole thing
+// inline; users can click "View this reply →" to drill in via permalink.
+const NESTED_FETCH_LIMIT = 3;
+const ROOT_FETCH_LIMIT = 20;
+
+export function InlineThread({ postId, onReplyPosted, nested = false }: Props) {
   const [replies, setReplies] = useState<SocialPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +64,8 @@ export function InlineThread({ postId, onReplyPosted }: Props) {
       setError(null);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getPostReplies(postId, { limit: 20 }, token);
+        const limit = nested ? NESTED_FETCH_LIMIT : ROOT_FETCH_LIMIT;
+        const resp = await getPostReplies(postId, { limit }, token);
         if (!active) return;
         setReplies((resp.posts as SocialPost[]) ?? []);
       } catch (err) {
@@ -53,7 +78,7 @@ export function InlineThread({ postId, onReplyPosted }: Props) {
     return () => {
       active = false;
     };
-  }, [postId]);
+  }, [postId, nested]);
 
   function handleNewReply(post: SocialPost) {
     setReplies((prev) => [post, ...prev]);
@@ -70,21 +95,34 @@ export function InlineThread({ postId, onReplyPosted }: Props) {
 
   // Only show the sort toggle when sorting is meaningful. With 0 or 1
   // reply, the tabs are pure noise — they'd suggest options that change
-  // nothing visible.
-  const showSort = !loading && !error && replies.length > 1;
+  // nothing visible. Suppressed entirely in nested mode (read-only view).
+  const showSort = !nested && !loading && !error && replies.length > 1;
+
+  // Outer container styling differs by mode:
+  //  - root: standard left-border indent (existing behavior)
+  //  - nested: smaller padding, deeper-nested look, less margin so the
+  //    nested thread visually clusters with its parent reply
+  const containerClass = nested
+    ? "mt-2 ml-3 pl-3 border-l border-slate-800/60 space-y-2"
+    : "mt-3 pl-3 border-l-2 border-slate-800 space-y-3";
 
   return (
-    <div className="mt-3 pl-3 border-l-2 border-slate-800 space-y-3">
-      <SocialComposeBox
-        parentPostId={postId}
-        onPosted={handleNewReply}
-        compact
-      />
+    <div className={containerClass}>
+      {/* Compose box only at root — nested thread is read-only; user
+          replies to a grandchild by opening its permalink (PostCard's
+          Reply button becomes a Link in inThread mode). */}
+      {!nested && (
+        <SocialComposeBox
+          parentPostId={postId}
+          onPosted={handleNewReply}
+          compact
+        />
+      )}
 
       {loading && (
         <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
           <Loader2 className="w-3 h-3 animate-spin" />
-          Loading replies…
+          {nested ? "Loading replies…" : "Loading replies…"}
         </div>
       )}
 
@@ -92,7 +130,7 @@ export function InlineThread({ postId, onReplyPosted }: Props) {
         <p className="text-xs text-red-400 py-2">{error}</p>
       )}
 
-      {!loading && !error && replies.length === 0 && (
+      {!loading && !error && replies.length === 0 && !nested && (
         <p className="text-xs text-slate-600 py-2">No replies yet.</p>
       )}
 
@@ -144,10 +182,23 @@ export function InlineThread({ postId, onReplyPosted }: Props) {
         </div>
       )}
 
-      <div className="space-y-2">
-        {visibleReplies.map((r, i) => (
-          <PostCard key={r.post_id} post={r} index={i} />
-        ))}
+      <div className={nested ? "space-y-1.5" : "space-y-2"}>
+        {visibleReplies.map((r, i) => {
+          // Auto-show this reply's direct children one level deep, but
+          // only at the root level — nested replies don't recurse again
+          // (caps total visible depth at 2). The grandchild thread is
+          // read-only (no compose, no sort) and only appears when this
+          // reply actually has children.
+          const childCount = r.reply_count ?? 0;
+          return (
+            <div key={r.post_id}>
+              <PostCard post={r} index={i} inThread />
+              {!nested && childCount > 0 && (
+                <InlineThread postId={r.post_id} nested />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

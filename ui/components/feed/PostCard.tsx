@@ -111,9 +111,22 @@ interface PostCardProps {
    * Stays off (false) on the feed where compact cards keep scrolling fast.
    */
   detail?: boolean;
+  /**
+   * Rendered inside an `InlineThread` (or the /post/[id] reply list). In
+   * thread context, the parent thread already auto-displays this post's
+   * direct children below it (Bluesky-style 2-level conversation view),
+   * so we suppress the per-card threadOpen InlineThread render to avoid
+   * duplicating the same children twice. The Reply button also switches
+   * from "toggle inline thread" to "navigate to this post's permalink"
+   * — replying to a deep child means visiting its own thread page (where
+   * the composer is anchored to that post). Same affordance as Bluesky:
+   * thread shows children read-only, drilling deeper means opening the
+   * child's permalink.
+   */
+  inThread?: boolean;
 }
 
-export const PostCard = memo(function PostCard({ post, index = 0, detail = false }: PostCardProps) {
+export const PostCard = memo(function PostCard({ post, index = 0, detail = false, inThread = false }: PostCardProps) {
   const router = useRouter();
   const meta = TYPE_META[post.post_type] ?? TYPE_META.UPDATE;
   const Icon = meta.icon;
@@ -513,17 +526,34 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           {likeCount}
         </button>
 
-        <button
-          type="button"
-          onClick={() => setThreadOpen((v) => !v)}
-          className={`${ACTION_BTN_BASE} ${
-            threadOpen ? "text-cyan-400" : "hover:text-slate-300"
-          }`}
-          title="Replies"
-        >
-          <Reply className="w-3.5 h-3.5" />
-          {replyCount}
-        </button>
+        {inThread ? (
+          // In thread context the parent thread already auto-shows this
+          // post's direct children below it, so toggling another inline
+          // thread here would just duplicate the same content. Send the
+          // user to this post's permalink instead — that's where the
+          // composer is anchored to *this* reply, matching Bluesky's
+          // "click into a reply to reply to it" pattern.
+          <Link
+            href={`/post/${post.post_id}`}
+            className={`${ACTION_BTN_BASE} hover:text-slate-300`}
+            title="Open this reply in its own thread"
+          >
+            <Reply className="w-3.5 h-3.5" />
+            {replyCount}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setThreadOpen((v) => !v)}
+            className={`${ACTION_BTN_BASE} ${
+              threadOpen ? "text-cyan-400" : "hover:text-slate-300"
+            }`}
+            title="Replies"
+          >
+            <Reply className="w-3.5 h-3.5" />
+            {replyCount}
+          </button>
+        )}
 
         <button
           type="button"
@@ -593,7 +623,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
         )}
       </div>
 
-      {threadOpen && (
+      {threadOpen && !inThread && (
         <InlineThread
           postId={post.post_id}
           onReplyPosted={() => setReplyCount((c) => c + 1)}

@@ -20,6 +20,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PostCard } from "@/components/feed/PostCard";
 import { ParentContext } from "@/components/feed/ParentContext";
+import { InlineThread } from "@/components/feed/InlineThread";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { getPost, getPostReplies } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
@@ -245,9 +246,24 @@ export default function ThreadPage({ params }: Props) {
           </p>
         )}
         {!replyLoading &&
-          visibleReplies.map((reply, i) => (
-            <PostCard key={reply.post_id} post={reply} index={i} />
-          ))}
+          visibleReplies.map((reply, i) => {
+            // Bluesky-style 2-level conversation view: each direct
+            // reply gets its own children inlined beneath (read-only,
+            // no compose, no sort) when it has any. `inThread` switches
+            // the PostCard's Reply button from "toggle local thread"
+            // (which would duplicate the same children we're about to
+            // render) into a Link to the reply's permalink — that's
+            // where users compose a reply *to* this reply.
+            const childCount = reply.reply_count ?? 0;
+            return (
+              <div key={reply.post_id}>
+                <PostCard post={reply} index={i} inThread />
+                {childCount > 0 && (
+                  <InlineThread postId={reply.post_id} nested />
+                )}
+              </div>
+            );
+          })}
       </div>
     </AppShell>
   );
