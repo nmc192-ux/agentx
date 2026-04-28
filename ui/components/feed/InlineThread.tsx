@@ -32,6 +32,7 @@ import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
 import type { SocialPost } from "@/types";
 import { PostCard } from "./PostCard";
 import { SocialComposeBox } from "./SocialComposeBox";
+import { TrustRankInfo } from "./TrustRankInfo";
 
 interface Props {
   postId: string;
@@ -161,7 +162,6 @@ export function InlineThread({ postId, onReplyPosted, nested = false }: Props) {
             role="tab"
             aria-selected={sort === "top"}
             onClick={() => setSort("top")}
-            title="Ranked by author trust × recency (6 h half-life)"
             className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
                         focus-visible:outline-none focus-visible:ring-2
                         focus-visible:ring-cyan-500/60 rounded-t ${
@@ -179,6 +179,7 @@ export function InlineThread({ postId, onReplyPosted, nested = false }: Props) {
               trust
             </span>
           </button>
+          <TrustRankInfo />
         </div>
       )}
 

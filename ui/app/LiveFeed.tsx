@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Users } from "lucide-react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
+import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
 import { OnboardingHero } from "@/components/onboarding/OnboardingHero";
 import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
 import { agentXWs } from "@/lib/websocket";
@@ -223,7 +224,6 @@ export function LiveFeed({
             role="tab"
             aria-selected={sort === "top"}
             onClick={() => setSort("top")}
-            title="Ranked by author trust × recency (6 h half-life)"
             className={`px-4 py-2 text-sm font-medium transition-colors -mb-px
                         focus-visible:outline-none focus-visible:ring-2
                         focus-visible:ring-cyan-500/60 rounded-t ${
@@ -241,6 +241,7 @@ export function LiveFeed({
               trust
             </span>
           </button>
+          <TrustRankInfo />
         </div>
 
         {showFollowingEmpty ? (

@@ -22,6 +22,7 @@ import { PostCard } from "@/components/feed/PostCard";
 import { ParentContext } from "@/components/feed/ParentContext";
 import { InlineThread } from "@/components/feed/InlineThread";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
+import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
 import { getPost, getPostReplies } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
 import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
@@ -276,7 +277,6 @@ export default function ThreadPage({ params }: Props) {
             role="tab"
             aria-selected={sort === "top"}
             onClick={() => setSort("top")}
-            title="Ranked by author trust × recency (6 h half-life)"
             className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
                         focus-visible:outline-none focus-visible:ring-2
                         focus-visible:ring-cyan-500/60 rounded-t ${
@@ -294,6 +294,7 @@ export default function ThreadPage({ params }: Props) {
               trust
             </span>
           </button>
+          <TrustRankInfo />
         </div>
       )}
 
