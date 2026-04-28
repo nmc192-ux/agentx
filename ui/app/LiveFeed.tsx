@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Hash, Sparkles, Users, X } from "lucide-react";
+import { ArrowUp, Hash, Sparkles, Users, X } from "lucide-react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
@@ -45,6 +45,17 @@ export function LiveFeed({
   initialPosts: SocialPost[];
 }) {
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts);
+  // WS-arriving posts are buffered here instead of being prepended
+  // straight into `posts`. Twitter / Bluesky parity: shoving new
+  // posts above whatever the user is currently reading is a UX
+  // anti-pattern — it breaks scroll position, jolts the eye, and
+  // (with infinite-scroll feeds) pushes the row they were about to
+  // tap further down by one row-height per arrival. Both platforms
+  // surface a "Show N new posts" pill instead, putting the flush
+  // under the user's control. The user's own posts (handlePosted)
+  // still prepend instantly — they expect immediate feedback for
+  // their own action.
+  const [pendingPosts, setPendingPosts] = useState<SocialPost[]>([]);
   const [sort, setSort] = useState<SortMode>("new");
   const [feedSource, setFeedSource] = useState<FeedSource>({ kind: "global" });
   // The user's pinned hashtags, persisted in localStorage and synced
@@ -105,9 +116,44 @@ export function LiveFeed({
     }
 
     const msgHandler = (msg: { type: string; data?: unknown }) => {
-      if (msg.type === "NEW_POST" && msg.data) {
-        setPosts((prev) => [msg.data as SocialPost, ...prev]);
-      }
+      if (msg.type !== "NEW_POST" || !msg.data) return;
+      const incoming = msg.data as SocialPost;
+
+      // Cheap de-dup: the WebSocket can echo back posts the user just
+      // published (handlePosted already optimistically prepended), and
+      // historical arrivals could in theory replay if the connection
+      // reopens. Skip when we already have this id either in `posts` or
+      // in `pendingPosts` to keep the pill count honest.
+      setPendingPosts((prevPending) => {
+        const inPending = prevPending.some((p) => p.post_id === incoming.post_id);
+        if (inPending) return prevPending;
+        // Probe `posts` via the latest closure value. setPosts is sync;
+        // reading `posts` here is fine because the effect's identity is
+        // stable (empty deps) and we only need a best-effort de-dup —
+        // a duplicate that slips through is not a correctness problem,
+        // just a one-row visual blip on flush.
+        let inFeed = false;
+        setPosts((prevPosts) => {
+          inFeed = prevPosts.some((p) => p.post_id === incoming.post_id);
+          // If this is the user's own post arriving via WS (e.g. they
+          // posted from another device, or the local handlePosted path
+          // is bypassed somehow), prepend directly so they see it
+          // without having to click the pill — owners get immediate
+          // feedback. Skip dedup-already-in-feed guard for own posts.
+          if (incoming.author_did === myDid && !inFeed) {
+            return [incoming, ...prevPosts];
+          }
+          return prevPosts;
+        });
+        if (inFeed || incoming.author_did === myDid) return prevPending;
+        // Cap the pending buffer so a long idle session can't grow it
+        // unboundedly. 50 covers "I left the tab open over lunch and
+        // came back" without burning memory or showing an absurd count
+        // like "Show 1284 new posts" that the user wouldn't actually
+        // want to flush in one go.
+        const next = [incoming, ...prevPending];
+        return next.length > 50 ? next.slice(0, 50) : next;
+      });
     };
 
     agentXWs.onMessage(msgHandler);
@@ -116,10 +162,30 @@ export function LiveFeed({
       agentXWs.offMessage(msgHandler);
       if (token) agentXWs.disconnect();
     };
-  }, []);
+  }, [myDid]);
 
   function handlePosted(post: SocialPost) {
+    // The user's own newly-published post: immediate prepend, exactly
+    // like before. Their action expects immediate feedback — we never
+    // route own-posts through the pending-pill buffer.
     setPosts((prev) => [post, ...prev]);
+  }
+
+  /**
+   * Flush the pending-posts buffer into the visible feed and scroll
+   * to the top so the user actually sees what just arrived. Smooth
+   * scroll keeps the motion grounded — instant teleport feels like a
+   * page reload. The flush prepends in the order received (newest-
+   * first) so the timeline ordering matches what users expect from
+   * the timestamp on each card.
+   */
+  function flushPendingPosts() {
+    if (pendingPosts.length === 0) return;
+    setPosts((prev) => [...pendingPosts, ...prev]);
+    setPendingPosts([]);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   // Filter the post population by feed source, then sort. Two-stage
@@ -347,6 +413,38 @@ export function LiveFeed({
           </button>
           <TrustRankInfo />
         </div>
+
+        {/* "Show N new posts" pill — Twitter / Bluesky parity. WS-arriving
+            posts buffer in `pendingPosts` rather than shoving the user's
+            current reading position. Click flushes the buffer into the
+            visible feed and smooth-scrolls to top so the user sees what
+            just arrived. Sticky-top so the pill follows the user as they
+            scroll, without taking over the layout — feels like Twitter's
+            floating "Show new Tweets" affordance. role=status + aria-live
+            polite so screen readers get announced when new posts arrive
+            without chattering on every WS frame. */}
+        {pendingPosts.length > 0 && (
+          <div
+            className="sticky top-2 z-10 flex justify-center pointer-events-none mb-3"
+            role="status"
+            aria-live="polite"
+          >
+            <button
+              type="button"
+              onClick={flushPendingPosts}
+              className="pointer-events-auto inline-flex items-center gap-1.5
+                         px-3.5 py-1.5 rounded-full bg-cyan-500 text-white
+                         text-xs font-semibold shadow-lg shadow-cyan-500/30
+                         hover:bg-cyan-400 active:scale-95 transition
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-cyan-300/60"
+              aria-label={`Show ${pendingPosts.length} new ${pendingPosts.length === 1 ? "post" : "posts"}`}
+            >
+              <ArrowUp className="w-3 h-3" aria-hidden />
+              {pendingPosts.length === 50 ? "50+" : pendingPosts.length} new {pendingPosts.length === 1 ? "post" : "posts"}
+            </button>
+          </div>
+        )}
 
         {showTagEmpty && feedSource.kind === "tag" ? (
           // Pinned-tag tab with no posts in the locally-cached
