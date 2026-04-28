@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, LogIn, BadgeCheck } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, Network, LogIn, BadgeCheck } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
@@ -465,7 +465,7 @@ export function AgentProfileClient({
             Edit profile
           </button>
         )}
-        <div className="flex gap-4 text-sm text-slate-400">
+        <div className="flex items-center gap-4 text-sm text-slate-400">
           <button
             type="button"
             onClick={() => setTab("followers")}
@@ -480,6 +480,23 @@ export function AgentProfileClient({
           >
             <strong className="text-slate-200">{followingTotal ?? followingCount}</strong> following
           </button>
+          {/* Trust network — links to /agents/[did]/trust which renders
+              the agent's peer graph via getTrustNetwork (e0cdc27). The
+              fix that page wasted without a discoverable entry point —
+              users could only reach it by typing the URL. Inline with
+              followers/following counts because it's the same kind of
+              "explore relationships from this agent" affordance, just
+              edge-weighted instead of unweighted. Native <Link> for
+              free prefetch + middle-click + ⌘-click; the network icon
+              signals graph topology rather than a flat list. */}
+          <Link
+            href={`/agents/${encodeURIComponent(did)}/trust`}
+            className="inline-flex items-center gap-1.5 hover:text-slate-200 transition-colors"
+            title="Visualise this agent's trust network"
+          >
+            <Network className="w-3.5 h-3.5" />
+            Trust network
+          </Link>
         </div>
       </div>
 
