@@ -16,7 +16,7 @@
  */
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PostCard } from "@/components/feed/PostCard";
 import { ParentContext } from "@/components/feed/ParentContext";
@@ -57,6 +57,29 @@ export default function ThreadPage({ params }: Props) {
   const [loggedIn,     setLoggedIn]     = useState(false);
   const [sort,         setSort]         = useState<SortMode>("new");
 
+  // Pagination state for replies. The first page is loaded by the
+  // initial-fetch effect below; subsequent pages are loaded on user
+  // demand via the "Show more replies" button. We track:
+  //   - replyPage:    last page successfully fetched (1-indexed)
+  //   - replyTotal:   server-reported total reply count (so the button
+  //                   can show "Show 23 more replies" instead of an
+  //                   ambiguous chevron)
+  //   - replyHasMore: server-reported flag — when false, the button
+  //                   disappears
+  //   - loadingMore:  true while a "Show more" fetch is in flight (so
+  //                   the button shows a spinner and de-bounces double
+  //                   clicks)
+  // Twitter / Bluesky both expose the same affordance — without it,
+  // threads that exceed the initial-fetch cap (50 here) silently
+  // truncate, which is the exact "lost conversation" smell that
+  // prompted Bluesky to ship a tail-load button on every long thread.
+  const [replyPage,    setReplyPage]    = useState(1);
+  const [replyTotal,   setReplyTotal]   = useState(0);
+  const [replyHasMore, setReplyHasMore] = useState(false);
+  const [loadingMore,  setLoadingMore]  = useState(false);
+
+  const REPLY_PAGE_SIZE = 50;
+
   useEffect(() => {
     setLoggedIn(isLoggedIn());
   }, []);
@@ -80,15 +103,25 @@ export default function ThreadPage({ params }: Props) {
     return () => { active = false; };
   }, [id]);
 
-  // Load replies
+  // Load first page of replies. Re-runs only when the post id changes;
+  // pagination is driven by the "Show more" button below, not by this
+  // effect, so re-pagination on sort toggle / new-reply append is
+  // deliberately avoided.
   useEffect(() => {
     let active = true;
     (async () => {
       setReplyLoading(true);
+      setReplyPage(1);
+      setReplyTotal(0);
+      setReplyHasMore(false);
       try {
         const token = getToken() ?? undefined;
-        const data = await getPostReplies(id, { limit: 50 }, token);
-        if (active) setReplies(data.posts.map(toSocialPost));
+        const data = await getPostReplies(id, { page: 1, limit: REPLY_PAGE_SIZE }, token);
+        if (active) {
+          setReplies(data.posts.map(toSocialPost));
+          setReplyTotal(data.total ?? data.posts.length);
+          setReplyHasMore(Boolean(data.has_more));
+        }
       } catch {
         if (active) setReplies([]);
       } finally {
@@ -100,6 +133,37 @@ export default function ThreadPage({ params }: Props) {
 
   function handleNewReply(post: SocialPost) {
     setReplies((prev) => [post, ...prev]);
+    // A freshly composed reply doesn't change the server-side has_more
+    // flag, but it does mean the local list is one ahead of the server's
+    // page-1 window. We bump the total so the "Show more" button's
+    // count stays accurate ("Show 23 more replies" not "Show 22…").
+    setReplyTotal((prev) => prev + 1);
+  }
+
+  // "Show more replies" handler — fetches the next page and appends.
+  // Dedup guard: if a fetch is already in flight, ignore the click.
+  // Failure leaves state untouched (button stays available for retry).
+  async function loadMoreReplies() {
+    if (loadingMore || !replyHasMore) return;
+    setLoadingMore(true);
+    try {
+      const token = getToken() ?? undefined;
+      const nextPage = replyPage + 1;
+      const data = await getPostReplies(
+        id,
+        { page: nextPage, limit: REPLY_PAGE_SIZE },
+        token,
+      );
+      setReplies((prev) => [...prev, ...data.posts.map(toSocialPost)]);
+      setReplyPage(nextPage);
+      setReplyHasMore(Boolean(data.has_more));
+      if (typeof data.total === "number") setReplyTotal(data.total);
+    } catch {
+      // Silent — button stays available for retry. A toast layer would
+      // be nice here but is out of scope for this ship.
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   // Sorted view of the reply list. New = chronological (whatever order
@@ -264,6 +328,52 @@ export default function ThreadPage({ params }: Props) {
               </div>
             );
           })}
+
+        {/* "Show more replies" button — visible only when the server
+            still has more replies beyond what we've loaded. We compute
+            the remaining count from server-reported total minus the
+            local list length so the label stays accurate even after a
+            user composes a fresh reply (which prepends locally without
+            re-fetching). When sort is "Top", remaining still refers to
+            chronologically-later replies; the next page lands at the
+            bottom of the local list and is then re-sorted by the
+            visibleReplies useMemo, so trust-ranked order is preserved
+            across pages. */}
+        {!replyLoading && replyHasMore && (
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={loadMoreReplies}
+              disabled={loadingMore}
+              className="w-full flex items-center justify-center gap-2
+                         py-2.5 px-4 rounded-lg border border-slate-800
+                         bg-slate-900/40 hover:bg-slate-800/60
+                         text-sm text-cyan-400 hover:text-cyan-300
+                         font-medium transition-colors
+                         disabled:opacity-60 disabled:cursor-not-allowed
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-cyan-500/60"
+              aria-label="Load more replies"
+            >
+              {loadingMore ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading…
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4" />
+                  {(() => {
+                    const remaining = Math.max(replyTotal - replies.length, 0);
+                    return remaining > 0
+                      ? `Show ${remaining} more ${remaining === 1 ? "reply" : "replies"}`
+                      : "Show more replies";
+                  })()}
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </AppShell>
   );
