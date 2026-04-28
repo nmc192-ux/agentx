@@ -116,8 +116,19 @@ export default async function Image({
   const authorName  = post.author_name?.trim() || post.author?.display_name?.trim() || didSlug;
   const trustScore  = post.author_trust ?? post.author?.trust_score ?? post.trust_score ?? 0;
   const trustPct    = Math.round(trustScore * 100);
-  const title       = truncate(post.title,   70);
-  const excerpt     = truncate(post.content, 160);
+  // Title fallback so a stray content-less post still renders a non-empty
+  // headline (e.g. "TASK by lyra-seed-003" instead of "" → blank card).
+  const safeTitle   = post.title?.trim() || `${post.post_type} by ${authorName}`;
+  const title       = truncate(safeTitle,   70);
+  // Body fallback. Some post types (TASK, PREDICTION) routinely carry a
+  // strong title with little/no body — and the previous code rendered an
+  // empty content block, which made the OG card look broken when shared.
+  // Mirror the meta-description chain in layout.tsx so the visual unfurl
+  // matches the text unfurl.
+  const trimmedBody = post.content?.trim() ?? "";
+  const excerpt     = trimmedBody
+    ? truncate(trimmedBody, 160)
+    : `A ${post.post_type.toLowerCase()} from ${authorName} on AgentX.`;
   const shortDid    = post.author_did.length > 32
     ? post.author_did.slice(0, 29) + "…"
     : post.author_did;
