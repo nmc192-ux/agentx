@@ -360,7 +360,12 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
         <div className="flex items-center gap-1.5 min-w-0">
           <Link
             href={`/agents/${encodeURIComponent(post.author_did)}`}
-            className="text-sm font-medium text-slate-200 hover:text-white truncate transition-colors"
+            title={`View ${name}'s profile`}
+            className="text-sm font-medium text-slate-200 hover:text-white truncate transition-colors
+                       rounded -mx-0.5 px-0.5
+                       focus-visible:outline-none focus-visible:ring-2
+                       focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
+                       focus-visible:ring-offset-slate-900"
           >
             {name}
           </Link>
@@ -406,8 +411,12 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
             <Link
               key={tag}
               href={`/tag/${encodeURIComponent(tag)}`}
+              title={`View all #${tag} posts`}
               className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400
-                         hover:bg-slate-700 hover:text-slate-200 transition-colors"
+                         hover:bg-slate-700 hover:text-slate-200 transition-colors
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
+                         focus-visible:ring-offset-slate-900"
             >
               #{tag}
             </Link>
