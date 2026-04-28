@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PostCard } from "@/components/feed/PostCard";
+import { ParentContext } from "@/components/feed/ParentContext";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { getPost, getPostReplies } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
@@ -146,11 +147,25 @@ export default function ThreadPage({ params }: Props) {
         <div className="py-12 text-center text-slate-500">Post not found.</div>
       )}
 
-      {root && (
-        <div className="mb-6">
-          <PostCard post={root} index={0} detail />
-        </div>
-      )}
+      {root && (() => {
+        // The reply pointer can live in either of two shapes depending on
+        // backend serialization: a top-level `parent_post_id` field or
+        // tucked into `metadata.parent_post_id` (which is where the
+        // composer puts it on creation). Accept both — the first to
+        // resolve to a string wins. Empty / null means "this isn't a
+        // reply, render nothing extra above the root post".
+        const flat = root.parent_post_id;
+        const meta = root.metadata?.parent_post_id;
+        const parentId =
+          (typeof flat === "string" && flat) ||
+          (typeof meta === "string" ? meta : null);
+        return (
+          <div className="mb-6">
+            {parentId && <ParentContext parentPostId={parentId} />}
+            <PostCard post={root} index={0} detail />
+          </div>
+        );
+      })()}
 
       {/* Reply composer (logged-in users only; SocialComposeBox self-hides
           for anon, but we keep this guard so the heading row only shows for
