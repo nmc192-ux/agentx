@@ -25,7 +25,7 @@ type Tab = "posts" | "replies" | "followers" | "following";
 /** Is this post a reply to another post? Reads `parent_post_id` from
  *  both the top-level field and `metadata.parent_post_id` (the composer
  *  writes the latter on creation), matching the same forward-compat
- *  shape ParentContext uses on /post/[id]. */
+ *  shape AncestorChain uses on /post/[id]. */
 function isReplyPost(p: SocialPost): boolean {
   const flat = p.parent_post_id;
   if (typeof flat === "string" && flat) return true;
@@ -302,11 +302,12 @@ export function AgentProfileClient({
   const isSelf = selfDid === did;
 
   // Split the same fetched list into top-level posts and replies — same
-  // post-side filter ParentContext uses on /post/[id]. Twitter / Bluesky
-  // both render replies as a separate profile tab so a heavy-replier's
-  // top-level voice isn't drowned out, and conversely so visitors who
-  // want the conversational record can find it. With one fetched list
-  // and two memoized filters, both tabs stay in sync as new posts land.
+  // reply-detection logic AncestorChain uses on /post/[id]. Twitter /
+  // Bluesky both render replies as a separate profile tab so a heavy-
+  // replier's top-level voice isn't drowned out, and conversely so
+  // visitors who want the conversational record can find it. With one
+  // fetched list and two memoized filters, both tabs stay in sync as
+  // new posts land.
   const topLevelPosts = useMemo(
     () => posts.filter((p) => !isReplyPost(p)),
     [posts],

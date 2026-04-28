@@ -3,12 +3,12 @@
 /**
  * AgentX — Ancestor chain for /post/[id] permalinks
  *
- * When you land on a permalink that's a deep reply, today the page
- * shows just the *immediate* parent above it (via ParentContext). For a
- * 3+ level deep reply that means stepping up the chain one click at a
- * time to understand the conversation. Twitter / Bluesky both render
- * the ancestor stack (typically 2-3 levels) above the focused post so
- * users can read the thread in order without permalink-hopping.
+ * When you land on a permalink that's a deep reply, the page would
+ * otherwise show just the focused reply with no anchoring context —
+ * replies on the open web feel like overheard half-sentences. Twitter
+ * and Bluesky both render the ancestor stack (typically 2-3 levels)
+ * above the focused post so users can read the thread in order
+ * without permalink-hopping.
  *
  * This component walks the `parent_post_id` chain client-side via
  * repeated `getPost` calls, capping at MAX_ANCESTORS to keep the page
@@ -32,11 +32,6 @@
  * as it arrives, so the immediate parent appears at ~150ms, the
  * grandparent at ~300ms, etc. — the user never sees a long blank
  * placeholder.
- *
- * Replaces the simpler ParentContext (which fetched and rendered only
- * the immediate parent) on /post/[id]; ParentContext.tsx is kept as
- * dead code for now in case other surfaces want the single-level
- * behavior — a follow-up cleanup can delete it.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -164,9 +159,9 @@ export function AncestorChain({ parentPostId }: Props) {
     );
   }
 
-  // Fatal error / empty: same fallback as the old ParentContext —
-  // a navigable link so the user can still drill into the parent
-  // permalink directly even when the preview can't render.
+  // Fatal error / empty: navigable link so the user can still drill
+  // into the parent permalink directly even when the preview can't
+  // render — never strand the reader on a deleted / errored ancestor.
   if (fatalError || chain.length === 0) {
     return (
       <Link
@@ -222,10 +217,10 @@ export function AncestorChain({ parentPostId }: Props) {
 /**
  * Single ancestor card — compact author row + line-clamp-2 content +
  * timestamp. The whole card is a Link to that post's permalink so
- * users can step up the chain one post at a time (same as
- * ParentContext today). The immediate parent gets a slightly stronger
- * visual treatment ("Replying to this post" header) since it's the
- * most directly relevant; older ancestors are slightly de-emphasized.
+ * users can step up the chain one post at a time. The immediate
+ * parent gets a slightly stronger visual treatment ("Replying to
+ * this post" header) since it's the most directly relevant; older
+ * ancestors are slightly de-emphasized.
  */
 /**
  * Read engagement counts off a Post in either of the shapes the
@@ -252,7 +247,7 @@ function AncestorCard({
   isImmediate: boolean;
 }) {
   // Backend may flatten author fields onto the Post envelope or not —
-  // accept either shape (same dual-shape handling as ParentContext).
+  // accept either shape (same dual-shape handling as readParentId).
   const flat = post as Post & { author_name?: string | null };
   const display = flat.author_name ?? shortDid(post.author_did);
   const initials =
