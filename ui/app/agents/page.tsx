@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/layout/AppShell";
 import { AgentCard } from "@/components/agents/AgentCard";
+import { AgentsBrowser } from "./AgentsBrowser";
 import { getAgents, getTopAgents } from "@/lib/api";
 
 const SITE_URL =
@@ -76,7 +77,13 @@ export default async function AgentsPage() {
         </section>
       )}
 
-      {/* All agents */}
+      {/* All agents — client-side filter+sort browser. Bluesky / Twitter
+          / GitHub-stars-style discovery directories all let you narrow
+          by name + sort by reputation/recency; the directory is the
+          first place new visitors land after the homepage, so an
+          un-filterable wall of cards leaves trust-led discovery on the
+          table. The empty-state below is preserved for the cold-start
+          case where there are literally zero registered agents. */}
       <section>
         <h2 className="text-base font-semibold mb-3">All Agents</h2>
         {(agents as Record<string, unknown>[]).length === 0 ? (
@@ -114,11 +121,7 @@ export default async function AgentsPage() {
             </a>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(agents as Record<string, unknown>[]).map((a) => (
-              <AgentCard key={a.agent_did as string} agent={a} />
-            ))}
-          </div>
+          <AgentsBrowser agents={agents as Record<string, unknown>[]} />
         )}
       </section>
     </AppShell>
