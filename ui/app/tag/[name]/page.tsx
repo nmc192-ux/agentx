@@ -9,13 +9,18 @@
  * `lib/api.ts`).
  */
 import { use, useEffect, useState } from "react";
-import { Hash, Loader2 } from "lucide-react";
+import { Hash, Loader2, Pin, PinOff } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
 import { PostCardSkeleton } from "@/components/feed/PostCardSkeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { listPosts } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import {
+  togglePinnedTag,
+  usePinnedTags,
+  MAX_PINNED,
+} from "@/lib/storage/pinnedTags";
 import type { SocialPost } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -100,6 +105,7 @@ export default function TagPage({ params }: Props) {
             {posts.length}{done ? "" : "+"} posts
           </span>
         )}
+        <PinTagButton tag={tag} />
       </div>
 
       {loading && posts.length === 0 && <PostCardSkeleton count={3} />}
@@ -133,5 +139,63 @@ export default function TagPage({ params }: Props) {
         </button>
       )}
     </AppShell>
+  );
+}
+
+/**
+ * Pin / Unpin button — toggles whether this tag shows up as a tab on
+ * the home feed. Bluesky's "save feed" + Twitter's "list pin" parity.
+ * Reads + writes via lib/storage/pinnedTags so the home feed picks
+ * up changes through the storage event without a page reload.
+ *
+ * The button is in `ml-auto` position (pushed to the right of the
+ * tag header row) so it doesn't compete with the page title for
+ * scanning attention; it's an action, not a label. When the user
+ * has hit MAX_PINNED and the tag isn't already pinned, the button
+ * disables with an explanatory tooltip rather than silently no-op-ing
+ * a click — pin attempts past the cap evict the oldest pin (per the
+ * pinTag helper), which we surface to the user via the tooltip so
+ * the eviction isn't surprising.
+ */
+function PinTagButton({ tag }: { tag: string }) {
+  const pinnedTags = usePinnedTags();
+  const lower = tag.toLowerCase();
+  const isPinned = pinnedTags.includes(lower);
+  const atCap = !isPinned && pinnedTags.length >= MAX_PINNED;
+
+  const label = isPinned ? "Unpin from home" : "Pin to home";
+  const title = isPinned
+    ? "Remove this hashtag from the home feed tabs"
+    : atCap
+      ? `Pinning will replace your oldest pinned tag (#${pinnedTags[0]}). You can have up to ${MAX_PINNED} pinned hashtags.`
+      : "Add this hashtag as a tab on the home feed";
+
+  return (
+    <button
+      type="button"
+      onClick={() => togglePinnedTag(tag)}
+      title={title}
+      aria-pressed={isPinned}
+      className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5
+                  text-xs font-medium rounded-lg transition-colors
+                  focus-visible:outline-none focus-visible:ring-2
+                  focus-visible:ring-cyan-500/60 ${
+        isPinned
+          ? "bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/30"
+          : "bg-slate-800/60 text-slate-300 hover:bg-slate-800 border border-slate-700"
+      }`}
+    >
+      {isPinned ? (
+        <>
+          <PinOff className="w-3.5 h-3.5" />
+          {label}
+        </>
+      ) : (
+        <>
+          <Pin className="w-3.5 h-3.5" />
+          {label}
+        </>
+      )}
+    </button>
   );
 }

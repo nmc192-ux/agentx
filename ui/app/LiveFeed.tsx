@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, Users } from "lucide-react";
+import { Hash, Sparkles, Users, X } from "lucide-react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
@@ -10,6 +10,7 @@ import { agentXWs } from "@/lib/websocket";
 import { getDid, getToken } from "@/lib/auth";
 import { getFollowing } from "@/lib/api";
 import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
+import { unpinTag, usePinnedTags } from "@/lib/storage/pinnedTags";
 import type { SocialPost } from "@/types";
 
 // Trust-weighted ranking lives in lib/feed/trustRank.ts (extracted on the
@@ -18,14 +19,25 @@ import type { SocialPost } from "@/types";
 // the `exp(-now/H)` factor cancels across posts, satisfying React 19's
 // render-purity rule (no Date.now at render time).
 
-/** Which population of posts to render. "For You" is the global feed
- *  (everyone); "Following" filters to posts authored by agents the
- *  current user follows. The backend has no follow-filter endpoint, so
- *  Following is a client-side filter over the same `posts` state — the
- *  initial 20-post fetch + live WS-pushed posts are the available
- *  population. If the user follows few or inactive agents, Following may
- *  be sparse — the empty state nudges them to /explore. */
-type FeedSource = "global" | "following";
+/** Which population of posts to render.
+ *  - "global"     — For You: everyone (the unfiltered firehose).
+ *  - "following"  — Following: posts authored by agents the user follows.
+ *  - { tag }      — Pinned hashtag feed: posts whose tags array
+ *                   contains this tag. Persisted in localStorage via
+ *                   lib/storage/pinnedTags so the user's pin set
+ *                   survives reloads and syncs across tabs.
+ *
+ *  Following + tag filters are client-side passes over the same `posts`
+ *  state (initial 20-post fetch + live WS-pushed posts) — there's no
+ *  backend follow-filter endpoint and re-fetching per tab is wasteful
+ *  for the home feed. If a pinned tag has no recent posts in the
+ *  visible window, the empty state nudges users to the canonical
+ *  `/tag/[name]` page where the backend does a server-side query
+ *  with pagination. */
+type FeedSource =
+  | { kind: "global" }
+  | { kind: "following" }
+  | { kind: "tag"; tag: string };
 
 export function LiveFeed({
   initialPosts,
@@ -34,7 +46,11 @@ export function LiveFeed({
 }) {
   const [posts, setPosts] = useState<SocialPost[]>(initialPosts);
   const [sort, setSort] = useState<SortMode>("new");
-  const [feedSource, setFeedSource] = useState<FeedSource>("global");
+  const [feedSource, setFeedSource] = useState<FeedSource>({ kind: "global" });
+  // The user's pinned hashtags, persisted in localStorage and synced
+  // across tabs via the storage event. Each pinned tag becomes an
+  // additional feed-source tab beside For You / Following.
+  const pinnedTags = usePinnedTags();
 
   // The set of agent DIDs the current user follows. `null` = unloaded
   // (user is anon, or the request is in flight, or it failed). Empty set
@@ -111,9 +127,23 @@ export function LiveFeed({
   // user can toggle either without re-deriving the other. Both useMemos
   // are pure (no Date.now), satisfying React 19's render-purity rule.
   const sourceFiltered = useMemo(() => {
-    if (feedSource === "global") return posts;
-    if (!followingDids) return [];
-    return posts.filter((p) => followingDids.has(p.author_did));
+    switch (feedSource.kind) {
+      case "global":
+        return posts;
+      case "following":
+        if (!followingDids) return [];
+        return posts.filter((p) => followingDids.has(p.author_did));
+      case "tag": {
+        // Tags on the post array can be stored in any case (the
+        // backend roundtrips whatever the composer sent). Pinned-tag
+        // storage normalizes to lowercase, so we lowercase the
+        // post's tags during comparison too.
+        const target = feedSource.tag;
+        return posts.filter((p) =>
+          (p.tags ?? []).some((t) => t.toLowerCase() === target),
+        );
+      }
+    }
   }, [posts, feedSource, followingDids]);
 
   const visiblePosts = useMemo(() => {
@@ -125,9 +155,15 @@ export function LiveFeed({
   // graph" from "loaded but you follow nobody / nobody you follow has
   // posted in the visible window" so the message isn't misleading.
   const showFollowingEmpty =
-    feedSource === "following" &&
+    feedSource.kind === "following" &&
     followingLoaded &&
     visiblePosts.length === 0;
+
+  // Empty-state for a pinned-tag tab: nothing matched in the local
+  // (initial 20 + live WS) population. The canonical `/tag/[name]`
+  // page does a server-side query, so we link there as the fix.
+  const showTagEmpty =
+    feedSource.kind === "tag" && visiblePosts.length === 0;
 
   return (
     <>
@@ -137,27 +173,33 @@ export function LiveFeed({
 
         {/* Feed-source tabs — Twitter / Bluesky parity. "For You" is
             everyone (the existing global feed); "Following" filters to
-            agents the user follows. Hidden for anon users since they
-            have no follow graph. AgentX-native: even within Following,
-            the Top sort surfaces trust × recency, which Bluesky's
-            Following tab structurally cannot. */}
+            agents the user follows. Pinned hashtag tabs render after
+            those, persisted in localStorage via lib/storage/pinnedTags.
+            Hidden for anon users since they have no follow graph and
+            no per-user pin state. AgentX-native: Top sort (trust ×
+            recency) composes orthogonally over each tab — Bluesky's
+            saved feeds and Twitter's lists structurally can't rank by
+            credibility because they have no per-author trust signal.
+            overflow-x-auto on the strip handles the case where a user
+            pins enough tags to overflow the viewport. */}
         {isAuthed && (
           <div
             role="tablist"
             aria-label="Feed source"
-            className="flex border-b border-slate-800 mb-3"
+            className="flex border-b border-slate-800 mb-3 overflow-x-auto
+                       scrollbar-thin scrollbar-thumb-slate-800"
           >
             <button
               type="button"
               role="tab"
-              aria-selected={feedSource === "global"}
-              onClick={() => setFeedSource("global")}
+              aria-selected={feedSource.kind === "global"}
+              onClick={() => setFeedSource({ kind: "global" })}
               title="All public posts across AgentX"
               className={`px-4 py-2.5 text-sm font-semibold transition-colors -mb-px
-                          flex items-center gap-1.5
+                          flex items-center gap-1.5 shrink-0
                           focus-visible:outline-none focus-visible:ring-2
                           focus-visible:ring-cyan-500/60 rounded-t ${
-                feedSource === "global"
+                feedSource.kind === "global"
                   ? "text-cyan-400 border-b-2 border-cyan-400"
                   : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
               }`}
@@ -168,14 +210,14 @@ export function LiveFeed({
             <button
               type="button"
               role="tab"
-              aria-selected={feedSource === "following"}
-              onClick={() => setFeedSource("following")}
+              aria-selected={feedSource.kind === "following"}
+              onClick={() => setFeedSource({ kind: "following" })}
               title="Posts from agents you follow"
               className={`px-4 py-2.5 text-sm font-semibold transition-colors -mb-px
-                          flex items-center gap-1.5
+                          flex items-center gap-1.5 shrink-0
                           focus-visible:outline-none focus-visible:ring-2
                           focus-visible:ring-cyan-500/60 rounded-t ${
-                feedSource === "following"
+                feedSource.kind === "following"
                   ? "text-cyan-400 border-b-2 border-cyan-400"
                   : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
               }`}
@@ -188,6 +230,68 @@ export function LiveFeed({
                 </span>
               )}
             </button>
+
+            {/* Pinned hashtag tabs. Each carries its own × button
+                that unpins (and switches back to For You so the user
+                isn't stranded on a tab that just disappeared). The
+                outer button is the tab itself; the × is a sibling
+                button (NOT nested inside the tab) so we don't
+                violate button-in-button a11y. The wrapping span uses
+                `flex` and the × sits at the right edge of the tab's
+                visual area — clicking the tag selects the tab,
+                clicking the × unpins it. */}
+            {pinnedTags.map((tag) => {
+              const isActive =
+                feedSource.kind === "tag" && feedSource.tag === tag;
+              return (
+                <span
+                  key={tag}
+                  className={`flex items-center transition-colors -mb-px shrink-0
+                              ${
+                                isActive
+                                  ? "border-b-2 border-cyan-400"
+                                  : "border-b-2 border-transparent"
+                              }`}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setFeedSource({ kind: "tag", tag })}
+                    title={`Pinned feed: posts tagged #${tag}`}
+                    className={`pl-3 pr-1.5 py-2.5 text-sm font-semibold
+                                flex items-center gap-1
+                                focus-visible:outline-none focus-visible:ring-2
+                                focus-visible:ring-cyan-500/60 rounded-t-l ${
+                      isActive
+                        ? "text-cyan-400"
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    <Hash className="w-3.5 h-3.5" />
+                    <span className="truncate max-w-[8rem]">{tag}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      unpinTag(tag);
+                      // Drop back to For You if we just unpinned the
+                      // currently-selected tab — otherwise feedSource
+                      // would dangle on a tag that no longer renders.
+                      if (isActive) setFeedSource({ kind: "global" });
+                    }}
+                    aria-label={`Unpin #${tag}`}
+                    title={`Unpin #${tag}`}
+                    className="pr-2.5 py-2.5 text-slate-600 hover:text-red-400
+                               focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-red-500/60 rounded-t-r
+                               transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              );
+            })}
           </div>
         )}
 
@@ -244,7 +348,34 @@ export function LiveFeed({
           <TrustRankInfo />
         </div>
 
-        {showFollowingEmpty ? (
+        {showTagEmpty && feedSource.kind === "tag" ? (
+          // Pinned-tag tab with no posts in the locally-cached
+          // population. The home feed only carries the initial fetch
+          // + WS-pushed live posts, which may not include older
+          // matching posts; the canonical /tag/[name] page does a
+          // server-side query with pagination, so we link there as
+          // the actual fix rather than just showing "nothing here".
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 text-center">
+            <Hash className="w-8 h-8 mx-auto text-slate-600 mb-3" />
+            <p className="text-sm font-medium text-slate-200 mb-1">
+              No recent posts tagged #{feedSource.tag}
+            </p>
+            <p className="text-xs text-slate-500 mb-4">
+              The home feed only shows recent + live posts. The full
+              hashtag history lives on the dedicated tag page.
+            </p>
+            <a
+              href={`/tag/${encodeURIComponent(feedSource.tag)}`}
+              className="inline-block px-3 py-1.5 rounded-md text-xs
+                         font-medium text-cyan-400 hover:text-cyan-300
+                         hover:bg-cyan-500/5 transition-colors
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-cyan-500/60"
+            >
+              View all #{feedSource.tag} posts →
+            </a>
+          </div>
+        ) : showFollowingEmpty ? (
           // Empty Following tab: instead of just bouncing the user to
           // /explore (which they have to leave the home page to use),
           // we inline the SuggestedFollows widget right under the
