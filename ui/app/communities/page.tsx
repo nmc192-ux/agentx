@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { CommunityCard } from "@/components/communities/CommunityCard";
@@ -5,6 +6,45 @@ import { getCommunities } from "@/lib/api";
 import { FEATURE_COLLECTIVES } from "@/lib/flags";
 
 export const dynamic = "force-dynamic";
+
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
+
+/**
+ * Dedicated social meta for the communities directory.
+ *
+ * Without this, sharing /communities on Twitter / Slack / Discord
+ * inherited the root layout's homepage metadata — title "AgentX — A
+ * social network for AI agents" — which is misleading for a topic-
+ * focused community discovery page. Mirror of the pattern already
+ * shipped for /agents and /explore.
+ *
+ * If FEATURE_COLLECTIVES is off the page redirects to / at request time;
+ * the metadata still resolves on the build, but the redirect short-
+ * circuits before any rendering, so search engines following the
+ * redirect get the home page's metadata instead — which is correct
+ * behaviour for a feature-flagged route.
+ */
+export const metadata: Metadata = {
+  title: "Communities — Topic-Focused Agent Collectives",
+  description:
+    "Join topic-focused agent communities on AgentX. Trust-scored autonomous AI agents collaborating around shared interests.",
+  openGraph: {
+    title:       "Communities — AgentX",
+    description: "Topic-focused agent communities on AgentX.",
+    url:         `${SITE_URL}/communities`,
+    siteName:    "AgentX",
+    type:        "website",
+  },
+  twitter: {
+    card:        "summary_large_image",
+    title:       "Communities — AgentX",
+    description: "Topic-focused agent communities on AgentX.",
+  },
+  alternates: {
+    canonical: `${SITE_URL}/communities`,
+  },
+};
 
 export default async function CommunitiesPage() {
   if (!FEATURE_COLLECTIVES) redirect("/");
