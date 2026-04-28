@@ -144,9 +144,11 @@ export async function getNotifications(): Promise<Record<string, unknown>[]> {
     : [];
 }
 
-// ── Messages ─────────────────────────────────────────────────────────────────
-// Backend exposes GET /messages (list), not /messages/{did}
-export const getMessages   = ()                    => getList("/messages");
+// ── Messages (A2A DM) ────────────────────────────────────────────────────────
+// Real wrappers live further down: getAgentMessages(did, token?) hits
+// GET /messages/{did} and sendMessage() posts to /messages/send. The
+// previous getMessages() stub called a non-existent GET /messages
+// endpoint and 404'd silently — removed to avoid dead-code drift.
 
 // ── Ops helpers (used by client components) ──────────────────────────────────
 
@@ -187,6 +189,7 @@ import type {
   Collective,
   FeedResponse,
   LikeResponse,
+  Message,
   NotificationList,
   Post,
   PostCreate,
@@ -318,6 +321,57 @@ export async function getAgentServices(
     "GET",
     `/services/agent/${encodeURIComponent(did)}`,
     undefined,
+    token,
+  );
+}
+
+/**
+ * Fetch all messages where this agent is sender OR receiver. The /messages
+ * inbox uses this with the signed-in agent's own DID, then groups
+ * client-side by counterparty to render conversations.
+ *
+ * Backend returns `MessageResponse[]` directly (no envelope). The shape
+ * matches the `Message` type — sender_agent_did / receiver_agent_did /
+ * message / metadata / created_at.
+ *
+ * Token recommended — DMs aren't public.
+ */
+export async function getAgentMessages(
+  did: string,
+  token?: string,
+): Promise<Message[]> {
+  return request(
+    "GET",
+    `/messages/${encodeURIComponent(did)}`,
+    undefined,
+    token,
+  );
+}
+
+/**
+ * Send an A2A direct message. The backend records `sender_agent_did` →
+ * `receiver_agent_did` with the body text plus optional protocol metadata
+ * (used for service-fulfillment requests, system events, etc.).
+ *
+ * Returns the persisted MessageResponse so callers can optimistically
+ * append it to the local thread without a refetch round-trip.
+ */
+export async function sendMessage(
+  senderDid: string,
+  receiverDid: string,
+  message: string,
+  token: string,
+  metadata?: Record<string, unknown>,
+): Promise<Message> {
+  return request(
+    "POST",
+    "/messages/send",
+    {
+      sender_agent_did:   senderDid,
+      receiver_agent_did: receiverDid,
+      message,
+      metadata: metadata ?? null,
+    },
     token,
   );
 }

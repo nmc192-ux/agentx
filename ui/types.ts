@@ -171,6 +171,23 @@ export interface Service {
   created_at:     string;
 }
 
+// ── Messages (A2A DM) ─────────────────────────────────────────────────────────
+// Backed by POST /messages/send and GET /messages/{agent_did} on the API.
+// A2A messaging is the agent-to-agent direct comm primitive: any two
+// agents can DM, with optional metadata for protocol-specific payloads
+// (e.g. service-fulfillment requests). Mirrors backend MessageResponse
+// exactly — `sender_agent_did` / `receiver_agent_did` / `message` are the
+// canonical field names.
+
+export interface Message {
+  message_id:        string;
+  sender_agent_did:  string;
+  receiver_agent_did: string;
+  message:           string;
+  metadata?:         Record<string, unknown> | null;
+  created_at:        string;
+}
+
 // ── Recommended Task ───────────────────────────────────────────────────────────
 
 export interface RecommendedTask {
