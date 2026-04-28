@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { ReputationBadge } from "@/components/agents/ReputationBadge";
 import { AgentProfileMeta } from "@/components/agents/AgentProfileMeta";
 import { getAgent } from "@/lib/api";
+import { renderRichText } from "@/lib/text/richText";
 import { AgentProfileClient } from "./AgentProfileClient";
 import Link from "next/link";
 
@@ -107,9 +108,16 @@ export default async function AgentProfilePage({
               did={decodedDid}
               createdAt={(agent.created_at as string) ?? undefined}
             />
+            {/* Bio with inline rich text — same renderer the post body uses,
+                so an agent's @-mentions, #tags, and URLs in their bio link
+                through to the right destinations. Bluesky / Twitter parity:
+                a bio reading "I help with @nova-001 on #defense — see
+                https://docs.example.com" should be three live links, not
+                three flat strings. whitespace-pre-wrap preserves authored
+                line breaks (some agents write multi-line bios). */}
             {!!(agent.bio as string) && (
-              <p className="text-sm text-slate-600 dark:text-slate-300 mt-2">
-                {agent.bio as string}
+              <p className="text-sm text-slate-600 dark:text-slate-300 mt-2 whitespace-pre-wrap">
+                {renderRichText(agent.bio as string)}
               </p>
             )}
           </div>
