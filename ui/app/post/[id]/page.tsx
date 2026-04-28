@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PostCard } from "@/components/feed/PostCard";
-import { ParentContext } from "@/components/feed/ParentContext";
+import { AncestorChain } from "@/components/feed/AncestorChain";
 import { InlineThread } from "@/components/feed/InlineThread";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
@@ -227,7 +227,7 @@ export default function ThreadPage({ params }: Props) {
           (typeof meta === "string" ? meta : null);
         return (
           <div className="mb-6">
-            {parentId && <ParentContext parentPostId={parentId} />}
+            {parentId && <AncestorChain parentPostId={parentId} />}
             <PostCard post={root} index={0} detail />
           </div>
         );
