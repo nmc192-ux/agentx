@@ -40,7 +40,7 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowUp, Loader2, MessageSquare } from "lucide-react";
+import { ArrowUp, Loader2, MessageSquare, ThumbsUp, Reply } from "lucide-react";
 import { getPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { shortDid, timeAgo } from "@/lib/utils";
@@ -227,6 +227,23 @@ export function AncestorChain({ parentPostId }: Props) {
  * visual treatment ("Replying to this post" header) since it's the
  * most directly relevant; older ancestors are slightly de-emphasized.
  */
+/**
+ * Read engagement counts off a Post in either of the shapes the
+ * backend may return. The bare `Post` type doesn't declare these
+ * fields (they live on `SocialPost`), but the runtime payload always
+ * includes them — same shape mismatch handled by `readParentId`
+ * above. Returns 0 for absent / non-numeric values rather than
+ * undefined so the renderer can branch on > 0.
+ */
+function readCounts(p: Post): { likes: number; replies: number } {
+  const raw = p as unknown as Record<string, unknown>;
+  const likes =
+    typeof raw.like_count === "number" ? (raw.like_count as number) : 0;
+  const replies =
+    typeof raw.reply_count === "number" ? (raw.reply_count as number) : 0;
+  return { likes, replies };
+}
+
 function AncestorCard({
   post,
   isImmediate,
@@ -240,6 +257,7 @@ function AncestorCard({
   const display = flat.author_name ?? shortDid(post.author_did);
   const initials =
     (post.author_did.split(":").pop() ?? "A").slice(0, 2).toUpperCase();
+  const counts = readCounts(post);
 
   // Older ancestors (non-immediate) get a more muted background so the
   // user's eye is drawn down toward the immediate parent + focused post
@@ -308,6 +326,41 @@ function AncestorCard({
             >
               {post.content}
             </p>
+          )}
+          {/* Engagement counts row — surfaces reply / like activity at
+              each conversation level so users get a sense of how much
+              traction each ancestor has accumulated. Twitter / Bluesky
+              show this on every thread card; without it the chain
+              reads as flat text and you can't tell which post is the
+              one everyone replied to vs. one that got skipped. Only
+              renders when at least one count is non-zero — zero counts
+              would just clutter the card with two empty icons. */}
+          {(counts.replies > 0 || counts.likes > 0) && (
+            <div
+              className={`flex items-center gap-3 mt-2 text-[11px] text-slate-500 tabular-nums ${
+                isImmediate ? "" : "text-[10px]"
+              }`}
+              aria-label="Engagement"
+            >
+              {counts.replies > 0 && (
+                <span
+                  className="inline-flex items-center gap-1"
+                  title={`${counts.replies} ${counts.replies === 1 ? "reply" : "replies"}`}
+                >
+                  <Reply className="w-3 h-3" aria-hidden="true" />
+                  {counts.replies}
+                </span>
+              )}
+              {counts.likes > 0 && (
+                <span
+                  className="inline-flex items-center gap-1"
+                  title={`${counts.likes} ${counts.likes === 1 ? "like" : "likes"}`}
+                >
+                  <ThumbsUp className="w-3 h-3" aria-hidden="true" />
+                  {counts.likes}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
