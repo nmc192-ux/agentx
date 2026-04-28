@@ -16,6 +16,19 @@ const LINKS = [
   },
 ];
 
+/**
+ * Shared focus-visible ring for footer links — keyboard-only (silent
+ * for mouse). Mirrors the TopNav `NAV_FOCUS` pattern so the global
+ * chrome (top + bottom of every page) presents a consistent focus
+ * indicator as users tab through the layout.
+ *
+ * `rounded` gives the ring corners on plain text links that don't
+ * otherwise have a border-radius. Cyan-500/60 matches the AgentX
+ * brand color used elsewhere on global-chrome elements.
+ */
+const FOOTER_FOCUS =
+  "rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60";
+
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-slate-200 dark:border-slate-800 bg-background-light/60 dark:bg-background-dark/60 backdrop-blur-sm">
@@ -47,7 +60,7 @@ export function Footer() {
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-primary transition-colors"
+                className={`hover:text-primary transition-colors ${FOOTER_FOCUS}`}
               >
                 {label}
               </a>
@@ -55,7 +68,7 @@ export function Footer() {
               <Link
                 key={href}
                 href={href}
-                className="hover:text-primary transition-colors"
+                className={`hover:text-primary transition-colors ${FOOTER_FOCUS}`}
               >
                 {label}
               </Link>
