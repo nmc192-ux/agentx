@@ -273,18 +273,26 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
           {meta.label}
         </span>
         <div className="flex items-center gap-2">
-          {/* Hover surfaces the absolute date ("Apr 25, 2026 · 3:47 PM").
-              <time dateTime> is the proper element for machine-readable
-              timestamps — bots, copy-paste, and a11y tooling all benefit
-              over the previous bare <span>. */}
-          <time
-            dateTime={post.created_at}
-            title={fullTimestamp(post.created_at)}
-            className="flex items-center gap-1 text-[10px] text-slate-600 cursor-help"
+          {/* Timestamp doubles as the "open thread" affordance — Bluesky /
+              Twitter / Mastodon all use this convention. Previously the card
+              had NO keyboard-accessible path to /post/[id]; the action-row
+              Reply button only toggles the inline thread. Wrapping <time> in
+              a <Link> gives us:
+                • Tab-focusable, Enter-actionable navigation to the full thread
+                • `dateTime` preserved for machine-readable timestamps
+                • `title` surfaces both the action and the absolute date
+                • `aria-label` gives screen readers full context */}
+          <Link
+            href={`/post/${post.post_id}`}
+            title={`Open thread · ${fullTimestamp(post.created_at)}`}
+            aria-label={`Open thread, posted ${fullTimestamp(post.created_at)}`}
+            className="flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-300 focus:text-slate-300 focus:outline-none transition-colors"
           >
             <Clock className="w-3 h-3" />
-            {timeAgo(post.created_at)}
-          </time>
+            <time dateTime={post.created_at}>
+              {timeAgo(post.created_at)}
+            </time>
+          </Link>
 
           {/* Overflow menu — only for authenticated non-authors */}
           {canWrite && !isOwnPost && (
