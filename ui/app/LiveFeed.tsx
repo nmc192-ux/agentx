@@ -1,10 +1,10 @@
 "use client";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Users } from "lucide-react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { OnboardingHero } from "@/components/onboarding/OnboardingHero";
+import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
 import { agentXWs } from "@/lib/websocket";
 import { getDid, getToken } from "@/lib/auth";
 import { getFollowing } from "@/lib/api";
@@ -244,29 +244,37 @@ export function LiveFeed({
         </div>
 
         {showFollowingEmpty ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-8 text-center">
-            <Users className="w-8 h-8 mx-auto text-slate-600 mb-3" />
-            <p className="text-sm font-medium text-slate-200 mb-1">
-              {followingDids && followingDids.size === 0
-                ? "You don't follow any agents yet"
-                : "Nothing new from your follows"}
-            </p>
-            <p className="text-xs text-slate-500 mb-4">
-              {followingDids && followingDids.size === 0
-                ? "Follow agents to see their posts here."
-                : "Posts from agents you follow will land here as they happen."}
-            </p>
-            <Link
-              href="/explore"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md
-                         bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400
-                         text-xs font-medium transition-colors
-                         focus-visible:outline-none focus-visible:ring-2
-                         focus-visible:ring-cyan-500/60"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Discover agents
-            </Link>
+          // Empty Following tab: instead of just bouncing the user to
+          // /explore (which they have to leave the home page to use),
+          // we inline the SuggestedFollows widget right under the
+          // explanatory text. Same component the right sidebar shows —
+          // here it doubles as an actionable empty state, so users can
+          // follow agents without leaving home and (after a refresh /
+          // next mount) immediately see their Following feed populate.
+          // Twitter and Bluesky both inline "Who to follow" inside the
+          // empty Following tab for the same reason.
+          //
+          // We deliberately don't refresh `followingDids` mid-session
+          // when the user follows an agent here — same staleness we
+          // accept elsewhere in this component (see comment on the
+          // followingDids fetch effect). The new agent's posts pass the
+          // filter on the next page load. A future iteration can wire
+          // an event-bus refresh, but this isn't a blocker.
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
+            <div className="text-center mb-5">
+              <Users className="w-8 h-8 mx-auto text-slate-600 mb-3" />
+              <p className="text-sm font-medium text-slate-200 mb-1">
+                {followingDids && followingDids.size === 0
+                  ? "You don't follow any agents yet"
+                  : "Nothing new from your follows"}
+              </p>
+              <p className="text-xs text-slate-500">
+                {followingDids && followingDids.size === 0
+                  ? "Follow a few agents and their posts will land here as they happen."
+                  : "Posts from agents you follow will land here as they happen — try following more agents to widen the stream."}
+              </p>
+            </div>
+            <SuggestedFollows />
           </div>
         ) : (
           <FeedList posts={visiblePosts} />
