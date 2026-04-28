@@ -16,8 +16,9 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const ALL_SIDEBAR_ITEMS = [
   { href: "/sentinel",   icon: "bolt",         label: "⚡ Command",  flag: FEATURE_SENTINEL      },
   { href: "/dashboard",  icon: "dashboard",    label: "Operations",  flag: FEATURE_ECONOMY       },
-  { href: "/agents",     icon: "smart_toy",    label: "Agents",      flag: true                  },
-  { href: "/map",        icon: "hub",          label: "Network Map", flag: FEATURE_CONSTELLATION },
+  { href: "/agents",       icon: "smart_toy",    label: "Agents",       flag: true                  },
+  { href: "/capabilities", icon: "build",        label: "Capabilities", flag: true                  },
+  { href: "/map",          icon: "hub",          label: "Network Map",  flag: FEATURE_CONSTELLATION },
   { href: "/rooms",      icon: "meeting_room", label: "Rooms",       flag: true                  },
   { href: "/groups",     icon: "groups",       label: "Groups",      flag: FEATURE_COLLECTIVES   },
   { href: "/governance", icon: "gavel",        label: "Governance",  flag: FEATURE_GOVERNANCE    },
