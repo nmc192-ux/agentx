@@ -20,6 +20,10 @@ import {
 } from "@/types";
 import { useMentionAutocomplete } from "@/lib/hooks/useMentionAutocomplete";
 import { useTagAutocomplete, type TrendingTag } from "@/lib/hooks/useTagAutocomplete";
+import {
+  useHashtagAutocomplete,
+  type HashtagSuggestion,
+} from "@/lib/hooks/useHashtagAutocomplete";
 import { useDraftAutosave } from "@/lib/hooks/useDraftAutosave";
 
 const POST_TYPES: { type: PostType; icon: typeof MessageSquare; label: string }[] = [
@@ -73,6 +77,13 @@ export function SocialComposeBox({
 
   const { suggestions, detect, select, dismiss } = useMentionAutocomplete();
   const tag = useTagAutocomplete();
+  // In-textarea #hashtag autocomplete. Lives parallel to the mention
+  // dropdown — `@` and `#` triggers are mutually exclusive (the regexes
+  // can't both match before the same cursor), so at any given moment
+  // at most one of these dropdowns is open. When BOTH happen to have
+  // residual state during a transition, mention takes priority for
+  // keyboard nav (it's the more frequent action).
+  const hashtag = useHashtagAutocomplete();
 
   // Persist whatever the user has typed across tab close / refresh / nav.
   // Keyed per-composer-instance: root composer and per-reply composers
@@ -128,7 +139,11 @@ export function SocialComposeBox({
     const cursor = e.target.selectionStart ?? val.length;
     setContent(val);
     setSelectedIdx(0);
+    // Run both detectors. They're mutually exclusive at any single
+    // cursor position (a regex can't match both `@…` and `#…` ending
+    // at the same spot), so at most one dropdown opens.
     detect(val, cursor);
+    hashtag.detect(val, cursor);
   }
 
   function onContentKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -157,6 +172,32 @@ export function SocialComposeBox({
       }
     }
 
+    // Hashtag autocomplete handles the same key set when its dropdown
+    // is the one open. Same priority semantics as mention — bind nav
+    // before submit so `Enter` doesn't post mid-completion.
+    if (hashtag.suggestions.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        hashtag.step(1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        hashtag.step(-1);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertHashtag(hashtag.suggestions[hashtag.active]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        hashtag.dismiss();
+        return;
+      }
+    }
+
     // ⌘⏎ on Mac, Ctrl+⏎ on Windows/Linux submits the post — Bluesky /
     // Twitter parity for power-user posting. We trigger the form's submit
     // path via requestSubmit() so all the existing validation + onSubmit
@@ -173,6 +214,21 @@ export function SocialComposeBox({
     const next = select(agent, content);
     setContent(next);
     setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  function insertHashtag(chosen: HashtagSuggestion) {
+    const next = hashtag.select(chosen, content);
+    setContent(next.text);
+    // Reposition caret after React commits the new value — without this,
+    // the caret jumps to wherever React parks it (usually the end of the
+    // textarea), which is jarring mid-sentence.
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(next.cursor, next.cursor);
+      }
+    }, 0);
   }
 
   // ── Tag autocomplete handlers ────────────────────────────────────────
@@ -387,8 +443,8 @@ export function SocialComposeBox({
               placeholder={
                 placeholder ??
                 (parentPostId
-                  ? "Write your reply… (use @ to mention)"
-                  : "What's happening in AgentX? Use @ to mention agents")
+                  ? "Write your reply… (use @ to mention, # to tag)"
+                  : "What's happening in AgentX? Use @ to mention, # to tag")
               }
               rows={parentPostId ? 2 : 3}
               className="w-full bg-transparent text-sm leading-relaxed text-slate-100 placeholder:text-slate-600 outline-none resize-none"
@@ -419,6 +475,48 @@ export function SocialComposeBox({
                     </button>
                   );
                 })}
+              </div>
+            )}
+            {/* Hashtag dropdown — sibling of the mention dropdown. The two
+                are mutually exclusive in practice (a `@…` and `#…` regex
+                can't both end at the same cursor) so they don't visually
+                collide. Visual language matches the tags-input dropdown:
+                cyan tag rows, count on the right, "Trending tags" header. */}
+            {hashtag.suggestions.length > 0 && suggestions.length === 0 && (
+              <div
+                className="absolute left-0 top-full z-40 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden"
+                role="listbox"
+                aria-label="Trending tag suggestions"
+              >
+                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+                  Trending tags
+                </div>
+                {hashtag.suggestions.map((t, idx) => (
+                  <button
+                    key={t.tag}
+                    type="button"
+                    role="option"
+                    aria-selected={idx === hashtag.active}
+                    onMouseDown={(e) => {
+                      // mousedown rather than click — the textarea's
+                      // blur on click would close the panel before the
+                      // click handler reaches us.
+                      e.preventDefault();
+                      insertHashtag(t);
+                    }}
+                    onMouseEnter={() => hashtag.setActive(idx)}
+                    className={`flex items-center gap-2 w-full px-3 py-2 text-left text-sm transition-colors ${
+                      idx === hashtag.active ? "bg-slate-800" : "hover:bg-slate-800/60"
+                    }`}
+                  >
+                    <span className="text-cyan-400 font-medium truncate">
+                      #{t.tag}
+                    </span>
+                    <span className="text-slate-500 text-xs ml-auto tabular-nums">
+                      {t.count}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
