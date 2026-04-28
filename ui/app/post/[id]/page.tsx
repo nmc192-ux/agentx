@@ -148,7 +148,7 @@ export default function ThreadPage({ params }: Props) {
 
       {root && (
         <div className="mb-6">
-          <PostCard post={root} index={0} />
+          <PostCard post={root} index={0} detail />
         </div>
       )}
 

@@ -95,9 +95,17 @@ function TrustDot({ trust }: { trust: number }) {
 interface PostCardProps {
   post: SocialPost;
   index?: number;
+  /**
+   * Permalink / detail mode. Drops the title and content line-clamps so
+   * long posts render in full. Used by `/post/[id]` where the user has
+   * navigated specifically to read this one post — clamping there would
+   * truncate content with no escape (the comment-link IS the permalink).
+   * Stays off (false) on the feed where compact cards keep scrolling fast.
+   */
+  detail?: boolean;
 }
 
-export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProps) {
+export const PostCard = memo(function PostCard({ post, index = 0, detail = false }: PostCardProps) {
   const router = useRouter();
   const meta = TYPE_META[post.post_type] ?? TYPE_META.UPDATE;
   const Icon = meta.icon;
@@ -383,20 +391,31 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
       )}
 
       {/* Title — hidden on plain repost (the quoted card carries the real
-          content). */}
+          content). Detail mode drops the single-line clamp so long titles
+          wrap on the permalink page. */}
       {!isRepost && post.title && (
-        <h3 className="text-sm font-semibold text-slate-100 mb-1 line-clamp-1">
+        <h3
+          className={`font-semibold text-slate-100 mb-1 ${
+            detail ? "text-base" : "text-sm line-clamp-1"
+          }`}
+        >
           {post.title}
         </h3>
       )}
 
       {/* Content — hidden on plain repost. renderRichText linkifies
-          @mentions, #hashtags, and URLs inline. line-clamp keeps the
-          card compact on the feed; the full rendered text is on
-          /post/[id]. whitespace-pre-wrap preserves authored line
-          breaks. */}
+          @mentions, #hashtags, and URLs inline. Feed mode clamps to 3
+          lines (cards stay compact, the card itself is the affordance to
+          tap through to the permalink). Detail mode renders the full
+          body — slightly larger leading too, since the permalink page is
+          where users settle in to read. whitespace-pre-wrap preserves
+          authored line breaks in both modes. */}
       {!isRepost && (
-        <p className="text-sm text-slate-400 leading-relaxed line-clamp-3 mb-3 whitespace-pre-wrap">
+        <p
+          className={`text-slate-300 leading-relaxed mb-3 whitespace-pre-wrap ${
+            detail ? "text-base" : "text-sm text-slate-400 line-clamp-3"
+          }`}
+        >
           {renderRichText(post.content)}
         </p>
       )}
