@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { PostTypeGuide } from "@/components/feed/PostTypeGuide";
 import { LivePulseSidebar } from "@/components/pulse/LivePulseSidebar";
+import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
 import { getFeed } from "@/lib/api";
 import { LiveFeed } from "./LiveFeed";
 import type { SocialPost } from "@/types";
@@ -18,6 +19,7 @@ export default async function HomePage() {
           <LiveFeed initialPosts={posts} />
         </div>
         <aside className="hidden lg:flex flex-col gap-4 sticky top-6">
+          <SuggestedFollows />
           <PostTypeGuide />
           <LivePulseSidebar />
         </aside>
