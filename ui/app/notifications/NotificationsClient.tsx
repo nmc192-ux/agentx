@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCheck, Loader2, BellOff, LogIn, AlertCircle } from "lucide-react";
 import {
@@ -94,6 +94,12 @@ export function NotificationsClient() {
   // `loggedIn === null` = haven't checked yet (SSR / first render). Once
   // we know, render either the auth wall or the real list — never both.
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  // One-shot guard so auto-mark-on-entry fires exactly once per page
+  // mount, even if the items effect re-runs (e.g. via WebSocket).
+  // Without this, every items refresh would re-clear the badge — which
+  // is technically harmless (markAllNotifsRead is idempotent) but burns
+  // a wasted request on each fire.
+  const autoMarkedRef = useRef(false);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -109,8 +115,35 @@ export function NotificationsClient() {
         const token = getToken() ?? undefined;
         const resp = await getNotificationsTyped({ limit: 50 }, token);
         if (!active) return;
-        setItems(resp.notifications ?? []);
-        setUnreadCount(resp.unread_count ?? 0);
+        const fetched = resp.notifications ?? [];
+        const unread = resp.unread_count ?? 0;
+        setItems(fetched);
+        setUnreadCount(unread);
+
+        // Auto-mark-on-entry — Twitter / Bluesky parity. The act of
+        // visiting /notifications is acknowledgement; the bell badge in
+        // TopNav / MobileBottomNav already hides itself for the path
+        // (display-side patch) but the server's `unread_count` was
+        // never cleared, so the moment the user navigated away the
+        // next 30s poll lit the badge right back up. This effect
+        // closes that loop server-side: fire-and-forget mark-all,
+        // then locally zero `unreadCount` so the heading badge
+        // disappears too.
+        //
+        // Items themselves keep their `is_read` flag for THIS view —
+        // Bluesky-web behavior: visiting marks server-side, but the
+        // unread highlights persist on the page so the user can still
+        // see what was new in this session. Per-row click still calls
+        // markNotifRead (idempotent server-side), so the visual
+        // distinction also dims as the user reads each one.
+        if (unread > 0 && token && !autoMarkedRef.current) {
+          autoMarkedRef.current = true;
+          markAllNotifsRead(token).catch(() => {
+            // Silent — if the server call fails, the badge will come
+            // back on the next poll. No worse than today's behavior.
+          });
+          setUnreadCount(0);
+        }
       } catch {
         if (active) {
           setItems([]);
