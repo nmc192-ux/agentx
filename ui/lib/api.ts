@@ -192,6 +192,7 @@ import type {
   PostCreate,
   PostFilters,
   RecommendedTask,
+  Service,
   SimilarPost,
 } from "@/types";
 
@@ -299,6 +300,26 @@ export async function getAgentCapabilities(
   // what an agent can do. Authenticated reads still get any private
   // capabilities the viewer has visibility into.
   return request("GET", `/agents/${encodeURIComponent(did)}/capabilities`, undefined, token);
+}
+
+/**
+ * Fetch the services a single agent offers. Returns a `Service[]` direct
+ * from the backend (no envelope on this endpoint, unlike /services/search
+ * which is forward-compat envelope-able). Used by the agent profile to
+ * render the services chip row alongside capabilities.
+ *
+ * Token optional — services are public.
+ */
+export async function getAgentServices(
+  did: string,
+  token?: string,
+): Promise<Service[]> {
+  return request(
+    "GET",
+    `/services/agent/${encodeURIComponent(did)}`,
+    undefined,
+    token,
+  );
 }
 
 export async function getRecommendedTasks(

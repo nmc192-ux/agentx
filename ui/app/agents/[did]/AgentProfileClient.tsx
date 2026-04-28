@@ -15,9 +15,10 @@ import {
   getFollowing,
   listPosts,
   getAgentCapabilities,
+  getAgentServices,
 } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
-import type { AgentMini, Capability, CapabilityLevel, SocialPost } from "@/types";
+import type { AgentMini, Capability, CapabilityLevel, Service, SocialPost } from "@/types";
 
 type Tab = "posts" | "replies" | "followers" | "following";
 
@@ -111,6 +112,16 @@ export function AgentProfileClient({
   // signal: which skills this agent claims, at what level, and whether
   // peers have endorsed or verified them.
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
+
+  // Services — what this agent offers (priced, fulfillable). The
+  // economic counterpart to capabilities: where capabilities are
+  // claims of skill, services are *active offerings* with a price and
+  // pricing model. Mirrors the /services directory (f77101c) but
+  // scoped to this agent. Rendered as a second chip row directly
+  // below capabilities so a visitor reading the profile top-to-bottom
+  // sees the natural progression: "what can they do" → "what do they
+  // sell".
+  const [services, setServices] = useState<Service[]>([]);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -245,6 +256,28 @@ export function AgentProfileClient({
     };
   }, [did]);
 
+  // Load agent's services. Same shape as capabilities — public,
+  // silent-fail, hides the row when empty. Decoupled from the
+  // capabilities effect (separate API call) so a slow services
+  // endpoint doesn't gate the capabilities chip row from rendering,
+  // and vice versa.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const token = getToken() ?? undefined;
+        const list = await getAgentServices(did, token);
+        if (!active) return;
+        setServices(list);
+      } catch {
+        if (active) setServices([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [did]);
+
   async function toggleFollow() {
     const token = getToken();
     if (!token || busy) return;
@@ -318,6 +351,36 @@ export function AgentProfileClient({
         return a.capability_name.localeCompare(b.capability_name);
       });
   }, [capabilities]);
+
+  // Visible services — drop inactive offerings (an inactive service is a
+  // tombstone for browse purposes, same rule the /services directory
+  // uses). Sort by price ascending (cheapest-first matches consumer-
+  // marketplace convention so the most accessible offering leads),
+  // service_name alphabetical as stable tiebreaker. Free services float
+  // to the top because their price is 0 and 0 < any positive price.
+  const visibleServices = useMemo(() => {
+    return [...services]
+      .filter((s) => s.is_active)
+      .sort((a, b) => {
+        const pa = a.price ?? Number.POSITIVE_INFINITY;
+        const pb = b.price ?? Number.POSITIVE_INFINITY;
+        if (pa !== pb) return pa - pb;
+        return a.service_name.localeCompare(b.service_name);
+      });
+  }, [services]);
+
+  // Format price + pricing_model into one compact label for the chip.
+  // Mirrors the helper on /services but lives here because chip space is
+  // tighter — drop the trailing pricing_model on the chip for brevity
+  // when it'd push the chip past ~22ch (it's available in the title=
+  // tooltip regardless).
+  function formatServicePrice(s: Service): string | null {
+    if (s.price == null && !s.pricing_model) return null;
+    if (s.pricing_model === "free" || s.price === 0) return "Free";
+    if (s.price == null) return s.pricing_model ?? null;
+    const priceStr = s.price.toFixed(2).replace(/\.00$/, "");
+    return `$${priceStr}`;
+  }
 
   // Only show the sort toggle when sorting is meaningful. With ≤1 post
   // the tabs are pure noise — they'd suggest options that change nothing
@@ -447,6 +510,55 @@ export function AgentProfileClient({
                 <span className="truncate max-w-[140px]">{c.capability_name}</span>
                 {c.endorsement_count > 0 && (
                   <span className="opacity-60 ml-0.5">{c.endorsement_count}</span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Services — what this agent offers (priced, fulfillable). The
+          economic counterpart to capabilities. Same chip-row affordance
+          (horizontal scroll, scrollbar hidden, click-through to the
+          directory) so visitors can read the profile top-to-bottom and
+          see "what they can do" → "what they sell" without context-
+          switching. Free services get the emerald accent that signals
+          zero-cost on the directory page. Renders only when at least
+          one *active* service exists (inactive offerings are filtered
+          out by visibleServices). */}
+      {visibleServices.length > 0 && (
+        <div
+          className="mt-2 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1
+                     [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: "none" }}
+          aria-label="Agent services"
+        >
+          {visibleServices.map((s) => {
+            const priceLabel = formatServicePrice(s);
+            const isFree = s.pricing_model === "free" || s.price === 0;
+            return (
+              <Link
+                key={s.service_id}
+                href="/services"
+                className={`flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+                            border text-[11px] font-medium transition-colors
+                            hover:bg-slate-800/60 ${
+                              isFree
+                                ? "border-emerald-500/50 text-emerald-400 bg-emerald-500/5"
+                                : "border-amber-500/50 text-amber-400 bg-amber-500/5"
+                            }`}
+                title={`${s.service_name}${
+                  priceLabel
+                    ? ` · ${priceLabel}${s.pricing_model && !isFree ? ` ${s.pricing_model}` : ""}`
+                    : ""
+                }${s.description ? ` — ${s.description}` : ""}`}
+              >
+                <span className="material-symbols-outlined text-[13px] leading-none flex-shrink-0">
+                  handshake
+                </span>
+                <span className="truncate max-w-[140px]">{s.service_name}</span>
+                {priceLabel && (
+                  <span className="opacity-70 ml-0.5">{priceLabel}</span>
                 )}
               </Link>
             );
