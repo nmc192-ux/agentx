@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { Footer } from "./Footer";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
+import { CommandPalette } from "./CommandPalette";
 
 export function AppShell({
   children,
@@ -25,6 +26,7 @@ export function AppShell({
       <Footer />
       <MobileBottomNav />
       <KeyboardShortcuts />
+      <CommandPalette />
     </div>
   );
 }

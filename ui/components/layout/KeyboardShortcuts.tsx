@@ -4,6 +4,10 @@
  *
  * Mirrors Bluesky / Twitter parity for power-user navigation:
  *
+ *   ⌘K ─── open the command palette (handled by the sibling
+ *          <CommandPalette /> component — listed here only so the
+ *          help overlay surfaces it; we deliberately bail on
+ *          modifier-held keys below so we don't double-handle it).
  *   /  ─── focus the search bar (or scroll to it on small screens
  *          where the SearchBar is hidden behind `sm:block` — we
  *          fall back to navigating to /explore so the key always
@@ -44,15 +48,16 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 
 const SHORTCUTS: { keys: string; description: string }[] = [
-  { keys: "j",   description: "Next post" },
-  { keys: "k",   description: "Previous post" },
-  { keys: "/",   description: "Focus search" },
-  { keys: "n",   description: "New post" },
-  { keys: "g h", description: "Go to Home" },
-  { keys: "g e", description: "Go to Explore" },
-  { keys: "g n", description: "Go to Notifications" },
-  { keys: "?",   description: "Show this help" },
-  { keys: "Esc", description: "Close dialogs" },
+  { keys: "⌘ K",   description: "Command palette" },
+  { keys: "j",     description: "Next post" },
+  { keys: "k",     description: "Previous post" },
+  { keys: "/",     description: "Focus search" },
+  { keys: "n",     description: "New post" },
+  { keys: "g h",   description: "Go to Home" },
+  { keys: "g e",   description: "Go to Explore" },
+  { keys: "g n",   description: "Go to Notifications" },
+  { keys: "?",     description: "Show this help" },
+  { keys: "Esc",   description: "Close dialogs" },
 ];
 
 /**
