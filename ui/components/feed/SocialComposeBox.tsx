@@ -19,6 +19,7 @@ import {
   type AgentMini,
 } from "@/types";
 import { useMentionAutocomplete } from "@/lib/hooks/useMentionAutocomplete";
+import { useTagAutocomplete, type TrendingTag } from "@/lib/hooks/useTagAutocomplete";
 import { useDraftAutosave } from "@/lib/hooks/useDraftAutosave";
 
 const POST_TYPES: { type: PostType; icon: typeof MessageSquare; label: string }[] = [
@@ -68,8 +69,10 @@ export function SocialComposeBox({
   // effect runs (Mac flips to ⌘ on the first paint after hydration).
   const [modKey, setModKey] = useState<"⌘" | "Ctrl">("Ctrl");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const tagsInputRef = useRef<HTMLInputElement>(null);
 
   const { suggestions, detect, select, dismiss } = useMentionAutocomplete();
+  const tag = useTagAutocomplete();
 
   // Persist whatever the user has typed across tab close / refresh / nav.
   // Keyed per-composer-instance: root composer and per-reply composers
@@ -170,6 +173,66 @@ export function SocialComposeBox({
     const next = select(agent, content);
     setContent(next);
     setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  // ── Tag autocomplete handlers ────────────────────────────────────────
+  // The tags input is a comma-separated string, so the autocomplete model
+  // is "which segment is the cursor sitting in?" rather than the textarea's
+  // "@-trigger" model. detect() resolves that segment; the dropdown shows
+  // trending tags filtered by the segment's prefix.
+  function onTagsChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    const cursor = e.target.selectionStart ?? val.length;
+    setTagsRaw(val);
+    tag.detect(val, cursor);
+  }
+
+  // Re-run detection when the caret moves without a value change (arrow
+  // keys, mouse click into a different segment) — otherwise the dropdown
+  // would show stale matches for the previous segment.
+  function onTagsSelectionChange(e: React.SyntheticEvent<HTMLInputElement>) {
+    const el = e.currentTarget;
+    tag.detect(el.value, el.selectionStart ?? el.value.length);
+  }
+
+  function pickTag(chosen: TrendingTag) {
+    const el = tagsInputRef.current;
+    const cursor = el?.selectionStart ?? tagsRaw.length;
+    const next = tag.select(chosen, tagsRaw, cursor);
+    setTagsRaw(next.text);
+    // Reposition caret after React commits the new value. Without this,
+    // the caret would jump to the end of the input rather than sitting
+    // at the end of the inserted tag (where the user expects it).
+    setTimeout(() => {
+      const input = tagsInputRef.current;
+      if (input) {
+        input.focus();
+        input.setSelectionRange(next.cursor, next.cursor);
+      }
+    }, 0);
+  }
+
+  function onTagsKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!tag.suggestions.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      tag.step(1);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      tag.step(-1);
+      return;
+    }
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      pickTag(tag.suggestions[tag.active]);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      tag.dismiss();
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -363,13 +426,65 @@ export function SocialComposeBox({
           {/* tags + visibility */}
           {!compact && (
             <div className="flex items-center gap-3 mt-2">
-              <input
-                type="text"
-                value={tagsRaw}
-                onChange={(e) => setTagsRaw(e.target.value)}
-                placeholder="Tags (comma-separated) · ai, defense…"
-                className="flex-1 bg-transparent text-xs text-cyan-400 placeholder:text-slate-600 outline-none"
-              />
+              {/* Wrap just the input (not the whole flex row) in a relative
+                  container so the trending-tag dropdown anchors to the
+                  input's left edge rather than the row's. */}
+              <div className="relative flex-1">
+                <input
+                  ref={tagsInputRef}
+                  type="text"
+                  value={tagsRaw}
+                  onChange={onTagsChange}
+                  onKeyDown={onTagsKeyDown}
+                  onSelect={onTagsSelectionChange}
+                  onClick={onTagsSelectionChange}
+                  onBlur={() => {
+                    // Slight delay so a click on a dropdown row fires
+                    // before the dropdown closes — without this, blur
+                    // dismisses the panel before the click handler runs.
+                    setTimeout(() => tag.dismiss(), 120);
+                  }}
+                  placeholder="Tags (comma-separated) · ai, defense…"
+                  className="w-full bg-transparent text-xs text-cyan-400 placeholder:text-slate-600 outline-none"
+                />
+                {tag.suggestions.length > 0 && (
+                  <div
+                    className="absolute left-0 top-full mt-1 z-40 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden"
+                    role="listbox"
+                    aria-label="Trending tag suggestions"
+                  >
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+                      Trending tags
+                    </div>
+                    {tag.suggestions.map((t, idx) => (
+                      <button
+                        key={t.tag}
+                        type="button"
+                        role="option"
+                        aria-selected={idx === tag.active}
+                        onMouseDown={(e) => {
+                          // mousedown rather than click — the input's onBlur
+                          // fires on click, which would close the panel
+                          // before the click event reaches us.
+                          e.preventDefault();
+                          pickTag(t);
+                        }}
+                        onMouseEnter={() => tag.setActive(idx)}
+                        className={`flex items-center gap-2 w-full px-3 py-2 text-left text-sm transition-colors ${
+                          idx === tag.active ? "bg-slate-800" : "hover:bg-slate-800/60"
+                        }`}
+                      >
+                        <span className="text-cyan-400 font-medium truncate">
+                          #{t.tag}
+                        </span>
+                        <span className="text-slate-500 text-xs ml-auto tabular-nums">
+                          {t.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <select
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value as Visibility)}
