@@ -13,13 +13,18 @@ import {
   MessageSquare, Gift, CheckSquare, TrendingUp,
   Bell, Vote, ThumbsUp, Reply, Clock, Quote as QuoteIcon,
   Users as UsersIcon, MoreHorizontal, ShieldOff, Repeat2,
-  Share2, Check,
+  Share2, Check, Pin, PinOff,
 } from "lucide-react";
 import type { SocialPost, PostType } from "@/types";
 import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { renderRichText } from "@/lib/text/richText";
 import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
+import {
+  togglePinnedTag,
+  usePinnedTags,
+  MAX_PINNED,
+} from "@/lib/storage/pinnedTags";
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard } from "./QuotedCard";
@@ -157,6 +162,14 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const [contentExpanded, setContentExpanded] = useState(false);
   const [contentOverflowed, setContentOverflowed] = useState(false);
   const contentRef = useRef<HTMLParagraphElement>(null);
+
+  // Pinned-hashtag state — drives the inline pin/unpin button on each
+  // tag chip in the chip row below. Lifted to the PostCard level so
+  // there's exactly one usePinnedTags subscription per card rather than
+  // one per chip (5 chips × N cards otherwise). The hook itself is
+  // cheap (just a localStorage read + event subscription) but lifting
+  // keeps the chip render dumb / pure.
+  const pinnedTags = usePinnedTags();
 
   const canWrite = isLoggedIn();
   const myDid = getDid();
@@ -510,23 +523,85 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
       {/* Quoted post (if any) */}
       {quoted && <QuotedCard post={quoted} />}
 
-      {/* Tags */}
+      {/* Tags — chip row. Each chip is a sibling pair: a <Link> to the
+          /tag/[name] feed plus a tiny pin/unpin <button> that toggles
+          this hashtag in the user's pinned-feeds set (lib/storage/pinnedTags).
+          Sibling layout (not button-inside-link) avoids the interactive-
+          inside-interactive a11y violation, matching the pattern used
+          for pinned-tab × buttons in LiveFeed and the ml-auto pin
+          button on /tag/[name].
+
+          The inline pin affordance composes with the f729b17 pinned-
+          feeds primitive: a user reading their feed can pin #defi the
+          moment they spot it on a post, without navigating to
+          /tag/defi first. Bluesky-parity: their feed cards have a
+          "Save feed" button on hashtag mentions; this is the same
+          velocity primitive. */}
       {post.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3 mt-3">
-          {post.tags.slice(0, 5).map((tag) => (
-            <Link
-              key={tag}
-              href={`/tag/${encodeURIComponent(tag)}`}
-              title={`View all #${tag} posts`}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400
-                         hover:bg-slate-700 hover:text-slate-200 transition-colors
-                         focus-visible:outline-none focus-visible:ring-2
-                         focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
-                         focus-visible:ring-offset-slate-900"
-            >
-              #{tag}
-            </Link>
-          ))}
+          {post.tags.slice(0, 5).map((tag) => {
+            const lower = tag.toLowerCase();
+            const isPinned = pinnedTags.includes(lower);
+            // At-cap UX: pinning past MAX_PINNED evicts the oldest pin
+            // (per pinTag helper). Surface that in the tooltip rather
+            // than letting the eviction surprise the user.
+            const atCap = !isPinned && pinnedTags.length >= MAX_PINNED;
+            const oldestPin = pinnedTags[0];
+
+            const pinTitle = isPinned
+              ? `Unpin #${tag} from home feed`
+              : atCap
+                ? `Pinning will replace your oldest pinned tag (#${oldestPin}). You can have up to ${MAX_PINNED} pinned hashtags.`
+                : `Pin #${tag} as a tab on the home feed`;
+
+            return (
+              <span
+                key={tag}
+                className={`inline-flex items-stretch rounded overflow-hidden text-[10px] ${
+                  isPinned
+                    ? "bg-cyan-500/10 ring-1 ring-cyan-500/30"
+                    : "bg-slate-800 hover:bg-slate-700 transition-colors"
+                }`}
+              >
+                <Link
+                  href={`/tag/${encodeURIComponent(tag)}`}
+                  title={`View all #${tag} posts`}
+                  className={`px-1.5 py-0.5 transition-colors
+                              focus-visible:outline-none focus-visible:ring-2
+                              focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
+                              focus-visible:ring-offset-slate-900 ${
+                    isPinned
+                      ? "text-cyan-300 hover:text-cyan-200"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  #{tag}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => togglePinnedTag(tag)}
+                  title={pinTitle}
+                  aria-label={pinTitle}
+                  aria-pressed={isPinned}
+                  className={`px-1 flex items-center justify-center
+                              transition-colors border-l
+                              focus-visible:outline-none focus-visible:ring-2
+                              focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2
+                              focus-visible:ring-offset-slate-900 ${
+                    isPinned
+                      ? "border-cyan-500/30 text-cyan-300 hover:text-cyan-200 hover:bg-cyan-500/20"
+                      : "border-slate-700 text-slate-500 hover:text-slate-200 hover:bg-slate-600"
+                  }`}
+                >
+                  {isPinned ? (
+                    <PinOff className="w-2.5 h-2.5" />
+                  ) : (
+                    <Pin className="w-2.5 h-2.5" />
+                  )}
+                </button>
+              </span>
+            );
+          })}
         </div>
       )}
 
