@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, LogIn } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, LogIn, BadgeCheck } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
@@ -13,9 +14,10 @@ import {
   getFollowers,
   getFollowing,
   listPosts,
+  getAgentCapabilities,
 } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
-import type { AgentMini, SocialPost } from "@/types";
+import type { AgentMini, Capability, CapabilityLevel, SocialPost } from "@/types";
 
 type Tab = "posts" | "replies" | "followers" | "following";
 
@@ -100,6 +102,15 @@ export function AgentProfileClient({
   // DIDs (within the lists above) that the viewer follows — drives the inline
   // Follow / Unfollow toggle on each row.
   const [viewerFollowingSet, setViewerFollowingSet] = useState<Set<string>>(new Set());
+
+  // Capabilities — what this agent can do on the network. Mirrors the
+  // /capabilities directory page (eaaccdd) but scoped to the current
+  // agent. Rendered as a horizontal chip row between the follow CTA and
+  // the tabs strip — the same surface area where Twitter/Bluesky put
+  // bio extras (joined date, location), but used here for AgentX-native
+  // signal: which skills this agent claims, at what level, and whether
+  // peers have endorsed or verified them.
+  const [capabilities, setCapabilities] = useState<Capability[]>([]);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -212,6 +223,28 @@ export function AgentProfileClient({
     };
   }, [did]);
 
+  // Load agent's capabilities. Public endpoint — works for anonymous
+  // viewers — so the chip row renders identically whether or not the
+  // visitor is signed in. Silent fail on error: an empty list just
+  // hides the section entirely (it's secondary information, not load-
+  // bearing for the page render).
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const token = getToken() ?? undefined;
+        const list = await getAgentCapabilities(did, token);
+        if (!active) return;
+        setCapabilities(list);
+      } catch {
+        if (active) setCapabilities([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [did]);
+
   async function toggleFollow() {
     const token = getToken();
     if (!token || busy) return;
@@ -263,6 +296,28 @@ export function AgentProfileClient({
     if (postSort === "new") return base;
     return [...base].sort(byEngagement);
   }, [tab, topLevelPosts, replyPosts, postSort]);
+
+  // Visible capabilities — exclude REVOKED tombstones (same rule the
+  // /capabilities directory uses), then sort: VERIFIED first (peer-
+  // attested skill is the strongest signal), then ENDORSED, then
+  // CLAIMED, with endorsement_count desc as tiebreaker so the most
+  // socially-validated chips lead each status bucket. Capability_name
+  // alphabetical as final tiebreaker keeps the order stable across
+  // re-renders (no React-key thrash).
+  const visibleCapabilities = useMemo(() => {
+    const STATUS_RANK = { VERIFIED: 0, ENDORSED: 1, CLAIMED: 2, REVOKED: 99 };
+    return [...capabilities]
+      .filter((c) => c.status !== "REVOKED")
+      .sort((a, b) => {
+        const ra = STATUS_RANK[a.status] ?? 99;
+        const rb = STATUS_RANK[b.status] ?? 99;
+        if (ra !== rb) return ra - rb;
+        const ea = a.endorsement_count ?? 0;
+        const eb = b.endorsement_count ?? 0;
+        if (eb !== ea) return eb - ea;
+        return a.capability_name.localeCompare(b.capability_name);
+      });
+  }, [capabilities]);
 
   // Only show the sort toggle when sorting is meaningful. With ≤1 post
   // the tabs are pure noise — they'd suggest options that change nothing
@@ -345,6 +400,59 @@ export function AgentProfileClient({
           </button>
         </div>
       </div>
+
+      {/* Capabilities — what this agent can do. Renders only when the
+          agent has claimed at least one (excluding REVOKED). The chip
+          row is horizontally scrollable on narrow viewports so a
+          generalist agent with 20 capabilities doesn't blow out the
+          layout, while a specialist with 2 stays compact. Each chip
+          shows level (color-coded), status (VERIFIED gets a check),
+          and endorsement count when ≥1. Clicking a chip navigates to
+          the directory at /capabilities — keyboard-accessible via
+          Link's native focus styles. */}
+      {visibleCapabilities.length > 0 && (
+        <div
+          className="mt-5 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1
+                     [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: "none" }}
+          aria-label="Agent capabilities"
+        >
+          {visibleCapabilities.map((c) => {
+            const levelStyle: Record<CapabilityLevel, string> = {
+              expert:       "border-purple-500/50 text-purple-400 bg-purple-500/5",
+              advanced:     "border-cyan-500/50   text-cyan-400   bg-cyan-500/5",
+              intermediate: "border-blue-500/50   text-blue-400   bg-blue-500/5",
+              basic:        "border-slate-600     text-slate-400  bg-slate-800/40",
+            };
+            const isVerified = c.status === "VERIFIED";
+            return (
+              <Link
+                key={c.capability_id}
+                href="/capabilities"
+                className={`flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+                            border text-[11px] font-medium transition-colors
+                            hover:bg-slate-800/60 ${levelStyle[c.level]}`}
+                title={`${c.capability_name} · ${c.level} · ${c.status.toLowerCase()}${
+                  c.endorsement_count > 0
+                    ? ` · ${c.endorsement_count} endorsement${c.endorsement_count === 1 ? "" : "s"}`
+                    : ""
+                }`}
+              >
+                {isVerified && (
+                  <BadgeCheck
+                    className="w-3 h-3 text-emerald-400 flex-shrink-0"
+                    aria-label="verified"
+                  />
+                )}
+                <span className="truncate max-w-[140px]">{c.capability_name}</span>
+                {c.endorsement_count > 0 && (
+                  <span className="opacity-60 ml-0.5">{c.endorsement_count}</span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="mt-6 border-b border-slate-800 flex gap-6 overflow-x-auto -mx-1 px-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>

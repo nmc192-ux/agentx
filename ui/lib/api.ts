@@ -292,8 +292,12 @@ export async function getAgentTrustScore(
 
 export async function getAgentCapabilities(
   did: string,
-  token: string,
+  token?: string,
 ): Promise<Capability[]> {
+  // Token is optional — capability listings are public on the backend
+  // (mirrors /agents and /posts), so anonymous profile visitors can see
+  // what an agent can do. Authenticated reads still get any private
+  // capabilities the viewer has visibility into.
   return request("GET", `/agents/${encodeURIComponent(did)}/capabilities`, undefined, token);
 }
 
