@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, LogIn } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
@@ -18,6 +18,37 @@ import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import type { AgentMini, SocialPost } from "@/types";
 
 type Tab = "posts" | "followers" | "following";
+
+/**
+ * Sort mode for the profile's Posts tab.
+ *
+ * Mirrors the home feed (50963d6), inline thread (9eed2e4), and full
+ * thread page (09bec3a) Top/New tab strip — same UX vocabulary the user
+ * already learned, applied to the third social surface where ranking is
+ * meaningful.
+ *
+ * Crucially, "Top" means something DIFFERENT here than on the feed or
+ * thread surfaces. There, Top = trust × recency, because each post is
+ * by a different author and per-author trust is the principled axis.
+ * On a profile, every post shares the same author_trust by construction
+ * (it's the same agent), so trust-rank degenerates to pure recency. The
+ * useful axis on a profile is ENGAGEMENT — likes + replies — since that
+ * surfaces the posts that actually resonated with the network.
+ *
+ * Recency tiebreaker handles the common case where a new agent has many
+ * unengaged posts (all 0/0): without it the order would be arbitrary.
+ */
+type ProfileSort = "new" | "top";
+
+function byEngagement(a: SocialPost, b: SocialPost): number {
+  const eA = (a.like_count ?? 0) + (a.reply_count ?? 0);
+  const eB = (b.like_count ?? 0) + (b.reply_count ?? 0);
+  if (eA !== eB) return eB - eA;
+  // Tiebreaker: more recent wins. Stops the all-zero case from sorting
+  // arbitrarily and keeps fresh posts visible at the top of long unengaged
+  // tails.
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
 
 interface Props {
   did: string;
@@ -42,6 +73,7 @@ export function AgentProfileClient({
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("posts");
+  const [postSort, setPostSort] = useState<ProfileSort>("new");
   const [loggedIn, setLoggedIn] = useState(false);
   const [selfDid, setSelfDid] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -192,6 +224,21 @@ export function AgentProfileClient({
 
   const isSelf = selfDid === did;
 
+  // Sorted view of this profile's posts. New = whatever order listPosts
+  // returned (newest-first). Top = engagement-ranked with recency
+  // tiebreaker. Pure (no Date.now in render-only paths) — comparator
+  // reads each post's own created_at, satisfying React 19's purity rule.
+  const visiblePosts = useMemo(() => {
+    if (postSort === "new") return posts;
+    return [...posts].sort(byEngagement);
+  }, [posts, postSort]);
+
+  // Only show the sort toggle when sorting is meaningful. With ≤1 post
+  // the tabs are pure noise — they'd suggest options that change nothing
+  // visible. Same rule as InlineThread (9eed2e4) and /post/[id]
+  // (09bec3a).
+  const showPostSort = !postsLoading && posts.length > 1;
+
   return (
     <>
       {/* Follow + counts row */}
@@ -288,6 +335,58 @@ export function AgentProfileClient({
       {/* Posts tab */}
       {tab === "posts" && (
         <div className="mt-4 space-y-3">
+          {/* Post sort tabs — Top = engagement (likes + replies). On
+              profile pages, trust-rank degenerates to recency (single
+              agent, constant trust) so engagement is the principled
+              "Top" axis. Suppressed for ≤1 post to match the other
+              Top/New surfaces (InlineThread, /post/[id]). */}
+          {showPostSort && (
+            <div
+              role="tablist"
+              aria-label="Post sort"
+              className="flex border-b border-slate-800 -mt-1 mb-1"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={postSort === "new"}
+                onClick={() => setPostSort("new")}
+                title="Newest posts first"
+                className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
+                            focus-visible:outline-none focus-visible:ring-2
+                            focus-visible:ring-cyan-500/60 rounded-t ${
+                  postSort === "new"
+                    ? "text-cyan-400 border-b-2 border-cyan-400"
+                    : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
+                }`}
+              >
+                New
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={postSort === "top"}
+                onClick={() => setPostSort("top")}
+                title="Ranked by engagement (likes + replies)"
+                className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
+                            focus-visible:outline-none focus-visible:ring-2
+                            focus-visible:ring-cyan-500/60 rounded-t ${
+                  postSort === "top"
+                    ? "text-cyan-400 border-b-2 border-cyan-400"
+                    : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
+                }`}
+              >
+                Top
+                <span
+                  className="ml-1 text-[8px] font-semibold uppercase tracking-wide
+                             text-cyan-500/70"
+                  aria-hidden
+                >
+                  engagement
+                </span>
+              </button>
+            </div>
+          )}
           {postsLoading && (
             <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -311,7 +410,7 @@ export function AgentProfileClient({
             />
           )}
           {!postsLoading &&
-            posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
+            visiblePosts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
         </div>
       )}
 
