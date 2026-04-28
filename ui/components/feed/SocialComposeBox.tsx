@@ -62,6 +62,11 @@ export function SocialComposeBox({
   // scrolls below the fold. Always-expanded for replies (parentPostId)
   // and on >=md viewports via Tailwind responsive classes below.
   const [mobileExpanded, setMobileExpanded] = useState(false);
+  // Platform-aware modifier glyph for the submit-shortcut hint. Detected
+  // once on mount — `navigator` isn't safe to read during SSR. Defaults to
+  // the Ctrl glyph since both Mac and PC will see the right thing once the
+  // effect runs (Mac flips to ⌘ on the first paint after hydration).
+  const [modKey, setModKey] = useState<"⌘" | "Ctrl">("Ctrl");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { suggestions, detect, select, dismiss } = useMentionAutocomplete();
@@ -90,6 +95,13 @@ export function SocialComposeBox({
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
+    // Detect Mac so the kbd hint shows ⌘⏎ (vs Ctrl+⏎). userAgent is the
+    // safer modern check — navigator.platform is deprecated and returns
+    // "MacIntel" even on Apple Silicon.
+    if (typeof navigator !== "undefined") {
+      const ua = navigator.userAgent || "";
+      if (/Mac|iPhone|iPad|iPod/.test(ua)) setModKey("⌘");
+    }
   }, []);
 
   if (!loggedIn) return null;
@@ -111,18 +123,40 @@ export function SocialComposeBox({
   }
 
   function onContentKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (!suggestions.length) return;
-    if (e.key === "ArrowDown") {
+    // Mention autocomplete owns Enter / Tab / arrows when suggestions are
+    // open — handle it first so submit doesn't steal the keystroke
+    // mid-mention. The mention dropdown is the higher-priority UI.
+    if (suggestions.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIdx((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(suggestions[selectedIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        dismiss();
+        return;
+      }
+    }
+
+    // ⌘⏎ on Mac, Ctrl+⏎ on Windows/Linux submits the post — Bluesky /
+    // Twitter parity for power-user posting. We trigger the form's submit
+    // path via requestSubmit() so all the existing validation + onSubmit
+    // logic runs (rather than reimplementing it here).
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      setSelectedIdx((i) => Math.min(i + 1, suggestions.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
-      insertMention(suggestions[selectedIdx]);
-    } else if (e.key === "Escape") {
-      dismiss();
+      if (canSubmit && !loading) {
+        e.currentTarget.form?.requestSubmit();
+      }
     }
   }
 
@@ -374,9 +408,27 @@ export function SocialComposeBox({
                   Cancel
                 </button>
               )}
+              {/* Visible shortcut hint — md+ only, since mobile users
+                  rarely have a keyboard with ⌘ / Ctrl. Renders as a faint
+                  kbd chip immediately left of the submit button. The
+                  shortcut is also live: pressing it inside the textarea
+                  submits the form. */}
+              <span
+                aria-hidden
+                className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono text-slate-500 select-none"
+                title={`Press ${modKey}+Enter to ${parentPostId ? "reply" : "post"}`}
+              >
+                <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-300">
+                  {modKey}
+                </kbd>
+                <kbd className="px-1.5 py-0.5 rounded border border-slate-700 bg-slate-800 text-slate-300">
+                  ⏎
+                </kbd>
+              </span>
               <button
                 type="submit"
                 disabled={!canSubmit}
+                title={`${parentPostId ? "Reply" : "Post"} (${modKey}+Enter)`}
                 className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-1.5 rounded-full transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: activeColor }}
               >
