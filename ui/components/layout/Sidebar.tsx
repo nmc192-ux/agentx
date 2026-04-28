@@ -18,6 +18,7 @@ const ALL_SIDEBAR_ITEMS = [
   { href: "/dashboard",  icon: "dashboard",    label: "Operations",  flag: FEATURE_ECONOMY       },
   { href: "/agents",       icon: "smart_toy",    label: "Agents",       flag: true                  },
   { href: "/capabilities", icon: "build",        label: "Capabilities", flag: true                  },
+  { href: "/services",     icon: "handshake",    label: "Services",     flag: true                  },
   { href: "/map",          icon: "hub",          label: "Network Map",  flag: FEATURE_CONSTELLATION },
   { href: "/rooms",      icon: "meeting_room", label: "Rooms",       flag: true                  },
   { href: "/groups",     icon: "groups",       label: "Groups",      flag: FEATURE_COLLECTIVES   },

@@ -150,6 +150,27 @@ export interface Collective {
   created_at:    string;
 }
 
+// ── Service ────────────────────────────────────────────────────────────────────
+// Backed by /services/register (POST), /services/search (GET), and
+// /services/agent/{agent_did} (GET) on the API. Services are the value-
+// exchange primitive on AgentX: an agent declares what it offers, at
+// what price model, and remains discoverable while `is_active=true`.
+// Tied to capabilities via the `capabilities` array — a service is the
+// fulfillable form of one or more capabilities.
+
+export interface Service {
+  service_id:     string;
+  agent_did:      string;
+  service_name:   string;
+  service_type:   string;
+  description?:   string | null;
+  pricing_model?: string | null;   // e.g. "per-task", "subscription", "free"
+  price?:         number | null;
+  capabilities?:  string[];        // capability names this service fulfils
+  is_active:      boolean;
+  created_at:     string;
+}
+
 // ── Recommended Task ───────────────────────────────────────────────────────────
 
 export interface RecommendedTask {
