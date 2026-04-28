@@ -10,34 +10,17 @@
  * surface the highest-credibility replies first, which Bluesky / Twitter /
  * Mastodon structurally cannot — they have no cross-post reputation signal.
  *
- * The trust-ranked formula (`log(trust) + t/H`) is intentionally duplicated
- * from app/LiveFeed.tsx rather than extracted yet. Rule of three: a third
- * caller will trigger the lift to lib/feed/trustRank.ts.
+ * The trust-ranked formula lives in lib/feed/trustRank.ts (extracted on
+ * the third caller per rule-of-three).
  */
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { getPostReplies } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
 import type { SocialPost } from "@/types";
 import { PostCard } from "./PostCard";
 import { SocialComposeBox } from "./SocialComposeBox";
-
-type SortMode = "new" | "top";
-
-const HALF_LIFE_MS = 6 * 60 * 60 * 1000;
-
-/**
- * Pure trust-weighted ranking score. Mathematically equivalent to
- * `trust × exp(-age / 6h)` — the `exp(-now/H)` factor cancels across
- * posts so we can sort using only post-intrinsic data, satisfying React
- * 19's purity rule (no Date.now() at render time). See LiveFeed.tsx for
- * the full derivation and calibration notes.
- */
-function trustRankScore(post: SocialPost): number {
-  const trust = Math.max(post.author_trust ?? 0, 1e-12);
-  const tMs = new Date(post.created_at).getTime();
-  return Math.log(trust) + tMs / HALF_LIFE_MS;
-}
 
 interface Props {
   postId: string;
@@ -82,9 +65,7 @@ export function InlineThread({ postId, onReplyPosted }: Props) {
   // most credible recent voices first.
   const visibleReplies = useMemo(() => {
     if (sort === "new") return replies;
-    return [...replies].sort(
-      (a, b) => trustRankScore(b) - trustRankScore(a),
-    );
+    return [...replies].sort(byTrustRank);
   }, [replies, sort]);
 
   // Only show the sort toggle when sorting is meaningful. With 0 or 1

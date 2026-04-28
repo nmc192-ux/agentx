@@ -6,8 +6,15 @@
  * feed, so every social action (like / quote / block / start-room) works on
  * the permalink page too. Replies are composed via the standard
  * `SocialComposeBox` in `parentPostId` mode (handles mentions, tags, type).
+ *
+ * Replies render with a "New / Top" sort toggle — same trust-weighted
+ * ranking as the home feed (50963d6) and inline reply thread (9eed2e4).
+ * AgentX's per-author trust score lets us surface the highest-credibility
+ * voices first, which Bluesky / Twitter / Mastodon structurally cannot
+ * (no cross-post reputation signal). Third caller for the trust-rank
+ * formula triggered the rule-of-three extraction to lib/feed/trustRank.ts.
  */
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -15,6 +22,7 @@ import { PostCard } from "@/components/feed/PostCard";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { getPost, getPostReplies } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
+import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
 import type { Post, SocialPost } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +53,7 @@ export default function ThreadPage({ params }: Props) {
   const [replies,      setReplies]      = useState<SocialPost[]>([]);
   const [replyLoading, setReplyLoading] = useState(true);
   const [loggedIn,     setLoggedIn]     = useState(false);
+  const [sort,         setSort]         = useState<SortMode>("new");
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -90,6 +99,20 @@ export default function ThreadPage({ params }: Props) {
   function handleNewReply(post: SocialPost) {
     setReplies((prev) => [post, ...prev]);
   }
+
+  // Sorted view of the reply list. New = chronological (whatever order
+  // the API returned + freshly-posted replies prepended). Top = trust ×
+  // recency, descending — surfaces the most credible recent voices first.
+  // Pure comparator (no Date.now) so React 19's purity rule is satisfied.
+  const visibleReplies = useMemo(() => {
+    if (sort === "new") return replies;
+    return [...replies].sort(byTrustRank);
+  }, [replies, sort]);
+
+  // Only show the sort toggle when sorting is meaningful. With 0 or 1
+  // reply, the tabs are pure noise — they'd suggest options that change
+  // nothing visible.
+  const showSort = !replyLoading && replies.length > 1;
 
   return (
     <AppShell>
@@ -143,6 +166,57 @@ export default function ThreadPage({ params }: Props) {
         </div>
       )}
 
+      {/* Reply sort tabs — same trust-weighted ranking as the home feed
+          and inline reply thread. Suppressed when ≤1 reply since the
+          tabs would change nothing visible. */}
+      {showSort && (
+        <div
+          role="tablist"
+          aria-label="Reply sort"
+          className="flex border-b border-slate-800 mb-3"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sort === "new"}
+            onClick={() => setSort("new")}
+            title="Newest replies first"
+            className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
+                        focus-visible:outline-none focus-visible:ring-2
+                        focus-visible:ring-cyan-500/60 rounded-t ${
+              sort === "new"
+                ? "text-cyan-400 border-b-2 border-cyan-400"
+                : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
+            }`}
+          >
+            New
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sort === "top"}
+            onClick={() => setSort("top")}
+            title="Ranked by author trust × recency (6 h half-life)"
+            className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
+                        focus-visible:outline-none focus-visible:ring-2
+                        focus-visible:ring-cyan-500/60 rounded-t ${
+              sort === "top"
+                ? "text-cyan-400 border-b-2 border-cyan-400"
+                : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
+            }`}
+          >
+            Top
+            <span
+              className="ml-1 text-[8px] font-semibold uppercase tracking-wide
+                         text-cyan-500/70"
+              aria-hidden
+            >
+              trust
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Replies */}
       <div className="space-y-3">
         {replyLoading && (
@@ -156,7 +230,7 @@ export default function ThreadPage({ params }: Props) {
           </p>
         )}
         {!replyLoading &&
-          replies.map((reply, i) => (
+          visibleReplies.map((reply, i) => (
             <PostCard key={reply.post_id} post={reply} index={i} />
           ))}
       </div>
