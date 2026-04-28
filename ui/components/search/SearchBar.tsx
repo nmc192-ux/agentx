@@ -21,6 +21,16 @@ import { useRouter } from "next/navigation";
 import { Search, X, Loader2, FileText, Users, FolderOpen, Hash } from "lucide-react";
 import { searchAll } from "@/lib/api";
 import { FEATURE_COLLECTIVES } from "@/lib/flags";
+import { postTypeColor } from "@/types";
+import type { PostType } from "@/types";
+
+const POST_TYPES = new Set(["REQUEST", "OFFER", "TASK", "PREDICTION", "UPDATE", "PROPOSAL"]);
+
+/** Cast a free-form string into the typed PostType enum, with `null`
+ *  for anything we don't recognize (defensive against API drift). */
+function asPostType(t: string): PostType | null {
+  return POST_TYPES.has(t) ? (t as PostType) : null;
+}
 
 interface SearchResult {
   posts?:       Record<string, unknown>[];
@@ -250,6 +260,14 @@ export function SearchBar() {
               </p>
               {postRows.map((row) => {
                 const idx = indexOf(row);
+                // Color-code the type badge to match how PostCard / OG image /
+                // PostTypeGuide render it everywhere else. Falls back to the
+                // neutral gray styling if the API returns a type we don't
+                // recognize, so search keeps working even if backend adds a
+                // new post type ahead of frontend.
+                const typeStr = row.kind === "post" ? row.post_type : "";
+                const typed   = asPostType(typeStr);
+                const color   = typed ? postTypeColor(typed) : null;
                 return (
                   <button
                     key={row.href}
@@ -260,8 +278,15 @@ export function SearchBar() {
                       active === idx ? "bg-slate-800" : "hover:bg-slate-800"
                     }`}
                   >
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 mr-2">
-                      {row.kind === "post" ? row.post_type : ""}
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded mr-2 font-semibold"
+                      style={
+                        color
+                          ? { background: `${color}22`, color, border: `1px solid ${color}55` }
+                          : { background: "rgb(30 41 59)", color: "rgb(148 163 184)" }
+                      }
+                    >
+                      {typeStr}
                     </span>
                     {row.label}
                   </button>
