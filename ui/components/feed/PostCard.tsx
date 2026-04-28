@@ -5,7 +5,7 @@
  * Social post card with type badge, author trust, and wired like / reply /
  * quote / start-room actions. Quoted posts render inline via QuotedCard.
  */
-import { memo, useState, useEffect } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -31,6 +31,14 @@ const TYPE_META: Record<PostType, { icon: typeof MessageSquare; color: string; l
   UPDATE:     { icon: Bell,          color: "#F59E0B", label: "Update" },
   PROPOSAL:   { icon: Vote,          color: "#F97316", label: "Proposal" },
 };
+
+/** SSR-safe wrapper around useLayoutEffect. Layout-effect is the right
+ *  hook for measuring DOM (avoids the unmeasured-state flash that useEffect
+ *  causes), but emits a warning during SSR where there's no DOM to measure.
+ *  This shim falls back to useEffect on the server and only runs the
+ *  measurement on the client where it has something to measure. */
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -126,6 +134,15 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const [reposting, setReposting] = useState(false);
   const [reposted, setReposted] = useState(false);
   const [shared, setShared] = useState(false);
+  // "Show more" inline expander state. `overflowed` = the line-clamp is
+  // hiding content (we measure on mount); `expanded` = the user clicked
+  // Show more, drop the clamp. Both are ignored in detail mode where
+  // there's no clamp to begin with. No "Show less" intentionally — same
+  // as Twitter / Bluesky on feed: once expanded, stays expanded, user
+  // can scroll past or navigate away.
+  const [contentExpanded, setContentExpanded] = useState(false);
+  const [contentOverflowed, setContentOverflowed] = useState(false);
+  const contentRef = useRef<HTMLParagraphElement>(null);
 
   const canWrite = isLoggedIn();
   const myDid = getDid();
@@ -134,6 +151,20 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const quotedId = postMeta.quoted_post_id as string | undefined;
   const isRepost = postMeta.repost === true;
   const canStartRoom = post.post_type === "TASK" || post.post_type === "PROPOSAL";
+
+  // Measure whether the line-clamp is hiding content. scrollHeight is the
+  // full rendered height; clientHeight is the visible (clamped) height.
+  // A 1px slack accounts for sub-pixel rendering rounding so we don't
+  // flicker the button on borderline cases. Skipped in detail mode (no
+  // clamp) and once expanded (we already showed everything). Re-runs if
+  // content changes — covers the rare case where a post body is mutated
+  // in place (e.g. quoted post hydration changing the layout).
+  useIsomorphicLayoutEffect(() => {
+    if (detail || contentExpanded) return;
+    const el = contentRef.current;
+    if (!el) return;
+    setContentOverflowed(el.scrollHeight > el.clientHeight + 1);
+  }, [post.content, detail, contentExpanded]);
 
   useEffect(() => {
     if (!quotedId) return;
@@ -405,19 +436,43 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
 
       {/* Content — hidden on plain repost. renderRichText linkifies
           @mentions, #hashtags, and URLs inline. Feed mode clamps to 3
-          lines (cards stay compact, the card itself is the affordance to
-          tap through to the permalink). Detail mode renders the full
-          body — slightly larger leading too, since the permalink page is
-          where users settle in to read. whitespace-pre-wrap preserves
-          authored line breaks in both modes. */}
+          lines; Show more inline-expands without losing scroll position
+          (the timestamp link also navigates to the permalink for users
+          who prefer that). Detail mode renders the full body — slightly
+          larger leading too, since the permalink page is where users
+          settle in to read. whitespace-pre-wrap preserves authored line
+          breaks in both modes. */}
       {!isRepost && (
-        <p
-          className={`text-slate-300 leading-relaxed mb-3 whitespace-pre-wrap ${
-            detail ? "text-base" : "text-sm text-slate-400 line-clamp-3"
-          }`}
-        >
-          {renderRichText(post.content)}
-        </p>
+        <>
+          <p
+            ref={contentRef}
+            className={`leading-relaxed whitespace-pre-wrap ${
+              detail || contentExpanded
+                ? "text-base text-slate-300 mb-3"
+                : "text-sm text-slate-400 line-clamp-3 mb-1"
+            }`}
+          >
+            {renderRichText(post.content)}
+          </p>
+          {!detail && contentOverflowed && !contentExpanded && (
+            // stopPropagation so the click doesn't bubble to any parent
+            // card-level handler that might navigate to the permalink —
+            // the user explicitly chose "expand here, don't take me away".
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setContentExpanded(true);
+              }}
+              className="text-xs text-cyan-400 hover:text-cyan-300 mb-3
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-cyan-500/60 rounded px-1 -ml-1"
+              aria-label="Show full post content"
+            >
+              Show more
+            </button>
+          )}
+        </>
       )}
 
       {/* Quoted post (if any) */}
