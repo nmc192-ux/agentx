@@ -25,6 +25,21 @@ import {
   type HashtagSuggestion,
 } from "@/lib/hooks/useHashtagAutocomplete";
 import { useDraftAutosave } from "@/lib/hooks/useDraftAutosave";
+import { renderRichText } from "@/lib/text/richText";
+
+/**
+ * Cheap probe: does the draft body contain anything renderRichText
+ * would actually transform? If not, we skip the preview pane entirely
+ * so plain-text drafts ("just thinking out loud…") don't get a noisy
+ * preview header. Mirrors the recognized-token contract of RICH_RE in
+ * lib/text/richText.tsx — kept deliberately permissive so any token
+ * the renderer accepts also opens the preview.
+ *
+ * The probe is module-scope to avoid the regex-recompile-per-keystroke
+ * cost on long drafts. Single-pass `.test` is fine (we re-run the full
+ * matcher inside renderRichText for the actual render).
+ */
+const PREVIEW_PROBE_RE = /[@#][\w-]{2,40}|https?:\/\//;
 
 const POST_TYPES: { type: PostType; icon: typeof MessageSquare; label: string }[] = [
   { type: "UPDATE",     icon: Bell,          label: "Update" },
@@ -106,6 +121,19 @@ export function SocialComposeBox({
       if (typeof saved.visibility === "string") setVisibility(saved.visibility as Visibility);
     },
   });
+
+  // Live linkify preview — only run renderRichText when there's at
+  // least one token it would transform. Memoized on `content` so a
+  // 4000-char draft doesn't re-tokenize on every cursor move. Returns
+  // null (not []) when nothing to preview, so the renderer can short-
+  // circuit the entire pane (avoids "Preview" header hovering above
+  // an empty bordered box during plain-text drafts). Hook lives above
+  // the `if (!loggedIn) return null` early return below so its order
+  // stays stable across renders (rules-of-hooks).
+  const previewNodes = useMemo(() => {
+    if (!content || !PREVIEW_PROBE_RE.test(content)) return null;
+    return renderRichText(content);
+  }, [content]);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
@@ -520,6 +548,42 @@ export function SocialComposeBox({
               </div>
             )}
           </div>
+
+          {/* Live linkify preview — Twitter / Bluesky parity. Shows
+              how the body will render *before* submit so the user
+              spots typoed @slugs, mistyped #hashtags, or URLs that
+              don't quite parse before posting. Only mounts when the
+              body actually contains a recognized token (probe via
+              PREVIEW_PROBE_RE) so plain-text drafts don't get a
+              noisy "Preview" pane hanging below the textarea.
+
+              `pointer-events-none` makes the rendered links visual-
+              only — clicking inside the preview pane during compose
+              would otherwise navigate to the @profile / #tag /
+              external URL and trash the composing context (the
+              draft autosave restores on remount, but it's still a
+              jarring UX). The actual published post keeps its
+              clickable links intact, since renderRichText runs
+              again at PostCard render time without this wrapper.
+
+              role="status" + aria-live="polite" so screen readers
+              announce when the preview becomes available without
+              chattering on every keystroke. */}
+          {previewNodes && (
+            <div
+              className="mt-2 px-3 py-2 rounded-lg border border-slate-800 bg-slate-950/40"
+              role="status"
+              aria-live="polite"
+              aria-label="Post preview"
+            >
+              <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                Preview
+              </div>
+              <p className="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap break-words pointer-events-none">
+                {previewNodes}
+              </p>
+            </div>
+          )}
 
           {/* tags + visibility */}
           {!compact && (
