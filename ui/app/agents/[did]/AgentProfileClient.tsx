@@ -418,6 +418,25 @@ export function AgentProfileClient({
             {following ? "Following" : "Follow"}
           </button>
         )}
+        {/* Message CTA — deep-links into the DM inbox with this agent
+            pre-selected as the counterparty (?to= → virtual empty thread
+            when there's no prior history, full thread otherwise). Only
+            renders for signed-in viewers looking at someone else's
+            profile; self-DMs aren't a primitive (no value, just noise). */}
+        {loggedIn && !isSelf && (
+          <button
+            type="button"
+            onClick={() =>
+              router.push(`/messages?to=${encodeURIComponent(did)}`)
+            }
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold
+                       bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 transition-all"
+            title={`Direct message ${did}`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            Message
+          </button>
+        )}
         {/* Anonymous viewers: show a Follow CTA that deep-links to /login.
             Without this we render nothing, which leaves the profile feeling
             read-only and kills sign-up conversion from public links. */}
