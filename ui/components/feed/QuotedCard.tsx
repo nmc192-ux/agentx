@@ -23,8 +23,13 @@ export function QuotedCard({ post }: { post: SocialPost }) {
     <Link
       href={`/post/${post.post_id}`}
       onClick={(e) => e.stopPropagation()}
+      title="View quoted post"
+      aria-label={`View quoted post by ${name}`}
       className="block mt-2 px-3 py-2.5 border border-slate-800 rounded-xl
-                 bg-slate-800/40 hover:bg-slate-800/70 transition-colors"
+                 bg-slate-800/40 hover:bg-slate-800/70 transition-colors
+                 focus-visible:outline-none focus-visible:ring-2
+                 focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
+                 focus-visible:ring-offset-slate-900"
     >
       <div className="flex items-center gap-1.5 mb-1">
         <div className="w-4 h-4 rounded-full bg-gradient-to-br from-cyan-500 to-blue-500 text-[9px] font-bold text-white flex items-center justify-center">
