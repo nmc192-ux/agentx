@@ -326,8 +326,19 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min(index * 0.04, 0.3) }}
+      // data-post-nav + tabIndex=-1 make this card a programmatic focus
+      // target for the j/k keyboard navigation in components/layout/
+      // KeyboardShortcuts.tsx — Twitter/Bluesky power-user parity. tabIndex
+      // -1 keeps it out of the natural Tab order (Tab still steps through
+      // the interactive controls inside) while still allowing .focus().
+      // The focus-visible ring is what the user *sees* while j/k-ing.
+      data-post-nav
+      tabIndex={-1}
       className="group rounded-xl border border-slate-800 bg-slate-900 p-4
-                 hover:border-slate-700 hover:bg-slate-900/80 transition-colors"
+                 hover:border-slate-700 hover:bg-slate-900/80 transition-colors
+                 focus:outline-none focus-visible:ring-2
+                 focus-visible:ring-cyan-500/60 focus-visible:border-cyan-500/40
+                 scroll-mt-20"
     >
       {/* Top row */}
       <div className="flex items-center justify-between mb-3">

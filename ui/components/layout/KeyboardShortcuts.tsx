@@ -8,6 +8,16 @@
  *          where the SearchBar is hidden behind `sm:block` — we
  *          fall back to navigating to /explore so the key always
  *          does *something* useful).
+ *   j  ─── focus the next post card in the visible list and scroll
+ *          it into view (Twitter / Bluesky power-user parity). Works
+ *          on any page that renders <PostCard> — feed, profile,
+ *          permalink replies, hashtag, search results — because the
+ *          handler queries the DOM for `[data-post-nav]` rather than
+ *          owning a list itself. With nothing focused yet, picks the
+ *          first post visible in the viewport (so a user who's
+ *          scrolled halfway down the feed doesn't get yanked to the
+ *          top on first press).
+ *   k  ─── focus the previous post card (mirror of `j`).
  *   n  ─── navigate to the compose page (/posts/create). Direct deep
  *          link rather than focusing the inline composer because the
  *          inline composer only exists on /, but `n` should work from
@@ -34,6 +44,8 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 
 const SHORTCUTS: { keys: string; description: string }[] = [
+  { keys: "j",   description: "Next post" },
+  { keys: "k",   description: "Previous post" },
   { keys: "/",   description: "Focus search" },
   { keys: "n",   description: "New post" },
   { keys: "g h", description: "Go to Home" },
@@ -42,6 +54,56 @@ const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: "?",   description: "Show this help" },
   { keys: "Esc", description: "Close dialogs" },
 ];
+
+/**
+ * Find the next/previous post card to focus relative to the currently
+ * focused one. If nothing is focused yet (or the focused element isn't
+ * a post card), pick the first card whose top edge is at or below the
+ * top of the viewport — that way a user who's scrolled halfway down
+ * doesn't get thrown back to post #0 on first press of `j`.
+ *
+ * Returns the element to focus, or null if there are no cards to
+ * navigate (e.g. empty feed, error state).
+ */
+function pickPostCard(direction: "next" | "prev"): HTMLElement | null {
+  const cards = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-post-nav]"),
+  );
+  if (cards.length === 0) return null;
+
+  const active = document.activeElement;
+  // Walk up from the active element in case focus is on a child of a
+  // post card (e.g. a Reply button inside the card). The card itself
+  // carries the data-post-nav attribute.
+  const activeCard =
+    active instanceof HTMLElement
+      ? (active.closest<HTMLElement>("[data-post-nav]"))
+      : null;
+  const idx = activeCard ? cards.indexOf(activeCard) : -1;
+
+  if (idx >= 0) {
+    const next = direction === "next" ? idx + 1 : idx - 1;
+    if (next < 0 || next >= cards.length) return cards[idx]; // edge: keep focus
+    return cards[next];
+  }
+
+  // No card focused — for `j` pick the first card visible in the
+  // viewport; for `k` pick the last one above/at the viewport top.
+  const viewportTop = 0;
+  if (direction === "next") {
+    return (
+      cards.find((c) => c.getBoundingClientRect().top >= viewportTop - 4) ??
+      cards[0]
+    );
+  } else {
+    // `k` from cold-start: pick the card whose bottom is highest above
+    // the fold, falling back to the first card.
+    const above = cards.filter(
+      (c) => c.getBoundingClientRect().bottom < viewportTop + 4,
+    );
+    return above.length > 0 ? above[above.length - 1] : cards[0];
+  }
+}
 
 /** Pretty-print a key string so each token gets its own kbd chip. */
 function KeyChips({ keys }: { keys: string }) {
@@ -121,6 +183,22 @@ export function KeyboardShortcuts() {
 
       // Single-key shortcuts.
       switch (e.key) {
+        case "j":
+        case "k": {
+          // Twitter / Bluesky parity: vim-style next/previous post
+          // navigation across any page that renders <PostCard>. The
+          // helper handles the cold-start case (no card focused yet)
+          // by picking the first viewport-visible card so the keypress
+          // feels grounded rather than yanking the user to the top.
+          const target = pickPostCard(e.key === "j" ? "next" : "prev");
+          if (!target) return;
+          e.preventDefault();
+          target.focus({ preventScroll: true });
+          // Use scrollIntoView with `block: "nearest"` so cards already
+          // mid-viewport don't jump — only off-screen ones recenter.
+          target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+          return;
+        }
         case "/": {
           e.preventDefault();
           // Try to find the search input. If it's hidden (mobile, where
