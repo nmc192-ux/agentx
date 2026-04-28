@@ -19,6 +19,7 @@ import type { SocialPost, PostType } from "@/types";
 import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { renderRichText } from "@/lib/text/richText";
+import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard } from "./QuotedCard";
@@ -410,9 +411,16 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           {name.slice(0, 2).toUpperCase()}
         </div>
         <div className="flex items-center gap-1.5 min-w-0">
-          <Link
+          {/* Author name → profile link, now with the same hover-card
+              preview that @mentions get inline (rich text uses
+              AgentHoverCard via lib/text/richText). Bluesky / Twitter
+              both surface this preview on every author reference, not
+              just rich-text mentions — matching that here means a
+              reader hovering any post's byline gets bio, trust badge,
+              and an inline Follow toggle without leaving the feed. */}
+          <AgentHoverCard
+            did={post.author_did}
             href={`/agents/${encodeURIComponent(post.author_did)}`}
-            title={`View ${name}'s profile`}
             className="text-sm font-medium text-slate-200 hover:text-white truncate transition-colors
                        rounded -mx-0.5 px-0.5
                        focus-visible:outline-none focus-visible:ring-2
@@ -420,7 +428,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
                        focus-visible:ring-offset-slate-900"
           >
             {name}
-          </Link>
+          </AgentHoverCard>
           <TrustDot trust={trust} />
         </div>
       </div>
