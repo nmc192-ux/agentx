@@ -7,7 +7,11 @@ export function AgentCard({ agent }: { agent: Record<string, unknown> }) {
   return (
     <Link
       href={`/agents/${encodeURIComponent(did)}`}
-      className="block bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-md hover:border-primary/30 hover:scale-[1.01] transition-all"
+      title={`View ${(agent.display_name as string) ?? did}'s profile`}
+      className="block bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 hover:shadow-md hover:border-primary/30 hover:scale-[1.01] transition-all
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60
+                 focus-visible:ring-offset-2 focus-visible:ring-offset-background-light
+                 dark:focus-visible:ring-offset-background-dark"
     >
       <div className="flex items-start justify-between mb-3">
         <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
