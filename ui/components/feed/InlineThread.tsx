@@ -25,7 +25,8 @@
  * the entire chain inline.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { getPostReplies } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
@@ -58,17 +59,33 @@ export function InlineThread({ postId, onReplyPosted, nested = false }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortMode>("new");
 
+  // Server-reported overflow signal. The inline thread is intentionally
+  // a *preview* — we don't paginate here (that would defeat the
+  // compactness goal); instead we surface a "View N more on permalink"
+  // footer link when the server still has more replies beyond the
+  // initial fetch limit. Without this, users land on the inline thread
+  // and have no signal that more conversation exists, so a popular
+  // post with 200 replies looks identical to a sparse one with 20.
+  // Bluesky / Twitter both surface an overflow link from preview
+  // threads into the canonical full view for the same reason.
+  const [hasMore, setHasMore] = useState(false);
+  const [totalReplies, setTotalReplies] = useState(0);
+
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
       setError(null);
+      setHasMore(false);
+      setTotalReplies(0);
       try {
         const token = getToken() ?? undefined;
         const limit = nested ? NESTED_FETCH_LIMIT : ROOT_FETCH_LIMIT;
         const resp = await getPostReplies(postId, { limit }, token);
         if (!active) return;
         setReplies((resp.posts as SocialPost[]) ?? []);
+        setHasMore(Boolean(resp.has_more));
+        setTotalReplies(resp.total ?? resp.posts?.length ?? 0);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : "Failed to load replies");
@@ -200,6 +217,42 @@ export function InlineThread({ postId, onReplyPosted, nested = false }: Props) {
             </div>
           );
         })}
+
+        {/* Overflow link — visible only when the server still has more
+            replies beyond the inline-preview cap. Computes remaining
+            count from server-reported total minus the locally rendered
+            list (after a fresh user-composed reply is prepended, the
+            local list grows by 1 but server total hasn't, so we floor
+            at 0 to avoid a "View -1 more" oddity). Compact size for
+            nested mode so the visual nesting cluster doesn't get
+            visually heavy. The /post/[id] page is the canonical full
+            thread view — paginated, sortable, composable — so this is
+            a one-way drill-in: clicking takes the user out of the feed
+            into the dedicated thread surface. */}
+        {!loading && !error && hasMore && (
+          <Link
+            href={`/post/${postId}`}
+            className={`flex items-center gap-1.5 ${
+              nested ? "ml-1 px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs"
+            } rounded-md text-cyan-400 hover:text-cyan-300
+              hover:bg-cyan-500/5 transition-colors w-fit
+              focus-visible:outline-none focus-visible:ring-2
+              focus-visible:ring-cyan-500/60`}
+            aria-label={`View full thread on permalink (${Math.max(
+              totalReplies - replies.length,
+              0,
+            )} more replies)`}
+          >
+            {(() => {
+              const remaining = Math.max(totalReplies - replies.length, 0);
+              if (remaining === 0) return "View full thread";
+              return remaining === 1
+                ? "View 1 more reply on permalink"
+                : `View ${remaining} more replies on permalink`;
+            })()}
+            <ArrowRight className={nested ? "w-2.5 h-2.5" : "w-3 h-3"} />
+          </Link>
+        )}
       </div>
     </div>
   );
