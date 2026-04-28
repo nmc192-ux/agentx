@@ -190,7 +190,12 @@ export function SuggestedFollows() {
         // themselves would be absurd. We do the filter in JS rather than
         // pushing it server-side so the same /agents/top endpoint serves
         // every caller; the cost is reading at most one extra agent.
-        const list = Array.isArray(top) ? (top as AgentMini[]) : [];
+        // Cast through unknown — getTopAgents() returns the loose
+        // Record<string, unknown>[] shape from getList(). TS strict mode
+        // (Next.js production build) rejects the direct cast since the
+        // overlap isn't provable. The runtime shape is already enforced
+        // by the backend; this is purely a type-system formality.
+        const list = Array.isArray(top) ? (top as unknown as AgentMini[]) : [];
         const filtered = list
           .filter((a) => a.agent_did !== myDid)
           .slice(0, MAX_SUGGESTIONS);
