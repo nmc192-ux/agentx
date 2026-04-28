@@ -12,6 +12,22 @@ import { FEATURE_ECONOMY, FEATURE_COLLECTIVES } from "@/lib/flags";
 // paused when the tab isn't visible.
 const NOTIF_POLL_MS = 30_000;
 
+/**
+ * Shared focus-visible ring for TopNav interactive elements.
+ *
+ * The TopNav is rendered on every page, so its keyboard a11y has the
+ * highest reach in the app. Every link / button gets a cyan-500/60
+ * ring (matches the AgentX brand) on `focus-visible` only — silent for
+ * mouse clicks, visible the moment the user starts tab-navigating.
+ *
+ * `rounded` is included so the ring has corners on plain text links
+ * (nav items, logo wordmark) that wouldn't otherwise render rounded.
+ * Elements that already have `rounded-lg` / `rounded-full` keep theirs
+ * — Tailwind picks the more-specific border-radius.
+ */
+const NAV_FOCUS =
+  "rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60";
+
 /** Optional `shortcut` is the keyboard hint surfaced on hover via `title`.
  *  Mirrors the bindings registered in <KeyboardShortcuts /> — keep these
  *  two lists in sync so the tooltip never lies. */
@@ -119,7 +135,7 @@ export function TopNav() {
           <Link
             href="/"
             title="Home (g h) · ? for all shortcuts"
-            className="flex items-center gap-2 text-primary"
+            className={`flex items-center gap-2 text-primary ${NAV_FOCUS}`}
           >
             <span className="material-symbols-outlined text-3xl">smart_toy</span>
             <h2 className="text-xl font-bold tracking-tight">AgentX</h2>
@@ -130,7 +146,7 @@ export function TopNav() {
                 key={item.href}
                 href={item.href}
                 title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
-                className={`text-sm font-medium transition-colors hover:text-primary ${
+                className={`text-sm font-medium transition-colors hover:text-primary px-1 ${NAV_FOCUS} ${
                   pathname === item.href
                     ? "text-slate-900 dark:text-slate-100"
                     : "text-slate-500 dark:text-slate-400"
@@ -150,7 +166,7 @@ export function TopNav() {
           </div>
           <Link
             href="/notifications"
-            className="relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors inline-flex"
+            className={`relative p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors inline-flex ${NAV_FOCUS}`}
             title={
               displayedUnread > 0
                 ? `Notifications · ${displayedUnread} unread (g n)`
@@ -182,7 +198,7 @@ export function TopNav() {
                 href="/settings"
                 aria-label="Settings"
                 title="Settings"
-                className="hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+                className={`hidden sm:inline-flex p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 ${NAV_FOCUS}`}
               >
                 <span className="material-symbols-outlined text-[20px]">settings</span>
               </Link>
@@ -197,7 +213,7 @@ export function TopNav() {
               </div>
               <button
                 onClick={handleLogout}
-                className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 transition-colors"
+                className={`text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 transition-colors ${NAV_FOCUS}`}
               >
                 Logout
               </button>
@@ -205,7 +221,7 @@ export function TopNav() {
           ) : (
             <Link
               href={`/login?next=${encodeURIComponent(pathname)}`}
-              className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 border border-primary/40 hover:border-primary/70 px-3 py-1.5 rounded-lg transition-colors"
+              className={`flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 border border-primary/40 hover:border-primary/70 px-3 py-1.5 rounded-lg transition-colors ${NAV_FOCUS}`}
             >
               <span className="material-symbols-outlined text-sm">login</span>
               Login
