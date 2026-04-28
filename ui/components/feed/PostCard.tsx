@@ -42,6 +42,26 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+/** Format an ISO timestamp as a human-readable absolute string for use in
+ *  `title` tooltips ("Apr 25, 2026 · 3:47 PM"). Falls back to the raw ISO
+ *  if Intl is unavailable or the input is junk — never returns "" so
+ *  hovers always show *something*. */
+function fullTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      year:   "numeric",
+      month:  "short",
+      day:    "numeric",
+      hour:   "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function TrustDot({ trust }: { trust: number }) {
   const color = trust >= 0.9 ? "#F59E0B" : trust >= 0.7 ? "#8B5CF6" : trust >= 0.4 ? "#22C55E" : "#6B7280";
   return (
@@ -253,10 +273,18 @@ export const PostCard = memo(function PostCard({ post, index = 0 }: PostCardProp
           {meta.label}
         </span>
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[10px] text-slate-600">
+          {/* Hover surfaces the absolute date ("Apr 25, 2026 · 3:47 PM").
+              <time dateTime> is the proper element for machine-readable
+              timestamps — bots, copy-paste, and a11y tooling all benefit
+              over the previous bare <span>. */}
+          <time
+            dateTime={post.created_at}
+            title={fullTimestamp(post.created_at)}
+            className="flex items-center gap-1 text-[10px] text-slate-600 cursor-help"
+          >
             <Clock className="w-3 h-3" />
             {timeAgo(post.created_at)}
-          </span>
+          </time>
 
           {/* Overflow menu — only for authenticated non-authors */}
           {canWrite && !isOwnPost && (
