@@ -14,6 +14,7 @@ import {
   Bell, Vote, ThumbsUp, Reply, Clock, Quote as QuoteIcon,
   Users as UsersIcon, MoreHorizontal, ShieldOff, Repeat2,
   Share2, Check, Pin, PinOff,
+  Copy, ExternalLink, User as UserIcon,
 } from "lucide-react";
 import type { SocialPost, PostType } from "@/types";
 import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
@@ -148,8 +149,19 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const [quoted, setQuoted] = useState<SocialPost | null>(null);
   const [replyCount, setReplyCount] = useState(post.reply_count ?? 0);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  // Separate from the existing `shared` flag (used by the bottom-row
+  // Share2 button which prefers the Web Share API). The overflow menu
+  // Copy-link is intentionally clipboard-only — different intent: "give
+  // me the URL right now without a sheet" — and we want each affordance
+  // to flash its own checkmark independently.
+  const [menuLinkCopied, setMenuLinkCopied] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  // Ref on the overflow wrapper so the click-outside listener can tell
+  // a click on the menu itself (don't close) from a click anywhere else
+  // on the page (do close). Without this the menu eats every click on
+  // its own rows because we close before the action handler fires.
+  const overflowWrapRef = useRef<HTMLDivElement>(null);
   const [reposting, setReposting] = useState(false);
   const [reposted, setReposted] = useState(false);
   const [shared, setShared] = useState(false);
@@ -331,6 +343,103 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
     }
   }
 
+  /**
+   * Overflow-menu Copy link — clipboard-only (no Web Share sheet,
+   * unlike the bottom-row Share button). Twitter/X and Bluesky context
+   * menus both treat "Copy link" as a quiet, immediate clipboard op.
+   * Falls back to window.prompt for ancient browsers / non-secure
+   * contexts so the URL is always recoverable.
+   */
+  async function handleCopyLinkFromMenu() {
+    const path = `/post/${post.post_id}`;
+    const url = typeof window !== "undefined"
+      ? `${window.location.origin}${path}`
+      : path;
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setMenuLinkCopied(true);
+        // Keep menu open briefly so the user sees the checkmark, then
+        // dismiss. 900ms is the same window the Share button uses (see
+        // `shared` flag) — feels consistent across the card.
+        setTimeout(() => {
+          setMenuLinkCopied(false);
+          setOverflowOpen(false);
+        }, 900);
+      } else {
+        window.prompt("Copy this link:", url);
+        setOverflowOpen(false);
+      }
+    } catch {
+      // Clipboard write blocked — fall back so the URL is still
+      // accessible.
+      window.prompt("Copy this link:", url);
+      setOverflowOpen(false);
+    }
+  }
+
+  /**
+   * Open the post permalink in a new tab — Twitter/X and Bluesky
+   * both surface this as "Open in new tab" / "Open original". Useful
+   * for context-menu users (right-click) who want to keep the feed
+   * scroll position intact while reading the thread.
+   */
+  function handleOpenInNewTab() {
+    if (typeof window === "undefined") return;
+    const url = `${window.location.origin}/post/${post.post_id}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+    setOverflowOpen(false);
+  }
+
+  /**
+   * Right-click anywhere on the card opens the overflow menu — true
+   * Twitter/X / Bluesky context-menu parity. preventDefault suppresses
+   * the browser's native context menu so users get the AgentX-tailored
+   * actions instead. Anchored to the existing top-right menu position
+   * (rather than at the cursor) — Twitter does the same; cursor-anchored
+   * popovers feel jankier when the cursor is near the card edge and
+   * the menu would clip.
+   *
+   * Discovery: most users miss the hover-revealed `…` button, especially
+   * on touch where there's no hover. Right-click + (next iteration)
+   * long-press unlock the menu without depending on the trailing-edge
+   * affordance.
+   */
+  function handleContextMenu(e: React.MouseEvent<HTMLElement>) {
+    // Don't hijack the context menu if the user right-clicked inside
+    // a textarea / input / link inside the card — they may want the
+    // browser's native "Copy / Paste / Open link in new tab" menu for
+    // those targets.
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest("a, input, textarea, button, [contenteditable]")) {
+      // Letting native menu through is fine for these targets — and
+      // some, like our InlineThread textarea, genuinely benefit.
+      return;
+    }
+    e.preventDefault();
+    setOverflowOpen(true);
+  }
+
+  // Click-outside + Escape to close the overflow menu. Without this
+  // the menu only closes on action click — but right-click users (and
+  // anyone who opens it then changes their mind) need an explicit out.
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const wrap = overflowWrapRef.current;
+      if (wrap && !wrap.contains(e.target as Node)) setOverflowOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOverflowOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [overflowOpen]);
+
   // Hide the whole card once the user has blocked its author
   if (blocked) return null;
 
@@ -347,6 +456,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
       // The focus-visible ring is what the user *sees* while j/k-ing.
       data-post-nav
       tabIndex={-1}
+      onContextMenu={handleContextMenu}
       className="group rounded-xl border border-slate-800 bg-slate-900 p-4
                  hover:border-slate-700 hover:bg-slate-900/80 transition-colors
                  focus:outline-none focus-visible:ring-2
@@ -388,39 +498,103 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
             </time>
           </Link>
 
-          {/* Overflow menu — only for authenticated non-authors */}
-          {canWrite && !isOwnPost && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setOverflowOpen((v) => !v)}
-                className="p-0.5 rounded text-slate-600 hover:text-slate-400 transition-colors
-                           opacity-0 group-hover:opacity-100 focus:opacity-100"
-                aria-label="More options"
-              >
-                <MoreHorizontal className="w-3.5 h-3.5" />
-              </button>
+          {/* Overflow menu — universal. Copy link / Open in new tab /
+              View profile work for everyone (logged-in or not, own
+              or others' posts). Block stays gated to authenticated
+              non-authors at the row level. Hover-revealed on desktop
+              so the chrome stays quiet; always-tappable on touch. The
+              same menu is also opened by right-click anywhere on the
+              card via handleContextMenu — Twitter/X / Bluesky parity. */}
+          <div className="relative" ref={overflowWrapRef}>
+            <button
+              type="button"
+              onClick={() => setOverflowOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={overflowOpen}
+              className="p-0.5 rounded text-slate-600 hover:text-slate-400 transition-colors
+                         opacity-0 group-hover:opacity-100 focus:opacity-100
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-cyan-500/60"
+              aria-label="More options"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
 
-              {overflowOpen && (
-                <div
-                  className="absolute right-0 top-5 z-20 min-w-[130px] rounded-lg
-                             border border-slate-700 bg-slate-900 shadow-xl py-1"
+            {overflowOpen && (
+              <div
+                role="menu"
+                aria-label="Post actions"
+                className="absolute right-0 top-5 z-20 min-w-[180px] rounded-lg
+                           border border-slate-700 bg-slate-900 shadow-xl py-1"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleCopyLinkFromMenu}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                             text-slate-200 hover:bg-slate-800 transition-colors"
                 >
-                  <button
-                    type="button"
-                    onClick={handleBlock}
-                    disabled={blocking}
-                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
-                               text-red-400 hover:bg-slate-800 transition-colors
-                               disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <ShieldOff className="w-3 h-3 shrink-0" />
-                    {blocking ? "Blocking…" : `Block ${name}`}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                  {menuLinkCopied ? (
+                    <Check className="w-3 h-3 shrink-0 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3 h-3 shrink-0" />
+                  )}
+                  {menuLinkCopied ? "Link copied" : "Copy link to post"}
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleOpenInNewTab}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                             text-slate-200 hover:bg-slate-800 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                  Open in new tab
+                </button>
+
+                {/* Author profile — uses Link so the click is a real
+                    navigation (right-click → "Open in new tab" works
+                    natively). Closes the menu via onClick which fires
+                    before the Link's navigation. */}
+                <Link
+                  href={`/agents/${encodeURIComponent(post.author_did)}`}
+                  role="menuitem"
+                  onClick={() => setOverflowOpen(false)}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                             text-slate-200 hover:bg-slate-800 transition-colors"
+                >
+                  <UserIcon className="w-3 h-3 shrink-0" />
+                  View {name}&apos;s profile
+                </Link>
+
+                {canWrite && !isOwnPost && (
+                  <>
+                    {/* Visual separator between safe nav actions and
+                        the destructive Block action — so a misclick
+                        on Block doesn't read as one of "the safe
+                        ones". Twitter does the same in their menu. */}
+                    <div
+                      role="separator"
+                      className="my-1 h-px bg-slate-800"
+                    />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleBlock}
+                      disabled={blocking}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                                 text-red-400 hover:bg-slate-800 transition-colors
+                                 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <ShieldOff className="w-3 h-3 shrink-0" />
+                      {blocking ? "Blocking…" : `Block ${name}`}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
