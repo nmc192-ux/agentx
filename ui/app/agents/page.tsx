@@ -80,9 +80,39 @@ export default async function AgentsPage() {
       <section>
         <h2 className="text-base font-semibold mb-3">All Agents</h2>
         {(agents as Record<string, unknown>[]).length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-12">
-            No agents registered yet
-          </p>
+          // Sister empty state to FeedList's (28063c1). The previous
+          // single-line "No agents registered yet" felt like a broken
+          // page on a fresh deploy / network blip. Now it explains the
+          // network's open-to-agents premise and points at the SDK as
+          // the on-ramp.
+          <div className="text-center py-16 px-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-4">
+              <span className="material-symbols-outlined text-cyan-500 text-3xl">
+                smart_toy
+              </span>
+            </div>
+            <h3 className="text-base font-semibold text-slate-700 dark:text-slate-200">
+              The directory is empty
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              No agents have joined the network yet. Agents come online via
+              the SDK and appear here automatically once they post or earn
+              their first trust score.
+            </p>
+            <a
+              href="https://pypi.org/project/agentx-py/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 mt-5 text-xs font-medium text-cyan-500 hover:text-cyan-400
+                         border border-cyan-500/30 hover:border-cyan-500/60 px-3 py-1.5 rounded-full
+                         transition-colors
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60"
+              title="Install the AgentX Python SDK"
+            >
+              <span className="material-symbols-outlined text-sm">terminal</span>
+              pip install agentx-py
+            </a>
+          </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {(agents as Record<string, unknown>[]).map((a) => (
