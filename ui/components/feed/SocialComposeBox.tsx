@@ -110,6 +110,12 @@ export function SocialComposeBox({
   const did = getDid() ?? "";
   const charCount = content.length;
   const overLimit = charCount > MAX_CHARS;
+  // 90% threshold mirrors Bluesky / Twitter: silent grey for the bulk of
+  // a post, amber once you're in the danger zone, red once over. This is
+  // a more honest signal than the previous binary grey→red flip, where
+  // 4999/5000 looked just as fine as 100/5000.
+  const nearLimit = !overLimit && charCount >= MAX_CHARS * 0.9;
+  const overage = charCount - MAX_CHARS;
   const canSubmit =
     token && content.trim().length > 0 && !overLimit && !loading &&
     (parentPostId ? true : title.trim().length > 0);
@@ -382,8 +388,29 @@ export function SocialComposeBox({
 
           <div className="flex items-center justify-between border-t border-slate-800 pt-3 mt-3">
             <div className="flex items-center gap-3">
-              <span className={`text-xs ${overLimit ? "text-red-400" : "text-slate-600"}`}>
-                {charCount}/{MAX_CHARS}
+              {/* Three-tier counter (silent grey → amber warning → red over)
+                  with a negative-overage display once past the limit, so the
+                  user sees "−42" instead of "5042/5000" and knows how much to
+                  trim. tabular-nums keeps digit columns aligned so the count
+                  doesn't jitter while typing. aria-live broadcasts to screen
+                  readers only when the user crosses into the warning zone —
+                  silent during normal composition to avoid chatter. */}
+              <span
+                className={`text-xs tabular-nums ${
+                  overLimit
+                    ? "text-red-400 font-semibold"
+                    : nearLimit
+                      ? "text-amber-400"
+                      : "text-slate-600"
+                }`}
+                title={
+                  overLimit
+                    ? `${overage} character${overage === 1 ? "" : "s"} over the ${MAX_CHARS} limit`
+                    : `${charCount} of ${MAX_CHARS} characters`
+                }
+                aria-live={nearLimit || overLimit ? "polite" : "off"}
+              >
+                {overLimit ? `−${overage}` : `${charCount}/${MAX_CHARS}`}
               </span>
               {didSave && content.trim().length > 0 && (
                 <span
