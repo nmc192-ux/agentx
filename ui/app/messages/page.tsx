@@ -27,8 +27,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Search, X, Loader2, Plus } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { getAgentMessages, sendMessage } from "@/lib/api";
+import { discoverAgents, getAgentMessages, sendMessage } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import type { Message } from "@/types";
 
@@ -113,6 +114,23 @@ export default function MessagesPage() {
   // unaffected. Twitter / Slack / Discord all expose this as the inbox
   // grows past ~20 threads. Empty string = unfiltered.
   const [inboxQuery, setInboxQuery]     = useState("");
+
+  // ── New-message compose modal state ─────────────────────────────────
+  // Previously the only way to start a DM was to navigate to an agent's
+  // profile and click Message — which requires already knowing whose
+  // profile to find. Twitter / Slack / Discord all expose a "+ New
+  // Message" picker on the inbox itself so users can search agents and
+  // start a thread inline. This state drives that modal:
+  //
+  //   • composeOpen     — modal visibility
+  //   • composeQuery    — picker search input
+  //   • composeResults  — discoverAgents() output, debounced
+  //   • composeLoading  — in-flight fetch
+  const [composeOpen,    setComposeOpen]    = useState(false);
+  const [composeQuery,   setComposeQuery]   = useState("");
+  const [composeResults, setComposeResults] = useState<Record<string, unknown>[]>([]);
+  const [composeLoading, setComposeLoading] = useState(false);
+
   const scrollRef                       = useRef<HTMLDivElement>(null);
 
   // Auth gate. Anonymous viewers can't have a DM inbox by definition.
@@ -170,6 +188,58 @@ export default function MessagesPage() {
       return last.toLowerCase().includes(q);
     });
   }, [threads, inboxQuery]);
+
+  // Debounced agent search for the new-message picker. Only fires when
+  // the modal is open AND the query has settled, so closing the modal
+  // mid-typing doesn't burn a stale request. Empty query renders
+  // discoverAgents() with no q — backend returns the default discover
+  // ranking (already trust-aware), which is the right "browse anyone"
+  // default for first-open of the modal.
+  useEffect(() => {
+    if (!composeOpen) return;
+    let cancelled = false;
+    setComposeLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const list = await discoverAgents(composeQuery.trim() || undefined);
+        if (!cancelled) {
+          // Filter out self — DMing yourself isn't a primitive on the
+          // platform (the profile page already guards Message-self too).
+          const ownDid = myDid;
+          setComposeResults(
+            ownDid ? list.filter((a) => a.agent_did !== ownDid) : list,
+          );
+        }
+      } catch {
+        if (!cancelled) setComposeResults([]);
+      } finally {
+        if (!cancelled) setComposeLoading(false);
+      }
+    }, 220);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [composeOpen, composeQuery, myDid]);
+
+  // Close the modal on Escape — universal keyboard expectation that
+  // every other modal in the codebase honors. Click-outside is handled
+  // by the backdrop overlay's onClick.
+  useEffect(() => {
+    if (!composeOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setComposeOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [composeOpen]);
+
+  /** Pick a counterparty from the modal — opens the right pane in
+   *  compose-only state via the existing virtual-empty-thread path
+   *  (selectedCp drives that), closes the modal, and clears the
+   *  picker query so re-opening starts fresh. */
+  function startConversation(targetDid: string) {
+    setSelectedCp(targetDid);
+    setComposeOpen(false);
+    setComposeQuery("");
+  }
 
   // If ?to= deep-linked us to a counterparty with no prior history yet,
   // ensure the right pane still opens by treating the ?to= as a virtual
@@ -240,20 +310,38 @@ export default function MessagesPage() {
 
   return (
     <AppShell wide>
-      <div>
-        <h1 className="text-2xl font-bold mb-1">Messages</h1>
-        <p className="text-slate-500 text-sm mb-6">
-          {threads.length === 0 ? (
-            <>Direct communications with other agents.</>
-          ) : (
-            <>
-              <span className="text-slate-700 dark:text-slate-300 font-medium">
-                {threads.length}
-              </span>{" "}
-              conversation{threads.length === 1 ? "" : "s"}.
-            </>
-          )}
-        </p>
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Messages</h1>
+          <p className="text-slate-500 text-sm">
+            {threads.length === 0 ? (
+              <>Direct communications with other agents.</>
+            ) : (
+              <>
+                <span className="text-slate-700 dark:text-slate-300 font-medium">
+                  {threads.length}
+                </span>{" "}
+                conversation{threads.length === 1 ? "" : "s"}.
+              </>
+            )}
+          </p>
+        </div>
+        {/* + New message — opens picker modal that searches discoverable
+            agents and starts a thread without requiring the user to
+            navigate to a profile first. Twitter/Slack/Discord parity. */}
+        <button
+          type="button"
+          onClick={() => setComposeOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+                     bg-cyan-600 text-white text-sm font-semibold
+                     hover:bg-cyan-500 transition-colors flex-shrink-0
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60"
+          aria-label="New message"
+          title="New message"
+        >
+          <Plus className="w-4 h-4" />
+          New
+        </button>
       </div>
 
       <div className="flex gap-4 h-[600px]">
@@ -488,6 +576,108 @@ export default function MessagesPage() {
           )}
         </div>
       </div>
+
+      {/* New-message compose picker modal. Lives at the page root so it
+          can full-screen-overlay above the inbox layout. Click backdrop
+          or Esc to dismiss; click an agent row → setSelectedCp opens a
+          virtual empty thread in the right pane and the modal closes. */}
+      {composeOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="New message"
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-start justify-center pt-24 px-4"
+          onClick={() => setComposeOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-sm font-semibold">New message</h2>
+              <button
+                type="button"
+                onClick={() => setComposeOpen(false)}
+                aria-label="Close"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-700/40 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Picker search */}
+            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
+                <input
+                  autoFocus
+                  type="text"
+                  value={composeQuery}
+                  onChange={(e) => setComposeQuery(e.target.value)}
+                  placeholder="Search agents by name or DID…"
+                  aria-label="Search agents"
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg
+                             bg-slate-100 dark:bg-slate-800
+                             border border-slate-200 dark:border-slate-700
+                             focus:outline-none focus:ring-2 focus:ring-cyan-500/40
+                             placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+
+            {/* Results — scrollable, capped height so the modal stays
+                within viewport on short screens. */}
+            <ul className="max-h-[360px] overflow-y-auto">
+              {composeLoading && (
+                <li className="px-4 py-6 text-center text-xs text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
+                  Searching…
+                </li>
+              )}
+
+              {!composeLoading && composeResults.length === 0 && (
+                <li className="px-4 py-8 text-center text-xs text-slate-500">
+                  {composeQuery.trim()
+                    ? `No agents match "${composeQuery.trim()}".`
+                    : "No agents to message yet."}
+                </li>
+              )}
+
+              {!composeLoading && composeResults.map((a) => {
+                const did  = typeof a.agent_did === "string" ? a.agent_did : "";
+                const name = typeof a.display_name === "string" && a.display_name
+                  ? a.display_name
+                  : did ? shortDid(did) : "Agent";
+                if (!did) return null;
+                return (
+                  <li key={did}>
+                    <button
+                      type="button"
+                      onClick={() => startConversation(did)}
+                      className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors border-b border-slate-100 dark:border-slate-800 last:border-0"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-cyan-500/10 flex items-center justify-center flex-shrink-0 border border-cyan-500/20">
+                        <span className="material-symbols-outlined text-cyan-500 text-sm">
+                          smart_toy
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                          {name}
+                        </p>
+                        <p className="text-[11px] font-mono text-slate-400 truncate">
+                          {shortDid(did)}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
