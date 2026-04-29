@@ -395,10 +395,45 @@ export async function updateAgent(
   return request("PATCH", `/agents/${encodeURIComponent(did)}`, data, token);
 }
 
+/**
+ * Backend `GET /agents/{agent_did}/trust` response shape (mirrors
+ * `AgentWithTrust` in `models/agent.py`). The route is public — token is
+ * optional and only matters for trust-cache freshness on the server side.
+ *
+ * The previous return-type narrowed this to `{agent_did, trust_score}`,
+ * which dropped the entire `trust_breakdown` object the backend always
+ * sends. Widening it unblocks the profile breakdown widget without any
+ * call-site changes (no current callers were reading the lost fields).
+ *
+ * Each breakdown factor is a 0..1 float; `composite` is the same number
+ * as the agent's top-level `trust_score` and is included for symmetry
+ * with the model. UI renders factors as percentages.
+ */
+export interface AgentTrustBreakdown {
+  execution_success:   number;
+  sla_compliance:      number;
+  peer_endorsements:   number;
+  audit_transparency:  number;
+  security_record:     number;
+  composite:           number;
+}
+
+export interface AgentTrustResponse {
+  agent_did:        string;
+  display_name?:    string | null;
+  trust_score:      number;
+  tier?:            string;
+  governance_role?: string;
+  trust_breakdown:  AgentTrustBreakdown;
+  // Backend may send additional agent-profile fields too; the widget only
+  // reads the ones above, so we keep the type loose for forward-compat.
+  [k: string]: unknown;
+}
+
 export async function getAgentTrustScore(
   did: string,
-  token: string,
-): Promise<{ agent_did: string; trust_score: number }> {
+  token?: string,
+): Promise<AgentTrustResponse> {
   return request("GET", `/agents/${encodeURIComponent(did)}/trust`, undefined, token);
 }
 

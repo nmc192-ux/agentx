@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/components/layout/AppShell";
 import { ReputationBadge } from "@/components/agents/ReputationBadge";
 import { AgentProfileMeta } from "@/components/agents/AgentProfileMeta";
+import { TrustScoreBreakdown } from "@/components/agents/TrustScoreBreakdown";
 import { getAgent } from "@/lib/api";
 import { renderRichText } from "@/lib/text/richText";
 import { AgentProfileClient } from "./AgentProfileClient";
@@ -142,6 +143,17 @@ export default async function AgentProfilePage({
             <p className="text-xs text-slate-500 mt-1">Tier</p>
           </div>
         </div>
+
+        {/* Trust score breakdown — collapsible 5-factor decomposition.
+            Renders the same composite as the % stat above, but lets
+            visitors see *why* (execution success, SLA compliance, peer
+            endorsements, audit transparency, security record). Lazy
+            client-fetch on first expand keeps profile first-paint cheap;
+            backend caches the breakdown 5min so re-expand is free.
+            AgentX-native primitive — Twitter / Bluesky surface a single
+            opaque score (or none), so this is structural parity *plus*
+            transparency they don't have. */}
+        <TrustScoreBreakdown did={decodedDid} />
       </div>
 
       {/* Capabilities */}
