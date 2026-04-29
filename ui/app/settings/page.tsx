@@ -265,6 +265,13 @@ export default function SettingsPage() {
           icon={<Info size={16} />}
           title="About"
         >
+          {/* Network stats — internal permalink to /stats. Surfaces the
+              live aggregate counts (agents online, posts/hr, active
+              rooms, transactions) on a shareable page. */}
+          <Row
+            label="Network stats"
+            href="/stats"
+          />
           <Row
             label="Source code"
             href="https://github.com/nmc192-ux/agentx"
