@@ -11,7 +11,23 @@ import { getDid, getToken } from "@/lib/auth";
 import { getFollowing } from "@/lib/api";
 import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
 import { unpinTag, usePinnedTags } from "@/lib/storage/pinnedTags";
-import type { SocialPost } from "@/types";
+import type { PostType, SocialPost } from "@/types";
+
+// Post-type filter chip set — mirrors `/explore` exactly so users who
+// know the chip semantics from one surface get them on the other. ""
+// (empty value) is the All chip; everything else maps directly to a
+// SocialPost.post_type. Bluesky's For You + topic filters serve the
+// same dual-axis discovery pattern; keeping the chip set identical
+// across both feed pages means muscle memory transfers without surprise.
+const TYPE_FILTERS: { label: string; value: PostType | "" }[] = [
+  { label: "All",         value: ""           },
+  { label: "Updates",     value: "UPDATE"     },
+  { label: "Requests",    value: "REQUEST"    },
+  { label: "Offers",      value: "OFFER"      },
+  { label: "Tasks",       value: "TASK"       },
+  { label: "Predictions", value: "PREDICTION" },
+  { label: "Proposals",   value: "PROPOSAL"   },
+];
 
 // Trust-weighted ranking lives in lib/feed/trustRank.ts (extracted on the
 // third caller per rule-of-three). See that file for the math derivation:
@@ -58,6 +74,12 @@ export function LiveFeed({
   const [pendingPosts, setPendingPosts] = useState<SocialPost[]>([]);
   const [sort, setSort] = useState<SortMode>("new");
   const [feedSource, setFeedSource] = useState<FeedSource>({ kind: "global" });
+  // Post-type filter (third orthogonal axis after feed-source +
+  // sort). Empty string = All. Pure client-side over the already-fetched
+  // posts array — same pattern /explore uses, but client-only here
+  // because the home feed isn't paginated and re-fetching per chip is
+  // overkill for a 20-post sliding window.
+  const [typeFilter, setTypeFilter] = useState<PostType | "">("");
   // The user's pinned hashtags, persisted in localStorage and synced
   // across tabs via the storage event. Each pinned tag becomes an
   // additional feed-source tab beside For You / Following.
@@ -212,10 +234,19 @@ export function LiveFeed({
     }
   }, [posts, feedSource, followingDids]);
 
+  // Apply post-type filter as a third orthogonal pass between the
+  // source filter (For You / Following / Pinned tag) and the sort
+  // (New / Top). Identity when typeFilter === "" so the All chip costs
+  // nothing.
+  const typeFiltered = useMemo(() => {
+    if (!typeFilter) return sourceFiltered;
+    return sourceFiltered.filter((p) => p.post_type === typeFilter);
+  }, [sourceFiltered, typeFilter]);
+
   const visiblePosts = useMemo(() => {
-    if (sort === "new") return sourceFiltered;
-    return [...sourceFiltered].sort(byTrustRank);
-  }, [sourceFiltered, sort]);
+    if (sort === "new") return typeFiltered;
+    return [...typeFiltered].sort(byTrustRank);
+  }, [typeFiltered, sort]);
 
   // Empty-state branching: distinguishes "still loading the follow
   // graph" from "loaded but you follow nobody / nobody you follow has
@@ -413,6 +444,40 @@ export function LiveFeed({
           </button>
           <TrustRankInfo />
         </div>
+
+        {/* Post-type chip strip — third orthogonal filter axis after
+            feed-source and sort. Mirrors /explore's chip semantics
+            exactly so users carry one mental model across both feed
+            surfaces. Hidden when there are no posts at all (cold-start
+            home — would imply filterable content the user can't see).
+            overflow-x-auto so the strip stays single-row on narrow
+            viewports without breaking the layout. */}
+        {posts.length > 0 && (
+          <div
+            className="flex gap-1.5 mb-4 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-800"
+            role="group"
+            aria-label="Filter by post type"
+          >
+            {TYPE_FILTERS.map(({ label, value }) => {
+              const active = typeFilter === value;
+              return (
+                <button
+                  key={value || "all"}
+                  type="button"
+                  onClick={() => setTypeFilter(value)}
+                  aria-pressed={active}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors flex-shrink-0
+                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60
+                              ${active
+                                ? "bg-primary text-white"
+                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* "Show N new posts" pill — Twitter / Bluesky parity. WS-arriving
             posts buffer in `pendingPosts` rather than shoving the user's
