@@ -309,6 +309,15 @@ export function GovernanceClient({ initialProposals, results }: Props) {
   const [query,      setQuery]      = useState("");
   const [activeSort, setActiveSort] = useState<ActiveSort>("newest");
 
+  // Results section filter state. Passed/Failed is the natural axis
+  // (yes_votes > no_votes is the same outcome predicate the Results
+  // render uses); search lets users find a specific past decision
+  // without scrolling through the archive. Default outcome="all" so
+  // newcomers see the full record on first visit.
+  const [resultsQuery,   setResultsQuery]   = useState("");
+  const [resultsOutcome, setResultsOutcome] =
+    useState<"all" | "passed" | "failed">("all");
+
   const visibleProposals = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = proposals.filter((p) => {
@@ -341,6 +350,23 @@ export function GovernanceClient({ initialProposals, results }: Props) {
 
   const showFilterCount =
     query.trim().length > 0 || activeSort !== "newest";
+
+  // Results-section narrowed view. Same passed/failed predicate the
+  // render loop already used (yes_votes > no_votes), lifted here so
+  // the chip filter can drive it directly.
+  const visibleResults = useMemo(() => {
+    const q = resultsQuery.trim().toLowerCase();
+    return results.filter((p) => {
+      const passed = p.yes_votes > p.no_votes;
+      if (resultsOutcome === "passed" && !passed) return false;
+      if (resultsOutcome === "failed" &&  passed) return false;
+      if (q && !p.title?.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [results, resultsQuery, resultsOutcome]);
+
+  const showResultsFilterCount =
+    resultsQuery.trim().length > 0 || resultsOutcome !== "all";
 
   async function handleVote(proposalId: string, vote: "yes" | "no" | "abstain") {
     const token = getToken();
@@ -489,11 +515,92 @@ export function GovernanceClient({ initialProposals, results }: Props) {
       {/* Results */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Results</h2>
+
+        {/* Results filter strip — only render when there are >1 results
+            so a fresh dao doesn't pretend a filterable archive exists.
+            Search input on top, outcome (passed/failed) chips below.
+            Mirrors the Active Proposals strip above for visual
+            consistency, with a smaller axis set since Results are
+            terminal (no "ending soon" applies, total votes already
+            captured by the visible bars). */}
+        {results.length > 1 && (
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
+              <input
+                type="text"
+                value={resultsQuery}
+                onChange={(e) => setResultsQuery(e.target.value)}
+                placeholder="Search results by title…"
+                aria-label="Search past proposals"
+                className="w-full pl-9 pr-9 py-2 text-sm rounded-lg
+                           bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                           focus:outline-none focus:ring-2 focus:ring-primary/40
+                           placeholder:text-slate-400"
+              />
+              {resultsQuery && (
+                <button
+                  type="button"
+                  onClick={() => setResultsQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md
+                             text-slate-400 hover:text-slate-200 hover:bg-slate-700/40 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-x-5 gap-y-2 items-center">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">Outcome</span>
+                <div className="flex gap-1">
+                  {(["all", "passed", "failed"] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setResultsOutcome(k)}
+                      aria-pressed={resultsOutcome === k}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors
+                                  ${resultsOutcome === k
+                                    ? "bg-primary text-white"
+                                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"}`}
+                    >
+                      {k === "all" ? "All" : k === "passed" ? "Passed" : "Failed"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {showResultsFilterCount && (
+                <span className="text-[11px] text-slate-500 ml-auto">
+                  {visibleResults.length} of {results.length}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {results.length === 0 ? (
           <p className="text-slate-500 text-sm">No completed proposals yet.</p>
+        ) : visibleResults.length === 0 ? (
+          // Filter narrowed Results to zero — same escape pattern as
+          // the Active section so the user can recover with one click.
+          <div className="rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+            <p className="text-slate-500 text-sm mb-3">
+              No past proposals match these filters.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setResultsQuery(""); setResultsOutcome("all"); }}
+              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            >
+              Show all
+            </button>
+          </div>
         ) : (
           <div className="space-y-3">
-            {results.map((p) => {
+            {visibleResults.map((p) => {
               const passed = p.yes_votes > p.no_votes;
               return (
                 <div
