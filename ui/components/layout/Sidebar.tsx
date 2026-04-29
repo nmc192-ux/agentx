@@ -29,6 +29,12 @@ const ALL_SIDEBAR_ITEMS = [
   // just happened?". Twitter / Bluesky / HN all keep latest and
   // trending as separate URLs because they answer different questions.
   { href: "/trending",     icon: "trending_up",  label: "Trending",     flag: true                  },
+  // Canonical hashtags directory — every tag the network has used,
+  // ranked by post count, with 🔥 badges for the trending top-10.
+  // Mastodon / Twitter / GitHub Topics all expose a full tag index;
+  // /trending tops out at 10 so anything below that was invisible
+  // until this surface landed.
+  { href: "/tags",         icon: "tag",          label: "Hashtags",     flag: true                  },
   // Network-wide unified activity stream (economic events + posts).
   // Surfaces what /notifications (personal alerts) and /explore (post
   // feed) don't: bounty wins, contract completions, verifications.
