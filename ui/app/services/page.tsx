@@ -31,6 +31,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { ServicesBrowser } from "./ServicesBrowser";
 import type { Service } from "@/types";
 
 const SITE_URL =
@@ -90,69 +91,22 @@ async function fetchServices(): Promise<Service[]> {
   }
 }
 
-interface ServiceTypeGroup {
-  type:     string;
-  services: Service[];
-}
-
-/**
- * Roll services up by service_type so the directory navigates by
- * category. Within each type, sort active services first, then by
- * price ascending (cheapest first matches consumer-marketplace
- * convention), with name alphabetical as a stable tiebreaker so React
- * keys don't thrash on re-render.
- *
- * Types themselves are sorted by total service count desc — the
- * deepest categories surface first ("here's what this network has
- * scale in"), with type-name alphabetical breaking ties.
- */
-function groupByType(services: Service[]): ServiceTypeGroup[] {
-  const map = new Map<string, Service[]>();
-  for (const s of services) {
-    const t = s.service_type || "uncategorised";
-    const arr = map.get(t) ?? [];
-    arr.push(s);
-    if (arr.length === 1) map.set(t, arr);
-  }
-  for (const [, arr] of map) {
-    arr.sort((a, b) => {
-      // Active services lead — an inactive service is essentially
-      // a tombstone for browse purposes.
-      if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-      const pa = a.price ?? Number.POSITIVE_INFINITY;
-      const pb = b.price ?? Number.POSITIVE_INFINITY;
-      if (pa !== pb) return pa - pb;
-      return a.service_name.localeCompare(b.service_name);
-    });
-  }
-  return [...map.entries()]
-    .map(([type, list]) => ({ type, services: list }))
-    .sort((a, b) => {
-      if (b.services.length !== a.services.length) {
-        return b.services.length - a.services.length;
-      }
-      return a.type.localeCompare(b.type);
-    });
-}
-
-/** Format price + pricing_model into a single human-readable label. */
-function formatPrice(s: Service): string | null {
-  if (s.price == null && !s.pricing_model) return null;
-  if (s.pricing_model === "free") return "Free";
-  if (s.price == null) return s.pricing_model ?? null;
-  // Compact USD-style format. Backend price is a raw number; we don't
-  // know the currency so we render with a generic $ sentinel and the
-  // pricing model verbatim ("$0.05 per-task"). When the backend grows
-  // currency support, swap this for Intl.NumberFormat.
-  const priceStr = s.price.toFixed(2).replace(/\.00$/, "");
-  return s.pricing_model ? `$${priceStr} ${s.pricing_model}` : `$${priceStr}`;
-}
+// Per-type grouping + per-card price-formatting moved into
+// ServicesBrowser when the inline render migrated client-side. The
+// page just needs the headline counters now.
 
 export default async function ServicesPage() {
   const services       = await fetchServices();
-  const groups         = groupByType(services);
   const totalActive    = services.filter((s) => s.is_active).length;
   const uniqueProviders = new Set(services.map((s) => s.agent_did)).size;
+  // Distinct service-type count for the header copy. The browser
+  // re-derives this from the same input list for its own filter chips,
+  // but having it here keeps the header line independent of the
+  // browser's render path (e.g. on cold-start with zero services, the
+  // header still says "0 categories" via the empty-state branch).
+  const categoryCount = new Set(
+    services.map((s) => s.service_type).filter(Boolean),
+  ).size;
 
   return (
     <AppShell wide>
@@ -172,15 +126,15 @@ export default async function ServicesPage() {
               </span>{" "}
               agent{uniqueProviders === 1 ? "" : "s"} across{" "}
               <span className="text-slate-700 dark:text-slate-300 font-medium">
-                {groups.length}
+                {categoryCount}
               </span>{" "}
-              categor{groups.length === 1 ? "y" : "ies"}.
+              categor{categoryCount === 1 ? "y" : "ies"}.
             </>
           )}
         </p>
       </div>
 
-      {groups.length === 0 ? (
+      {services.length === 0 ? (
         <div className="text-center py-16 px-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-4">
             <span className="material-symbols-outlined text-cyan-500 text-3xl">
@@ -221,89 +175,14 @@ export default async function ServicesPage() {
           </a>
         </div>
       ) : (
-        <div className="space-y-8">
-          {groups.map((g) => (
-            <section key={g.type}>
-              <div className="flex items-baseline justify-between mb-3">
-                <h2 className="text-base font-semibold capitalize">
-                  {g.type.replace(/[-_]/g, " ")}
-                </h2>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {g.services.length} service{g.services.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {g.services.map((s) => {
-                  const priceLabel = formatPrice(s);
-                  const isFree =
-                    s.pricing_model === "free" || s.price === 0;
-                  return (
-                    <Link
-                      key={s.service_id}
-                      href={`/agents/${s.agent_did}`}
-                      className={`block border rounded-xl p-4 transition-colors
-                                  flex flex-col gap-2
-                                  ${
-                                    s.is_active
-                                      ? "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
-                                      : "border-slate-200 dark:border-slate-800 opacity-50 hover:opacity-80"
-                                  }`}
-                      title={`${s.service_name} by ${s.agent_did}${
-                        priceLabel ? ` — ${priceLabel}` : ""
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-sm font-semibold truncate">
-                          {s.service_name}
-                        </h3>
-                        {!s.is_active && (
-                          <span
-                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full
-                                       border border-slate-500/40 text-slate-500 flex-shrink-0"
-                            title="This service is currently inactive"
-                          >
-                            inactive
-                          </span>
-                        )}
-                      </div>
-                      {s.description && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-                          {s.description}
-                        </p>
-                      )}
-                      <div className="flex items-center justify-between gap-2 mt-auto pt-1">
-                        {priceLabel ? (
-                          <span
-                            className={`text-xs font-semibold ${
-                              isFree
-                                ? "text-emerald-500 dark:text-emerald-400"
-                                : "text-slate-700 dark:text-slate-300"
-                            }`}
-                          >
-                            {priceLabel}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic">
-                            no pricing
-                          </span>
-                        )}
-                        {s.capabilities && s.capabilities.length > 0 && (
-                          <span
-                            className="text-[10px] text-slate-500 dark:text-slate-400"
-                            title={`Backed by capabilities: ${s.capabilities.join(", ")}`}
-                          >
-                            {s.capabilities.length} capabilit
-                            {s.capabilities.length === 1 ? "y" : "ies"}
-                          </span>
-                        )}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+        // Hand the prefetched services list to the client browser.
+        // ServicesBrowser owns search + sort + type-filter + active-only
+        // toggle. The previous per-type section grouping migrated into
+        // a single flat grid w/ type chips above — chips convey the same
+        // "these are the categories" affordance without leaving each
+        // group as 1-2 cards under an empty-feeling heading once filters
+        // narrow.
+        <ServicesBrowser services={services} />
       )}
     </AppShell>
   );
