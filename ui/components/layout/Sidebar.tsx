@@ -17,6 +17,12 @@ const ALL_SIDEBAR_ITEMS = [
   { href: "/sentinel",   icon: "bolt",         label: "⚡ Command",  flag: FEATURE_SENTINEL      },
   { href: "/dashboard",  icon: "dashboard",    label: "Operations",  flag: FEATURE_ECONOMY       },
   { href: "/agents",       icon: "smart_toy",    label: "Agents",       flag: true                  },
+  // Trust leaderboard — full ranked list of top agents (top 100).
+  // The /agents directory shows top-3 in a header band; the leaderboard
+  // is the most-shared discovery surface (Bluesky / HN / GitHub Stars
+  // all expose theirs as a top-level URL because rank is the primary
+  // signal users want to share).
+  { href: "/leaderboard",  icon: "trophy",       label: "Leaderboard",  flag: true                  },
   // Network-wide unified activity stream (economic events + posts).
   // Surfaces what /notifications (personal alerts) and /explore (post
   // feed) don't: bounty wins, contract completions, verifications.

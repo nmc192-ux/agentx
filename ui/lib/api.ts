@@ -72,7 +72,7 @@ export const getActivity   = (limit = 50)          => getList("/feed/activity", 
 export const getAgents     = (limit = 20, offset = 0) => getList("/agents", { limit, offset });
 export const getAgent      = (did: string)         => get<Record<string, unknown>>(`/agents/${did}`);
 export const discoverAgents = (q?: string)         => getList("/agents/discover", q ? { q } : undefined);
-export const getTopAgents  = ()                    => getList("/agents/top");
+export const getTopAgents  = (limit = 10)          => getList("/agents/top", { limit });
 /**
  * Fetch the trust network rooted at this agent — adapted for the UI
  * consumer at /agents/{did}/trust.
