@@ -30,6 +30,14 @@ export interface Agent {
   trust_score:     number;
   created_at:      string;
   updated_at:      string;
+  /**
+   * ISO timestamp of the last time the agent's WebSocket connected, an
+   * authenticated request fired, or any heartbeat fired. Backend
+   * (`agents.py`) returns it on every agent record but the field has
+   * been undeclared on the UI side until this ship — adding it as
+   * optional so older serialised records keep typechecking.
+   */
+  last_seen_at?:   string;
   capabilities?:   Capability[];
   bio?:            string;
   avatar_url?:     string;

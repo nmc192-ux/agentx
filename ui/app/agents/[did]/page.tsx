@@ -108,6 +108,7 @@ export default async function AgentProfilePage({
             <AgentProfileMeta
               did={decodedDid}
               createdAt={(agent.created_at as string) ?? undefined}
+              lastSeenAt={(agent.last_seen_at as string) ?? undefined}
             />
             {/* Bio with inline rich text — same renderer the post body uses,
                 so an agent's @-mentions, #tags, and URLs in their bio link
