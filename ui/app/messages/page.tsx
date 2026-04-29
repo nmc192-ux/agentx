@@ -107,6 +107,12 @@ export default function MessagesPage() {
   const [draft, setDraft]               = useState("");
   const [sending, setSending]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
+  // Inbox-side search query — narrows the thread list by counterparty
+  // DID slug or last-message snippet (case-insensitive substring). Only
+  // affects the left rail; the open conversation in the right pane is
+  // unaffected. Twitter / Slack / Discord all expose this as the inbox
+  // grows past ~20 threads. Empty string = unfiltered.
+  const [inboxQuery, setInboxQuery]     = useState("");
   const scrollRef                       = useRef<HTMLDivElement>(null);
 
   // Auth gate. Anonymous viewers can't have a DM inbox by definition.
@@ -148,6 +154,22 @@ export default function MessagesPage() {
     () => (myDid ? groupByCounterparty(messages, myDid) : []),
     [messages, myDid],
   );
+
+  // Search-narrowed view of the thread list. Matches against (a) the
+  // counterparty DID slug — what the user actually sees in the row —
+  // and (b) the last message body, so partial-recall text searches work
+  // ("the one about the verification proof"). Pure client-side over the
+  // already-grouped threads array.
+  const visibleThreads = useMemo(() => {
+    const q = inboxQuery.trim().toLowerCase();
+    if (!q) return threads;
+    return threads.filter((t) => {
+      const slug = shortDid(t.counterparty).toLowerCase();
+      if (slug.includes(q)) return true;
+      const last = t.messages[t.messages.length - 1]?.message ?? "";
+      return last.toLowerCase().includes(q);
+    });
+  }, [threads, inboxQuery]);
 
   // If ?to= deep-linked us to a counterparty with no prior history yet,
   // ensure the right pane still opens by treating the ?to= as a virtual
@@ -237,6 +259,46 @@ export default function MessagesPage() {
       <div className="flex gap-4 h-[600px]">
         {/* Thread list (left rail) */}
         <div className="w-72 flex-shrink-0 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-y-auto flex flex-col">
+          {/* Inbox search — only render once we have at least one thread.
+              An empty inbox would let the input pretend conversations
+              exist; gating it keeps the cold-start UX clean. The input
+              filters on every keystroke (no debounce — list is local
+              and matches are O(n) over a small array). */}
+          {!loading && threads.length > 1 && (
+            <div className="p-2 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
+              <div className="relative">
+                <span
+                  className="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none"
+                  aria-hidden
+                >
+                  search
+                </span>
+                <input
+                  type="text"
+                  value={inboxQuery}
+                  onChange={(e) => setInboxQuery(e.target.value)}
+                  placeholder="Filter conversations…"
+                  aria-label="Filter conversations"
+                  className="w-full pl-8 pr-7 py-1.5 text-xs rounded-md
+                             bg-slate-100 dark:bg-slate-800
+                             border border-slate-200 dark:border-slate-700
+                             focus:outline-none focus:ring-1 focus:ring-cyan-500/40
+                             placeholder:text-slate-400"
+                />
+                {inboxQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setInboxQuery("")}
+                    aria-label="Clear filter"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded
+                               text-slate-400 hover:text-slate-200 hover:bg-slate-700/40 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {loading ? (
             <div className="p-6 text-center text-xs text-slate-400">
               Loading…
@@ -251,8 +313,24 @@ export default function MessagesPage() {
                 start a conversation.
               </p>
             </div>
+          ) : visibleThreads.length === 0 ? (
+            // Filter narrowed to zero — distinct from the cold-start empty
+            // state so users know the conversations still exist behind
+            // the filter.
+            <div className="text-center py-10 px-4 text-slate-400">
+              <p className="text-xs mb-2">
+                No conversations match &ldquo;{inboxQuery}&rdquo;.
+              </p>
+              <button
+                type="button"
+                onClick={() => setInboxQuery("")}
+                className="text-[11px] font-medium text-cyan-500 hover:text-cyan-400 transition-colors"
+              >
+                Show all
+              </button>
+            </div>
           ) : (
-            threads.map((t) => {
+            visibleThreads.map((t) => {
               const last = t.messages[t.messages.length - 1];
               const isMine = last.sender_agent_did === myDid;
               const active = t.counterparty === activeThread?.counterparty;
