@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUp, Hash, Sparkles, Users, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Hash, Loader2, Sparkles, Users, X } from "lucide-react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
@@ -8,10 +8,12 @@ import { OnboardingHero } from "@/components/onboarding/OnboardingHero";
 import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
 import { agentXWs } from "@/lib/websocket";
 import { getDid, getToken } from "@/lib/auth";
-import { getFollowing } from "@/lib/api";
+import { getFollowing, getGlobalFeed } from "@/lib/api";
 import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
 import { unpinTag, usePinnedTags } from "@/lib/storage/pinnedTags";
 import type { PostType, SocialPost } from "@/types";
+
+const PAGE_SIZE = 20;
 
 // Post-type filter chip set — mirrors `/explore` exactly so users who
 // know the chip semantics from one surface get them on the other. ""
@@ -75,11 +77,27 @@ export function LiveFeed({
   const [sort, setSort] = useState<SortMode>("new");
   const [feedSource, setFeedSource] = useState<FeedSource>({ kind: "global" });
   // Post-type filter (third orthogonal axis after feed-source +
-  // sort). Empty string = All. Pure client-side over the already-fetched
-  // posts array — same pattern /explore uses, but client-only here
-  // because the home feed isn't paginated and re-fetching per chip is
-  // overkill for a 20-post sliding window.
+  // sort). Empty string = All. The chip drives both client-side
+  // filtering of the already-loaded window AND the backend filter on
+  // subsequent loadMore() pages so users see "more Tasks" rather than
+  // "more posts that happened to land in cache".
   const [typeFilter, setTypeFilter] = useState<PostType | "">("");
+
+  // ── Pagination state for "Load more" ───────────────────────────────
+  // Initial 20 posts are server-rendered (page 1). currentPage tracks
+  // the highest page we've actually fetched; hasMore starts true so the
+  // button shows on first render — the first loadMore() call corrects
+  // both fields from the backend's `has_more` envelope. loadingMore
+  // de-bounces double-clicks.
+  //
+  // The Load More button only renders for the "global" feed source —
+  // following/tag are client-side filters that use whatever's already
+  // loaded; the backend doesn't expose a paginated follow-graph or
+  // tag-stream endpoint here. (Tag has its own /tag/[name] page with
+  // server-side pagination.)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore,     setHasMore]     = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   // The user's pinned hashtags, persisted in localStorage and synced
   // across tabs via the storage event. Each pinned tag becomes an
   // additional feed-source tab beside For You / Following.
@@ -242,6 +260,53 @@ export function LiveFeed({
     if (!typeFilter) return sourceFiltered;
     return sourceFiltered.filter((p) => p.post_type === typeFilter);
   }, [sourceFiltered, typeFilter]);
+
+  // ── Load more (For You / global feed only) ─────────────────────────
+  // Fetches the next page from /posts/global with the current type
+  // filter applied server-side, dedupes by post_id (initial server
+  // fetch + WS-arriving + paged-loaded sets can intersect), and
+  // appends to `posts`. The dedup is cheap: a Set over the already-
+  // loaded post_ids, O(n) to build + O(m) to filter the incoming page.
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const next = currentPage + 1;
+      const data = await getGlobalFeed({
+        page:      next,
+        limit:     PAGE_SIZE,
+        post_type: typeFilter || undefined,
+      });
+      setPosts((prev) => {
+        const seen = new Set(prev.map((p) => p.post_id));
+        const fresh = (data.posts as SocialPost[]).filter(
+          (p) => !seen.has(p.post_id),
+        );
+        return [...prev, ...fresh];
+      });
+      setHasMore(Boolean(data.has_more));
+      setCurrentPage(next);
+    } catch {
+      // Silent — leaves hasMore in its current state so user can retry.
+      // A future toast layer would surface this; for now the missing
+      // feedback is acceptable since the failure mode is "feed didn't
+      // grow" which is self-evident.
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  // When the user picks a new post-type chip, reset pagination so the
+  // next loadMore call starts from page 1 of the filtered stream
+  // (otherwise we'd be fetching page N of the unfiltered stream and
+  // tossing rows that don't match — wasteful + surprising). Posts
+  // already loaded stay in `posts`; the client-side typeFiltered memo
+  // narrows them visually until the next loadMore brings in fresh
+  // server-filtered results.
+  useEffect(() => {
+    setCurrentPage(1);
+    setHasMore(true);
+  }, [typeFilter]);
 
   const visiblePosts = useMemo(() => {
     if (sort === "new") return typeFiltered;
@@ -572,7 +637,53 @@ export function LiveFeed({
             <SuggestedFollows />
           </div>
         ) : (
-          <FeedList posts={visiblePosts} />
+          <>
+            <FeedList posts={visiblePosts} />
+
+            {/* Load more — Twitter / Bluesky parity. Fetches the next
+                paginated page of the global feed (with current type-
+                filter applied server-side) and appends to `posts`.
+                Suppressed for following/tag feed sources because those
+                are client-side filters over what's already loaded —
+                "load more" of the global stream wouldn't help find
+                more rows matching those filters in any predictable
+                way. (The /tag/[name] permalink does its own server-
+                side pagination.) Suppressed too while the visible
+                window is empty — the empty-state copy is the
+                correct affordance there. */}
+            {feedSource.kind === "global"
+              && hasMore
+              && visiblePosts.length > 0 && (
+              <div className="pt-4 pb-2">
+                <button
+                  type="button"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  aria-label="Load more posts"
+                  className="w-full flex items-center justify-center gap-2
+                             py-2.5 px-4 rounded-lg border border-slate-800
+                             bg-slate-900/40 hover:bg-slate-800/60
+                             text-sm text-cyan-400 hover:text-cyan-300
+                             font-medium transition-colors
+                             disabled:opacity-60 disabled:cursor-not-allowed
+                             focus-visible:outline-none focus-visible:ring-2
+                             focus-visible:ring-cyan-500/60"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading…
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4" />
+                      Load more
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </>
