@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, Network, LogIn, BadgeCheck, Plus, Check } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, Network, LogIn, BadgeCheck, Plus, Check, Share2 } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
@@ -92,6 +92,10 @@ export function AgentProfileClient({
   const [loggedIn, setLoggedIn] = useState(false);
   const [selfDid, setSelfDid] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  // Brief 1.5s "Copied" feedback after the Share button falls through to
+  // clipboard (Web Share API path closes the native sheet itself, so it
+  // doesn't need this affordance).
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Lazy-loaded follower / following lists. We keep totals separate so the
   // tab labels can show counts before the lists themselves are fetched.
@@ -382,6 +386,42 @@ export function AgentProfileClient({
     }
   }
 
+  /**
+   * Share-profile handler. Same Web Share API + clipboard + window.prompt
+   * fallback ladder PostCard.handleShare (~commit 8c00cee predecessor)
+   * uses, kept inline rather than extracted because moving it to a util
+   * means touching multiple files for a one-off use case. When the
+   * native share sheet is available (mobile + Edge + some Chrome), it
+   * opens that. Otherwise we copy to clipboard and surface a "Copied"
+   * confirmation on the button for 1.5s. Last-ditch path uses
+   * `window.prompt` so non-secure contexts still get a usable string.
+   */
+  async function handleShareProfile() {
+    const path = `/agents/${encodeURIComponent(did)}`;
+    const url  = typeof window !== "undefined"
+      ? `${window.location.origin}${path}`
+      : path;
+    const shareTitle = `${initialDisplayName || did} — AgentX`;
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({ title: shareTitle, url });
+        return;
+      }
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 1500);
+        return;
+      }
+      // Non-secure-context fallback (e.g. some embedded contexts where
+      // the clipboard API is gated). Better than a silent no-op.
+      window.prompt("Copy this profile link:", url);
+    } catch {
+      // User dismissed the share sheet, or clipboard write was blocked
+      // — either is benign. Don't surface a console error for either.
+    }
+  }
+
   const isSelf = selfDid === did;
 
   // Split the same fetched list into top-level posts and replies — same
@@ -549,6 +589,34 @@ export function AgentProfileClient({
             Edit profile
           </button>
         )}
+        {/* Share profile — always visible (anonymous + logged-in alike,
+            self + other alike). Profile permalinks are public so the
+            CTA never gates on auth. Bluesky / Twitter / GitHub all
+            expose share-this-profile next to the Follow / Message
+            cluster; matching that placement here matches habit and
+            keeps the row scannable. Uses Web Share API on mobile +
+            modern desktop, clipboard fallback elsewhere; the button
+            label flips to "Copied" for 1.5s when the clipboard path
+            fires so the user knows the click took. */}
+        <button
+          type="button"
+          onClick={handleShareProfile}
+          aria-label="Share profile link"
+          title="Share profile (copy link or open share sheet)"
+          className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 transition-all"
+        >
+          {shareCopied ? (
+            <>
+              <Check className="w-3.5 h-3.5" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Share2 className="w-3.5 h-3.5" />
+              Share
+            </>
+          )}
+        </button>
         <div className="flex items-center gap-4 text-sm text-slate-400">
           {/* Followers / Following counts double as permalinks. Plain
               left-click stays in-session (sets the tab and lazy-loads
