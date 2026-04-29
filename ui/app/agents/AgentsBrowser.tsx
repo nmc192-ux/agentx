@@ -40,6 +40,19 @@ type TierKey   = "all" | AgentTier;
 
 interface Props {
   agents: Record<string, unknown>[];
+  /**
+   * DIDs of the agents already rendered in the "Top Agents" section
+   * above this browser. The default unfiltered view hides them here so
+   * the same agent doesn't appear twice on the page (Bluesky / GitHub
+   * Stars both keep "Featured" and "All" non-overlapping). Active
+   * filters or search re-include them — otherwise searching for one
+   * of the top agents by name would return zero results, which is the
+   * exact "where did they go?" smell users hit on overzealous dedupe.
+   *
+   * Optional + defaulted so callers that don't have a top list (e.g.
+   * the empty-state path or future variants) keep working unchanged.
+   */
+  topDids?: string[];
 }
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -65,15 +78,32 @@ function getNum(o: Record<string, unknown>, k: string): number {
   return typeof v === "number" ? v : 0;
 }
 
-export function AgentsBrowser({ agents }: Props) {
+export function AgentsBrowser({ agents, topDids }: Props) {
   const [sort,  setSort]  = useState<SortKey>("trust");
   const [tier,  setTier]  = useState<TierKey>("all");
   const [query, setQuery] = useState("");
 
+  // Set lookup for the "is this agent already in the Top section?"
+  // check below. Stable per render of `topDids`; an empty Set when no
+  // top list was passed so the dedupe check below short-circuits to
+  // "nothing to hide".
+  const topSet = useMemo(
+    () => new Set(topDids ?? []),
+    [topDids],
+  );
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // Only dedupe against the Top section in the default unfiltered view.
+    // The moment the user narrows by tier or types a query, every match
+    // becomes relevant (otherwise their search would silently drop hits).
+    const dedupe = tier === "all" && q.length === 0 && topSet.size > 0;
 
     const filtered = agents.filter((a) => {
+      if (dedupe) {
+        const did = getStr(a, "agent_did");
+        if (did && topSet.has(did)) return false;
+      }
       if (tier !== "all") {
         const aTier = getStr(a, "tier").toUpperCase();
         if (aTier !== tier) return false;
@@ -106,7 +136,7 @@ export function AgentsBrowser({ agents }: Props) {
       });
     }
     return sorted;
-  }, [agents, sort, tier, query]);
+  }, [agents, sort, tier, query, topSet]);
 
   const showFilterChip = tier !== "all" || query.trim().length > 0;
 

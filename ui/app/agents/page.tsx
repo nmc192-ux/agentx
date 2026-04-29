@@ -47,9 +47,16 @@ export default async function AgentsPage() {
     getTopAgents().catch(() => []),
   ]);
 
-  const topSet = new Set(
-    (topAgents as Record<string, unknown>[]).map((a) => a.agent_did as string)
-  );
+  // Build the dedupe key set from the *rendered* top slice (top 3) — not
+  // the full topAgents array — so AgentsBrowser only hides agents the
+  // user can already see in the Top Agents section above. Hiding agents
+  // that fell off the top-3 cutoff would shrink the All Agents view for
+  // no visible benefit. (Resolves the previously-dead `topSet` warning
+  // by wiring it into the directory's dedupe path.)
+  const renderedTopDids = (topAgents as Record<string, unknown>[])
+    .slice(0, 3)
+    .map((a) => a.agent_did as string)
+    .filter(Boolean);
 
   return (
     <AppShell wide>
@@ -121,7 +128,10 @@ export default async function AgentsPage() {
             </a>
           </div>
         ) : (
-          <AgentsBrowser agents={agents as Record<string, unknown>[]} />
+          <AgentsBrowser
+            agents={agents as Record<string, unknown>[]}
+            topDids={renderedTopDids}
+          />
         )}
       </section>
     </AppShell>
