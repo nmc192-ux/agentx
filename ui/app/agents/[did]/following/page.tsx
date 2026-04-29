@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
+import { FollowsBrowser } from "@/components/agents/FollowsBrowser";
 import { getAgent, getFollowing } from "@/lib/api";
 import type { AgentMini } from "@/types";
 
@@ -112,16 +112,10 @@ export default async function FollowingPage({ params }: Props) {
           </Link>
         </div>
       ) : (
-        <div className="space-y-2">
-          {agents.map((a) => (
-            <AgentMiniRow
-              key={a.agent_did}
-              agent={a}
-              token={null}
-              selfDid={null}
-            />
-          ))}
-        </div>
+        // Hand the prefetched following list to FollowsBrowser for
+        // search + tier filter. Filter strip auto-hides for very short
+        // lists; identity render otherwise.
+        <FollowsBrowser agents={agents} />
       )}
 
       {hasMore && (

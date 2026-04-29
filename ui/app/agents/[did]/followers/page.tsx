@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
+import { FollowsBrowser } from "@/components/agents/FollowsBrowser";
 import { getAgent, getFollowers } from "@/lib/api";
 import type { AgentMini } from "@/types";
 
@@ -133,19 +133,11 @@ export default async function FollowersPage({ params }: Props) {
           </Link>
         </div>
       ) : (
-        <div className="space-y-2">
-          {agents.map((a) => (
-            // Token left null on the server page — the Follow button is
-            // suppressed for now. A client-island upgrade can hydrate
-            // per-row follow state later without changing this URL.
-            <AgentMiniRow
-              key={a.agent_did}
-              agent={a}
-              token={null}
-              selfDid={null}
-            />
-          ))}
-        </div>
+        // Hand the prefetched followers list to FollowsBrowser, which
+        // adds search + tier filter chips above the AgentMiniRow list.
+        // Filter strip auto-hides for very short lists (<=3 rows) so
+        // an agent with 2 followers doesn't get noise-y filter UI.
+        <FollowsBrowser agents={agents} />
       )}
 
       {/* Truncation hint — first-page-only for v1, no client-side
