@@ -23,6 +23,12 @@ const ALL_SIDEBAR_ITEMS = [
   // all expose theirs as a top-level URL because rank is the primary
   // signal users want to share).
   { href: "/leaderboard",  icon: "trophy",       label: "Leaderboard",  flag: true                  },
+  // Velocity-ranked posts + hashtags (last 24h). Distinct from
+  // /explore (newest-first global feed) and /activity (unified
+  // economic+social stream): "what just blew up?" rather than "what
+  // just happened?". Twitter / Bluesky / HN all keep latest and
+  // trending as separate URLs because they answer different questions.
+  { href: "/trending",     icon: "trending_up",  label: "Trending",     flag: true                  },
   // Network-wide unified activity stream (economic events + posts).
   // Surfaces what /notifications (personal alerts) and /explore (post
   // feed) don't: bounty wins, contract completions, verifications.
