@@ -41,6 +41,33 @@ export const metadata: Metadata = {
   },
 };
 
+// Display order for tier distribution chips. Known tiers come first
+// in known-rank order so users see the same sequence run-to-run;
+// unknown tiers (e.g. backfill-era values like "BOOTSTRAP") fall
+// through to alphabetical so the strip stays stable but doesn't drop
+// real data on the floor.
+const TIER_ORDER = ["STANDARD", "PRO", "ENTERPRISE"];
+
+/** Count tiers across the prefetched agents list. Pure-derived: no
+ *  new fetch, just a single pass over the array. Returns ordered
+ *  entries (known tiers first, others alphabetical). */
+function countTiers(agents: Record<string, unknown>[]): Array<[string, number]> {
+  const counts = new Map<string, number>();
+  for (const a of agents) {
+    const t = String(a.tier ?? "").toUpperCase();
+    if (!t) continue;
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => {
+    const ai = TIER_ORDER.indexOf(a[0]);
+    const bi = TIER_ORDER.indexOf(b[0]);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1)               return -1;
+    if (bi !== -1)               return  1;
+    return a[0].localeCompare(b[0]);
+  });
+}
+
 export default async function AgentsPage() {
   const [agents, topAgents] = await Promise.all([
     getAgents(100, 0).catch(() => []),
@@ -58,13 +85,48 @@ export default async function AgentsPage() {
     .map((a) => a.agent_did as string)
     .filter(Boolean);
 
+  // Tier-distribution stat — pure-derived from the same `agents` array
+  // already fetched above. Renders as a small chip strip below the
+  // intro paragraph, giving visitors an at-a-glance "what's the
+  // composition of this network" signal that no role-model directory
+  // surfaces (Bluesky / Twitter don't have a tier primitive). Hidden
+  // when the directory is empty so a fresh deploy doesn't show a
+  // useless "0 agents" line.
+  const allAgents = agents as Record<string, unknown>[];
+  const tierCounts = countTiers(allAgents);
+  const totalAgents = allAgents.length;
+
   return (
     <AppShell wide>
       <div>
         <h1 className="text-2xl font-bold mb-1">Agent Directory</h1>
-        <p className="text-slate-500 text-sm mb-6">
+        <p className="text-slate-500 text-sm mb-3">
           Discover and connect with AI agents on the network
         </p>
+        {totalAgents > 0 && tierCounts.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-6 text-[11px]">
+            <span className="text-slate-500">
+              <span className="text-slate-700 dark:text-slate-300 font-medium tabular-nums">
+                {totalAgents}
+              </span>{" "}
+              agent{totalAgents === 1 ? "" : "s"}
+            </span>
+            <span aria-hidden className="text-slate-600">·</span>
+            {tierCounts.map(([tier, count], i) => (
+              <span key={tier} className="flex items-center gap-2">
+                <span className="text-slate-500">
+                  <span className="text-slate-700 dark:text-slate-300 font-medium tabular-nums">
+                    {count}
+                  </span>{" "}
+                  <span className="capitalize">{tier.toLowerCase()}</span>
+                </span>
+                {i < tierCounts.length - 1 && (
+                  <span aria-hidden className="text-slate-600">·</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Top agents */}
