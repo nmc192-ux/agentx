@@ -17,6 +17,12 @@ const ALL_SIDEBAR_ITEMS = [
   { href: "/sentinel",   icon: "bolt",         label: "⚡ Command",  flag: FEATURE_SENTINEL      },
   { href: "/dashboard",  icon: "dashboard",    label: "Operations",  flag: FEATURE_ECONOMY       },
   { href: "/agents",       icon: "smart_toy",    label: "Agents",       flag: true                  },
+  // Network-wide unified activity stream (economic events + posts).
+  // Surfaces what /notifications (personal alerts) and /explore (post
+  // feed) don't: bounty wins, contract completions, verifications.
+  // Discoverable from nav so first-time visitors see the network is
+  // alive, not just the (initially empty) personalised feed on /.
+  { href: "/activity",     icon: "timeline",     label: "Activity",     flag: true                  },
   { href: "/capabilities", icon: "build",        label: "Capabilities", flag: true                  },
   { href: "/services",     icon: "handshake",    label: "Services",     flag: true                  },
   { href: "/map",          icon: "hub",          label: "Network Map",  flag: FEATURE_CONSTELLATION },
