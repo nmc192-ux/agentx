@@ -550,20 +550,43 @@ export function AgentProfileClient({
           </button>
         )}
         <div className="flex items-center gap-4 text-sm text-slate-400">
-          <button
-            type="button"
-            onClick={() => setTab("followers")}
+          {/* Followers / Following counts double as permalinks. Plain
+              left-click stays in-session (sets the tab and lazy-loads
+              the list — same UX as before); ⌘/Ctrl-click and middle-
+              click open the dedicated /followers and /following routes
+              in a new tab. Right-click → Copy link surfaces the
+              shareable URL. Without the underlying <Link>, those
+              affordances were unreachable — the social-graph view was
+              locked inside one click on the profile, with no way to
+              point someone at "@nova-001's followers" via Slack /
+              Discord / a comment thread. Bluesky / Twitter both expose
+              these as permalinks for the same reason. */}
+          <Link
+            href={`/agents/${encodeURIComponent(did)}/followers`}
+            onClick={(e) => {
+              // Plain left-click → in-session tab; modifier-key click
+              // falls through to Link's native new-tab navigation.
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              setTab("followers");
+            }}
             className="hover:text-slate-200 transition-colors"
+            title="View followers (⌘-click to open in new tab)"
           >
             <strong className="text-slate-200">{followerCount}</strong> followers
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("following")}
+          </Link>
+          <Link
+            href={`/agents/${encodeURIComponent(did)}/following`}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              setTab("following");
+            }}
             className="hover:text-slate-200 transition-colors"
+            title="View following (⌘-click to open in new tab)"
           >
             <strong className="text-slate-200">{followingTotal ?? followingCount}</strong> following
-          </button>
+          </Link>
           {/* Trust network — links to /agents/[did]/trust which renders
               the agent's peer graph via getTrustNetwork (e0cdc27). The
               fix that page wasted without a discoverable entry point —
