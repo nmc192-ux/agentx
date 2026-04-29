@@ -33,6 +33,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
+import { CapabilitiesBrowser, type BrowserGroup } from "./CapabilitiesBrowser";
 import type { Capability, CapabilityLevel } from "@/types";
 
 const SITE_URL =
@@ -175,19 +176,9 @@ function groupByName(capabilities: Capability[]): CapabilityGroup[] {
   });
 }
 
-const LEVEL_ORDER: readonly CapabilityLevel[] = [
-  "expert",
-  "advanced",
-  "intermediate",
-  "basic",
-];
-
-const LEVEL_STYLE: Record<CapabilityLevel, string> = {
-  expert:       "border-purple-500/40 text-purple-500 dark:text-purple-400",
-  advanced:     "border-cyan-500/40 text-cyan-500 dark:text-cyan-400",
-  intermediate: "border-blue-500/40 text-blue-500 dark:text-blue-400",
-  basic:        "border-slate-500/40 text-slate-500 dark:text-slate-400",
-};
+// LEVEL_ORDER + LEVEL_STYLE moved into CapabilitiesBrowser when the
+// inline grid render migrated client-side; they're only consumed by
+// that component now.
 
 export default async function CapabilitiesPage() {
   const capabilities = await fetchCapabilities();
@@ -271,76 +262,22 @@ export default async function CapabilitiesPage() {
         </div>
       ) : (
         <section>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {groups.map((g) => (
-              <Link
-                key={g.name}
-                href={`/capabilities/${encodeURIComponent(g.representativeId)}`}
-                title={`See agents who claim ${g.name}`}
-                className="border border-slate-200 dark:border-slate-800 rounded-xl p-4
-                           hover:border-cyan-500/40 hover:shadow-sm
-                           dark:hover:border-cyan-500/40
-                           transition-colors flex flex-col gap-2
-                           focus-visible:outline-none focus-visible:ring-2
-                           focus-visible:ring-cyan-500/60"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h3
-                    className="text-sm font-semibold truncate"
-                    title={g.name}
-                  >
-                    {g.name}
-                  </h3>
-                  {g.verifiedCount > 0 && (
-                    <span
-                      className="inline-flex items-center gap-0.5 text-[10px] font-semibold
-                                 text-emerald-600 dark:text-emerald-400 flex-shrink-0"
-                      title={`${g.verifiedCount} verified ${
-                        g.verifiedCount === 1 ? "claim" : "claims"
-                      }`}
-                    >
-                      <span className="material-symbols-outlined text-sm leading-none">
-                        verified
-                      </span>
-                      {g.verifiedCount}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  <span className="text-slate-700 dark:text-slate-300 font-medium">
-                    {g.agents.size}
-                  </span>{" "}
-                  agent{g.agents.size === 1 ? "" : "s"}
-                  {g.totalEndorsements > 0 && (
-                    <>
-                      {" · "}
-                      <span className="text-slate-700 dark:text-slate-300 font-medium">
-                        {g.totalEndorsements}
-                      </span>{" "}
-                      endorsement{g.totalEndorsements === 1 ? "" : "s"}
-                    </>
-                  )}
-                </p>
-                <div className="flex flex-wrap gap-1 mt-auto">
-                  {LEVEL_ORDER.map((level) => {
-                    const n = g.levels[level] ?? 0;
-                    if (!n) return null;
-                    return (
-                      <span
-                        key={level}
-                        className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full
-                                    border ${LEVEL_STYLE[level]} bg-transparent`}
-                        title={`${n} agent${n === 1 ? "" : "s"} at ${level} level`}
-                      >
-                        {level}
-                        <span className="ml-1 opacity-70">{n}</span>
-                      </span>
-                    );
-                  })}
-                </div>
-              </Link>
-            ))}
-          </div>
+          {/* Hand the rolled-up groups to the client browser, which
+              layers on search + level filter. We strip the Set<string>
+              `agents` field down to a plain count first — Sets aren't
+              serialisable across the server-client boundary, and the
+              card render only ever needed the size. */}
+          <CapabilitiesBrowser
+            groups={groups.map<BrowserGroup>((g) => ({
+              name:                g.name,
+              agentCount:          g.agents.size,
+              totalEndorsements:   g.totalEndorsements,
+              verifiedCount:       g.verifiedCount,
+              levels:              g.levels,
+              representativeId:    g.representativeId,
+              representativeLevel: g.representativeLevel,
+            }))}
+          />
         </section>
       )}
     </AppShell>
