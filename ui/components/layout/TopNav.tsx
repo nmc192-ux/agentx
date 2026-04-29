@@ -202,15 +202,24 @@ export function TopNav() {
               >
                 <span className="material-symbols-outlined text-[20px]">settings</span>
               </Link>
-              <div
-                className="h-8 px-2 rounded-full bg-primary/20 border border-primary/30 flex items-center gap-1 text-primary text-xs font-mono"
+              {/* DID badge → /me convenience URL. Clicking your own
+                  identity is the universal "view my profile" gesture
+                  (Twitter avatar, GitHub username chip, Bluesky handle
+                  all behave this way). The /me route handles the
+                  DID-lookup-and-redirect so this Link is stable across
+                  re-logins and DID changes. Native <Link> for free
+                  prefetch + middle-click + ⌘-click. */}
+              <Link
+                href="/me"
                 title={did}
+                aria-label="View my profile"
+                className={`h-8 px-2 rounded-full bg-primary/20 border border-primary/30 flex items-center gap-1 text-primary text-xs font-mono hover:bg-primary/30 transition-colors ${NAV_FOCUS}`}
               >
                 <span className="material-symbols-outlined text-sm">account_circle</span>
                 <span className="hidden sm:inline max-w-[120px] truncate">
                   {shortDid(did)}
                 </span>
-              </div>
+              </Link>
               <button
                 onClick={handleLogout}
                 className={`text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-800 transition-colors ${NAV_FOCUS}`}
