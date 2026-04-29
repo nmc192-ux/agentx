@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 import { isLoggedIn, getToken } from "@/lib/auth";
 import { castVote, createProposal, type Proposal } from "@/lib/api";
 import { DebateView } from "@/components/governance/DebateView";
@@ -283,9 +283,64 @@ interface Props {
   results: Proposal[];
 }
 
+type ActiveSort = "newest" | "ending" | "votes";
+
+const SORT_LABELS: { key: ActiveSort; label: string; title: string }[] = [
+  { key: "newest", label: "Newest",      title: "Most recently created" },
+  { key: "ending", label: "Ending soon", title: "Voting deadline ascending" },
+  { key: "votes",  label: "Most votes",  title: "Total vote count descending" },
+];
+
+function totalVotes(p: Proposal): number {
+  return (p.yes_votes ?? 0) + (p.no_votes ?? 0) + (p.abstain_votes ?? 0);
+}
+
 export function GovernanceClient({ initialProposals, results }: Props) {
   const [proposals, setProposals] = useState<Proposal[]>(initialProposals);
   const [voted, setVoted] = useState<Set<string>>(new Set());
+
+  // Active-proposals filter state. Sibling pattern to the search+sort
+  // strips already shipped on /agents (c20432a), /capabilities (425b63f),
+  // /services (9c6249c), /communities (84243ea), and /rooms (06a8c2b).
+  // Default sort is "newest" because that's the order the backend
+  // already returns, so the strip is identity-on-first-render and
+  // doesn't surprise visitors with a different ordering than they had
+  // before this ship landed.
+  const [query,      setQuery]      = useState("");
+  const [activeSort, setActiveSort] = useState<ActiveSort>("newest");
+
+  const visibleProposals = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = proposals.filter((p) => {
+      if (!q) return true;
+      return (
+        p.title?.toLowerCase().includes(q) ||
+        p.description?.toLowerCase().includes(q)
+      );
+    });
+    const sorted = filtered.slice();
+    if (activeSort === "newest") {
+      sorted.sort((a, b) =>
+        Date.parse(b.created_at) - Date.parse(a.created_at),
+      );
+    } else if (activeSort === "ending") {
+      // Ending soon — closest deadline first. Past-deadline proposals
+      // (voting_ends_at < now) sort to the end since the surface here
+      // is "Active Proposals" and a past deadline is effectively a
+      // tombstone the backend should have already moved to Results.
+      sorted.sort((a, b) => {
+        const ta = Date.parse(a.voting_ends_at) || Infinity;
+        const tb = Date.parse(b.voting_ends_at) || Infinity;
+        return ta - tb;
+      });
+    } else {
+      sorted.sort((a, b) => totalVotes(b) - totalVotes(a));
+    }
+    return sorted;
+  }, [proposals, query, activeSort]);
+
+  const showFilterCount =
+    query.trim().length > 0 || activeSort !== "newest";
 
   async function handleVote(proposalId: string, vote: "yes" | "no" | "abstain") {
     const token = getToken();
@@ -315,15 +370,94 @@ export function GovernanceClient({ initialProposals, results }: Props) {
       {/* Active Proposals */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Active Proposals</h2>
+
+        {/* Filter strip — only render when there are >1 proposals so a
+            cold-start dao doesn't pretend filterable content exists.
+            Search input on top, sort chips below. */}
+        {proposals.length > 1 && (
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search proposals by title or description…"
+                aria-label="Search proposals"
+                className="w-full pl-9 pr-9 py-2 text-sm rounded-lg
+                           bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700
+                           focus:outline-none focus:ring-2 focus:ring-primary/40
+                           placeholder:text-slate-400"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md
+                             text-slate-400 hover:text-slate-200 hover:bg-slate-700/40 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-x-5 gap-y-2 items-center">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">Sort</span>
+                <div className="flex gap-1">
+                  {SORT_LABELS.map(({ key, label, title }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActiveSort(key)}
+                      title={title}
+                      aria-pressed={activeSort === key}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors
+                                  ${activeSort === key
+                                    ? "bg-primary text-white"
+                                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {showFilterCount && (
+                <span className="text-[11px] text-slate-500 ml-auto">
+                  {visibleProposals.length} of {proposals.length}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         {proposals.length === 0 ? (
           <div className="rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
             <p className="text-slate-500 text-sm">
               No active proposals yet. Create one below.
             </p>
           </div>
+        ) : visibleProposals.length === 0 ? (
+          // Filter narrowed to zero — distinct from the cold-start
+          // empty state with a "Show all" escape so users never get
+          // stuck staring at a no-match pane.
+          <div className="rounded-xl border border-slate-800 bg-slate-900 p-8 text-center">
+            <p className="text-slate-500 text-sm mb-3">
+              No proposals match this search.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setQuery(""); setActiveSort("newest"); }}
+              className="text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+            >
+              Show all
+            </button>
+          </div>
         ) : (
           <div className="space-y-4">
-            {proposals.map((p) => (
+            {visibleProposals.map((p) => (
               <ProposalCard
                 key={p.proposal_id}
                 proposal={p}
