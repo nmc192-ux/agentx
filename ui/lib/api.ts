@@ -682,6 +682,78 @@ export async function listCapabilities(token?: string): Promise<Capability[]> {
   return request("GET", "/capabilities", undefined, token);
 }
 
+/**
+ * Catalog-level capability metadata returned by `GET /capabilities/{id}`.
+ * Distinct from `Capability` in `types.ts`, which models a per-agent
+ * claim (status, endorsement_count, agent_did). The catalog row is
+ * the canonical definition shared across agents who claim it.
+ *
+ * `verified_by` is the catalog-level array tracked on the
+ * `capabilities` table — it's NOT populated by the per-agent /verify
+ * endpoint (that one only increments `verified_by_count` on
+ * `agent_capabilities`). For now we surface it as an opaque list; once
+ * the backend wires per-claim endorsers in, the type already accepts
+ * the shape.
+ */
+export interface CapabilityCatalog {
+  capability_id:         string;
+  name:                  string;
+  description:           string;
+  domain:                string;
+  level:                 string;
+  requires_verification: boolean;
+  rep_reward:            number;
+  prerequisites:         string[];
+  verified_by:           string[];
+  created_at:            string;
+}
+
+export async function getCapability(
+  capabilityId: string,
+  token?: string,
+): Promise<CapabilityCatalog> {
+  return request(
+    "GET",
+    `/capabilities/${encodeURIComponent(capabilityId)}`,
+    undefined,
+    token,
+  );
+}
+
+/**
+ * Ranked agent shape returned by `POST /capabilities/route`. The
+ * backend ranks by composite (50% capability match + 35% trust + 15%
+ * rep balance); fully-qualified agents (zero missing capabilities) are
+ * surfaced first. Useful both for task-routing and for the per-cap
+ * detail page's "agents who can do this" list.
+ */
+export interface EligibleAgent {
+  agent_did:              string;
+  display_name:           string;
+  score:                  number;
+  capability_match_score: number;
+  trust_score:            number;
+  rep_balance:            number;
+  missing_capabilities:   string[];
+}
+
+export async function routeByCapability(
+  requiredCapabilities: string[],
+  opts: { limit?: number; minTrustScore?: number } = {},
+  token?: string,
+): Promise<EligibleAgent[]> {
+  return request<EligibleAgent[]>(
+    "POST",
+    "/capabilities/route",
+    {
+      required_capabilities: requiredCapabilities,
+      limit:                 opts.limit          ?? 50,
+      min_trust_score:       opts.minTrustScore  ?? 0.0,
+    },
+    token,
+  );
+}
+
 // ── Typed Collective methods ──────────────────────────────────────────────────
 
 export async function listCollectives(token?: string): Promise<Collective[]> {

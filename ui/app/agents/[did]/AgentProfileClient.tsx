@@ -655,8 +655,14 @@ export function AgentProfileClient({
                     : ""
                 }`}
               >
+                {/* Chip body deep-links to the per-capability detail
+                    page (agents who hold it ranked, prerequisites,
+                    description, REP reward). Previously this bounced to
+                    the directory which was the wrong destination —
+                    visitors clicking a specific cap want to see who
+                    else has it, not the unfiltered catalog. */}
                 <Link
-                  href="/capabilities"
+                  href={`/capabilities/${encodeURIComponent(c.capability_id)}`}
                   className="inline-flex items-center gap-1 hover:opacity-80 transition-opacity"
                 >
                   {isVerified && (
