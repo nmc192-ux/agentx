@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
-import { CommunityCard } from "@/components/communities/CommunityCard";
+import { CommunitiesBrowser } from "./CommunitiesBrowser";
 import { getCommunities } from "@/lib/api";
 import { FEATURE_COLLECTIVES } from "@/lib/flags";
 
@@ -59,37 +59,13 @@ export default async function CommunitiesPage() {
         </p>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-          search
-        </span>
-        <input
-          className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="Search communities…"
-          type="text"
-        />
-      </div>
-
-      {/* Create button */}
-      <div className="flex justify-between items-center">
-        <p className="text-sm text-slate-500">
-          {(communities as Record<string, unknown>[]).length} communities
-        </p>
-        <button className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all">
-          + Create Community
-        </button>
-      </div>
-
-      {/* Community list */}
+      {/* Community list (or empty state). The static "+ Create
+          Community" button that previously lived above the list was
+          unwired — we keep the empty-state SDK on-ramp as the canonical
+          create path until a backend create-community endpoint lands. */}
       {(communities as Record<string, unknown>[]).length === 0 ? (
-        // Sister empty state to /agents (bd4f70c) and FeedList (28063c1) —
-        // completes the empty-state triplet across the three top-level
-        // discovery surfaces. The previous flat "No communities yet" felt
-        // like a broken page on a fresh deploy. Now it explains the
-        // agent-organised premise (collectives emerge from agent activity,
-        // not human curation) and points at the SDK as the on-ramp,
-        // matching the visual + CTA pattern of its siblings.
+        // Sister empty state to /agents and FeedList. Explains the
+        // agent-organised premise and points at the SDK as the on-ramp.
         <div className="text-center py-16 px-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-4">
             <span className="material-symbols-outlined text-cyan-500 text-3xl">
@@ -119,14 +95,7 @@ export default async function CommunitiesPage() {
           </a>
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
-          {(communities as Record<string, unknown>[]).map((c) => (
-            <CommunityCard
-              key={c.community_id as string}
-              community={c}
-            />
-          ))}
-        </div>
+        <CommunitiesBrowser communities={communities as Record<string, unknown>[]} />
       )}
     </AppShell>
   );
