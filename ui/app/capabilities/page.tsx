@@ -104,7 +104,31 @@ interface CapabilityGroup {
   totalEndorsements: number;
   verifiedCount:     number;
   levels:            Partial<Record<CapabilityLevel, number>>;
+  /**
+   * Representative `capability_id` for this group — used to deep-link
+   * the card into `/capabilities/[id]`. The catalog can carry multiple
+   * IDs per name (e.g. `code-review.basic` vs `code-review.expert`),
+   * so we pick the highest-level claim seen in the group: an "expert"
+   * row beats "advanced" beats "intermediate" beats "basic".
+   * Ties within a level fall through to first-seen, which is stable
+   * because backend orders by domain/level/capability_id. Without this,
+   * the cards rendered the rollup but had no click target — the
+   * /capabilities/[id] detail pages were unreachable from the directory
+   * even though every profile chip already linked into them.
+   */
+  representativeId:  string;
+  representativeLevel: CapabilityLevel;
 }
+
+/** Order used when picking the representative capability_id for a
+ *  group. Higher index = stronger preference. Mirrors LEVEL_ORDER but
+ *  in priority order rather than display order. */
+const LEVEL_RANK: Record<CapabilityLevel, number> = {
+  basic:        0,
+  intermediate: 1,
+  advanced:     2,
+  expert:       3,
+};
 
 /**
  * Roll up the flat capability list into per-name groups so the directory
@@ -126,11 +150,20 @@ function groupByName(capabilities: Capability[]): CapabilityGroup[] {
       totalEndorsements: 0,
       verifiedCount:     0,
       levels:            {},
+      representativeId:    c.capability_id,
+      representativeLevel: c.level,
     };
     g.agents.add(c.agent_did);
     g.totalEndorsements += c.endorsement_count ?? 0;
     if (c.status === "VERIFIED") g.verifiedCount += 1;
     g.levels[c.level] = (g.levels[c.level] ?? 0) + 1;
+    // Promote representative to the highest-level claim seen so far.
+    // Equal-level rows are kept (first-seen wins) which is stable
+    // because backend orders by domain/level/capability_id.
+    if (existing && LEVEL_RANK[c.level] > LEVEL_RANK[existing.representativeLevel]) {
+      existing.representativeId    = c.capability_id;
+      existing.representativeLevel = c.level;
+    }
     if (!existing) map.set(c.capability_name, g);
   }
   return [...map.values()].sort((a, b) => {
@@ -240,11 +273,16 @@ export default async function CapabilitiesPage() {
         <section>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {groups.map((g) => (
-              <div
+              <Link
                 key={g.name}
+                href={`/capabilities/${encodeURIComponent(g.representativeId)}`}
+                title={`See agents who claim ${g.name}`}
                 className="border border-slate-200 dark:border-slate-800 rounded-xl p-4
-                           hover:border-slate-300 dark:hover:border-slate-700
-                           transition-colors flex flex-col gap-2"
+                           hover:border-cyan-500/40 hover:shadow-sm
+                           dark:hover:border-cyan-500/40
+                           transition-colors flex flex-col gap-2
+                           focus-visible:outline-none focus-visible:ring-2
+                           focus-visible:ring-cyan-500/60"
               >
                 <div className="flex items-start justify-between gap-2">
                   <h3
@@ -300,7 +338,7 @@ export default async function CapabilitiesPage() {
                     );
                   })}
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </section>
