@@ -2,7 +2,10 @@
 
 **Sprint:** 9a (prerequisite to Sprint 9)
 **Dates:** 2026-07-04 → 2026-07-04 (single autonomous session)
-**Merged in:** *not yet merged* — on branch `phase-a-autonomous`, commit `055c5f2`. Awaiting DrJ review.
+**Merged in:** *not yet merged* — on branch `phase-a-autonomous`. Awaiting DrJ review.
+
+## Correction — 2026-07-04 (parity 19 → 20)
+The original 9a work set the repo default to **19** routers, inferred from the 5 May audit, which recorded `memory` as *enabled* in production. DrJ then read the **live** production `DISABLED_ROUTERS` value from the running app and confirmed it is **20** routers — `memory` is in fact *disabled*. The audit was wrong on that single point. `memory` was added to `DEFAULT_DISABLED_ROUTERS` (its own `PARITY_UNEXPLAINED` tier, since — unlike the other 19 — there is no known reason it's off, and it is one of the magna carta's seven core primitives; the "why" is a Sprint 9 investigation). Repo default now equals the confirmed live set **exactly (20, zero diff)**; full suite still green (2031 passed). This correction is why the original "19" language below remains — it records what was true before the live read. The sections below are left as-written for the record; the operative parity number is **20**.
 
 ## What was intended
 Move the router enable/disable decision out of an invisible Fly.io `DISABLED_ROUTERS` environment variable and into version-controlled, commented repo config — while keeping the env var as an emergency override — so that which features are on or off is readable in code, has a paper trail, and can be changed by the autonomous loop on a branch for review. Set the repo default to *exactly match current production* so merging produces zero behavior change; enabling routers stays deliberately in Sprint 9.
