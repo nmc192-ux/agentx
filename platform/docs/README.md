@@ -30,6 +30,10 @@ The canonical home for all project documentation going forward.
   config (env var kept as an emergency override), making the router work
   loop-executable and reviewable. Sprint 9 — Stabilize then runs on top of it.
   Retros and briefings from autonomous runs also land here.
+- **`verification/`** — post-deploy live checks of agentx.social. Contains
+  the verification protocol (two-layer: API + Chrome browser) and the kickoff
+  prompt. Run after every deploy as housekeeping. Reports land here as
+  verify_<date>.md.
 
 ## `docs/` (repo root) — legacy / operational files
 
