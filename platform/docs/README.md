@@ -17,6 +17,10 @@ The canonical home for all project documentation going forward.
   `audit_2026-05-05.md`, the evidence base cited by Strategic Plan v2, and an
   `archive/` subdir holding superseded audits
   (`LAUNCH_PLAN_2026-04-23.md`, reconciled and archived 2026-07-03).
+- **`execution/`** — how the work gets done. Contains
+  `autonomous_loop_v1.md` (the protocol Claude Code follows for unattended
+  hand-offs) and `autonomous_loop_kickoff.md` (the prompt DrJ pastes to start
+  one).
 - **`cli.md`** — CLI reference (loose file at the tree root).
 - **`simulation.md`** — simulation documentation (loose file at the tree root).
 - **`sprints/`** — *planned but not yet created.* Strategic Plan v2's intended
