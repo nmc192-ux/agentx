@@ -24,18 +24,22 @@ PARITY NOTE (Sprint 9a — read before changing this list)
 ──────────────────────────────────────────────────────────────────────────────
 This default is set to match what CURRENT PRODUCTION disables, so that moving
 the decision into the repo causes ZERO change in which routers are actually on.
-Per the 5 May 2026 audit (``platform/docs/audit/audit_2026-05-05.md``),
-production currently disables every gated router EXCEPT ``memory`` — i.e. the
-19 routers below. Enabling the routers the audit cleared is the work of
-Sprint 9 proper (fix-then-enable), done deliberately and reviewed — NOT here.
+The set below is the LIVE production ``DISABLED_ROUTERS`` value, confirmed by
+DrJ reading the running app on 2026-07-04 — 20 gated routers, ALL of them off,
+including ``memory``. (The 5 May 2026 audit had inferred 19-with-memory-enabled;
+DrJ's live read corrected that single point.) Enabling the audit-cleared routers
+is the work of Sprint 9 proper (fix-then-enable), done deliberately — NOT here.
 
-Two tiers of "disabled" are recorded separately so the distinction is not lost:
+Three tiers of "disabled" are recorded separately so the distinctions are not lost:
 
   A. ``BROKEN_OR_INSECURE_ROUTERS`` — genuinely unsafe/broken; must stay off
      until the underlying defect is fixed (each fix is a Sprint 9 step).
   B. ``PARITY_HOLD_ROUTERS`` — the 5 May audit found these safe to enable, but
      they are OFF in production today. They are kept off here ONLY to preserve
      parity (zero behavior change on merge). Sprint 9 enables them.
+  C. ``PARITY_UNEXPLAINED_ROUTERS`` — off in production for a reason not yet
+     established (currently: ``memory``, a core primitive). Held off for parity;
+     the "why" is a Sprint 9 investigation, not a 9a assumption.
 
 Constitutional anchor: magna_carta_v1.md, Article 24 Principle 4 — honest
 accountability; every decision leaves a record.
@@ -92,9 +96,24 @@ PARITY_HOLD_ROUTERS = [
     "pulse",
 ]
 
-# The effective repo default = both tiers. Order is cosmetic; gating is by
-# membership. (`memory` is intentionally absent — it is ENABLED in production.)
-DEFAULT_DISABLED_ROUTERS = BROKEN_OR_INSECURE_ROUTERS + PARITY_HOLD_ROUTERS
+# ── Tier C — disabled in production for a reason not yet established. ──────────
+# `memory` is disabled in production (confirmed by DrJ reading the live value on
+# 2026-07-04). This was NOT anticipated: memory is one of the magna carta's seven
+# core primitives, so its being off is notable and needs explaining. Held off
+# here to preserve parity; the "why" is a Sprint 9 investigation.
+PARITY_UNEXPLAINED_ROUTERS = [
+    # disabled to match production; reason TBD — see Sprint 9
+    "memory",
+]
+
+# The effective repo default = all three tiers. Order is cosmetic; gating is by
+# membership. Matches the live production DISABLED_ROUTERS set confirmed by DrJ
+# on 2026-07-04 (20 routers, memory included).
+DEFAULT_DISABLED_ROUTERS = (
+    BROKEN_OR_INSECURE_ROUTERS
+    + PARITY_HOLD_ROUTERS
+    + PARITY_UNEXPLAINED_ROUTERS
+)
 
 
 def default_disabled_routers_csv() -> str:
