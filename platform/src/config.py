@@ -17,8 +17,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .router_config import default_disabled_routers_csv
 
 
 def _read_secret(env_var: str, file_var: str, secret_name: str) -> str:
@@ -105,10 +107,17 @@ class Settings(BaseSettings):
 
     # ── Feature-flag gating ─────────────────────────────────────────────────
     # Comma-separated list of router names that should NOT be registered.
-    # Use for pre-launch scope cuts: a router in this list returns 404 for
-    # every path instead of 500 from missing tables / broken handlers.
-    # Example: DISABLED_ROUTERS=contracts,rooms,governance
-    disabled_routers: str = ""
+    # A router in this list returns 404 for every path instead of 500 from
+    # missing tables / broken handlers.
+    #
+    # SOURCE OF TRUTH is the repo: the default comes from
+    # `router_config.DEFAULT_DISABLED_ROUTERS` (readable, commented, reviewed).
+    # The `DISABLED_ROUTERS` environment variable, IF SET, overrides this
+    # default entirely — the emergency kill-switch (Fly.io, no code deploy).
+    # Pydantic precedence gives env vars priority over field defaults, so this
+    # override is automatic. See `disabled_routers_source` for which won.
+    # Example emergency override: DISABLED_ROUTERS=contracts,rooms,governance
+    disabled_routers: str = Field(default_factory=default_disabled_routers_csv)
 
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
@@ -198,6 +207,21 @@ class Settings(BaseSettings):
             for name in self.disabled_routers.split(",")
             if name.strip()
         }
+
+    @property
+    def disabled_routers_source(self) -> str:
+        """Which source decided the disabled list — the env-var emergency
+        override, or the repo default. Reported in the startup log so the
+        active path is never a mystery in production.
+
+        Note: this inspects the process environment. A value coming from a
+        local `.env` file (dev convenience) is treated by pydantic as an env
+        source but may not appear here; production sets a real env var or none,
+        so the distinction is accurate where it matters.
+        """
+        if any(k.lower() == "disabled_routers" for k in os.environ):
+            return "environment override (DISABLED_ROUTERS env var)"
+        return "repo default (router_config.DEFAULT_DISABLED_ROUTERS)"
 
     def router_enabled(self, name: str) -> bool:
         """Return True if the router `name` should be registered."""

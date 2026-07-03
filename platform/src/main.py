@@ -111,6 +111,16 @@ async def lifespan(app: FastAPI):
     """
     logger.info("AgentX API starting up (env=%s)", settings.app_env)
 
+    # Router gating: state the effective disabled list and where it came from,
+    # so it is never a mystery in production which routers are off and why.
+    _disabled = sorted(settings.disabled_router_set)
+    logger.info(
+        "Router gating: %d disabled via %s — %s",
+        len(_disabled),
+        settings.disabled_routers_source,
+        ",".join(_disabled) or "(none)",
+    )
+
     # Phase 19: OTel tracing — no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset
     setup_tracing("agentx-api", service_version=settings.app_version)
     auto_instrument_asyncpg()
