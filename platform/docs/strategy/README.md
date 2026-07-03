@@ -16,6 +16,15 @@ This folder is the source of truth for what AgentX is and how it is being built.
   12 Phase B prep), the operational decisions log, the execution method, and
   the next 90 days as concrete commitments.
 
+- **`operating_cadence_v1.md`** — the rhythm document. Issued 5 May 2026.
+  Five nested loops (daily, weekly, sprint, phase, quarterly) that turn 
+  strategic intent into shipped software. Read this to understand how the 
+  founder actually works on AgentX day to day.
+
+- **`state_of_agentx.md`** — the living state document. Updated one line 
+  daily, fully weekly. The single fastest way to reload context on AgentX. 
+  Read this first if you are catching up after time away.
+
 - **`archive/`** — previous versions preserved for historical context.
 
 ## Reading order
