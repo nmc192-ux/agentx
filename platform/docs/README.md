@@ -23,9 +23,13 @@ The canonical home for all project documentation going forward.
   one).
 - **`cli.md`** — CLI reference (loose file at the tree root).
 - **`simulation.md`** — simulation documentation (loose file at the tree root).
-- **`sprints/`** — *planned but not yet created.* Strategic Plan v2's intended
-  layout reserves this for sprint prompts and retros; it does not exist on
-  disk yet.
+- **`sprints/`** — sprint specs and retros. Holds the Phase A specs:
+  `sprint_9a_router_gating.md` and `sprint_9_stabilize.md`. **Sequence: 9a
+  runs before 9.** Sprint 9a is a prerequisite that moves router enable/disable
+  from an invisible Fly.io env var into version-controlled, commented repo
+  config (env var kept as an emergency override), making the router work
+  loop-executable and reviewable. Sprint 9 — Stabilize then runs on top of it.
+  Retros and briefings from autonomous runs also land here.
 
 ## `docs/` (repo root) — legacy / operational files
 
