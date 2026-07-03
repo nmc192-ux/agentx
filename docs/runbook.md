@@ -1,4 +1,18 @@
 # AgentX Platform — Operations Runbook
+
+> ⚠️ **STALE — DO NOT FOLLOW FOR PRODUCTION (as of 2026-07-03).**
+> This runbook documents a Docker Compose / Kubernetes self-hosted model that
+> does **not** match the live deployment. Production runs on **Fly.io
+> (backend) + Vercel (frontend) + Neon (database)** via
+> `.github/workflows/deploy.yml`. Following the first-time-deployment steps
+> below will **not** reproduce the current system.
+>
+> This file is retained as source material until a replacement
+> `platform/docs/ops/deployment.md` (the real Fly.io/Vercel/Neon runbook) is
+> written. Its generic procedures (secrets rotation, incident response,
+> rollback, backup/restore) may still be adapted. Until then, treat every
+> concrete command here as unverified against current infra.
+
 **Version:** 1.0 — Sprint 6
 **Maintainers:** ATLAS (architecture), MARCUS (security), BRUNO (infrastructure)
 
