@@ -28,7 +28,8 @@ As of 5 May 2026, AgentX has a ratified magna carta, a v2 strategic plan, and a 
 
 ## What's shipped since the last update
 
-*(This section is empty on the first version. It fills up starting with Sprint 9's first commit.)*
+- **Sprint 9a — Router gating into the repo** (branch `phase-a-autonomous`, latest commit `026033a`, **not yet merged**). Router enable/disable now lives in version-controlled, commented repo config (`platform/src/router_config.py`) with the `DISABLED_ROUTERS` env var kept as an emergency override; startup logs the effective list and its source. Repo default set to the **20-router set DrJ confirmed by reading the live production value** on 2026-07-04 (all gated routers, incl. `memory`), for zero behavior change on merge or env-var removal. Parity re-verified EXACT at 20 (deterministic + independent Fable 5 check). Verified locally (startup log + OpenAPI + full suite 2031 passed / 14 skipped). **Note:** the first 9a pass had inferred 19 (memory enabled) from the 5 May audit; DrJ's live read corrected it to 20 (memory disabled). `memory` being off is a magna-carta core primitive with no known reason yet — to be investigated in Sprint 9. See `sprints/briefing_2026-07-04b.md` and `sprints/sprint_9a_retro.md`.
+- **Sprint 9 spec gap closed** — `sprint_9a_router_gating.md` and `sprint_9_stabilize.md` committed to `main` (2026-07-03/04), resolving the missing-spec blocker from the first autonomous run.
 
 ---
 
@@ -49,7 +50,7 @@ As of 5 May 2026, AgentX has a ratified magna carta, a v2 strategic plan, and a 
 
 ## The next action (updated daily)
 
-**Now:** Execute Sprint 9 in Claude Code. Prompt is at `platform/docs/sprints/sprint_9_stabilize.md` (once committed). Review the PR before merging.
+**Now:** Review and merge Sprint 9a on branch `phase-a-autonomous` (latest commit `026033a`). Parity is now confirmed EXACT at the 20-router live production set DrJ read, so merging (and, optionally, removing the Fly.io env var afterward) is zero behavior change. **Then:** execute Sprint 9 — Stabilize (`platform/docs/sprints/sprint_9_stabilize.md`), fix-then-enable — and investigate why `memory` is disabled.
 
 ---
 

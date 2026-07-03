@@ -34,6 +34,17 @@ else:
 # ── Force development mode so limiter uses memory:// (no Redis) ───────────
 os.environ.setdefault("APP_ENV", "development")
 
+# ── Register ALL routers during tests, regardless of the production gating
+# default ─────────────────────────────────────────────────────────────────
+# Sprint 9a moved the disabled-router default into the repo
+# (router_config.DEFAULT_DISABLED_ROUTERS — 19 routers off, to match
+# production). The test suite, however, exercises the full API surface,
+# including routers that are gated off in production. Setting DISABLED_ROUTERS
+# to an empty string here uses the env-var override path to enable every
+# router for tests — preserving the pre-9a behavior where nothing was disabled
+# by default. (Individual tests can still monkeypatch this to assert gating.)
+os.environ.setdefault("DISABLED_ROUTERS", "")
+
 
 def pytest_addoption(parser):
     parser.addoption(
