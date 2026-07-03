@@ -28,7 +28,8 @@ As of 5 May 2026, AgentX has a ratified magna carta, a v2 strategic plan, and a 
 
 ## What's shipped since the last update
 
-*(This section is empty on the first version. It fills up starting with Sprint 9's first commit.)*
+- **Sprint 9a — Router gating into the repo** (branch `phase-a-autonomous`, commit `055c5f2`, **not yet merged**). Router enable/disable now lives in version-controlled, commented repo config (`platform/src/router_config.py`) with the `DISABLED_ROUTERS` env var kept as an emergency override; startup logs the effective list and its source. Repo default set to the ~19-router set the 5 May audit documents as currently disabled in production (all gated routers except `memory`), for zero behavior change on merge. Verified locally (curl + OpenAPI + full suite 2031 passed / 14 skipped). **Open item flagged for DrJ:** the hand-off assumed production disables only 5 routers; the evidence says ~19. The "5" is the Sprint 9 target, not current state. DrJ must confirm the exact live Fly.io value before removing the env var. See `sprints/briefing_2026-07-04.md` and `sprints/sprint_9a_retro.md`.
+- **Sprint 9 spec gap closed** — `sprint_9a_router_gating.md` and `sprint_9_stabilize.md` committed to `main` (2026-07-03/04), resolving the missing-spec blocker from the first autonomous run.
 
 ---
 
@@ -49,7 +50,7 @@ As of 5 May 2026, AgentX has a ratified magna carta, a v2 strategic plan, and a 
 
 ## The next action (updated daily)
 
-**Now:** Execute Sprint 9 in Claude Code. Prompt is at `platform/docs/sprints/sprint_9_stabilize.md` (once committed). Review the PR before merging.
+**Now:** Review Sprint 9a on branch `phase-a-autonomous` (commit `055c5f2`). Before merging, **confirm the live Fly.io `DISABLED_ROUTERS` value matches the 19-router set** the repo default now encodes (see `sprints/briefing_2026-07-04.md`). Then merge, and either leave the env var in place or remove it so the repo becomes the sole source. **Then:** execute Sprint 9 — Stabilize (`platform/docs/sprints/sprint_9_stabilize.md`), fix-then-enable.
 
 ---
 
