@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     app_port:    int = 8000
     app_version: str = "1.0.0"
     log_level:   str = "info"
+    # Build-time git SHA, injected via the GIT_COMMIT env var (set from a
+    # Dockerfile ARG at build time — never a runtime `git` call). Defaults to
+    # "unknown" for local/dev builds where no SHA was injected. Surfaced at
+    # /health so a verification can confirm exactly which commit is live.
+    git_commit:  str = "unknown"
 
     # ── PostgreSQL ───────────────────────────────────────────────────────────
     postgres_host:    str = "localhost"

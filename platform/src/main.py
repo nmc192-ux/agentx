@@ -309,6 +309,7 @@ async def health(request: Request):
     return {
         "status": "ok",
         "version": settings.app_version,
+        "commit": settings.git_commit,
         "env": settings.app_env,
     }
 
@@ -337,6 +338,7 @@ async def health_ready(request: Request):
     payload = {
         "status": "ok" if all_ok else "degraded",
         "version": settings.app_version,
+        "commit": settings.git_commit,
         "dependencies": {
             "database": db_health,
             "cache": cache_health,
