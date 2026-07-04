@@ -48,6 +48,12 @@ ENV PATH="/home/agentx/.local/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Build-time git SHA → runtime env, surfaced at /health as "commit".
+# Pass it at build time, e.g. `flyctl deploy --build-arg GIT_COMMIT=$(git rev-parse HEAD)`.
+# Defaults to "unknown" when not supplied (local builds).
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \

@@ -5,7 +5,7 @@ Phase 19: Autonomous Agent Economies.
 
 Endpoints
 ─────────
-  POST /markets/bounties/auto              — Agent-created bounty (no JWT; agent_did in body)
+  POST /markets/bounties/auto              — Agent-created bounty (requires auth; creator = caller)
   POST /contracts/{contract_id}/subcontract — Spawn a sub-contract (requires auth)
   GET  /economy/strategies                 — List all economic strategies
   POST /economy/strategies/select          — Select optimal strategy for an agent
@@ -48,20 +48,23 @@ agent_economy_router = APIRouter(tags=["Agent Economy"])
     status_code=status.HTTP_201_CREATED,
     summary="Create an agent-generated bounty",
 )
-async def create_agent_bounty(body: AutoBountyCreate) -> BountyResponse:
+async def create_agent_bounty(
+    body: AutoBountyCreate,
+    agent=Depends(get_current_agent),
+) -> BountyResponse:
     """
-    Allow an agent to autonomously publish a capability bounty.
+    Allow an authenticated agent to publish a capability bounty.
 
-    The agent DID is supplied in the request body (not a JWT) so that
-    autonomous agents can call this endpoint without a human login flow.
-    The agent's wallet is debited by *reward_pool* tokens as escrow.
-
-    Open to unauthenticated callers — the agent_did in the body acts as
-    the creator identity.
+    SECURITY: the creator is the JWT-authenticated caller (`agent.did`), NOT a
+    value from the request body. This endpoint escrows *reward_pool* tokens from
+    the creator's wallet, so it must only ever debit the caller's own wallet.
+    Requiring `get_current_agent` (which rejects missing/invalid tokens with a
+    401) makes it impossible to escrow from anyone else's wallet — closing the
+    prior unauthenticated wallet-drain hole. Mirrors `markets.create_bounty`.
     """
     try:
         return await auto_bounty_service.create_agent_bounty(
-            agent_did=body.agent_did,
+            agent_did=agent.did,
             capability=body.capability,
             reward_pool=body.reward_pool,
             title=body.title,

@@ -30,12 +30,27 @@ def upgrade() -> None:
 
     # ── Search columns on posts ───────────────────────────────────────────────
     op.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS embedding vector(1536)")
+    # A STORED GENERATED column requires an IMMUTABLE expression. Two builtins
+    # used here are only STABLE, so we make the expression immutable:
+    #   • to_tsvector('english'::regconfig, …) — the regconfig cast selects the
+    #     IMMUTABLE overload (the bare-text 'english' overload is STABLE).
+    #   • array_to_string(text[], text) is STABLE, so wrap it in an IMMUTABLE
+    #     SQL function (the join is deterministic for text[]; STABLE is just
+    #     Postgres being conservative). Without this the ALTER fails with
+    #     "generation expression is not immutable" — which blocked this whole
+    #     migration (and every one after it) from ever applying. See
+    #     briefing_2026-07-04_chain.md ("Migration chain was broken at 035").
+    op.execute("""
+        CREATE OR REPLACE FUNCTION agentx_immutable_array_to_string(text[], text)
+        RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS
+        $$ SELECT array_to_string($1, $2) $$
+    """)
     op.execute("""
         ALTER TABLE posts ADD COLUMN IF NOT EXISTS search_vector tsvector
             GENERATED ALWAYS AS (
-                setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
-                setweight(to_tsvector('english', coalesce(content, '')), 'B') ||
-                setweight(to_tsvector('english', coalesce(array_to_string(tags, ' '), '')), 'C')
+                setweight(to_tsvector('english'::regconfig, coalesce(title, '')), 'A') ||
+                setweight(to_tsvector('english'::regconfig, coalesce(content, '')), 'B') ||
+                setweight(to_tsvector('english'::regconfig, coalesce(agentx_immutable_array_to_string(tags, ' '), '')), 'C')
             ) STORED
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_posts_search ON posts USING GIN(search_vector)")

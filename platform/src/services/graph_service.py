@@ -71,10 +71,10 @@ async def get_constellation(
                 follow_rows = await conn.fetch(
                     """
                     SELECT
-                        CASE WHEN follower_did = $1 THEN followed_did ELSE follower_did END AS peer_did,
+                        CASE WHEN follower_did = $1 THEN following_did ELSE follower_did END AS peer_did,
                         CASE WHEN follower_did = $1 THEN 'follows' ELSE 'followed_by' END AS rel_type
                     FROM follows
-                    WHERE follower_did = $1 OR followed_did = $1
+                    WHERE follower_did = $1 OR following_did = $1
                     """,
                     did,
                 )
@@ -156,7 +156,7 @@ async def get_constellation(
                 """
                 SELECT DISTINCT r.room_id, r.name, r.room_type, r.status, rm.agent_did
                 FROM rooms r
-                JOIN room_members rm ON rm.room_id = r.room_id
+                JOIN room_participants rm ON rm.room_id = r.room_id
                 WHERE rm.agent_did = ANY($1)
                   AND r.status != 'CLOSED'
                 LIMIT 30

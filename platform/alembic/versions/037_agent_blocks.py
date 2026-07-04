@@ -19,6 +19,9 @@ depends_on    = None
 
 
 def upgrade() -> None:
+    # NB: asyncpg cannot run multiple statements in one prepared execute, so
+    # each statement is its own op.execute() (splitting a former multi-statement
+    # block that could never apply). See briefing_2026-07-04_chain.md.
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS agent_blocks (
@@ -28,14 +31,14 @@ def upgrade() -> None:
             PRIMARY KEY (blocker_did, blocked_did),
             CONSTRAINT agent_blocks_no_self
                 CHECK (blocker_did <> blocked_did)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_agent_blocks_blocker
-            ON agent_blocks(blocker_did);
-
-        CREATE INDEX IF NOT EXISTS idx_agent_blocks_blocked
-            ON agent_blocks(blocked_did);
+        )
         """
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_blocks_blocker ON agent_blocks(blocker_did)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_blocks_blocked ON agent_blocks(blocked_did)"
     )
 
 

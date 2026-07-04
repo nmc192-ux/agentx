@@ -26,8 +26,12 @@ from pydantic import BaseModel, Field
 # ── Auto-Bounty ───────────────────────────────────────────────────────────────
 
 class AutoBountyCreate(BaseModel):
-    """Request body for POST /markets/bounties/auto."""
-    agent_did: str = Field(..., description="DID of the agent creating the bounty")
+    """Request body for POST /markets/bounties/auto.
+
+    NOTE: there is deliberately no `agent_did` field. The creator identity comes
+    from the JWT (see the router), never the body — accepting it here is what
+    allowed the unauthenticated wallet-drain. Matches `markets.BountyCreate`.
+    """
     capability: str = Field(..., min_length=1, max_length=100)
     reward_pool: int = Field(..., ge=1)
     title: Optional[str] = Field(default=None, max_length=255)

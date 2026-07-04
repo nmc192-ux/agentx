@@ -10,14 +10,27 @@ All DB and HTTP calls are fully mocked.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from src.auth.middleware import get_current_agent
 from src.main import app
 from src.models.markets import BountyResponse
+
+
+# ── Auth override helpers ─────────────────────────────────────────────────────
+# The handler only reads `agent.did`, so a SimpleNamespace stand-in is enough.
+def _auth(did: str = "did:agentx:agent1") -> None:
+    """Install a JWT-auth override so the authenticated caller is `did`."""
+    app.dependency_overrides[get_current_agent] = lambda: SimpleNamespace(did=did)
+
+
+def _clear_auth() -> None:
+    app.dependency_overrides.pop(get_current_agent, None)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -170,119 +183,157 @@ class TestAutoeBountyService:
 
 class TestAutoBountyRouter:
 
-    @pytest.mark.asyncio
-    async def test_post_auto_bounty_returns_201(self, client):
-        expected = _bounty()
-        with patch(
-            "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
-            new=AsyncMock(return_value=expected),
-        ):
-            resp = await client.post(
-                "/markets/bounties/auto",
-                json={
-                    "agent_did": "did:agentx:agent1",
-                    "capability": "forecast",
-                    "reward_pool": 50,
-                },
-            )
-        assert resp.status_code == 201
+    # ── SECURITY: the wallet-drain hole is closed ─────────────────────────────
 
     @pytest.mark.asyncio
-    async def test_response_body_has_bounty_id(self, client):
-        expected = _bounty()
-        with patch(
-            "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
-            new=AsyncMock(return_value=expected),
-        ):
-            resp = await client.post(
-                "/markets/bounties/auto",
-                json={
-                    "agent_did": "did:agentx:agent1",
-                    "capability": "forecast",
-                    "reward_pool": 50,
-                },
-            )
-        data = resp.json()
-        assert "bounty_id" in data
-
-    @pytest.mark.asyncio
-    async def test_missing_capability_returns_422(self, client):
-        resp = await client.post(
-            "/markets/bounties/auto",
-            json={"agent_did": "did:agentx:agent1", "reward_pool": 50},
-        )
-        assert resp.status_code == 422
-
-    @pytest.mark.asyncio
-    async def test_missing_agent_did_returns_422(self, client):
+    async def test_auto_bounty_requires_auth(self, client):
+        """No JWT -> 401/403, never a 201 that would escrow funds."""
         resp = await client.post(
             "/markets/bounties/auto",
             json={"capability": "forecast", "reward_pool": 50},
         )
+        assert resp.status_code in (401, 403)
+
+    @pytest.mark.asyncio
+    async def test_regression_unauth_drain_stays_closed(self, client):
+        """SECURITY REGRESSION GUARD: an unauthenticated caller supplying a
+        victim DID must NOT be able to escrow from that victim's wallet.
+        This is the exact pre-fix attack; it must always fail closed."""
+        resp = await client.post(
+            "/markets/bounties/auto",
+            json={"agent_did": "did:agentx:victim", "capability": "x", "reward_pool": 999},
+        )
+        assert resp.status_code in (401, 403)
+
+    @pytest.mark.asyncio
+    async def test_creator_did_comes_from_token_not_body(self, client):
+        """Even if a (stale) client still sends agent_did for a victim, the
+        service is called with the AUTHENTICATED caller's did — so a caller can
+        only ever escrow from their own wallet."""
+        captured = AsyncMock(return_value=_bounty())
+        _auth("did:agentx:caller-A")
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=captured,
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={
+                        "agent_did": "did:agentx:victim-B",  # must be ignored
+                        "capability": "forecast",
+                        "reward_pool": 50,
+                    },
+                )
+        finally:
+            _clear_auth()
+        assert resp.status_code == 201
+        assert captured.call_args.kwargs["agent_did"] == "did:agentx:caller-A"
+
+    # ── Functional (now authenticated) ────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_authenticated_owner_creates_bounty(self, client):
+        _auth("did:agentx:agent1")
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=AsyncMock(return_value=_bounty()),
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={"capability": "forecast", "reward_pool": 50},
+                )
+        finally:
+            _clear_auth()
+        assert resp.status_code == 201
+
+    @pytest.mark.asyncio
+    async def test_response_body_has_bounty_id(self, client):
+        _auth()
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=AsyncMock(return_value=_bounty()),
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={"capability": "forecast", "reward_pool": 50},
+                )
+        finally:
+            _clear_auth()
+        assert "bounty_id" in resp.json()
+
+    @pytest.mark.asyncio
+    async def test_missing_capability_returns_422(self, client):
+        _auth()
+        try:
+            resp = await client.post(
+                "/markets/bounties/auto",
+                json={"reward_pool": 50},
+            )
+        finally:
+            _clear_auth()
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_reward_pool_zero_returns_422(self, client):
-        resp = await client.post(
-            "/markets/bounties/auto",
-            json={
-                "agent_did": "did:agentx:agent1",
-                "capability": "forecast",
-                "reward_pool": 0,
-            },
-        )
+        _auth()
+        try:
+            resp = await client.post(
+                "/markets/bounties/auto",
+                json={"capability": "forecast", "reward_pool": 0},
+            )
+        finally:
+            _clear_auth()
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_service_value_error_returns_400(self, client):
-        with patch(
-            "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
-            new=AsyncMock(side_effect=ValueError("Insufficient funds")),
-        ):
-            resp = await client.post(
-                "/markets/bounties/auto",
-                json={
-                    "agent_did": "did:agentx:agent1",
-                    "capability": "forecast",
-                    "reward_pool": 50,
-                },
-            )
+        _auth()
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=AsyncMock(side_effect=ValueError("Insufficient funds")),
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={"capability": "forecast", "reward_pool": 50},
+                )
+        finally:
+            _clear_auth()
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
     async def test_optional_title_accepted(self, client):
-        expected = _bounty()
-        with patch(
-            "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
-            new=AsyncMock(return_value=expected),
-        ):
-            resp = await client.post(
-                "/markets/bounties/auto",
-                json={
-                    "agent_did": "did:agentx:agent1",
-                    "capability": "forecast",
-                    "reward_pool": 50,
-                    "title": "Custom Title",
-                },
-            )
+        _auth()
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=AsyncMock(return_value=_bounty()),
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={"capability": "forecast", "reward_pool": 50, "title": "Custom Title"},
+                )
+        finally:
+            _clear_auth()
         assert resp.status_code == 201
 
     @pytest.mark.asyncio
     async def test_optional_description_accepted(self, client):
-        expected = _bounty()
-        with patch(
-            "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
-            new=AsyncMock(return_value=expected),
-        ):
-            resp = await client.post(
-                "/markets/bounties/auto",
-                json={
-                    "agent_did": "did:agentx:agent1",
-                    "capability": "forecast",
-                    "reward_pool": 50,
-                    "description": "Custom description",
-                },
-            )
+        _auth()
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=AsyncMock(return_value=_bounty()),
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={"capability": "forecast", "reward_pool": 50, "description": "Custom description"},
+                )
+        finally:
+            _clear_auth()
         assert resp.status_code == 201
 
 
