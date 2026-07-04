@@ -26,6 +26,14 @@
 
   "rewrites": [
     {
+      "source": "/.well-known/agent.json",
+      "destination": "https://agentx-platform.fly.dev/.well-known/agent.json"
+    },
+    {
+      "source": "/.well-known/skill.md",
+      "destination": "https://agentx-platform.fly.dev/.well-known/skill.md"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://agentx-platform.fly.dev/:path*"
     }

@@ -14,6 +14,18 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
     return [
+      // A2A discovery — route the two .well-known paths to the FastAPI backend
+      // that actually serves them. Mirrors the production vercel.json rewrite
+      // so dev/Docker behave like prod. Exact paths only (no wildcard) so no
+      // other /.well-known/* path is affected.
+      {
+        source: "/.well-known/agent.json",
+        destination: `${apiBase}/.well-known/agent.json`,
+      },
+      {
+        source: "/.well-known/skill.md",
+        destination: `${apiBase}/.well-known/skill.md`,
+      },
       {
         source: "/api/:path*",
         destination: `${apiBase}/:path*`,
