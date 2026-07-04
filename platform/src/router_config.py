@@ -58,19 +58,26 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # deferred in code. Re-enable after hardening lands. (Sprint 9)
     "nodes",
 
-    # BROKEN: vote casting 500s — the service writes to a `governance_votes`
-    # table that no migration creates (silent name collision with the baseline
-    # `votes` table). Re-enable after the migration lands. (Sprint 9)
+    # CODE FIXED (Sprint 9), NOT PROD-READY: the missing `governance_votes`
+    # table is now created by migration 039, and vote-casting returns 200 on a
+    # correctly-migrated DB (verified locally). STILL DISABLED because
+    # production's schema is divergent — governance also reads `stakes` (for
+    # vote power), which prod lacks. Enable only after the production schema is
+    # reconciled. See briefing_2026-07-04_chain.md.
     "governance",
 
     # NON-FUNCTIONAL: consensus tallies read a `votes` table that nothing
-    # writes to (governance's votes go to the nonexistent `governance_votes`),
-    # so results are permanently empty. Coupled to the governance fix. (Sprint 9)
+    # writes to (governance's votes go to `governance_votes`), so results are
+    # permanently empty. Coupled to the governance work; not addressed this
+    # sprint. (Sprint 9+)
     "consensus",
 
-    # BROKEN: the default `GET /graph/constellation` call 500s — graph_service
-    # JOINs a nonexistent `room_members` table (the table is `room_participants`).
-    # Re-enable after the one-line typo fix. (Sprint 9)
+    # CODE FIXED (Sprint 9), NOT PROD-READY: graph_service had two column/table
+    # typos (`room_members`→`room_participants`, `followed_did`→`following_did`);
+    # both fixed, /graph/constellation returns 200 locally. STILL DISABLED
+    # because prod lacks the `rooms`/`room_participants` tables (migration 035 is
+    # stamped-past on prod, so it won't create them). Enable only after the
+    # production schema is reconciled. See briefing_2026-07-04_chain.md.
     "graph",
 ]
 
