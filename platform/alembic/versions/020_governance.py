@@ -76,6 +76,10 @@ def upgrade() -> None:
                 SELECT 1 FROM pg_indexes
                 WHERE tablename = 'votes'
                   AND indexname = 'ix_votes_proposal_id'
+            ) AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'votes'
+                  AND column_name = 'proposal_id'
             ) THEN
                 CREATE INDEX ix_votes_proposal_id ON votes(proposal_id);
             END IF;
@@ -88,6 +92,10 @@ def upgrade() -> None:
                 SELECT 1 FROM pg_indexes
                 WHERE tablename = 'votes'
                   AND indexname = 'ix_votes_voter_id'
+            ) AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'votes'
+                  AND column_name = 'voter_id'
             ) THEN
                 CREATE INDEX ix_votes_voter_id ON votes(voter_id);
             END IF;

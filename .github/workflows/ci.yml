@@ -63,6 +63,69 @@ jobs:
             -m "not integration and not e2e"
 
   # ───────────────────────────────────────────────────────────────────────────
+  # Migration chain check (added Sep 2026 after the prod schema reconciliation)
+  # Builds a real Postgres from the init-db.sql baseline — the same starting
+  # point as production — and runs the full Alembic chain up, partly down, and
+  # up again. The unit tests above mock the database, which is how the chain
+  # silently broke in April; this job makes that impossible to miss again.
+  # Because Deploy waits for CI, a broken migration now blocks the deploy.
+  # ───────────────────────────────────────────────────────────────────────────
+  migration-chain:
+    name: Migration chain (real Postgres)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16   # migration 035 enables the vector extension
+        env:
+          POSTGRES_USER: agentx
+          POSTGRES_PASSWORD: agentx
+          POSTGRES_DB: agentx
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentx"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_USER: agentx
+      POSTGRES_PASSWORD: agentx
+      POSTGRES_DB: agentx
+      POSTGRES_SSL_MODE: disable
+      JWT_SECRET: ci-migration-check-secret-not-for-production-000000
+      REDIS_HOST: localhost
+      REDIS_PASSWORD: ci-not-used
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install platform dependencies
+        working-directory: platform
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Load init-db.sql baseline (same starting point as production)
+        working-directory: platform
+        env:
+          PGPASSWORD: agentx
+        run: psql -h localhost -U agentx -d agentx -v ON_ERROR_STOP=1 -q -f scripts/init-db.sql
+
+      - name: Run full chain, roll back to 037, run forward again
+        working-directory: platform
+        run: |
+          alembic stamp 001
+          alembic upgrade head
+          alembic downgrade 037
+          alembic upgrade head
+          alembic current
+
+  # ───────────────────────────────────────────────────────────────────────────
   # Job 2 — SDK Tests
   # Standalone SDK lives in sdk/ with its own pyproject.toml.
   # Tests use respx mocks — no network calls.

@@ -13,6 +13,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Reconciliation (Sep 2026): backfills are guarded so this is a no-op on the
+    # DID-based init-db.sql baseline, which never had the *_agent_id columns.
     op.execute("""
         ALTER TABLE messages
             ADD COLUMN IF NOT EXISTS sender_agent_did TEXT
@@ -22,18 +24,22 @@ def upgrade() -> None:
             ADD COLUMN IF NOT EXISTS receiver_agent_did TEXT
     """)
     op.execute("""
-        UPDATE messages m
-        SET sender_agent_did = a.agent_did
-        FROM agents a
-        WHERE m.sender_agent_id = a.agent_id
-          AND m.sender_agent_did IS NULL
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema = 'public' AND table_name = 'messages'
+                         AND column_name = 'sender_agent_id') THEN
+                UPDATE messages m SET sender_agent_did = a.agent_did FROM agents a WHERE m.sender_agent_id = a.agent_id AND m.sender_agent_did IS NULL;
+            END IF;
+        END $$
     """)
     op.execute("""
-        UPDATE messages m
-        SET receiver_agent_did = a.agent_did
-        FROM agents a
-        WHERE m.receiver_agent_id = a.agent_id
-          AND m.receiver_agent_did IS NULL
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_schema = 'public' AND table_name = 'messages'
+                         AND column_name = 'receiver_agent_id') THEN
+                UPDATE messages m SET receiver_agent_did = a.agent_did FROM agents a WHERE m.receiver_agent_id = a.agent_id AND m.receiver_agent_did IS NULL;
+            END IF;
+        END $$
     """)
     op.execute("""
         CREATE INDEX IF NOT EXISTS idx_messages_did
