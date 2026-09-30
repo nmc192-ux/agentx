@@ -1,0 +1,119 @@
+# Engine PLAN — Phase A, Sprint 9 (Stabilize), remainder
+
+**Branch:** `engine/phase-a` · **Spec:** `platform/docs/sprints/sprint_9_stabilize.md`
+**Decomposed:** 2026-10-01, cycle 1 (Opus, T2)
+
+## Where Sprint 9 really stands (checked in code, not just docs)
+
+Already on `main` (merged by DrJ):
+- Sprint 9a router gating (`platform/src/router_config.py`, 20 routers disabled by default).
+- Sprint 9 chain: graph typo fixes, migrations 039/040, `/health` commit, wallet-drain fix in
+  `agent_economy` (SECURITY-REVIEW `73c6fe5`), `.well-known` Vercel rewrite (`2cfa87a`),
+  memory investigation (verdict: stale gating, clean re-enable candidate).
+- Prod schema reconciliation code + CI `migration-chain` job (PR #10, `84e64e1`, merged 2026-09-22).
+
+Not yet done (this plan): the wallet-ownership gap in `routers/tokens.py`, `nodes`/`consensus`
+dispositions, **router enablement (zero routers enabled so far)**, Trust Score schedule
+(celery is not in `platform/requirements.txt`), founder dedupe + Bruno, PyPI naming,
+SDK tests, LICENSE, README.
+
+Unknown to the engine (no prod access): whether DrJ ran the 2026-09-21 reconciliation
+runbook in production. Router enablement in the **repo** does not change production while
+the Fly `DISABLED_ROUTERS` env var is set (it overrides the repo list), so repo-side work
+can proceed; flipping production is a human action.
+
+Baseline (cycle 1): platform suite **2033 passed, 14 skipped** locally.
+
+## Steps
+
+Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_loop_v1.md`.
+
+- [ ] **S9-1 — Close the wallet holes in `routers/tokens.py` (routers `wallets`, `stakes`).**
+  Two gaps (found cycle 1): (a) `transfer_tokens` (`tokens.py:96`) and `stake_tokens`
+  (`tokens.py:152`) authenticate but ignore the caller and trust `body.from_id` /
+  `body.agent_id`, so any logged-in agent can move/stake anyone's tokens; (b) `POST /wallets`
+  (`tokens.py:48`) and `POST /wallets/by-did` (`tokens.py:68`) have **no auth** and accept an
+  `initial_balance`, so anyone can mint tokens. Fix: identity from JWT; initial balance only
+  via an admin/system path (or forced to 0 for self-created wallets). Prerequisite for the
+  money cohort. Tier **T1** (money/auth). Commit prefix `SECURITY-REVIEW:`.
+  Check: new tests prove unauthenticated → 401, cross-identity (body names another agent) → 403,
+  self-service wallet creation cannot mint, owner transfer/stake succeeds; full suite green.
+
+- [ ] **S9-2 — `nodes` disposition.**
+  Goal: harden peer register / event injection (mandatory auth) if small; else keep disabled
+  with a precise reason + follow-up note in `router_config.py`.
+  Tier **T1** if hardening (auth), **T2** if keep-disabled decision only.
+  Check: config/comment updated; if hardened, tests prove unauthenticated calls fail closed.
+
+- [ ] **S9-3 — `consensus` disposition.**
+  Goal: either point tallies at `governance_votes` (small, if clean) or keep disabled with a
+  documented reason. Never enable an empty router.
+  Tier **T2**. Check: config comment updated; if wired, test shows non-empty tally locally.
+
+- [ ] **S9-4 — Local "all-routers" smoke harness.**
+  Goal: a repeatable script (`platform/scripts/smoke_routers.py` or a pytest integration test)
+  that migrates a scratch local DB to head, boots the app with a given disabled-list, and GETs
+  every listed route, failing on any 5xx. Used as the acceptance check for S9-5..S9-8.
+  Tier **T2**. Check: harness runs green on current default config.
+
+- [ ] **S9-5 — Enable cohort 1 (social) in repo config:** `memory`, `graph`, `rooms`,
+  `communities`, `conversations`, `channels`, `pulse`.
+  Tier **T2**. Check: smoke harness green with these enabled; suite green; comments updated.
+
+- [ ] **S9-6 — Enable cohort 2 (work):** `tasks`, `contracts`, `collectives`, `agentbus`,
+  `verifications`, `markets`.
+  Tier **T2**. Check: smoke harness green; quick auth review of write endpoints (no body-identity).
+
+- [ ] **S9-7 — Enable cohort 3 (money):** `wallets`, `stakes`, `economy`, `agent_economy`.
+  Depends on S9-1. Tier **T1**. Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: smoke harness green; ownership tests from S9-1 still green; a scan of every
+  token-moving endpoint for body-supplied identity finds none.
+
+- [ ] **S9-8 — Enable cohort 4 (governance):** `governance` (+ `consensus` if S9-3 wired it).
+  Tier **T2**. Check: propose → vote → tally works locally; smoke green.
+
+- [ ] **S9-9 — Trust Score on a schedule.**
+  Goal: verify recalculation inputs are real (not always-null columns), add celery +
+  celery-beat (15-minute recalc), wire the compose `worker`/`beat`. Tier **T2**.
+  Note (cycle 1): two competing recalcs exist — `services/trust_score.py:188`
+  (`agent_trust_breakdown` weighted sum) and `services/reputation.py:86` (replays
+  `trust_events`). Event consumers only record `trust_events`, never recalc. Pick one as the
+  scheduled job (likely `reputation.py`, since it consumes real activity events) and document why.
+  Celery, xgboost, numpy are all missing from `platform/requirements.txt`; the compose `worker`
+  is a stub that prints every 5 s.
+  Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
+  beat schedule registered; suite green.
+
+- [ ] **S9-10 — Founder dedupe + Bruno (local only).**
+  Goal: idempotent script that keeps one canonical row for each of the 8 founders
+  (ATLAS, BRUNO, DARIA, GIA, MARCUS, NOVA, QUINN, THEA), repoints FKs, removes duplicates,
+  creates Bruno if missing. Must coexist with migration 038's suffixed display names.
+  Root cause (cycle 1): three seed sources disagree on DIDs — `platform/scripts/seed_agents.py`
+  uses `atlas-001 … gia-008`; `runners/register_all.py` and `runners/start_all.sh` use
+  `<name>-001`. Pick one canonical DID set and make every seed use it, so re-runs can't duplicate.
+  Tier **T1** (data-affecting). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: on a local DB loaded with duplicates, exactly 8 founders, no orphans; dry-run mode default.
+  Production run → `[human]` (HUMAN_ACTIONS).
+
+- [ ] **S9-11 — PyPI naming prep.**
+  Goal: confirm which SDK source is canonical (in-repo `sdk/` is already `agentx-py` 0.2.2;
+  a standalone `agentx-sdk` repo also exists; `platform/agentx_sdk` is deprecated). Prepare an
+  `agentx-client` shim package that depends on `agentx-py` and warns. Tier **T2**.
+  Check: `python -m build` succeeds for both locally; shim import emits DeprecationWarning.
+  Publishing → `[human]`.
+
+- [ ] **S9-12 — SDK tests.** Run `sdk/tests`, fix failures. Tier **T2**.
+  Check: SDK suite green locally.
+
+- [ ] **S9-13 — LICENSE + README.** Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
+  the platform repo). README pointing to the magna carta can proceed. Tier **T3**.
+  Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
+  Check: README renders; LICENSE present once D1 answered.
+
+- [ ] **S9-14 — Sprint close.** Run the sprint acceptance criteria locally, write
+  `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
+
+- [human] **S9-H1 — Production reconciliation + router flip.** See HUMAN_ACTIONS H1–H3.
+
+After Sprint 9 closes: draft `sprint_10_heartbeat.md` from Plan v2 §4 (open questions on LLM
+provider and daily cost ceiling become DECISION_NEEDED unless a reversible default exists).
