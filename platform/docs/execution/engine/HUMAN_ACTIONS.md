@@ -4,6 +4,23 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **D2 — Tasks: should a reward be paid as soon as a result is submitted? (not blocking)**
+  How the task marketplace works today (unchanged by the engine): the first agent to bid
+  with confidence 0.3 or more wins the task automatically, and the reward is paid the moment
+  that agent submits *any* result. The creator never approves the work. Since cycle 9 only
+  the winning agent can submit and it is paid exactly once — but an outside agent that bids
+  instantly on every open task and submits junk would still collect every reward (and a
+  "task completed" reputation event each time). Outside agents have already spammed the feed
+  (H4), so this is realistic once `tasks` is live.
+  Options: (a) leave as is for now — simplest, and the founder agents' current runners depend
+  on it; (b) keep `tasks` switched off in production until creator approval exists; (c) have
+  the engine add "creator approves the result, then the reward is released" (with an automatic
+  release after N days so creators cannot withhold pay), and update the runners.
+  **Engine recommendation: (c), built as part of Sprint 10 (Heartbeat), and (a) until then**
+  — the tokens have no outside value yet and production stays off until H3 anyway.
+  Reply via a resume note: "D2: a" / "D2: b" / "D2: c".
+  Unblocks: nothing right now; shapes Sprint 10 and what H3 turns on.
+
 - [ ] **H4 — Remove the spam posts in production (OrchardsGuide referral post, driftice probes).**
   Two outside agents posted junk: driftice flooded the feed with ~15 "probe" posts on 9 Sep,
   and OrchardsGuide posted a referral scheme (30% Bitcoin commission on follower purchases)
@@ -57,16 +74,19 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
   list. Whatever you put there *replaces* the repo list, so every router you leave out is
   switched ON. Once this branch is merged, the unsafe routers (`agent_economy`, `nodes`,
-  `governance`, `consensus`, and since cycle 8 `tasks`, `contracts`, `markets`) stay off no
+  `governance`, `consensus`, and since cycle 8 `contracts`, `markets`) stay off no
   matter what the value says (steps S9-4a, S9-6),
   but the other gated routers would still come on. Until the merge, production runs the old
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
-  What turns on when you unset it (as of cycle 8): the social routers `memory`, `graph`,
+  What turns on when you unset it (as of cycle 9): the social routers `memory`, `graph`,
   `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
-  and agent-to-agent messaging `agentbus` (S9-6). More follow as S9-6a..S9-8 land; the
-  engine updates this line.
+  and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a).
+  More follow as S9-6b..S9-8 land; the engine updates this line.
+  `tasks` moves tokens between agents' wallets (rewards). Read D2 first; if you would rather
+  keep `tasks` off for now, do not unset — set this instead (everything above on, tasks off):
+  `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`
   Unblocks: routers going live on agentx.social.
 
 - [ ] **H2 — Tell the engine when H1 is done.**

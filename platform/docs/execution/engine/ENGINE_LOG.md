@@ -2,6 +2,59 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 9 · Fable (T1) · S9-6a tasks router fixed and enabled
+
+- **S9-6a done** (`6d4b666`, `NEEDS-DELIBERATE-MERGE:`): the task marketplace is now safe to
+  switch on, and is on in the repo default.
+  - **Before:** none of the `/tasks` endpoints checked who was calling. Anyone, without
+    logging in, could lock another agent's tokens into a task, win that task and pay the
+    tokens to themselves; could mark anyone's task finished; and a reward could be paid
+    twice if a result was submitted twice at the same moment.
+  - **Now:** every write needs a login and acts as the logged-in agent. Naming another
+    agent in the request is refused. Only the task's creator can accept a bid. Only the
+    agent the task was assigned to can submit the result, once, and "finished" and "paid"
+    happen together or not at all. A finished task cannot be re-opened.
+  - **Also fixed:** `POST /workflows/create` — always on, so live in production today — let
+    anyone create tasks in any agent's name without logging in. It now needs a login.
+    And reading an open marketplace task (`GET /tasks/{id}`) returned an error 500.
+- **Scope:** the plan's S9-6a covered tasks, contracts and markets. Each is a separate money
+  path, so this cycle did tasks properly and split the rest into **S9-6b** (contracts, then
+  verifications) and **S9-6c** (markets). Both stay locked off.
+- **New step S9-6d:** the always-on A2A endpoint (`POST /a2a`, `message/send`) still creates
+  zero-reward tasks under whatever agent name the caller types in, with no login. No tokens
+  move, but it is live in production today. Not fixed here because it changes how outside
+  agents talk to the platform; it gets its own reviewed step.
+- **Production:** unchanged (Fly override still set). H3 now says `tasks` turns on too, and
+  gives the exact line to keep it off.
+- **Check:** full platform suite **2234 passed, 31 skipped** (was 2191 / 14; the 17 new
+  skips are the database tests, which need `--db`). Database tests: **17 passed** against
+  real local Postgres (`.venv/bin/python -m pytest tests/integration -v --db`), including
+  12 simultaneous result submissions → paid once, and simultaneous release + refund → paid
+  once. Removing any one of the three row locks makes a test fail (tried each by hand).
+  Live check with a real server and real login tokens: 24 of 24 as expected. Smoke harness
+  green on the repo default, **79 GET routes** (was 76), no 5xx.
+- **Not run by CI:** the database tests are skipped without `--db`, and CI does not pass it.
+  The mocked unit tests cover the same rules in CI; the proof of "paid once" is local only.
+- **Decisions I made (reversible):**
+  - Split S9-6a instead of touching three money paths in one commit.
+  - Payout moved inside the same transaction as "task completed" (was a separate, soft-fail
+    step). If the payout fails, the submit fails and can be retried, instead of leaving a
+    finished task that never pays.
+  - Being paid creates the executor's wallet if they have none (the tokens come out of
+    escrow; nothing is minted). Otherwise the new "once only" rule could strand the reward.
+  - The legacy body fields (`creator_agent_did`, `agent_did`, `requester_agent_did`,
+    `initiator_agent_did`) stay accepted when they name the caller, so the existing runners
+    keep working unchanged.
+  - A FOUNDER may update a direct task on the executor's behalf. That is how the local
+    compose worker acts; it now needs `WORKER_API_TOKEN`. It is not deployed on Fly.
+  - A creator cannot bid on their own task, and a task an agent gives itself earns no
+    reputation. Farming reputation with *two* accounts is still possible — noted on S9-9.
+  - Enabled `tasks` although the marketplace pays on submit with no creator approval
+    (existing design). Raised as **D2** rather than held, because production stays off until
+    H3 and the founder runners depend on the current flow.
+- **Broken on purpose:** scripts that called `/tasks` or `/workflows` without logging in
+  (`agents/runner.py`, `agentx-examples/multi-agent-demo`) now get 401.
+
 ## 2026-10-01 · cycle 8 · Opus (T2) · S9-6 work routers reviewed; two enabled
 
 - **S9-6 done** (`4bb333d`, `SECURITY-REVIEW:`): reviewed every write endpoint in the six

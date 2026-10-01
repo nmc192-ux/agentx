@@ -102,33 +102,76 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   contracts). Smoke: 76 GET routes, no 5xx.
   Tier **T2**. Check: smoke harness green; quick auth review of write endpoints (no body-identity).
 
-- [ ] **S9-6a — Fix and enable `tasks`, `contracts`, `markets` (then `verifications`).**
-  Found cycle 8 (review of every write endpoint; details next to each entry in
-  `router_config.BROKEN_OR_INSECURE_ROUTERS`):
-  (a) `routers/tasks.py`: no endpoint authenticates. `POST /tasks` escrows `reward` from the
-  body's `creator_agent_did`; `/bid` and `/result` take `agent_did` from the body; `/accept`
-  and `/{id}/update` have no owner check; `/create` and `/route` take `requester_agent_did`
-  from the body. → JWT identity everywhere; accept = creator only; result = assigned executor
-  only; update = executor (status) only; status transitions guarded. Check the SDK/runners
-  (`sdk/agentx_sdk/client.py`, `runtime.py`, `runners/sdk_agent_runner.py`, `task_seeder.py`)
-  still work (they send DIDs in the body; the server should ignore or require them to match).
-  (b) `contract_service.open_dispute`: creator or contractor only, status `assigned` /
-  `submitted` only. Creator may not bid on own contract. Escrow release: add a creator-only
-  `POST /contracts/{id}/complete` (status-guarded UPDATE … WHERE status='submitted', so it can
-  only pay once) or document why not; without it budgets are locked for good.
-  (c) `bounty_service.distribute_rewards`: `SELECT … FOR UPDATE` + status-guarded close before
-  crediting; migration adding UNIQUE(`bounty_rewards.bounty_id`); creator may not submit to
-  own bounty.
-  (d) Then move `verifications` out of Tier B (contractor may still vote on own result —
+- [x] **S9-6a — Fix and enable `tasks`.** (Was "tasks, contracts, markets"; split in cycle 9
+  because each is its own money path — contracts → S9-6b, markets → S9-6c.)
+  Done cycle 9, `6d4b666` (NEEDS-DELIBERATE-MERGE). Every `/tasks` POST needs a login and acts
+  as the logged-in agent (a body DID naming anyone else → 403); accept = creator only; result =
+  assigned executor only, once, with "completed" and the payout in one locked transaction;
+  update = executor (or FOUNDER) only, forward-only. `POST /workflows/create` (always on) had
+  the same body-identity hole and is fixed too. `tasks` is on in the repo default.
+  Proof: `tests/integration/test_task_escrow_db.py` (17 tests, real local Postgres, run with
+  `--db`), incl. 12 concurrent submits → paid once. Smoke: 79 GET routes, no 5xx.
+  Left as is, on purpose (see D2 and the notes on S9-6d, S9-7, S9-9, S9-12): auto-accept +
+  pay-on-submit; unfunded rewards (soft-fail escrow); no cancel/refund for an untaken task.
+
+- [ ] **S9-6b — Fix and enable `contracts`, then `verifications`.**
+  From the cycle 8 review, plus what cycle 9 saw while reading the code:
+  (1) `contract_service.open_dispute`: creator or contractor only, status `assigned` /
+  `submitted` only (today: any agent, any status, and it freezes the escrow for good).
+  (2) Creator may not bid on own contract.
+  (3) Escrow release: `contract_service.complete_contract` already exists but has **no route**
+  and is not safe yet: it reads the contract without `FOR UPDATE` and its UPDATE has no status
+  guard, so two concurrent completes both pay the (stale) escrow amount; and the release is
+  soft-fail inside the transaction, so a contractor without a wallet leaves the contract
+  `completed` and unpaid for ever. Fix like tasks (S9-6a): lock the row, status-guarded,
+  payout in the same transaction, create the payee wallet if missing; then add creator-only
+  `POST /contracts/{id}/complete`.
+  (4) `assign_contract` / `submit_result`: lock the row (two concurrent assigns).
+  (5) Check `verification_service._distribute_rewards` (it moves tokens by vote power) and
+  `subcontract_service` for the same read-then-pay pattern before enabling `verifications`.
+  (6) Stuck escrow that stays out of scope unless small: open contract nobody bids on,
+  contractor never delivers, disputed contract (nothing resolves a dispute) — record as a
+  design question (arbitration / refund), do not invent a policy.
+  (7) Then move `verifications` out of Tier B (contractor may still vote on own result —
   note it, design question for Phase B).
-  Tier **T1** (money/auth; migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: tests prove anonymous → 401, other agent → 403, double distribute/complete pays once
-  (concurrent test against local Postgres), dispute by outsider → 403; smoke green; suite green.
+  Tier **T1** (money/auth). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: real-Postgres tests like S9-6a's (extend `tests/integration/`): outsider dispute →
+  403, double / concurrent complete pays once, tokens conserved; smoke green; suite green.
+
+- [ ] **S9-6c — Fix and enable `markets` (bounties).**
+  `bounty_service.distribute_rewards`: `SELECT … FOR UPDATE` + status-guarded close before
+  crediting; migration adding UNIQUE(`bounty_rewards.bounty_id`); creator may not submit to
+  own bounty. Review every other write in `routers/markets.py` for body identity.
+  Tier **T1** (money; migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: concurrent distribute pays once (real Postgres); migration upgrade/downgrade clean
+  locally; anonymous → 401, other agent → 403; smoke green; suite green.
+
+- [ ] **S9-6d — Always-on routes that take identity from the request body.**
+  Found cycle 9. These are NOT behind the router gate, so they are live in production today:
+  `POST /a2a` method `message/send` (`a2a/handler.py`) creates a marketplace task whose
+  creator is `metadata.caller_did`, with no login (reward is always 0, so no tokens move, but
+  anyone can list tasks in any agent's name). `POST /workflows/create` had the same hole and
+  was fixed in S9-6a. Goal: (1) A2A: attribute a task to a DID only when the request carries
+  that agent's JWT; otherwise use the anonymous external DID (which is not seeded, so decide
+  and document whether anonymous A2A tasks are accepted at all — if the founding documents do
+  not say, default to refusing and record it); (2) scan every router mounted with plain
+  `app.include_router` in `main.py` (not `_include_if_enabled`) for write endpoints with no
+  `get_current_agent`, or with a `*_did` / `*_id` identity field in the body, and list or fix.
+  Tier **T1** (auth). Commit prefix `SECURITY-REVIEW:`.
+  Check: tests prove unauthenticated / mismatched identity fails closed; suite green.
 
 - [ ] **S9-7 — Enable cohort 3 (money):** `wallets`, `stakes`, `economy`, `agent_economy`.
   Depends on S9-1. Tier **T1**. Commit prefix `NEEDS-DELIBERATE-MERGE:`.
   Check: smoke harness green; ownership tests from S9-1 still green; a scan of every
   token-moving endpoint for body-supplied identity finds none.
+  Notes from cycle 9 (tasks): (a) `task_service.create_task` escrows the reward *soft-fail*
+  in a second transaction, so a task can advertise a reward its creator could not fund —
+  make it one transaction and refuse the task (or show the escrowed amount) as part of this
+  step; (b) there is no cancel/refund route for an open task nobody takes, so its escrow is
+  stuck (`task_service.fail_task` is dead code and writes a status the CHECK constraint
+  rejects); (c) `runners/register_all.py`, `sdk_agent_runner._ensure_wallet` and
+  `task_seeder._ensure_seeder_wallet` fund their own wallets, which is FOUNDER-only since
+  S9-1 — the Sprint 10 heartbeat needs a founder-funded seeding path.
 
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
@@ -178,6 +221,16 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   scheduled job (likely `reputation.py`, since it consumes real activity events) and document why.
   Celery, xgboost, numpy are all missing from `platform/requirements.txt`; the compose `worker`
   is a stub that prints every 5 s.
+  Correction (cycle 9): the image copies the repo-root `workers/worker.py`, which is a real
+  worker — it pops task ids from Redis, completes them through `POST /tasks/{id}/update` and
+  runs `reputation.recalculate_agent_trust` every 60 s. Since S9-6a that update call needs
+  `WORKER_API_TOKEN` (a FOUNDER token). It is not deployed on Fly.
+  Before scheduling the recalculation (cycle 9): task-completion trust events are easy to
+  farm. Two accounts can hand each other direct tasks (+0.07 per completed task) or
+  0-reward marketplace tasks (+0.05), with no check that any work was done. S9-6a only
+  stopped the single-account versions (self-assigned task, creator bidding on own task,
+  re-opening a finished task). Decide what a completion must satisfy to count (e.g. a
+  funded reward, a distinct requester with history, a per-pair cap) before the scores go live.
   Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
   beat schedule registered; suite green.
 
@@ -201,6 +254,12 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [ ] **S9-12 — SDK tests.** Run `sdk/tests`, fix failures. Tier **T2**.
   Check: SDK suite green locally.
+  Note (cycle 9): the SDK's task helpers do not match the API — `client.act()` sends
+  `action_type` / `data` (API: `task_type` / `payload`), `accept_task` PATCHes `/tasks/{id}`
+  (API: `POST /tasks/{id}/update`), the async client posts to `/tasks/{id}/bids` (API:
+  `/bid`) and sends `{"result": …}` (API: `result_payload`). Identity is now taken from the
+  token, so the SDK no longer needs to send any DID. Root `tests/integration/test_e2e_flow.py`
+  steps 7–8 are stale in the same way (and name another agent as requester → now 403).
 
 - [ ] **S9-13 — LICENSE + README.** Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
   the platform repo). README pointing to the magna carta can proceed. Tier **T3**.
