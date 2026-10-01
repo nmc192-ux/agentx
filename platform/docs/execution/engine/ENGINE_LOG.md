@@ -2,6 +2,36 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 5 · Fable (T1) · S9-4a kill-switch safety
+
+- **S9-4a done** (`8101e92`, `SECURITY-REVIEW:`): the Fly `DISABLED_ROUTERS` value can still
+  switch any router off in seconds, but it can no longer switch a Tier A (broken or insecure)
+  router **on** by leaving it out. The routers really disabled are now "whatever the list says"
+  plus `agent_economy`, `nodes`, `governance`, `consensus`, `graph`, always. The only way to
+  enable one of those is to fix it and move it out of Tier A in `router_config.py`.
+- **Why an opt-out exists:** the test suite and the smoke harness test Tier A routers on
+  purpose, so they set `ALLOW_UNSAFE_ROUTERS=1`. It works in development only. In staging and
+  production it is ignored and the startup log says so; a mistyped value keeps the lock and
+  does not stop the app from booting.
+- **Startup log** now names any router the lock forced off, and warns if the lock is lifted.
+- **Not changed:** routers outside Tier A (tasks, wallets, memory, …) are still switched on by
+  a short env value, exactly as before. That is the existing "env replaces repo list" design
+  and S9-5..S9-8 turn those on anyway. H3's warning is reworded to match.
+- **Check:** `tests/test_router_config.py` 55 passed, including one that boots the real app
+  with `DISABLED_ROUTERS=posts` and finds no Tier A route mounted (and confirmed by hand that
+  the same boot with the opt-out mounts them, so the test can fail). Full platform suite
+  **2147 passed, 14 skipped** (was 2097). Smoke harness green on the default list (49 routes)
+  and with every router on (96 routes).
+- **Decisions I made (reversible):**
+  - Opt-out is an env flag limited to development rather than no opt-out at all: without it
+    the existing API tests of Tier A routers, and the all-routers smoke run, could not reach
+    those routers.
+  - Outside development the flag is ignored rather than refusing to start: a stray flag should
+    not take production down, and ignoring it is the safe direction.
+  - Kept "env replaces the list" for Tier B/C instead of making the env purely additive
+    ("can only switch off"). Additive is arguably the cleaner kill-switch, but it changes the
+    Sprint 9a design DrJ approved; worth a look once S9-5..S9-8 have emptied Tier B.
+
 ## 2026-10-01 · cycle 4 · Opus (T2) · S9-4 router smoke harness
 
 - **S9-4 done** (`392c601`): `platform/scripts/smoke_routers.py` rebuilds a throwaway local DB

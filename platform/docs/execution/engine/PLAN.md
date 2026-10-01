@@ -70,7 +70,13 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   every listed route, failing on any 5xx. Used as the acceptance check for S9-5..S9-8.
   Tier **T2**. Check: harness runs green on current default config.
 
-- [ ] **S9-4a — Kill-switch safety: the env override must not switch unsafe routers ON.**
+- [x] **S9-4a — Kill-switch safety: the env override must not switch unsafe routers ON.**
+  Done cycle 5, `8101e92` (SECURITY-REVIEW). Effective disabled set = configured list ∪ Tier A
+  (`BROKEN_OR_INSECURE_ROUTERS`), in `config.Settings.disabled_router_set`. Tests and the smoke
+  harness opt out with `ALLOW_UNSAFE_ROUTERS=1`, honoured in development only.
+  **Consequence for S9-5 / S9-7 / S9-8:** `graph`, `agent_economy` and `governance` are Tier A,
+  so enabling them means moving them out of `BROKEN_OR_INSECURE_ROUTERS` (not just out of the
+  default list). Tier B/C routers are still switched on by a short env value, as before.
   Found cycle 3: `DISABLED_ROUTERS` (Fly env) *replaces* the repo list, so a short emergency
   value such as the one in `config.py`'s own example (`contracts,rooms,governance`) would turn
   ON every other gated router, including `agent_economy`, `nodes` and `consensus`.

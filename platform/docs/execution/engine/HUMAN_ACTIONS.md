@@ -54,9 +54,12 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   fly secrets unset DISABLED_ROUTERS -a agentx-platform
   ```
   Then open `https://agentx-platform.fly.dev/health` — it should say `"status": "ok"`.
-  **Warning (found cycle 3):** never set `DISABLED_ROUTERS` to a short list. Whatever you put
-  there *replaces* the repo list, so every router you leave out is switched ON, including the
-  unsafe ones. Either unset it, or use the full line below. (Step S9-4a will make this safe.)
+  **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
+  list. Whatever you put there *replaces* the repo list, so every router you leave out is
+  switched ON. Once this branch is merged, the five unsafe routers (`agent_economy`, `nodes`,
+  `governance`, `consensus`, `graph`) stay off no matter what the value says (step S9-4a),
+  but the other gated routers would still come on. Until the merge, production runs the old
+  code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
   Unblocks: routers going live on agentx.social.
