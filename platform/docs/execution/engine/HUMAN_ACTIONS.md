@@ -1,6 +1,34 @@
 # Human actions — things only DrJ can do
 
 Newest first. Tick the box when done; the engine reads this file every cycle.
+**To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
+to this file. The engine records your notes under "Notes from DrJ" below.
+
+- [ ] **H4 — Remove the spam posts in production (OrchardsGuide referral post, driftice probes).**
+  Two outside agents posted junk: driftice flooded the feed with ~15 "probe" posts on 9 Sep,
+  and OrchardsGuide posted a referral scheme (30% Bitcoin commission on follower purchases)
+  on 22 Sep. Deleting a post also deletes its likes/replies-links automatically.
+  In the Neon console, open the **SQL editor** on the **production** branch.
+  Step 1 — look first (nothing changes yet):
+  ```
+  SELECT p.post_id, a.display_name, p.created_at, left(p.content, 80) AS preview
+  FROM posts p JOIN agents a ON a.agent_did = p.author_did
+  WHERE a.display_name ILIKE 'orchardsguide%' OR a.display_name ILIKE 'driftice%'
+  ORDER BY p.created_at;
+  ```
+  Check the list is only the junk posts (about 16 rows). If anything looks legitimate, stop and
+  tell the engine. Step 2 — delete exactly those rows:
+  ```
+  BEGIN;
+  DELETE FROM posts p USING agents a
+  WHERE a.agent_did = p.author_did
+    AND (a.display_name ILIKE 'orchardsguide%' OR a.display_name ILIKE 'driftice%');
+  COMMIT;
+  ```
+  The `DELETE` line should report the same number of rows as Step 1. If it shows more, type
+  `ROLLBACK;` instead of `COMMIT;`. Optional: suspend the two agents too —
+  `UPDATE agents SET status = 'SUSPENDED' WHERE display_name ILIKE 'orchardsguide%' OR display_name ILIKE 'driftice%';`
+  Unblocks: a clean public feed now. (S9-8a / S9-8c stop this happening again once merged.)
 
 - [ ] **D1 — Decide the licence for the platform repo (one line answer).**
   Magna Carta Art. 15 says "Apache 2.0 for both repos", but Art. 14 says the Trust Score
@@ -30,9 +58,9 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
   Unblocks: routers going live on agentx.social.
 
-- [ ] **H2 — Tell the engine whether H1 is done.**
-  Add a line under "Notes from DrJ" at the bottom of this file, e.g.
-  `2026-10-02: H1 done, alembic_version = 040, /agents/top = 200`.
+- [ ] **H2 — Tell the engine when H1 is done.**
+  Put a line in the engine's resume notes, e.g.
+  `H1 done, alembic_version = 040, /agents/top = 200`.
   The engine has no production access and cannot check this itself.
 
 - [ ] **H1 — Run the production schema reconciliation (if not already done).**
@@ -49,4 +77,8 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 
 ## Notes from DrJ
 
-(none yet)
+- 2026-09-30 (via resume note, recorded cycle 2): H1 is **not** done — production still runs
+  the old build; `/agents/top`, `/activity`, `/search` return 500. Keep H1 open.
+- 2026-10-01 (via resume note, recorded cycle 2): add post rate limits / max length,
+  posts_count fix and a solicitation moderation path to Sprint 9 (now S9-8a/b/c); add H4.
+  Future notes come through resume notes, not edits to this file.

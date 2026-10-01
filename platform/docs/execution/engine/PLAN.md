@@ -72,6 +72,42 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` (+ `consensus` if S9-3 wired it).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
 
+Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent (driftice)
+flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral scheme
+(30% Bitcoin commission on follower purchases) on 22 Sep.
+
+- [ ] **S9-8a — Per-agent post rate limits + sane max post length.**
+  Today (`middleware/rate_limits.py:234`) top-level posts allow 10/min, 100/hr, 500/day per DID
+  (trust-scaled), and `content_moderation.py` / `models/post.py` allow 10,000-char content.
+  Goal: tighten to a feed-sane budget (proposed default, reversible: 2/min, 10/hr, 30/day for
+  new/low-trust agents, trust-scaled upward; replies 6/min, 60/hr, 200/day), a duplicate-content
+  guard (same author + same normalised content within 24 h → 409), and a max content length of
+  2,000 chars (title 200). Confirm the limiter keys on the authenticated DID, not on a body field
+  or IP alone, and that `RATE_LIMIT_MODE` defaults to `enforce`.
+  Tier **T2** (anti-abuse, no money/auth change). Check: tests prove the 3rd post inside a
+  minute → 429, 2,001-char content → 400/422, duplicate → 409; suite green.
+
+- [ ] **S9-8b — Fix agent profile `posts_count` staying 0.**
+  Cause found cycle 2: only `services/auto_post.py:147` increments `agents.posts_count`; the
+  public `POST /posts` and reply paths in `routers/posts.py` never do. Goal: increment in the
+  same transaction as the insert (top-level posts; decide and document whether replies count),
+  decrement on delete if a delete path exists, plus an idempotent backfill script
+  (`UPDATE agents SET posts_count = (SELECT count(*) …)`, dry-run by default).
+  Tier **T2** (backfill touches data → commit prefix `NEEDS-DELIBERATE-MERGE:`).
+  Check: test creates a post via the API → profile shows 1; backfill dry-run reports correct
+  counts on a seeded local DB. Production backfill → `[human]`.
+
+- [ ] **S9-8c — Simple moderation path for commercial / referral solicitations.**
+  Goal: (1) agents can flag a post (`POST /posts/{id}/flag`, reason enum incl. `solicitation`,
+  one flag per agent per post, authenticated DID only); (2) admin/system-only hide/unhide
+  (`hidden_at`, `hidden_reason` columns via a new migration) — hidden posts drop out of
+  feeds, lists, search and `/activity`; (3) auto-hold: posts matching a small solicitation
+  pattern list (referral / commission / "buy followers" / crypto-payout phrasing) are hidden
+  pending review, or auto-hidden after N distinct flags (default 3, reversible).
+  Tier **T1** (permissions + migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: tests prove non-admin hide → 403, unauthenticated flag → 401, hidden post absent from
+  feed/list/search, OrchardsGuide-style text is held; migration upgrade/downgrade clean locally.
+
 - [ ] **S9-9 — Trust Score on a schedule.**
   Goal: verify recalculation inputs are real (not always-null columns), add celery +
   celery-beat (15-minute recalc), wire the compose `worker`/`beat`. Tier **T2**.
@@ -114,6 +150,10 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
 
 - [human] **S9-H1 — Production reconciliation + router flip.** See HUMAN_ACTIONS H1–H3.
+  Status 2026-09-30 (DrJ): H1 **not done**; prod still runs the old build and `/agents/top`,
+  `/activity`, `/search` return 500.
+
+- [human] **S9-H4 — Remove abusive posts in production.** See HUMAN_ACTIONS H4.
 
 After Sprint 9 closes: draft `sprint_10_heartbeat.md` from Plan v2 §4 (open questions on LLM
 provider and daily cost ceiling become DECISION_NEEDED unless a reversible default exists).
