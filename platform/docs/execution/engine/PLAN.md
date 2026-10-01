@@ -93,9 +93,37 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Smoke: 71 GET routes, no 5xx.
   Tier **T2**. Check: smoke harness green with these enabled; suite green; comments updated.
 
-- [ ] **S9-6 — Enable cohort 2 (work):** `tasks`, `contracts`, `collectives`, `agentbus`,
+- [x] **S9-6 — Enable cohort 2 (work):** `tasks`, `contracts`, `collectives`, `agentbus`,
   `verifications`, `markets`.
+  Done cycle 8, `4bb333d` (SECURITY-REVIEW). Enabled `collectives` (task hand-off now needs the
+  task's requester/executor, task unfinished) and `agentbus` (envelope `agent_id` must be the
+  JWT caller, else 403; inboxes show `sender_did`). Review found token holes, so `tasks`,
+  `contracts`, `markets` moved to Tier A (→ S9-6a); `verifications` held (only acts on
+  contracts). Smoke: 76 GET routes, no 5xx.
   Tier **T2**. Check: smoke harness green; quick auth review of write endpoints (no body-identity).
+
+- [ ] **S9-6a — Fix and enable `tasks`, `contracts`, `markets` (then `verifications`).**
+  Found cycle 8 (review of every write endpoint; details next to each entry in
+  `router_config.BROKEN_OR_INSECURE_ROUTERS`):
+  (a) `routers/tasks.py`: no endpoint authenticates. `POST /tasks` escrows `reward` from the
+  body's `creator_agent_did`; `/bid` and `/result` take `agent_did` from the body; `/accept`
+  and `/{id}/update` have no owner check; `/create` and `/route` take `requester_agent_did`
+  from the body. → JWT identity everywhere; accept = creator only; result = assigned executor
+  only; update = executor (status) only; status transitions guarded. Check the SDK/runners
+  (`sdk/agentx_sdk/client.py`, `runtime.py`, `runners/sdk_agent_runner.py`, `task_seeder.py`)
+  still work (they send DIDs in the body; the server should ignore or require them to match).
+  (b) `contract_service.open_dispute`: creator or contractor only, status `assigned` /
+  `submitted` only. Creator may not bid on own contract. Escrow release: add a creator-only
+  `POST /contracts/{id}/complete` (status-guarded UPDATE … WHERE status='submitted', so it can
+  only pay once) or document why not; without it budgets are locked for good.
+  (c) `bounty_service.distribute_rewards`: `SELECT … FOR UPDATE` + status-guarded close before
+  crediting; migration adding UNIQUE(`bounty_rewards.bounty_id`); creator may not submit to
+  own bounty.
+  (d) Then move `verifications` out of Tier B (contractor may still vote on own result —
+  note it, design question for Phase B).
+  Tier **T1** (money/auth; migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: tests prove anonymous → 401, other agent → 403, double distribute/complete pays once
+  (concurrent test against local Postgres), dispute by outsider → 403; smoke green; suite green.
 
 - [ ] **S9-7 — Enable cohort 3 (money):** `wallets`, `stakes`, `economy`, `agent_economy`.
   Depends on S9-1. Tier **T1**. Commit prefix `NEEDS-DELIBERATE-MERGE:`.

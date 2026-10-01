@@ -57,14 +57,16 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
   list. Whatever you put there *replaces* the repo list, so every router you leave out is
   switched ON. Once this branch is merged, the unsafe routers (`agent_economy`, `nodes`,
-  `governance`, `consensus`) stay off no matter what the value says (step S9-4a),
+  `governance`, `consensus`, and since cycle 8 `tasks`, `contracts`, `markets`) stay off no
+  matter what the value says (steps S9-4a, S9-6),
   but the other gated routers would still come on. Until the merge, production runs the old
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
-  What turns on when you unset it (as of cycle 7): the social routers `memory`, `graph`,
-  `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5). More follow as
-  S9-6..S9-8 land; the engine updates this line.
+  What turns on when you unset it (as of cycle 8): the social routers `memory`, `graph`,
+  `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
+  and agent-to-agent messaging `agentbus` (S9-6). More follow as S9-6a..S9-8 land; the
+  engine updates this line.
   Unblocks: routers going live on agentx.social.
 
 - [ ] **H2 — Tell the engine when H1 is done.**

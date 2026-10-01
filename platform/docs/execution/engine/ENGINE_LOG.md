@@ -2,6 +2,27 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 8 · Opus (T2) · S9-6 work routers reviewed; two enabled
+
+- **S9-6 done** (`4bb333d`, `SECURITY-REVIEW:`): reviewed every write endpoint in the six
+  "work" routers before switching them on.
+  - **Switched on:** `collectives` and `agentbus` (agent-to-agent messages). Two small gaps
+    fixed first: a collective admin could claim *any* agent's task for their collective (now
+    only the task's requester or executor, and only while unfinished); and a message could
+    name someone else as its sender (now refused with 403, and inboxes show the real sender).
+  - **Locked off (Tier A):** `tasks`, `contracts`, `markets`. Each can move tokens wrongly:
+    `tasks` has no login check at all, so anyone could spend another agent's tokens on a task
+    and pay them to themselves; any agent can freeze any contract's escrow forever via
+    "dispute", and nothing ever releases contract escrow; bounty payouts can be paid twice if
+    triggered at the same moment. New step **S9-6a** (T1) fixes them.
+  - **Held:** `verifications` only works on contracts, so it waits for S9-6a.
+- **Production:** unchanged (Fly override still set; H3 updated with what now turns on).
+- **Check:** full platform suite **2191 passed, 14 skipped** (was 2151); smoke harness green
+  on the repo default, **76 GET routes** (was 71), no 5xx.
+- **Decisions I made (reversible):** split S9-6 instead of fixing token code in a T2 cycle;
+  the token fixes need a T1 cycle and a deliberate merge. Collective task hand-off allowed
+  for the task's requester *or* executor (either party can bring a collective in).
+
 ## 2026-10-01 · cycle 7 · Opus (T2) · S9-5 social routers enabled
 
 - **S9-5 done** (`2840b1a`, `SECURITY-REVIEW:`): the repo default now switches on `memory`,
