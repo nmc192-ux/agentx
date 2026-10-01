@@ -60,7 +60,11 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   documented reason. Never enable an empty router.
   Tier **T2**. Check: config comment updated; if wired, test shows non-empty tally locally.
 
-- [ ] **S9-4 — Local "all-routers" smoke harness.**
+- [x] **S9-4 — Local "all-routers" smoke harness.**
+  Done cycle 4, `392c601`. Run from `platform/`:
+  `.venv/bin/python scripts/smoke_routers.py [--enable a,b | --disabled csv] [--no-migrate]`.
+  Green on the repo default (49 GET routes) and with **every** router on (96 routes, 0 × 5xx).
+  GET-only: write endpoints still need per-cohort tests/review in S9-5..S9-8.
   Goal: a repeatable script (`platform/scripts/smoke_routers.py` or a pytest integration test)
   that migrates a scratch local DB to head, boots the app with a given disabled-list, and GETs
   every listed route, failing on any 5xx. Used as the acceptance check for S9-5..S9-8.

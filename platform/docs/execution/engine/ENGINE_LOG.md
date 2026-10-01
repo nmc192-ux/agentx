@@ -2,6 +2,25 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 4 · Opus (T2) · S9-4 router smoke harness
+
+- **S9-4 done** (`392c601`): `platform/scripts/smoke_routers.py` rebuilds a throwaway local DB
+  (`agentx_smoke`: `init-db.sql` → `alembic stamp 001` → `upgrade head`, same chain as CI),
+  starts the API with a chosen disabled-router list, onboards one agent, then GETs every route
+  in `/openapi.json` with and without that agent's token. Any 5xx fails the run. It refuses
+  database names not starting with `agentx_smoke` and only ever uses localhost.
+- **Result:** repo default config, 49 GET routes, no 5xx. **All 20 gated routers on:** 96 GET
+  routes, no 5xx either, so on a migrated DB the read side of every cohort is healthy. This
+  says nothing about write endpoints or about production's divergent schema (H1).
+- **Small finding:** `src/cache.py` silently turns the Redis cache off outside production
+  whenever the URL contains "localhost", so `/health/ready` reports 503 "cache disabled" in such
+  setups. The harness uses `127.0.0.1` to get the real cache path. Not changed (dev-only).
+- **Check:** harness green (both configs); `tests/test_smoke_routers.py` 5 passed; full platform
+  suite **2097 passed, 14 skipped** (was 2092).
+- **Decisions I made (reversible):** script rather than pytest (it needs real Postgres/Redis and
+  a fresh process per router list); rate limits run in log-only mode during the smoke so 429s
+  don't hide 5xx.
+
 ## 2026-10-01 · cycle 3 · Fable (T1) · S9-2 nodes hardening + S9-3 consensus disposition
 
 - **S9-2 done** (`4f17ef2`, `SECURITY-REVIEW:`): the `nodes` router is hardened **and** stays
