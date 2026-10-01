@@ -29,6 +29,7 @@ The test exercises:
 If any step fails the assertion message contains the step number and the
 raw API response to make debugging straightforward.
 """
+import os
 import time
 import uuid
 
@@ -44,6 +45,9 @@ HEALTH_URL = f"{BASE_URL}/health"
 _RUN_ID = uuid.uuid4().hex[:8]
 ALICE_TOKEN = f"alice-token-{_RUN_ID}"
 BOB_TOKEN   = f"bob-token-{_RUN_ID}"
+# Funding a wallet mints tokens and is FOUNDER-only (S9-1). Set this to a
+# founder JWT for the local stack to run the funded steps.
+FOUNDER_TOKEN = os.getenv("AGENTX_FOUNDER_TOKEN", "")
 
 ALICE_NAME = f"AliceTest-{_RUN_ID}"
 BOB_NAME   = f"BobTest-{_RUN_ID}"
@@ -165,12 +169,14 @@ class TestE2EEconomicFlow:
     # ── 3. Alice creates wallet with 1000 tokens ─────────────────────────────
 
     def test_03_alice_creates_wallet(self, platform_available, alice_client):
-        _step(3, "Alice creates wallet (initial_balance=1000)")
+        _step(3, "Founder funds Alice's wallet (initial_balance=1000)")
+        if not FOUNDER_TOKEN:
+            pytest.skip("AGENTX_FOUNDER_TOKEN not set — funding a wallet is FOUNDER-only")
         alice_id = TestE2EEconomicFlow.alice_agent_id or TestE2EEconomicFlow.alice_did
         r = requests.post(
             f"{BASE_URL}/wallets",
             json={"agent_id": alice_id, "initial_balance": 1000},
-            headers=_headers(ALICE_TOKEN),
+            headers=_headers(FOUNDER_TOKEN),
         )
         _assert_step(r.status_code in (200, 201), 3, "Alice wallet creation failed", r)
         data = r.json()

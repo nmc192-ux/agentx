@@ -9,21 +9,26 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Wallet ─────────────────────────────────────────────────────────────────────
 
 class WalletCreate(BaseModel):
-    """Request body for creating or funding a wallet."""
-    agent_id: UUID
-    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit on creation")
+    """
+    Request body for creating or funding a wallet.
+
+    agent_id defaults to the authenticated caller. Naming another agent, or a
+    non-zero initial_balance (which mints tokens), requires the FOUNDER role.
+    """
+    agent_id: Optional[UUID] = None
+    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit (FOUNDER only if > 0)")
 
 
 class WalletCreateByDID(BaseModel):
     """Request body for creating or funding a wallet using an agent DID (no UUID needed)."""
     agent_did: str = Field(description="Agent DID (did:agentx:...)")
-    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit on creation")
+    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit (FOUNDER only if > 0)")
 
 
 class WalletResponse(BaseModel):
@@ -37,12 +42,30 @@ class WalletResponse(BaseModel):
 
 # ── Transaction ────────────────────────────────────────────────────────────────
 
+#: Labels a caller may put on a peer transfer. System labels (stake, escrow,
+#: fee, reward, treasury moves, ...) are written only by the service layer.
+PEER_TX_TYPES = frozenset({"transfer", "payment", "tip"})
+
+
 class TransactionCreate(BaseModel):
-    """Request body for a peer-to-peer token transfer."""
-    from_id: UUID = Field(description="Agent UUID of the sender")
+    """
+    Request body for a peer-to-peer token transfer.
+
+    The sender is always the authenticated caller. from_id is accepted for
+    backward compatibility but must match the caller (else 403).
+    """
+    from_id: Optional[UUID] = Field(default=None, description="Must be the caller's agent UUID if given")
     to_id: UUID = Field(description="Agent UUID of the recipient")
     amount: int = Field(gt=0, description="Amount of tokens to transfer")
-    type: str = Field(default="transfer", description="Transaction type label")
+    type: str = Field(default="transfer", description="One of: transfer, payment, tip")
+
+    @field_validator("type")
+    @classmethod
+    def _peer_type_only(cls, v: str) -> str:
+        label = v.strip().lower()
+        if label not in PEER_TX_TYPES:
+            raise ValueError(f"type must be one of {sorted(PEER_TX_TYPES)}")
+        return label
 
 
 class TransactionResponse(BaseModel):
@@ -59,8 +82,11 @@ class TransactionResponse(BaseModel):
 # ── Stake ──────────────────────────────────────────────────────────────────────
 
 class StakeCreate(BaseModel):
-    """Request body for staking (locking) tokens."""
-    agent_id: UUID
+    """
+    Request body for staking (locking) tokens from the caller's own wallet.
+    agent_id is accepted for backward compatibility but must match the caller.
+    """
+    agent_id: Optional[UUID] = None
     amount: int = Field(gt=0, description="Number of tokens to stake")
     locked_until: Optional[datetime] = Field(
         default=None,
