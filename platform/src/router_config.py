@@ -53,9 +53,16 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # wallet-auth fix lands and is reviewed by DrJ as security code. (Sprint 9)
     "agent_economy",
 
-    # SECURITY: node register / event-injection endpoints are intentionally
-    # unauthenticated; hardening (signature verification, mandatory auth) is
-    # deferred in code. Re-enable after hardening lands. (Sprint 9)
+    # HARDENED (Sprint 9, S9-2), KEPT OFF ON PURPOSE: `POST /nodes/register` and
+    # `POST /nodes/events` are now FOUNDER-only and peer URLs must be public
+    # https (SSRF guard, re-checked before every outbound broadcast). Before
+    # that, anyone could register a URL and this node would POST every
+    # CONTRACT_COMPLETED / TASK_COMPLETED / BOUNTY_REWARD_DISTRIBUTED payload to
+    # it — node_consumer runs whether or not this router is mounted.
+    # Still disabled because federation has no signed-event protocol yet
+    # (inbound events cannot be attributed to a peer; outbound ones are
+    # unsigned) and nothing in Phase A needs it. Enable only once signed events
+    # exist AND there is a real peer to federate with. (Phase D)
     "nodes",
 
     # CODE FIXED (Sprint 9), NOT PROD-READY: the missing `governance_votes`
@@ -66,10 +73,17 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # reconciled. See briefing_2026-07-04_chain.md.
     "governance",
 
-    # NON-FUNCTIONAL: consensus tallies read a `votes` table that nothing
-    # writes to (governance's votes go to `governance_votes`), so results are
-    # permanently empty. Coupled to the governance work; not addressed this
-    # sprint. (Sprint 9+)
+    # NON-FUNCTIONAL, KEPT OFF ON PURPOSE (Sprint 9, S9-3): consensus tallies
+    # read the baseline `votes` table (votes on PROPOSAL *posts*: post_id /
+    # choice / weight), which no code writes to, so every snapshot is empty and
+    # quorum can never be met. It cannot simply be pointed at `governance_votes`:
+    # debates and snapshots are keyed on posts(post_id), while governance votes
+    # are keyed on proposals(proposal_id) — two unrelated id spaces with
+    # different vote values (FOR/AGAINST/ABSTAIN vs yes/no/abstain) and weights.
+    # Also unresolved: any logged-in agent can open or advance a debate on any
+    # proposal (no proposer / role check). Wiring it up means choosing ONE
+    # proposal model (decision O10, debate + consensus in rooms) — a design
+    # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
 
     # CODE FIXED (Sprint 9), NOT PROD-READY: graph_service had two column/table

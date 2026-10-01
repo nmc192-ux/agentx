@@ -4,9 +4,10 @@ Phase 17 — Federated AgentX Nodes
 
 Endpoints covered
 ─────────────────
-  POST /nodes/register  — 201, 400
+  POST /nodes/register  — 201, 400, 422 (FOUNDER only; public https URL only)
   GET  /nodes           — 200 (empty + populated, active_only filter)
-  POST /nodes/events    — 202, 400, 422
+  POST /nodes/events    — 202, 400, 422 (FOUNDER only)
+  Fail-closed           — 401 without a token, 403 for non-founders
 """
 from __future__ import annotations
 
@@ -60,10 +61,52 @@ def _msg(
     )
 
 
+def _make_agent(role: str = "FOUNDER"):
+    from src.auth.jwt import TokenClaims
+    from src.auth.middleware import AgentRecord
+    did = "did:agentx:atlas-001"
+    mock_claims = MagicMock(spec=TokenClaims)
+    mock_claims.agent_did = did
+    row = {
+        "agent_did":       did,
+        "display_name":    "Atlas",
+        "governance_role": role,
+        "tier":            "STANDARD",
+        "status":          "ACTIVE",
+        "trust_score":     0.9,
+    }
+    return AgentRecord(row=row, claims=mock_claims)
+
+
+def _login_as(role: str):
+    from src.auth.middleware import get_current_agent
+    app.dependency_overrides[get_current_agent] = lambda: _make_agent(role)
+
+
+def _logout():
+    from src.auth.middleware import get_current_agent
+    app.dependency_overrides.pop(get_current_agent, None)
+
+
+@pytest.fixture
+def as_founder():
+    _login_as("FOUNDER")
+    yield
+    _logout()
+
+
+@pytest.fixture
+def as_member():
+    _login_as("MEMBER")
+    yield
+    _logout()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /nodes/register
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.usefixtures("as_founder")
 class TestRegisterNode:
 
     def test_register_returns_201(self):
@@ -135,6 +178,45 @@ class TestRegisterNode:
     def test_register_node_url_too_long_returns_422(self):
         resp = client.post("/nodes/register", json={"node_url": "x" * 501})
         assert resp.status_code == 422
+
+    @pytest.mark.parametrize("url", [
+        "http://peer.io",                    # not https
+        "ftp://peer.io",
+        "peer.io",                           # no scheme
+        "https://",                          # no host
+        "https://user:pw@peer.io",           # embedded credentials
+        "https://localhost",
+        "https://db.internal",
+        "https://printer.local",
+        "https://127.0.0.1",
+        "https://10.0.0.5",
+        "https://192.168.1.10:8443",
+        "https://169.254.169.254",           # cloud metadata address
+        "https://[::1]",
+        "https://[::ffff:127.0.0.1]",        # IPv4-mapped loopback
+        "https://[fd00::1]",
+        "https://2130706433",                # 127.0.0.1 as a decimal integer
+        "https://127.1",
+        "https://intranet",                  # bare label
+    ])
+    def test_register_rejects_non_public_url(self, url):
+        """SSRF guard: a peer URL may never point at an internal address."""
+        with patch(
+            "src.routers.node_router.node_service.register_node",
+            new_callable=AsyncMock,
+        ) as mock:
+            resp = client.post("/nodes/register", json={"node_url": url})
+        assert resp.status_code == 422
+        mock.assert_not_called()
+
+    def test_register_accepts_public_ip_literal(self):
+        with patch(
+            "src.routers.node_router.node_service.register_node",
+            new_callable=AsyncMock,
+            return_value=_node(url="https://8.8.8.8"),
+        ):
+            resp = client.post("/nodes/register", json={"node_url": "https://8.8.8.8"})
+        assert resp.status_code == 201
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -208,6 +290,7 @@ class TestListNodes:
 # POST /nodes/events
 # ─────────────────────────────────────────────────────────────────────────────
 
+@pytest.mark.usefixtures("as_founder")
 class TestReceiveEvent:
 
     def test_receive_returns_202(self):
@@ -361,3 +444,66 @@ class TestReceiveEvent:
                 client.post("/nodes/events", json={"event_type": "X"})
         # payload defaults to {}
         assert sm.call_args[1]["payload"] == {}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fail-closed: write endpoints are FOUNDER-only (Sprint 9 hardening)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_WRITES = [
+    ("/nodes/register", {"node_url": "https://peer.io"}, "register_node"),
+    ("/nodes/events",   {"event_type": "CONTRACT_COMPLETED", "payload": {}}, "send_node_message"),
+]
+
+
+class TestWritesFailClosed:
+
+    @pytest.mark.parametrize("path,body,service_fn", _WRITES)
+    def test_no_token_returns_401(self, path, body, service_fn):
+        with patch(
+            f"src.routers.node_router.node_service.{service_fn}",
+            new_callable=AsyncMock,
+        ) as mock:
+            resp = client.post(path, json=body)
+        assert resp.status_code == 401
+        mock.assert_not_called()
+
+    @pytest.mark.parametrize("path,body,service_fn", _WRITES)
+    def test_garbage_token_returns_401(self, path, body, service_fn):
+        with patch(
+            f"src.routers.node_router.node_service.{service_fn}",
+            new_callable=AsyncMock,
+        ) as mock:
+            resp = client.post(path, json=body, headers={"Authorization": "Bearer not-a-jwt"})
+        assert resp.status_code == 401
+        mock.assert_not_called()
+
+    @pytest.mark.parametrize("path,body,service_fn", _WRITES)
+    def test_no_token_with_invalid_body_still_401(self, path, body, service_fn):
+        """Auth is checked before the body, so anonymous callers learn nothing."""
+        resp = client.post(path, json={})
+        assert resp.status_code == 401
+
+    @pytest.mark.usefixtures("as_member")
+    @pytest.mark.parametrize("path,body,service_fn", _WRITES)
+    def test_non_founder_returns_403(self, path, body, service_fn):
+        with patch(
+            f"src.routers.node_router.node_service.{service_fn}",
+            new_callable=AsyncMock,
+        ) as mock, patch(
+            "src.routers.node_router.node_service.list_nodes",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            resp = client.post(path, json=body)
+        assert resp.status_code == 403
+        mock.assert_not_called()
+
+    def test_list_nodes_stays_public(self):
+        with patch(
+            "src.routers.node_router.node_service.list_nodes",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            resp = client.get("/nodes")
+        assert resp.status_code == 200

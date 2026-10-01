@@ -466,6 +466,23 @@ class TestNodePeerClient:
         kwargs = mock_client.post.call_args[1]
         assert kwargs["json"]["source_node_url"] == "https://me.io"
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("url", [
+        "http://peer.io",
+        "https://localhost",
+        "https://127.0.0.1",
+        "https://169.254.169.254",
+        "https://10.0.0.5",
+        "https://db.internal",
+    ])
+    async def test_refuses_non_public_url_without_sending(self, url):
+        """SSRF guard: a stored peer URL that points inward is never contacted."""
+        from src.services.node_peer_client import post_event
+        with patch("src.services.node_peer_client.httpx.AsyncClient") as MockClient:
+            result = await post_event(url, "CONTRACT_COMPLETED", {"secret": "x"})
+        assert result is False
+        MockClient.assert_not_called()
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # node_consumer
