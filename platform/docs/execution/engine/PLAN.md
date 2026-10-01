@@ -28,7 +28,10 @@ Baseline (cycle 1): platform suite **2033 passed, 14 skipped** locally.
 
 Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_loop_v1.md`.
 
-- [ ] **S9-1 — Close the wallet holes in `routers/tokens.py` (routers `wallets`, `stakes`).**
+- [x] **S9-1 — Close the wallet holes in `routers/tokens.py` (routers `wallets`, `stakes`).**
+  Done cycle 2, `feaa59f` (SECURITY-REVIEW). Self-service wallets start at 0; funding or acting
+  for another agent is FOUNDER-only; transfer/stake use the JWT caller; tx labels allowlisted.
+  Follow-up for S9-12: SDK `wallet.py` sends DIDs where the API expects agent UUIDs.
   Two gaps (found cycle 1): (a) `transfer_tokens` (`tokens.py:96`) and `stake_tokens`
   (`tokens.py:152`) authenticate but ignore the caller and trust `body.from_id` /
   `body.agent_id`, so any logged-in agent can move/stake anyone's tokens; (b) `POST /wallets`
