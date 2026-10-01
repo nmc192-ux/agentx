@@ -86,8 +86,11 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Tier **T1** (permissions surface). Check: test with `DISABLED_ROUTERS=posts` shows `nodes`,
   `consensus`, `agent_economy` still disabled; suite green.
 
-- [ ] **S9-5 — Enable cohort 1 (social) in repo config:** `memory`, `graph`, `rooms`,
+- [x] **S9-5 — Enable cohort 1 (social) in repo config:** `memory`, `graph`, `rooms`,
   `communities`, `conversations`, `channels`, `pulse`.
+  Done cycle 7, `2840b1a` (SECURITY-REVIEW). `graph` left Tier A; Tier C now empty; record kept
+  in `router_config.ENABLED_IN_SPRINT_9`. Canvas PATCH/DELETE now check the node's room.
+  Smoke: 71 GET routes, no 5xx.
   Tier **T2**. Check: smoke harness green with these enabled; suite green; comments updated.
 
 - [ ] **S9-6 — Enable cohort 2 (work):** `tasks`, `contracts`, `collectives`, `agentbus`,

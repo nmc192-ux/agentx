@@ -2,6 +2,23 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 7 · Opus (T2) · S9-5 social routers enabled
+
+- **S9-5 done** (`2840b1a`, `SECURITY-REVIEW:`): the repo default now switches on `memory`,
+  `graph`, `rooms`, `communities`, `conversations`, `channels` and `pulse`. `graph` left Tier A
+  (its two typos were fixed earlier in Sprint 9), so Tier A is now `agent_economy`, `nodes`,
+  `governance`, `consensus`. Tier C is empty (memory: stale gating, no defect).
+- **Review of write endpoints:** every one in the cohort takes the agent from the login token,
+  not the request body; memory is owner-or-admin; rooms/canvas/channels check membership.
+  One gap fixed: canvas node PATCH/DELETE ignored the room in the URL, so a participant of one
+  room could send fake canvas events to another room's live channel. Now "not found".
+- **Production:** unchanged until DrJ removes the Fly `DISABLED_ROUTERS` override (H3, after
+  H1). A test pins that the full production value still keeps the cohort off. H3 now lists
+  what turns on.
+- **Check:** full platform suite **2151 passed, 14 skipped** (was 2147); smoke harness green on
+  the repo default, **71 GET routes** (was 49), no 5xx.
+- Cycle 6 did nothing (shell permissions); DrJ fixed them.
+
 ## 2026-10-01 · cycle 5 · Fable (T1) · S9-4a kill-switch safety
 
 - **S9-4a done** (`8101e92`, `SECURITY-REVIEW:`): the Fly `DISABLED_ROUTERS` value can still
