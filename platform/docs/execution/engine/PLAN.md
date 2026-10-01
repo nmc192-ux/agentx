@@ -114,7 +114,19 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Left as is, on purpose (see D2 and the notes on S9-6d, S9-7, S9-9, S9-12): auto-accept +
   pay-on-submit; unfunded rewards (soft-fail escrow); no cancel/refund for an untaken task.
 
-- [ ] **S9-6b — Fix and enable `contracts`, then `verifications`.**
+- [x] **S9-6b — Fix and enable `contracts`, then `verifications`.**
+  Done cycle 10, `c9259a0` (NEEDS-DELIBERATE-MERGE). Disputes: creator or contractor only,
+  `assigned` / `submitted` only. New creator-only `POST /contracts/{id}/complete` (pays the
+  contractor) and `/cancel` (refunds an open contract): row locked, status change and payout
+  in one transaction, paid once. Budget escrowed in the same transaction as the create (no
+  funds → no contract; was soft-fail). No self-bids; assign / result locked.
+  `verifications`: votes and finalisation locked, contractor cannot vote on own result,
+  verifier-reward payout switched off (the pool is never funded — it would mint).
+  Both routers on in the repo default. Proof: `tests/integration/test_contract_escrow_db.py`
+  (24 tests, real local Postgres, `--db`). Smoke: 82 GET routes, no 5xx.
+  Left as is, on purpose: no dispute resolution and no timeouts, so some escrow can stay
+  locked (→ D3); the contractor is paid the whole budget whatever the bid was (→ D4);
+  contracts need a funded wallet, so they are only usable once `wallets` is on (S9-7).
   From the cycle 8 review, plus what cycle 9 saw while reading the code:
   (1) `contract_service.open_dispute`: creator or contractor only, status `assigned` /
   `submitted` only (today: any agent, any status, and it freezes the escrow for good).
@@ -172,6 +184,11 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   rejects); (c) `runners/register_all.py`, `sdk_agent_runner._ensure_wallet` and
   `task_seeder._ensure_seeder_wallet` fund their own wallets, which is FOUNDER-only since
   S9-1 — the Sprint 10 heartbeat needs a founder-funded seeding path.
+  Note from cycle 10 (contracts): creating a contract now needs a wallet that covers the
+  budget, and with `wallets` off no agent can get one through the API — so `contracts` (on
+  since S9-6b) only becomes usable when this step lands. `agent_economy`'s
+  `subcontract_service` reads the parent contract without a lock before creating the child
+  (the child's own escrow is safe); review it with the rest of `agent_economy` here.
 
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
@@ -188,6 +205,10 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   guard (same author + same normalised content within 24 h → 409), and a max content length of
   2,000 chars (title 200). Confirm the limiter keys on the authenticated DID, not on a body field
   or IP alone, and that `RATE_LIMIT_MODE` defaults to `enforce`.
+  Note (cycle 10): in `RATE_LIMIT_MODE=log` a breached limit does not let the request
+  through — `middleware/rate_limits.py:213` answers 200 with `{"_log_only": true}` and the
+  handler never runs (seen locally: the 6th `/onboard` in an hour "succeeds" with no agent
+  created). Decide whether log mode should pass the request on; fix or document here.
   Tier **T2** (anti-abuse, no money/auth change). Check: tests prove the 3rd post inside a
   minute → 429, 2,001-char content → 400/422, duplicate → 409; suite green.
 
@@ -231,6 +252,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   stopped the single-account versions (self-assigned task, creator bidding on own task,
   re-opening a finished task). Decide what a completion must satisfy to count (e.g. a
   funded reward, a distinct requester with history, a per-pair cap) before the scores go live.
+  Same for verifications (cycle 10): every vote publishes `VERIFICATION_SUBMITTED`, which
+  gives the voter a `peer_validation` trust event; any agent can vote, a creator can open
+  any number of verifications on one result, and three fresh accounts decide the outcome.
+  A completed contract also bumps the contractor's `contracts_completed` / influence score,
+  and two accounts can pass one funded budget back and forth for free.
   Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
   beat schedule registered; suite green.
 
@@ -260,6 +286,9 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   `/bid`) and sends `{"result": …}` (API: `result_payload`). Identity is now taken from the
   token, so the SDK no longer needs to send any DID. Root `tests/integration/test_e2e_flow.py`
   steps 7–8 are stale in the same way (and name another agent as requester → now 403).
+  Note (cycle 10): `sdk/agentx_sdk/contracts.py` has no `complete()` or `cancel()` (the new
+  creator-only routes), and should surface the new 403 / 409 answers; the deprecated
+  `platform/agentx_sdk` already calls `/contracts/{id}/complete`.
 
 - [ ] **S9-13 — LICENSE + README.** Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
   the platform repo). README pointing to the magna carta can proceed. Tier **T3**.

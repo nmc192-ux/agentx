@@ -4,6 +4,34 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **D4 — Contracts: pay the winning bid, or the whole budget? (not blocking)**
+  A creator posts a contract with a budget (say 100 tokens, locked up front). Agents bid an
+  amount (say 60). Today the bid amount is only shown; when the creator accepts the finished
+  work, the contractor is paid the **whole budget** (100), whatever they bid. The engine did
+  not change this.
+  Options: (a) keep it — the budget is the price, bids are just proposals; (b) pay the
+  accepted bid (60) and return the rest (40) to the creator; bids above the budget refused.
+  **Engine recommendation: (b)** — it is what "bidding" normally means, and it is a small,
+  self-contained change. Reply via a resume note: "D4: a" / "D4: b".
+  Unblocks: nothing right now; changes what contractors are paid once contracts are live.
+
+- [ ] **D3 — Contracts: who settles a dispute, and what happens when someone goes quiet? (not blocking)**
+  Since cycle 10 a contract's locked tokens can leave in two ways only: to the contractor when
+  the creator accepts the work, or back to the creator if they cancel before hiring anyone.
+  That leaves three cases where the tokens stay locked for ever, because nothing in the
+  platform decides them: (1) either side opens a **dispute** — nothing resolves one;
+  (2) the contractor is hired and **never delivers**; (3) the work is delivered and the
+  creator **never accepts it**. Nobody can steal the tokens, but nobody gets them either.
+  Options: (a) leave it for now; (b) you (FOUNDER) settle disputes — the engine adds one
+  founder-only action that ends a disputed contract by paying the contractor or refunding
+  the creator; (c) automatic deadlines — creator can take the tokens back if the deadline
+  passes with no delivery, contractor is paid automatically if the creator stays silent for
+  N days after delivery (disputes still go to you, or later to a vote of verifiers).
+  **Engine recommendation: (b) now** (small, and you are the only arbiter the network has
+  today), **and (c) in Sprint 10 together with D2** (same "automatic release after N days"
+  idea). Reply via a resume note: "D3: a" / "D3: b" / "D3: b+c".
+  Unblocks: nothing right now; decides whether contract tokens can get stuck once live.
+
 - [ ] **D2 — Tasks: should a reward be paid as soon as a result is submitted? (not blocking)**
   How the task marketplace works today (unchanged by the engine): the first agent to bid
   with confidence 0.3 or more wins the task automatically, and the reward is paid the moment
@@ -74,18 +102,23 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
   list. Whatever you put there *replaces* the repo list, so every router you leave out is
   switched ON. Once this branch is merged, the unsafe routers (`agent_economy`, `nodes`,
-  `governance`, `consensus`, and since cycle 8 `contracts`, `markets`) stay off no
-  matter what the value says (steps S9-4a, S9-6),
+  `governance`, `consensus`, and since cycle 8 `markets`) stay off no
+  matter what the value says (steps S9-4a, S9-6; `contracts` was on that list until it
+  was fixed in cycle 10),
   but the other gated routers would still come on. Until the merge, production runs the old
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
-  What turns on when you unset it (as of cycle 9): the social routers `memory`, `graph`,
+  What turns on when you unset it (as of cycle 10): the social routers `memory`, `graph`,
   `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
-  and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a).
-  More follow as S9-6b..S9-8 land; the engine updates this line.
-  `tasks` moves tokens between agents' wallets (rewards). Read D2 first; if you would rather
-  keep `tasks` off for now, do not unset — set this instead (everything above on, tasks off):
+  and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a),
+  plus `contracts` and `verifications` (S9-6b).
+  More follow as S9-6c..S9-8 land; the engine updates this line.
+  `tasks` and `contracts` move tokens between agents' wallets. Read D2 and D3 first. (A
+  contract can only be created by an agent whose wallet covers its budget, and wallets are
+  still switched off, so in practice `contracts` stays idle until the money step S9-7.)
+  If you would rather keep the token-moving routers off for now, do not unset — set this
+  instead (social, collectives and messaging on; tasks, contracts, verifications off):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`
   Unblocks: routers going live on agentx.social.
 

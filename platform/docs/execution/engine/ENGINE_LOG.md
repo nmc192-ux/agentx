@@ -2,6 +2,62 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 10 · Fable (T1) · S9-6b contracts fixed; contracts + verifications enabled
+
+- **S9-6b done** (`c9259a0`, `NEEDS-DELIBERATE-MERGE:`): contracts are now safe to switch
+  on, and are on in the repo default, together with verifications.
+  - **Before:** any logged-in agent could "dispute" anyone's contract at any time, which
+    froze its locked tokens for good. Nothing ever paid a contractor: the "accept the work"
+    step existed in the code but had no endpoint, and it could pay twice if called twice at
+    the same moment. A creator could bid on and win their own contract. A contract could be
+    created advertising a budget the creator never paid in.
+  - **Now:** only the creator or the hired contractor can dispute, and only while work is
+    under way. The creator accepts the work with a new "complete" action, which marks the
+    contract finished and pays the contractor together, exactly once. The creator can cancel
+    a contract nobody was hired for and gets the tokens back, exactly once; after hiring,
+    the creator cannot take them back. The budget is locked when the contract is created,
+    or the contract is refused. No bidding on your own contract; one bid per agent.
+  - **Verifications** (other agents voting on whether delivered work is good): the
+    contractor can no longer vote on their own work; a vote can no longer slip in after the
+    result is decided; and the code that would have paid voters from a reward pot nobody
+    ever paid into is switched off (it would have created tokens from nothing). A
+    verification is advice only: it never moves tokens.
+- **Production:** unchanged (Fly override still set). H3 says what now turns on and gives
+  the line that keeps the token-moving routers off.
+- **Check:** full platform suite **2280 passed, 55 skipped** (was 2234 / 31; the 24 new
+  skips are the new database tests, which need `--db`). Database tests: **41 passed**
+  against real local Postgres (`.venv/bin/python -m pytest tests/integration -v --db`):
+  17 for tasks, 24 new for contracts — including 12 simultaneous "complete" calls → paid
+  once, pay-out racing refund → paid once, cancel racing hire and complete racing dispute →
+  exactly one wins, and the token total unchanged every time. Removing any one of the three
+  row locks makes a test fail (tried each by hand). Live check with a real server on the
+  repo-default router list and real login tokens: 51 of 51 as expected. Smoke harness green
+  on the repo default, **82 GET routes** (was 79), and with every router on (96), no 5xx.
+  Lint (`ruff check platform/src`) clean.
+- **Not run by CI:** as last cycle, the database tests are skipped without `--db`; CI runs
+  the mocked unit tests of the same rules.
+- **Decisions I made (reversible):**
+  - A contract whose budget cannot be locked is refused (was: created anyway, paying
+    nothing at the end). Consequence: with wallets still off, nobody can create a contract
+    through the API until S9-7. I enabled the router anyway: it refuses cleanly, and it is
+    not live in production before H3.
+  - Added "cancel" for a contract with nobody hired (not in the plan, but small, and
+    without it an unanswered contract locks its creator's tokens for ever).
+  - Did **not** invent rules for disputes or for a side that goes quiet → **D3**.
+  - Did not change what the contractor is paid (the whole budget, whatever the bid) → **D4**.
+  - Contractor may not vote on their own work (the plan had this as a Phase B note; it is
+    one line and mirrors the existing rule for the requester).
+  - Verifier rewards off rather than repaired: there is no source of funds to repair them
+    with. Through the API the pot was always 0, so nothing visible changes.
+  - Wrong caller is now answered 403 and wrong state 409 (both were 400).
+  - `GET /contracts` returns at most 200 rows per call (was: the whole table).
+- **Found, not fixed (noted on the steps that own them):** rate limits in "log" mode
+  swallow the request instead of letting it through (S9-8a); verification votes and
+  contract completions are easy to farm for reputation with spare accounts (S9-9); the SDK
+  has no `complete` / `cancel` for contracts (S9-12).
+- **Housekeeping:** the database-test fixtures moved to `tests/integration/conftest.py` so
+  the tasks and contracts tests share one throwaway database.
+
 ## 2026-10-01 · cycle 9 · Fable (T1) · S9-6a tasks router fixed and enabled
 
 - **S9-6a done** (`6d4b666`, `NEEDS-DELIBERATE-MERGE:`): the task marketplace is now safe to
