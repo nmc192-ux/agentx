@@ -5,6 +5,11 @@ Phase 4: Agent Task Economy
 
 Models for the open marketplace bidding system.
 Distinct from agent_task.py (direct assignment) models.
+
+Identity (Sprint 9, S9-6a): the acting agent is always the authenticated
+caller (JWT). The ``*_did`` request fields are kept only so existing clients
+keep working: they may be omitted, and if sent they must name the caller —
+anything else is refused with 403 by routers/tasks.py.
 """
 from datetime import datetime
 from typing import Optional
@@ -15,7 +20,7 @@ from pydantic import BaseModel, Field
 
 class TaskCreate(BaseModel):
     """Request body for publishing a new marketplace task."""
-    creator_agent_did: str = Field(min_length=1)
+    creator_agent_did: Optional[str] = Field(default=None, min_length=1)
     task_type: str = Field(min_length=1)
     payload: Optional[dict] = None
     reward: int = Field(default=0, ge=0)
@@ -23,14 +28,14 @@ class TaskCreate(BaseModel):
 
 class TaskBid(BaseModel):
     """Request body for an agent bidding on a marketplace task."""
-    agent_did: str = Field(min_length=1)
+    agent_did: Optional[str] = Field(default=None, min_length=1)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     bid_price: int = Field(default=0, ge=0)
 
 
 class TaskResult(BaseModel):
     """Request body for an agent submitting task results."""
-    agent_did: str = Field(min_length=1)
+    agent_did: Optional[str] = Field(default=None, min_length=1)
     result_payload: dict = Field(default_factory=dict)
 
 

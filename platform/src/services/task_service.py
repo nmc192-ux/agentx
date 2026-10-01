@@ -14,6 +14,16 @@ Business logic for the open marketplace:
 
 All DB access uses asyncpg via get_db() / transaction() context managers.
 Redis queue is used to dispatch accepted tasks to the worker.
+
+Who may do what (Sprint 9, S9-6a) — the *_did arguments are the authenticated
+caller, resolved by the router from the JWT, never from the request body:
+  submit_bid()    — any agent except the task's creator
+  assign_task()   — the task's creator only
+  submit_result() — the assigned executor only, once: the task must be
+                    'assigned'; completing it and paying the escrow commit in
+                    one transaction, so a reward can never be paid twice.
+Errors: PermissionError → 403, TaskConflictError → 409, other ValueError →
+404 / 422 (see routers/tasks.py).
 """
 from __future__ import annotations
 
@@ -35,6 +45,10 @@ from ..models.task import (  # noqa: E402
 )
 from ..models.capability import EligibleAgentResponse  # noqa: E402
 from ..services.reputation import record_event  # noqa: E402
+
+
+class TaskConflictError(ValueError):
+    """The task is not in a state that allows the requested action (HTTP 409)."""
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -230,10 +244,14 @@ async def submit_bid(
     is immediately accepted and the task assigned to this agent.  First
     qualified bid wins — subsequent bids for the same task will fail with
     "Task is not open for bidding".
+
+    Raises:
+        PermissionError: the bidder is the task's creator (no self-dealing:
+            a creator could otherwise win and "complete" their own task).
     """
     async with transaction() as conn:
         task_row = await conn.fetchrow(
-            "SELECT task_id, status FROM tasks WHERE task_id = $1",
+            "SELECT task_id, status, creator_agent_id FROM tasks WHERE task_id = $1",
             task_id,
         )
         if task_row is None:
@@ -249,6 +267,8 @@ async def submit_bid(
         )
         if agent_row is None:
             raise ValueError(f"Bidding agent not found: {agent_did}")
+        if agent_row["agent_id"] == task_row["creator_agent_id"]:
+            raise PermissionError("The task creator cannot bid on their own task")
 
         row = await conn.fetchrow(
             """
@@ -267,7 +287,7 @@ async def submit_bid(
     # Auto-accept: first qualified bid wins the task immediately.
     if confidence >= 0.3:
         try:
-            await assign_task(task_id, row["bid_id"])
+            await _assign_bid(task_id, row["bid_id"], creator_did=None)
             logger.info(
                 "Auto-assigned task %s to %s (confidence=%.2f)",
                 task_id, agent_did, confidence,
@@ -297,18 +317,56 @@ async def list_bids(task_id: UUID) -> list[TaskBidResponse]:
     return [_row_to_bid(dict(r)) for r in rows]
 
 
-async def assign_task(task_id: UUID, bid_id: UUID) -> TaskAssignmentResponse:
+async def assign_task(
+    task_id: UUID,
+    bid_id: UUID,
+    caller_did: str,
+) -> TaskAssignmentResponse:
     """
     Creator accepts a bid: creates task_assignment, updates task to 'assigned',
     sets executor fields, and enqueues the task_id for worker execution.
+
+    Raises:
+        PermissionError: *caller_did* is not the task's creator.
+        ValueError: task or bid not found, or the task is no longer open.
+    """
+    return await _assign_bid(task_id, bid_id, creator_did=caller_did)
+
+
+async def _assign_bid(
+    task_id: UUID,
+    bid_id: UUID,
+    *,
+    creator_did: str | None,
+) -> TaskAssignmentResponse:
+    """
+    Assign the task to the bid's agent.
+
+    *creator_did* is the agent accepting the bid and must be the task's
+    creator. None is reserved for the platform's own auto-accept rule in
+    submit_bid() — never pass None for a caller-initiated accept.
+
+    The task row is locked so two concurrent accepts (or auto-accepts) cannot
+    both see 'open' and assign the task twice.
     """
     async with transaction() as conn:
         task_row = await conn.fetchrow(
-            "SELECT task_id, status FROM tasks WHERE task_id = $1",
+            """
+            SELECT task_id, status, creator_agent_id
+            FROM tasks WHERE task_id = $1
+            FOR UPDATE
+            """,
             task_id,
         )
         if task_row is None:
             raise ValueError(f"Task not found: {task_id}")
+        if creator_did is not None:
+            caller_id = await conn.fetchval(
+                "SELECT agent_id FROM agents WHERE agent_did = $1",
+                creator_did,
+            )
+            if caller_id is None or caller_id != task_row["creator_agent_id"]:
+                raise PermissionError("Only the task creator can accept a bid")
         if task_row["status"] != "open":
             raise ValueError(
                 f"Task cannot be assigned (status={task_row['status']})"
@@ -378,14 +436,32 @@ async def submit_result(
     result_payload: dict,
 ) -> TaskResultResponse:
     """
-    Executor submits task result:
-      - inserts task_results row
-      - marks task_assignments completed
-      - records trust event for task_completed
+    Executor submits task result. In ONE transaction:
+      - locks the task row
+      - checks the caller is the assigned executor and the task is 'assigned'
+      - inserts task_results row, marks task_assignments completed
+      - marks the task COMPLETED
+      - releases the escrowed reward to the executor's wallet
+    then records the trust event for task_completed.
+
+    Because the status check, the status change and the payout share one
+    locked transaction, a result can be accepted (and paid) only once, however
+    many times or however concurrently it is submitted. If the payout fails,
+    everything rolls back and the task stays 'assigned'.
+
+    Raises:
+        ValueError: task or agent not found.
+        PermissionError: *agent_did* is not the task's assigned executor.
+        TaskConflictError: the task is not awaiting a result (already
+            completed, or not a marketplace task).
     """
     async with transaction() as conn:
         task_row = await conn.fetchrow(
-            "SELECT task_id, status FROM tasks WHERE task_id = $1",
+            """
+            SELECT task_id, status, executor_agent_id
+            FROM tasks WHERE task_id = $1
+            FOR UPDATE
+            """,
             task_id,
         )
         if task_row is None:
@@ -397,6 +473,13 @@ async def submit_result(
         )
         if agent_row is None:
             raise ValueError(f"Agent not found: {agent_did}")
+
+        if task_row["executor_agent_id"] != agent_row["agent_id"]:
+            raise PermissionError("Only the assigned executor can submit a result")
+        if task_row["status"] != "assigned":
+            raise TaskConflictError(
+                f"Task is not awaiting a result (status={task_row['status']})"
+            )
 
         result_row = await conn.fetchrow(
             """
@@ -436,6 +519,13 @@ async def submit_result(
             task_id,
         )
 
+        # Phase 8: Release escrowed reward to executor's wallet — same
+        # transaction, so "completed" and "paid" cannot come apart.
+        from .token_service import release_task_escrow
+        released = await release_task_escrow(
+            task_id, agent_row["agent_id"], conn=conn
+        )
+
     # Record reputation event outside the transaction to avoid nested locks
     # (existing direct-call path — preserved for backward compatibility)
     await record_event(
@@ -451,19 +541,10 @@ async def submit_result(
         agent_did,
     )
 
-    # Phase 8: Release escrowed reward to executor's wallet (soft-fail)
-    try:
-        from .token_service import release_task_escrow
-        await release_task_escrow(task_id, agent_row["agent_id"])
-    except Exception as exc:
-        logger.warning(
-            "Token escrow release skipped for task %s: %s", task_id, exc
-        )
-
     # Phase 8.5: Publish TASK_REWARD_RELEASED (fire-and-forget)
     await publish_event(
         EventType.TASK_REWARD_RELEASED,
-        {"task_id": str(task_id)},
+        {"task_id": str(task_id), "released": released},
         agent_did,
     )
 

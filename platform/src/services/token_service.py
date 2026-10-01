@@ -17,7 +17,7 @@ Public API
 Internal helpers (used by task_service)
 ────────────────────────────────────────
   escrow_task_reward(agent_id, task_id, amount)   → None
-  release_task_escrow(task_id, executor_agent_id) → None
+  release_task_escrow(task_id, executor_agent_id) → int  (amount released)
 
 All DB access uses asyncpg via get_db() / transaction() context managers.
 Atomic debit is performed with ``WHERE balance >= $amount RETURNING wallet_id``
@@ -461,63 +461,93 @@ async def escrow_task_reward(
     )
 
 
+async def _settle_task_escrow(
+    conn,
+    task_id: UUID,
+    payee_agent_id: UUID,
+    tx_type: str,
+) -> int:
+    """
+    Pay a task's whole escrow to *payee_agent_id* inside the caller's
+    transaction. Returns the amount paid (0 if nothing was escrowed).
+
+    The task row is locked (``FOR UPDATE``) before ``escrowed_reward`` is read,
+    so two concurrent settlements cannot both see a non-zero escrow: the second
+    waits for the first to commit, then reads 0 and pays nothing.
+
+    The payee's wallet is created if missing — the tokens come out of escrow,
+    so this mints nothing — otherwise an agent with no wallet could never be
+    paid and the escrow would be stuck for good.
+    """
+    escrowed = await conn.fetchval(
+        "SELECT escrowed_reward FROM tasks WHERE task_id = $1 FOR UPDATE",
+        task_id,
+    )
+    if not escrowed:
+        return 0
+
+    wallet_row = await conn.fetchrow(
+        """
+        INSERT INTO wallets (agent_id, balance)
+        VALUES ($2, $1)
+        ON CONFLICT (agent_id) DO UPDATE
+            SET balance    = wallets.balance + EXCLUDED.balance,
+                updated_at = CURRENT_TIMESTAMP
+        RETURNING wallet_id
+        """,
+        escrowed,
+        payee_agent_id,
+    )
+
+    await conn.execute(
+        "UPDATE tasks SET escrowed_reward = 0 WHERE task_id = $1",
+        task_id,
+    )
+
+    # Ledger entry: NULL (escrow) → payee wallet
+    await _record_transaction(
+        conn,
+        from_wallet=None,
+        to_wallet=wallet_row["wallet_id"],
+        amount=escrowed,
+        tx_type=tx_type,
+        related_id=task_id,
+    )
+    return escrowed
+
+
 async def release_task_escrow(
     task_id: UUID,
     executor_agent_id: UUID,
-) -> None:
+    conn=None,
+) -> int:
     """
     Release escrowed task reward to the executor's wallet.
 
-    Reads tasks.escrowed_reward, credits the executor's wallet, zeroes the
-    escrowed_reward, and records a ledger entry.
+    Locks the task row, reads tasks.escrowed_reward, credits the executor's
+    wallet, zeroes the escrowed_reward, and records a ledger entry
+    (type='escrow_release'). Returns the amount released; 0 if the task had no
+    escrow (or it was already paid out).
 
-    Silently skips if escrowed_reward == 0 (task had no escrow).
+    Pass *conn* to run inside the caller's transaction, so that completing the
+    task and paying for it commit (or roll back) together.
     """
-    async with transaction() as conn:
-        escrowed = await conn.fetchval(
-            "SELECT escrowed_reward FROM tasks WHERE task_id = $1",
-            task_id,
+    if conn is not None:
+        released = await _settle_task_escrow(
+            conn, task_id, executor_agent_id, "escrow_release"
         )
-        if not escrowed:
-            return  # Nothing to release
-
-        # Credit executor wallet
-        wallet_row = await conn.fetchrow(
-            """
-            UPDATE wallets
-               SET balance    = balance + $1,
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE agent_id = $2
-            RETURNING wallet_id
-            """,
-            escrowed,
-            executor_agent_id,
-        )
-        if wallet_row is None:
-            raise ValueError(
-                f"Executor wallet not found for agent: {executor_agent_id}"
+    else:
+        async with transaction() as own_conn:
+            released = await _settle_task_escrow(
+                own_conn, task_id, executor_agent_id, "escrow_release"
             )
 
-        # Zero out the escrow column
-        await conn.execute(
-            "UPDATE tasks SET escrowed_reward = 0 WHERE task_id = $1",
-            task_id,
+    if released:
+        logger.debug(
+            "token_service: released %d tokens from escrow for task %s to agent %s",
+            released, task_id, executor_agent_id,
         )
-
-        # Ledger entry: NULL (escrow) → executor wallet
-        await _record_transaction(
-            conn,
-            from_wallet=None,
-            to_wallet=wallet_row["wallet_id"],
-            amount=escrowed,
-            tx_type="escrow_release",
-            related_id=task_id,
-        )
-
-    logger.debug(
-        "token_service: released %d tokens from escrow for task %s to agent %s",
-        escrowed, task_id, executor_agent_id,
-    )
+    return released
 
 
 # ── Refund task escrow to creator (on task failure) ──────────────────────────
@@ -525,57 +555,24 @@ async def release_task_escrow(
 async def refund_task_escrow(
     task_id: UUID,
     creator_agent_id: UUID,
-) -> None:
+) -> int:
     """
     Refund escrowed task reward back to the creator (used when task fails).
 
-    Reads tasks.escrowed_reward, credits the creator's wallet, zeroes the
-    escrowed_reward, and records a ledger entry with type='escrow_refund'.
-
-    Silently skips if escrowed_reward == 0.
+    Same locking as release_task_escrow; the ledger entry has
+    type='escrow_refund'. Returns the amount refunded (0 if nothing escrowed).
     """
     async with transaction() as conn:
-        escrowed = await conn.fetchval(
-            "SELECT escrowed_reward FROM tasks WHERE task_id = $1",
-            task_id,
-        )
-        if not escrowed:
-            return
-
-        wallet_row = await conn.fetchrow(
-            """
-            UPDATE wallets
-               SET balance    = balance + $1,
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE agent_id = $2
-            RETURNING wallet_id
-            """,
-            escrowed,
-            creator_agent_id,
-        )
-        if wallet_row is None:
-            raise ValueError(
-                f"Creator wallet not found for agent: {creator_agent_id}"
-            )
-
-        await conn.execute(
-            "UPDATE tasks SET escrowed_reward = 0 WHERE task_id = $1",
-            task_id,
+        refunded = await _settle_task_escrow(
+            conn, task_id, creator_agent_id, "escrow_refund"
         )
 
-        await _record_transaction(
-            conn,
-            from_wallet=None,
-            to_wallet=wallet_row["wallet_id"],
-            amount=escrowed,
-            tx_type="escrow_refund",
-            related_id=task_id,
+    if refunded:
+        logger.debug(
+            "token_service: refunded %d tokens from escrow for task %s to creator %s",
+            refunded, task_id, creator_agent_id,
         )
-
-    logger.debug(
-        "token_service: refunded %d tokens from escrow for task %s to creator %s",
-        escrowed, task_id, creator_agent_id,
-    )
+    return refunded
 
 
 # ── Phase 8.5: Treasury-aware operations ─────────────────────────────────────

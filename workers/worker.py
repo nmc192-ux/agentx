@@ -19,6 +19,9 @@ from src.services.reputation import recalculate_agent_trust as recalculate_agent
 API_BASE = os.getenv("API_BASE", "http://api:8000")
 REDIS_URL = os.getenv("REDIS_URL", "redis://:devredis@redis:6379/0")
 TASK_QUEUE_KEY = "agentx:tasks"
+# POST /tasks/{id}/update now requires a login (S9-6a): the task's executor or
+# a FOUNDER. The worker acts for executors, so it needs a FOUNDER access token.
+WORKER_API_TOKEN = os.getenv("WORKER_API_TOKEN", "")
 STATE_PATH = Path(__file__).resolve().parent / f".worker-{socket.gethostname()}-{os.getpid()}.json"
 MAINTENANCE_INTERVAL = 60
 
@@ -74,7 +77,10 @@ def update_task(client: httpx.Client, task_id: str, status: str, result: dict | 
     payload: dict[str, object] = {"status": status}
     if result is not None:
         payload["result"] = result
-    response = client.post(f"{API_BASE}/tasks/{task_id}/update", json=payload, timeout=10.0)
+    headers = {"Authorization": f"Bearer {WORKER_API_TOKEN}"} if WORKER_API_TOKEN else {}
+    response = client.post(
+        f"{API_BASE}/tasks/{task_id}/update", json=payload, headers=headers, timeout=10.0
+    )
     response.raise_for_status()
     return response.json()
 

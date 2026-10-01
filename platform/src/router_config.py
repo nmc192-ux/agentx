@@ -97,22 +97,12 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
 
-    # SECURITY (found Sprint 9, S9-6; was Tier B): no endpoint authenticates.
-    # Every identity comes from the request body (`creator_agent_did`,
-    # `requester_agent_did`, bid/result `agent_did`), and accept / update have
-    # no owner check. Since `POST /tasks` escrows `reward` from the named
-    # creator's wallet and `POST /tasks/{id}/result` releases it to the named
-    # executor, an anonymous caller can drain any agent's wallet, and can mark
-    # any task COMPLETED to farm trust events. Enable only after the JWT-identity
-    # fix (PLAN S9-6a, T1) is reviewed as security code.
-    "tasks",
-
     # SECURITY (found Sprint 9, S9-6; was Tier B): writes use the JWT caller,
     # but (a) `POST /contracts/{id}/dispute` checks neither the caller nor the
     # status, so any agent can freeze anyone's contract, escrow included, for
     # good (nothing resolves a dispute); (b) no route releases the escrowed
     # budget, so a created contract locks its creator's tokens permanently;
-    # (c) the creator may bid on and win their own contract. Fix in PLAN S9-6a.
+    # (c) the creator may bid on and win their own contract. Fix in PLAN S9-6b.
     "contracts",
 
     # SECURITY (found Sprint 9, S9-6; was Tier B): `POST
@@ -121,7 +111,7 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # UPDATE; `bounty_rewards` has no UNIQUE(bounty_id). Two concurrent calls
     # pay the reward twice — tokens from nothing (a creator can win via a
     # second account, since creators may submit to their own bounty).
-    # Fix in PLAN S9-6a.
+    # Fix in PLAN S9-6c.
     "markets",
 ]
 
@@ -136,7 +126,7 @@ PARITY_HOLD_ROUTERS = [
     "economy",
     # Writes are sound (requester-only create, no self-votes, one vote each),
     # but every verification is about a submitted *contract* result, and
-    # contracts is Tier A until S9-6a. Enabling it now would be an empty router.
+    # contracts is Tier A until S9-6b. Enabling it now would be an empty router.
     "verifications",
 ]
 
@@ -164,8 +154,9 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   identity; membership checks in the services.
 #   pulse         — read-only metrics.
 # Cohort 2, work (S9-6): only the two routers whose writes passed review.
-# tasks, contracts, markets went to Tier A (token holes, S9-6a); verifications
-# waits for contracts.
+# tasks, contracts, markets went to Tier A (token holes); verifications waits
+# for contracts. tasks came back out in S9-6a; contracts (S9-6b) and markets
+# (S9-6c) are still Tier A.
 #   collectives   — writes use the caller's JWT identity; approve / remove are
 #                   OWNER/ADMIN. S9-6: assigning a task to a collective now
 #                   requires the caller to be the task's requester or executor,
@@ -173,9 +164,24 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #   agentbus      — sender from the JWT; S9-6: an envelope whose `agent_id`
 #                   names someone else is refused (403) and inboxes show the
 #                   authenticated sender, so agents cannot impersonate others.
+#   tasks         — was Tier A (S9-6): no endpoint authenticated and every
+#                   identity came from the body, so an anonymous caller could
+#                   escrow any agent's tokens and release them to itself.
+#                   Fixed in S9-6a: every POST needs a JWT and acts as the JWT
+#                   caller (a body DID naming anyone else → 403); accept =
+#                   creator only; result = assigned executor only and only
+#                   once, with "completed" and the escrow payout in ONE locked
+#                   transaction (pays once under any concurrency); update =
+#                   executor (or FOUNDER) only, direct tasks only, forward
+#                   status changes only. Proven against real Postgres in
+#                   tests/integration/test_task_escrow_db.py.
+#                   Known and NOT changed (design, see PLAN / HUMAN_ACTIONS D2):
+#                   the first bid with confidence >= 0.3 is auto-accepted and
+#                   the reward is paid when the result is submitted, with no
+#                   creator approval of the result.
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
-    "collectives", "agentbus",
+    "collectives", "agentbus", "tasks",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

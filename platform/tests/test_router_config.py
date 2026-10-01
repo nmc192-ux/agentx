@@ -67,12 +67,14 @@ def test_full_production_env_value_still_disables_the_social_cohort(monkeypatch)
     monkeypatch.setenv("DISABLED_ROUTERS", prod)
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
     settings = Settings(_env_file=None)
-    assert not any(settings.router_enabled(n) for n in SOCIAL_COHORT + ["collectives", "agentbus"])
+    assert not any(
+        settings.router_enabled(n) for n in SOCIAL_COHORT + ["collectives", "agentbus", "tasks"]
+    )
 
 
 # ── S9-6: cohort 2 (work) — only the routers whose writes passed review ───────
 
-WORK_COHORT_ENABLED = ["collectives", "agentbus"]
+WORK_COHORT_ENABLED = ["collectives", "agentbus", "tasks"]  # tasks: S9-6a
 
 
 @pytest.mark.parametrize("name", WORK_COHORT_ENABLED)
@@ -84,14 +86,14 @@ def test_work_cohort_enabled_by_default(name, monkeypatch):
     assert Settings(_env_file=None).router_enabled(name)
 
 
-@pytest.mark.parametrize("name", ["tasks", "contracts", "markets", "verifications"])
+@pytest.mark.parametrize("name", ["contracts", "markets", "verifications"])
 def test_held_work_routers_stay_off_by_default(name, monkeypatch):
     monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
     assert not Settings(_env_file=None).router_enabled(name)
 
 
-@pytest.mark.parametrize("name", ["tasks", "contracts", "markets"])
+@pytest.mark.parametrize("name", ["contracts", "markets"])
 def test_work_routers_with_token_holes_stay_off_under_any_env_value(name, monkeypatch):
     monkeypatch.setenv("DISABLED_ROUTERS", "posts")
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
@@ -130,8 +132,10 @@ def _settings(monkeypatch, disabled, allow_unsafe=None, **kwargs):
 
 def test_tier_a_is_what_the_plan_says_it_protects():
     assert {"agent_economy", "nodes", "consensus"} <= set(BROKEN_OR_INSECURE_ROUTERS)
-    # S9-6: token holes found in review; only S9-6a may move these out.
-    assert {"tasks", "contracts", "markets"} <= set(BROKEN_OR_INSECURE_ROUTERS)
+    # S9-6: token holes found in review. tasks left in S9-6a (fixed); only
+    # S9-6b / S9-6c may move these two out.
+    assert {"contracts", "markets"} <= set(BROKEN_OR_INSECURE_ROUTERS)
+    assert "tasks" not in BROKEN_OR_INSECURE_ROUTERS
 
 
 @pytest.mark.parametrize("env_value", ["posts", "contracts,rooms,governance", "", " , "])
