@@ -2,6 +2,39 @@
 
 Newest at the top.
 
+## 2026-10-01 · cycle 3 · Fable (T1) · S9-2 nodes hardening + S9-3 consensus disposition
+
+- **S9-2 done** (`4f17ef2`, `SECURITY-REVIEW:`): the `nodes` router is hardened **and** stays
+  disabled. Both write endpoints (`POST /nodes/register`, `POST /nodes/events`) were open to
+  anyone; they are now FOUNDER-only. Peer URLs must be public https — no internal hostnames,
+  private/loopback/metadata addresses or numeric-host tricks — checked at registration and
+  again before every outbound send.
+- **New finding (why this was worth hardening even while off):** `node_consumer` is subscribed
+  to the event bus regardless of router gating. Had `nodes` ever been switched on, anyone could
+  register a URL and receive every contract/task/bounty event payload, or aim those POSTs at
+  internal addresses.
+- **S9-3 done** (same commit): `consensus` stays disabled with a precise reason in
+  `router_config.py`. It cannot be "pointed at `governance_votes`": consensus is keyed on
+  PROPOSAL posts, governance on the `proposals` table (different ids, vote values, weights),
+  and any logged-in agent can open/advance any debate. It needs the O10 design decision.
+- **Also fixed** (`f59f88a`): `test_rivalry_creates_edges` failed about 1 run in 6 (unseeded
+  random interactions relabelled the edge under test). It failed once in this cycle's first
+  full run; it is now deterministic. Unrelated to the nodes change.
+- **New finding → new step S9-4a:** the Fly `DISABLED_ROUTERS` env var *replaces* the repo
+  list, so a short emergency value turns ON every router it does not name, including the
+  unsafe ones. H3 already tells DrJ to unset it rather than edit it, and its emergency-undo
+  line names all 20 routers, so nothing is exposed today.
+- **Check:** node tests 101 passed; full platform suite **2092 passed, 14 skipped**
+  (was 2053). New `tests/test_router_config.py` pins `nodes` and `consensus` as disabled.
+- **Decisions I made (reversible):**
+  - Inbound federated events are FOUNDER-only rather than "any logged-in agent": without
+    signatures a caller cannot prove it is the peer it names, so anything looser is spoofable.
+  - Peer URLs are https-only with no development exception; local two-node testing would need
+    one added deliberately.
+  - `GET /nodes` stays public (it lists peers and their public keys only).
+  - Did not build Ed25519 event signing: no signing helper exists in `src/auth`, outbound
+    signing needs a new node key (a secret, so a human action), and federation is Phase D.
+
 ## 2026-10-01 · cycle 2 · Opus (T2) · DrJ note + S9-1 wallet security fix
 
 - **DrJ note handled first** (`a6c899b`): H1 stays open (prod still on the old build;

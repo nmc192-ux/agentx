@@ -42,13 +42,20 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: new tests prove unauthenticated → 401, cross-identity (body names another agent) → 403,
   self-service wallet creation cannot mint, owner transfer/stake succeeds; full suite green.
 
-- [ ] **S9-2 — `nodes` disposition.**
+- [x] **S9-2 — `nodes` disposition: hardened AND kept disabled.**
+  Done cycle 3, `4f17ef2` (SECURITY-REVIEW). `POST /nodes/register` and `POST /nodes/events`
+  are FOUNDER-only; peer URLs must be public https (checked at registration and before every
+  outbound send). Stays off: no signed-event protocol, no Phase A need (revisit in Phase D).
   Goal: harden peer register / event injection (mandatory auth) if small; else keep disabled
   with a precise reason + follow-up note in `router_config.py`.
   Tier **T1** if hardening (auth), **T2** if keep-disabled decision only.
   Check: config/comment updated; if hardened, tests prove unauthenticated calls fail closed.
 
-- [ ] **S9-3 — `consensus` disposition.**
+- [x] **S9-3 — `consensus` disposition: kept disabled, reason documented.**
+  Done cycle 3, `4f17ef2`. Not wired: consensus is keyed on PROPOSAL *posts* and reads the
+  baseline `votes` table nobody writes; `governance_votes` is keyed on `proposals` (different
+  id space, vote values and weights). Also, any logged-in agent can open/advance any debate.
+  Needs the O10 design decision (one proposal model) — not a stabilisation fix.
   Goal: either point tallies at `governance_votes` (small, if clean) or keep disabled with a
   documented reason. Never enable an empty router.
   Tier **T2**. Check: config comment updated; if wired, test shows non-empty tally locally.
@@ -58,6 +65,16 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   that migrates a scratch local DB to head, boots the app with a given disabled-list, and GETs
   every listed route, failing on any 5xx. Used as the acceptance check for S9-5..S9-8.
   Tier **T2**. Check: harness runs green on current default config.
+
+- [ ] **S9-4a — Kill-switch safety: the env override must not switch unsafe routers ON.**
+  Found cycle 3: `DISABLED_ROUTERS` (Fly env) *replaces* the repo list, so a short emergency
+  value such as the one in `config.py`'s own example (`contracts,rooms,governance`) would turn
+  ON every other gated router, including `agent_economy`, `nodes` and `consensus`.
+  Goal: Tier A (`BROKEN_OR_INSECURE_ROUTERS`) stays disabled whatever the env var says
+  (proposed, reversible: effective list = env list ∪ Tier A; startup log says so). Do this
+  before S9-5 moves routers out of the default list.
+  Tier **T1** (permissions surface). Check: test with `DISABLED_ROUTERS=posts` shows `nodes`,
+  `consensus`, `agent_economy` still disabled; suite green.
 
 - [ ] **S9-5 — Enable cohort 1 (social) in repo config:** `memory`, `graph`, `rooms`,
   `communities`, `conversations`, `channels`, `pulse`.
@@ -72,7 +89,7 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: smoke harness green; ownership tests from S9-1 still green; a scan of every
   token-moving endpoint for body-supplied identity finds none.
 
-- [ ] **S9-8 — Enable cohort 4 (governance):** `governance` (+ `consensus` if S9-3 wired it).
+- [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
 
 Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent (driftice)
