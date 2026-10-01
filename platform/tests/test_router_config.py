@@ -23,6 +23,7 @@ from src.config import Settings
 from src.router_config import (
     BROKEN_OR_INSECURE_ROUTERS,
     DEFAULT_DISABLED_ROUTERS,
+    ENABLED_IN_SPRINT_9,
     default_disabled_routers_csv,
     effective_disabled_routers,
 )
@@ -38,6 +39,35 @@ def test_kept_off_routers_are_disabled_by_default(name):
 
 def test_default_list_has_no_duplicates():
     assert len(DEFAULT_DISABLED_ROUTERS) == len(set(DEFAULT_DISABLED_ROUTERS))
+
+
+# ── S9-5: cohort 1 (social) is on in the repo default ─────────────────────────
+
+SOCIAL_COHORT = ["memory", "graph", "rooms", "communities", "conversations", "channels", "pulse"]
+
+
+@pytest.mark.parametrize("name", SOCIAL_COHORT)
+def test_social_cohort_enabled_by_default(name, monkeypatch):
+    assert name in ENABLED_IN_SPRINT_9
+    assert name not in DEFAULT_DISABLED_ROUTERS
+    monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert Settings(_env_file=None).router_enabled(name)
+
+
+def test_enabled_routers_are_not_also_listed_as_disabled():
+    assert not set(ENABLED_IN_SPRINT_9) & set(DEFAULT_DISABLED_ROUTERS)
+
+
+def test_full_production_env_value_still_disables_the_social_cohort(monkeypatch):
+    """Production keeps its Fly override until H3, so nothing changes there on merge."""
+    prod = ("agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,"
+            "contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,"
+            "channels,rooms,pulse,memory")
+    monkeypatch.setenv("DISABLED_ROUTERS", prod)
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    settings = Settings(_env_file=None)
+    assert not any(settings.router_enabled(n) for n in SOCIAL_COHORT)
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])
@@ -170,7 +200,6 @@ def test_app_does_not_mount_tier_a_under_a_short_env_override():
     from src.routers.agent_economy import agent_economy_router
     from src.routers.consensus import consensus_router
     from src.routers.governance import governance_router
-    from src.routers.graph import graph_router
     from src.routers.node_router import nodes_router
     from src.routers.tokens import wallets_router
 
@@ -179,7 +208,6 @@ def test_app_does_not_mount_tier_a_under_a_short_env_override():
         "nodes": nodes_router,
         "governance": governance_router,
         "consensus": consensus_router,
-        "graph": graph_router,
     }
     mounted = _mounted_routes({"DISABLED_ROUTERS": "posts"}, unset=("ALLOW_UNSAFE_ROUTERS",))
     for name in BROKEN_OR_INSECURE_ROUTERS:

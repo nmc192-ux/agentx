@@ -48,8 +48,9 @@ Three tiers of "disabled" are recorded separately so the distinctions are not lo
      they are OFF in production today. They are kept off here ONLY to preserve
      parity (zero behavior change on merge). Sprint 9 enables them.
   C. ``PARITY_UNEXPLAINED_ROUTERS`` — off in production for a reason not yet
-     established (currently: ``memory``, a core primitive). Held off for parity;
-     the "why" is a Sprint 9 investigation, not a 9a assumption.
+     established (was: ``memory``, a core primitive). Held off for parity;
+     the "why" is a Sprint 9 investigation, not a 9a assumption. Empty since
+     S9-5 (investigated: stale gating; enabled — see ``ENABLED_IN_SPRINT_9``).
 
 Constitutional anchor: magna_carta_v1.md, Article 24 Principle 4 — honest
 accountability; every decision leaves a record.
@@ -95,14 +96,6 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # proposal model (decision O10, debate + consensus in rooms) — a design
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
-
-    # CODE FIXED (Sprint 9), NOT PROD-READY: graph_service had two column/table
-    # typos (`room_members`→`room_participants`, `followed_did`→`following_did`);
-    # both fixed, /graph/constellation returns 200 locally. STILL DISABLED
-    # because prod lacks the `rooms`/`room_participants` tables (migration 035 is
-    # stamped-past on prod, so it won't create them). Enable only after the
-    # production schema is reconciled. See briefing_2026-07-04_chain.md.
-    "graph",
 ]
 
 # ── Tier B — parity hold. Audit-cleared, but OFF in production today. ──────────
@@ -113,7 +106,6 @@ BROKEN_OR_INSECURE_ROUTERS = [
 PARITY_HOLD_ROUTERS = [
     "tasks",
     "collectives",
-    "communities",
     "contracts",
     "wallets",
     "stakes",
@@ -121,10 +113,6 @@ PARITY_HOLD_ROUTERS = [
     "agentbus",
     "verifications",
     "markets",
-    "conversations",
-    "channels",
-    "rooms",
-    "pulse",
 ]
 
 # ── Tier C — disabled in production for a reason not yet established. ──────────
@@ -132,14 +120,32 @@ PARITY_HOLD_ROUTERS = [
 # 2026-07-04). This was NOT anticipated: memory is one of the magna carta's seven
 # core primitives, so its being off is notable and needs explaining. Held off
 # here to preserve parity; the "why" is a Sprint 9 investigation.
-PARITY_UNEXPLAINED_ROUTERS = [
-    # disabled to match production; reason TBD — see Sprint 9
-    "memory",
+# Empty since S9-5: the investigation found stale gating, so memory is enabled.
+PARITY_UNEXPLAINED_ROUTERS: list[str] = []
+
+# ── Enabled in Sprint 9 (removed from the lists above, kept here as a record) ──
+# Cohort 1, social (S9-5): enabled in the repo default. Production is unchanged
+# until DrJ removes the Fly `DISABLED_ROUTERS` override (HUMAN_ACTIONS H3), which
+# must wait for the production schema reconciliation (H1): prod lacks the
+# `rooms` / `room_participants` tables that `rooms` and `graph` read.
+#   memory        — the Tier C "why" was investigated in Sprint 9: stale gating,
+#                   no defect; every endpoint is owner-or-admin only.
+#   graph         — was Tier A only for the two column/table typos, fixed in
+#                   Sprint 9; /graph/constellation is read-only.
+#   rooms         — writes use the caller's JWT identity; participant/observer
+#                   checks in the services. S9-5 also made canvas node PATCH /
+#                   DELETE check the node belongs to the room in the URL.
+#   communities, conversations, channels — writes use the caller's JWT
+#                   identity; membership checks in the services.
+#   pulse         — read-only metrics.
+ENABLED_IN_SPRINT_9 = [
+    "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by
 # membership. Matches the live production DISABLED_ROUTERS set confirmed by DrJ
-# on 2026-07-04 (20 routers, memory included).
+# on 2026-07-04 (20 routers, memory included), minus the routers Sprint 9 has
+# since enabled (``ENABLED_IN_SPRINT_9``).
 DEFAULT_DISABLED_ROUTERS = (
     BROKEN_OR_INSECURE_ROUTERS
     + PARITY_HOLD_ROUTERS
