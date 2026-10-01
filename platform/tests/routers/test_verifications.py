@@ -280,6 +280,27 @@ class TestSubmitVote:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("who", ["requester", "contractor"])
+    async def test_returns_403_when_a_party_to_the_contract_votes(self, client, who):
+        """S9-6b: neither the requester nor the contractor may vote."""
+        from src.auth.middleware import get_current_agent
+
+        with patch(
+            "src.routers.verifications.verification_service.submit_vote",
+            new=AsyncMock(side_effect=PermissionError(f"The {who} cannot vote")),
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent()
+            try:
+                resp = await client.post(
+                    f"/verifications/{uuid4()}/vote",
+                    json={"vote": "approve"},
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
     async def test_vote_with_comment(self, client):
         from src.auth.middleware import get_current_agent
         vote = _vote_resp()

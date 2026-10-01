@@ -97,14 +97,6 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
 
-    # SECURITY (found Sprint 9, S9-6; was Tier B): writes use the JWT caller,
-    # but (a) `POST /contracts/{id}/dispute` checks neither the caller nor the
-    # status, so any agent can freeze anyone's contract, escrow included, for
-    # good (nothing resolves a dispute); (b) no route releases the escrowed
-    # budget, so a created contract locks its creator's tokens permanently;
-    # (c) the creator may bid on and win their own contract. Fix in PLAN S9-6b.
-    "contracts",
-
     # SECURITY (found Sprint 9, S9-6; was Tier B): `POST
     # /markets/bounties/{id}/distribute` reads the status without a lock,
     # credits the winner first and closes the bounty with an unconditional
@@ -124,10 +116,6 @@ PARITY_HOLD_ROUTERS = [
     "wallets",
     "stakes",
     "economy",
-    # Writes are sound (requester-only create, no self-votes, one vote each),
-    # but every verification is about a submitted *contract* result, and
-    # contracts is Tier A until S9-6b. Enabling it now would be an empty router.
-    "verifications",
 ]
 
 # ── Tier C — disabled in production for a reason not yet established. ──────────
@@ -154,9 +142,9 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   identity; membership checks in the services.
 #   pulse         — read-only metrics.
 # Cohort 2, work (S9-6): only the two routers whose writes passed review.
-# tasks, contracts, markets went to Tier A (token holes); verifications waits
-# for contracts. tasks came back out in S9-6a; contracts (S9-6b) and markets
-# (S9-6c) are still Tier A.
+# tasks, contracts, markets went to Tier A (token holes); verifications waited
+# for contracts. tasks came back out in S9-6a, contracts (with verifications)
+# in S9-6b; markets (S9-6c) is still Tier A.
 #   collectives   — writes use the caller's JWT identity; approve / remove are
 #                   OWNER/ADMIN. S9-6: assigning a task to a collective now
 #                   requires the caller to be the task's requester or executor,
@@ -179,9 +167,34 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   the first bid with confidence >= 0.3 is auto-accepted and
 #                   the reward is paid when the result is submitted, with no
 #                   creator approval of the result.
+#   contracts     — was Tier A (S9-6): any agent could dispute any contract in
+#                   any state and freeze its escrow for good; no route ever
+#                   released the escrow; the creator could bid on and win
+#                   their own contract. Fixed in S9-6b: dispute = creator or
+#                   contractor only, and only while 'assigned' / 'submitted';
+#                   new creator-only `/complete` (pays the contractor) and
+#                   `/cancel` (refunds an open contract), each with the
+#                   contract row locked and the status change and payout in
+#                   ONE transaction (pays once under any concurrency); the
+#                   budget is escrowed in the same transaction as the create
+#                   (no funds → no contract; it was soft-fail); no self-bids;
+#                   assign / result are locked too. Proven against real
+#                   Postgres in tests/integration/test_contract_escrow_db.py.
+#                   Known and NOT changed (design, HUMAN_ACTIONS D3): nothing
+#                   resolves a dispute and nothing times out, so the escrow of
+#                   a disputed contract, or of one whose contractor never
+#                   delivers or whose creator never completes, stays locked.
+#                   Needs a funded wallet, i.e. is only usable once the money
+#                   cohort (`wallets`, S9-7) is on.
+#   verifications — was held only because it acts on contracts. S9-6b: votes
+#                   and finalisation lock the verification row; the contractor
+#                   (like the requester) cannot vote on their own result; the
+#                   verifier-reward payout is switched off because nothing
+#                   funds the reward pool (it would have minted tokens).
+#                   Advisory only: a verification never moves escrow.
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
-    "collectives", "agentbus", "tasks",
+    "collectives", "agentbus", "tasks", "contracts", "verifications",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

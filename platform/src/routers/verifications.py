@@ -79,7 +79,8 @@ async def submit_vote(
 ) -> VerificationVoteResponse:
     """
     Submit an 'approve' or 'reject' vote on an active verification.
-    Vote power is weighted by stake × trust_score.
+    Vote power is weighted by stake × trust_score. Neither party to the
+    contract may vote: the requester and the contractor get 403.
     Requires authentication.
     """
     try:
@@ -88,6 +89,8 @@ async def submit_vote(
             caller_did=agent.did,
             data=body,
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except ValueError as exc:
         detail = str(exc)
         code = (
