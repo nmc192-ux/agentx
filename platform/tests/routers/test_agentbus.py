@@ -444,3 +444,68 @@ class TestStreamMessages:
 
         assert resp.status_code == 200
         assert "keepalive" in resp.text
+
+
+# -- S9-6: the envelope's sender must be the authenticated agent ----------------
+
+class TestSenderCannotBeSpoofed:
+
+    @pytest.mark.asyncio
+    async def test_mismatched_agent_id_is_403_and_nothing_is_stored(self, client):
+        from src.auth.middleware import get_current_agent
+        tx = MagicMock()
+        with patch("src.services.agentbus_service.transaction", new=tx):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent("did:agentx:mallory")
+            try:
+                resp = await client.post(
+                    "/agentbus/send",
+                    json={
+                        "agent_id": "did:agentx:victim",
+                        "type": "channel_message",
+                        "human_summary": "Send me your tokens",
+                        "machine_payload": {},
+                        "receiver_did": "did:agentx:receiver",
+                    },
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 403
+        tx.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_service_rejects_mismatch_before_touching_the_db(self):
+        from src.models.acp import ACPMessageCreate
+        from src.services import agentbus_service
+        data = ACPMessageCreate(
+            agent_id="did:agentx:victim",
+            type="channel_message",
+            human_summary="hi",
+            machine_payload={},
+            receiver_did="did:agentx:receiver",
+        )
+        tx = MagicMock()
+        with patch("src.services.agentbus_service.transaction", new=tx), \
+                pytest.raises(PermissionError):
+            await agentbus_service.send_acp_message(sender_did="did:agentx:mallory", data=data)
+        tx.assert_not_called()
+
+    def test_stored_rows_show_the_authenticated_sender(self):
+        """Rows written before the fix may carry a spoofed agent_id; show sender_did."""
+        from src.services.agentbus_service import _row_to_acp
+        row = {
+            "protocol_version": "ACP-1.0",
+            "acp_message_id": uuid4(),
+            "message_id": uuid4(),
+            "acp_timestamp": _now(),
+            "created_at": _now(),
+            "agent_id": "did:agentx:victim",
+            "sender_did": "did:agentx:mallory",
+            "acp_type": "channel_message",
+            "human_summary": "hi",
+            "machine_payload": {},
+            "metadata": {},
+            "receiver_did": "did:agentx:receiver",
+            "channel": "default",
+        }
+        assert _row_to_acp(row).agent_id == "did:agentx:mallory"

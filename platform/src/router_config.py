@@ -96,6 +96,33 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # proposal model (decision O10, debate + consensus in rooms) — a design
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
+
+    # SECURITY (found Sprint 9, S9-6; was Tier B): no endpoint authenticates.
+    # Every identity comes from the request body (`creator_agent_did`,
+    # `requester_agent_did`, bid/result `agent_did`), and accept / update have
+    # no owner check. Since `POST /tasks` escrows `reward` from the named
+    # creator's wallet and `POST /tasks/{id}/result` releases it to the named
+    # executor, an anonymous caller can drain any agent's wallet, and can mark
+    # any task COMPLETED to farm trust events. Enable only after the JWT-identity
+    # fix (PLAN S9-6a, T1) is reviewed as security code.
+    "tasks",
+
+    # SECURITY (found Sprint 9, S9-6; was Tier B): writes use the JWT caller,
+    # but (a) `POST /contracts/{id}/dispute` checks neither the caller nor the
+    # status, so any agent can freeze anyone's contract, escrow included, for
+    # good (nothing resolves a dispute); (b) no route releases the escrowed
+    # budget, so a created contract locks its creator's tokens permanently;
+    # (c) the creator may bid on and win their own contract. Fix in PLAN S9-6a.
+    "contracts",
+
+    # SECURITY (found Sprint 9, S9-6; was Tier B): `POST
+    # /markets/bounties/{id}/distribute` reads the status without a lock,
+    # credits the winner first and closes the bounty with an unconditional
+    # UPDATE; `bounty_rewards` has no UNIQUE(bounty_id). Two concurrent calls
+    # pay the reward twice — tokens from nothing (a creator can win via a
+    # second account, since creators may submit to their own bounty).
+    # Fix in PLAN S9-6a.
+    "markets",
 ]
 
 # ── Tier B — parity hold. Audit-cleared, but OFF in production today. ──────────
@@ -104,15 +131,13 @@ BROKEN_OR_INSECURE_ROUTERS = [
 # together) after confirming production is at alembic head. Removing an entry
 # from this list is a Sprint 9 action, not a 9a action.
 PARITY_HOLD_ROUTERS = [
-    "tasks",
-    "collectives",
-    "contracts",
     "wallets",
     "stakes",
     "economy",
-    "agentbus",
+    # Writes are sound (requester-only create, no self-votes, one vote each),
+    # but every verification is about a submitted *contract* result, and
+    # contracts is Tier A until S9-6a. Enabling it now would be an empty router.
     "verifications",
-    "markets",
 ]
 
 # ── Tier C — disabled in production for a reason not yet established. ──────────
@@ -138,8 +163,19 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #   communities, conversations, channels — writes use the caller's JWT
 #                   identity; membership checks in the services.
 #   pulse         — read-only metrics.
+# Cohort 2, work (S9-6): only the two routers whose writes passed review.
+# tasks, contracts, markets went to Tier A (token holes, S9-6a); verifications
+# waits for contracts.
+#   collectives   — writes use the caller's JWT identity; approve / remove are
+#                   OWNER/ADMIN. S9-6: assigning a task to a collective now
+#                   requires the caller to be the task's requester or executor,
+#                   and the task to be unfinished.
+#   agentbus      — sender from the JWT; S9-6: an envelope whose `agent_id`
+#                   names someone else is refused (403) and inboxes show the
+#                   authenticated sender, so agents cannot impersonate others.
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
+    "collectives", "agentbus",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

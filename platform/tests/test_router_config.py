@@ -67,7 +67,35 @@ def test_full_production_env_value_still_disables_the_social_cohort(monkeypatch)
     monkeypatch.setenv("DISABLED_ROUTERS", prod)
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
     settings = Settings(_env_file=None)
-    assert not any(settings.router_enabled(n) for n in SOCIAL_COHORT)
+    assert not any(settings.router_enabled(n) for n in SOCIAL_COHORT + ["collectives", "agentbus"])
+
+
+# ── S9-6: cohort 2 (work) — only the routers whose writes passed review ───────
+
+WORK_COHORT_ENABLED = ["collectives", "agentbus"]
+
+
+@pytest.mark.parametrize("name", WORK_COHORT_ENABLED)
+def test_work_cohort_enabled_by_default(name, monkeypatch):
+    assert name in ENABLED_IN_SPRINT_9
+    assert name not in DEFAULT_DISABLED_ROUTERS
+    monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert Settings(_env_file=None).router_enabled(name)
+
+
+@pytest.mark.parametrize("name", ["tasks", "contracts", "markets", "verifications"])
+def test_held_work_routers_stay_off_by_default(name, monkeypatch):
+    monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert not Settings(_env_file=None).router_enabled(name)
+
+
+@pytest.mark.parametrize("name", ["tasks", "contracts", "markets"])
+def test_work_routers_with_token_holes_stay_off_under_any_env_value(name, monkeypatch):
+    monkeypatch.setenv("DISABLED_ROUTERS", "posts")
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert not Settings(_env_file=None).router_enabled(name)
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])
@@ -102,6 +130,8 @@ def _settings(monkeypatch, disabled, allow_unsafe=None, **kwargs):
 
 def test_tier_a_is_what_the_plan_says_it_protects():
     assert {"agent_economy", "nodes", "consensus"} <= set(BROKEN_OR_INSECURE_ROUTERS)
+    # S9-6: token holes found in review; only S9-6a may move these out.
+    assert {"tasks", "contracts", "markets"} <= set(BROKEN_OR_INSECURE_ROUTERS)
 
 
 @pytest.mark.parametrize("env_value", ["posts", "contracts,rooms,governance", "", " , "])
@@ -123,7 +153,7 @@ def test_env_override_still_replaces_the_non_tier_a_part(monkeypatch):
     """Only Tier A is locked. Tier B/C routers left out of the env value are
     enabled, as before — that is how H3 / an env-driven rollout works."""
     settings = _settings(monkeypatch, "posts")
-    assert settings.router_enabled("tasks")
+    assert settings.router_enabled("wallets")
     assert settings.router_enabled("memory")
     assert settings.disabled_router_set == {"posts"} | set(BROKEN_OR_INSECURE_ROUTERS)
 
@@ -199,8 +229,11 @@ def test_app_does_not_mount_tier_a_under_a_short_env_override():
     No Tier A route may be mounted; an unlocked router (wallets) still is."""
     from src.routers.agent_economy import agent_economy_router
     from src.routers.consensus import consensus_router
+    from src.routers.contracts import contracts_router
     from src.routers.governance import governance_router
+    from src.routers.markets import markets_router
     from src.routers.node_router import nodes_router
+    from src.routers.tasks import router as tasks_router
     from src.routers.tokens import wallets_router
 
     routers = {
@@ -208,6 +241,9 @@ def test_app_does_not_mount_tier_a_under_a_short_env_override():
         "nodes": nodes_router,
         "governance": governance_router,
         "consensus": consensus_router,
+        "tasks": tasks_router,
+        "contracts": contracts_router,
+        "markets": markets_router,
     }
     mounted = _mounted_routes({"DISABLED_ROUTERS": "posts"}, unset=("ALLOW_UNSAFE_ROUTERS",))
     for name in BROKEN_OR_INSECURE_ROUTERS:
