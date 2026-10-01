@@ -263,6 +263,9 @@ def main(argv: list[str] | None = None) -> int:
         "JWT_SECRET": SMOKE_JWT_SECRET,
         "RATE_LIMIT_MODE": "log",
         "DISABLED_ROUTERS": ",".join(disabled),
+        # The list above is exact: lift the Tier A lock (S9-4a, development
+        # only) so `--enable graph` or `--disabled ""` really mounts them.
+        "ALLOW_UNSAFE_ROUTERS": "1",
         "SENTRY_DSN": "",
         "PYTHONWARNINGS": "ignore",
     }

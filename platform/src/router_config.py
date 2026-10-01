@@ -11,13 +11,23 @@ How the two sources interact (see ``config.Settings.disabled_routers``):
     • Normal path — the repo default below (``DEFAULT_DISABLED_ROUTERS``)
       decides which routers are disabled.
     • Emergency override — if the ``DISABLED_ROUTERS`` environment variable is
-      set, it *completely overrides* this list. That preserves the fast
-      kill-switch: in a real production incident a router can be turned off in
-      seconds via Fly.io, with no code deploy. The repo is the normal path;
-      the env var is the emergency brake.
+      set, it replaces the Tier B / Tier C part of this list. That preserves
+      the fast kill-switch: in a real production incident a router can be
+      turned off in seconds via Fly.io, with no code deploy. The repo is the
+      normal path; the env var is the emergency brake.
+    • Tier A lock (Sprint 9, S9-4a) — the env var can switch routers OFF, but
+      it can never switch a Tier A router (``BROKEN_OR_INSECURE_ROUTERS``) ON.
+      Because the env value *replaces* the repo list, a short emergency value
+      such as ``DISABLED_ROUTERS=contracts`` used to turn ON every router it
+      did not name, the unsafe ones included. Tier A is now always added back
+      (see ``effective_disabled_routers``). The only way to enable a Tier A
+      router is to fix it and move it out of Tier A in this file, in a
+      reviewed commit. Tests and the local smoke harness opt out with
+      ``ALLOW_UNSAFE_ROUTERS=1``, which is honoured in development only.
 
-The startup log states which source was used and the effective list, so it is
-never a mystery in production which path is active.
+The startup log states which source was used, the effective list and which
+routers the Tier A lock forced off, so it is never a mystery in production
+which path is active.
 
 ──────────────────────────────────────────────────────────────────────────────
 PARITY NOTE (Sprint 9a — read before changing this list)
@@ -142,3 +152,15 @@ def default_disabled_routers_csv() -> str:
     ``disabled_routers`` setting expects. Used as the field default so the
     ``DISABLED_ROUTERS`` env var (if set) transparently overrides it."""
     return ",".join(DEFAULT_DISABLED_ROUTERS)
+
+
+def effective_disabled_routers(configured: set[str], unlock_tier_a: bool = False) -> set[str]:
+    """The routers that are really off: the configured list (env override or
+    repo default) plus every Tier A router, whatever the configured list says.
+
+    ``unlock_tier_a`` skips the lock. It exists for the test suite and the
+    local smoke harness, which exercise Tier A routers on purpose; the caller
+    (``config.Settings``) only passes True in development."""
+    if unlock_tier_a:
+        return set(configured)
+    return set(configured) | set(BROKEN_OR_INSECURE_ROUTERS)

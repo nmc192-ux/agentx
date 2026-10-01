@@ -120,6 +120,26 @@ async def lifespan(app: FastAPI):
         settings.disabled_routers_source,
         ",".join(_disabled) or "(none)",
     )
+    # Tier A lock (S9-4a): say so when the configured list left out an unsafe
+    # router and the lock kept it off, or when the lock has been lifted.
+    _locked = sorted(settings.tier_a_locked_routers)
+    if _locked:
+        logger.warning(
+            "Router gating: Tier A lock kept %d unsafe router(s) OFF that the "
+            "configured list did not name — %s",
+            len(_locked),
+            ",".join(_locked),
+        )
+    if settings.unsafe_routers_unlocked:
+        logger.warning(
+            "Router gating: Tier A lock LIFTED (ALLOW_UNSAFE_ROUTERS, development only)"
+        )
+    elif settings.unsafe_routers_requested:
+        logger.warning(
+            "Router gating: ALLOW_UNSAFE_ROUTERS is set but IGNORED outside "
+            "development (env=%s) — Tier A routers stay off",
+            settings.app_env,
+        )
 
     # Phase 19: OTel tracing — no-op when OTEL_EXPORTER_OTLP_ENDPOINT is unset
     setup_tracing("agentx-api", service_version=settings.app_version)
@@ -352,15 +372,16 @@ async def health_ready(request: Request):
 
 
 # ── Router gating helper ──────────────────────────────────────────────────────
-# Routers listed in settings.disabled_routers (comma-separated, via env
-# DISABLED_ROUTERS) are skipped. Every path they own returns 404 instead of
-# 500 — a clean failure mode for pre-launch scope cuts.
+# Routers in settings.disabled_router_set are skipped: the repo default list
+# (router_config.py) or the DISABLED_ROUTERS env override, plus the Tier A
+# routers that stay off whatever the env says. Every path they own returns 404
+# instead of 500 — a clean failure mode for pre-launch scope cuts.
 def _include_if_enabled(router, name: str) -> None:
-    """Register `router` unless `name` is in DISABLED_ROUTERS."""
+    """Register `router` unless `name` is in the effective disabled set."""
     if settings.router_enabled(name):
         app.include_router(router)
     else:
-        logger.info("Router '%s' DISABLED via DISABLED_ROUTERS env — skipping registration", name)
+        logger.info("Router '%s' DISABLED by router gating — skipping registration", name)
 
 
 # ── Phase 16: Agent Discovery (registered BEFORE agents_router so that

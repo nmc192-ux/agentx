@@ -20,7 +20,7 @@ from typing import Optional
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .router_config import default_disabled_routers_csv
+from .router_config import default_disabled_routers_csv, effective_disabled_routers
 
 
 def _read_secret(env_var: str, file_var: str, secret_name: str) -> str:
@@ -117,12 +117,24 @@ class Settings(BaseSettings):
     #
     # SOURCE OF TRUTH is the repo: the default comes from
     # `router_config.DEFAULT_DISABLED_ROUTERS` (readable, commented, reviewed).
-    # The `DISABLED_ROUTERS` environment variable, IF SET, overrides this
-    # default entirely — the emergency kill-switch (Fly.io, no code deploy).
+    # The `DISABLED_ROUTERS` environment variable, IF SET, replaces this
+    # default — the emergency kill-switch (Fly.io, no code deploy).
     # Pydantic precedence gives env vars priority over field defaults, so this
     # override is automatic. See `disabled_routers_source` for which won.
     # Example emergency override: DISABLED_ROUTERS=contracts,rooms,governance
+    #
+    # Tier A lock (S9-4a): whatever this value says, every router in
+    # `router_config.BROKEN_OR_INSECURE_ROUTERS` stays disabled, so a short
+    # emergency value like the example above cannot switch an unsafe router
+    # ON by leaving it out. See `disabled_router_set`.
     disabled_routers: str = Field(default_factory=default_disabled_routers_csv)
+
+    # Opt out of the Tier A lock. For the test suite and the local smoke
+    # harness only: honoured when app_env is "development" and the value is
+    # exactly 1/true/yes; ignored (with a startup warning) in staging and
+    # production. Kept as a string so a mistyped value cannot stop the app
+    # from booting — anything unrecognised means "locked".
+    allow_unsafe_routers: str = ""
 
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
@@ -205,13 +217,40 @@ class Settings(BaseSettings):
         return self.app_env == "development"
 
     @property
-    def disabled_router_set(self) -> set[str]:
-        """Parse `disabled_routers` into a set of normalised router names."""
+    def configured_disabled_router_set(self) -> set[str]:
+        """Parse `disabled_routers` (env override or repo default) into a set
+        of normalised router names — before the Tier A lock is applied."""
         return {
             name.strip().lower()
             for name in self.disabled_routers.split(",")
             if name.strip()
         }
+
+    @property
+    def unsafe_routers_requested(self) -> bool:
+        """True if ALLOW_UNSAFE_ROUTERS asks to lift the Tier A lock."""
+        return self.allow_unsafe_routers.strip().lower() in {"1", "true", "yes"}
+
+    @property
+    def unsafe_routers_unlocked(self) -> bool:
+        """True only if the Tier A lock is really lifted: requested AND
+        running in development. Staging and production always stay locked."""
+        return self.unsafe_routers_requested and self.is_development
+
+    @property
+    def disabled_router_set(self) -> set[str]:
+        """The routers that are really off: the configured list plus every
+        Tier A router (unless the lock is lifted in development)."""
+        return effective_disabled_routers(
+            self.configured_disabled_router_set,
+            unlock_tier_a=self.unsafe_routers_unlocked,
+        )
+
+    @property
+    def tier_a_locked_routers(self) -> set[str]:
+        """Tier A routers the configured list left out and the lock forced
+        off. Empty on the normal path (the repo default names all of them)."""
+        return self.disabled_router_set - self.configured_disabled_router_set
 
     @property
     def disabled_routers_source(self) -> str:

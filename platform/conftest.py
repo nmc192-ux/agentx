@@ -44,6 +44,10 @@ os.environ.setdefault("APP_ENV", "development")
 # router for tests — preserving the pre-9a behavior where nothing was disabled
 # by default. (Individual tests can still monkeypatch this to assert gating.)
 os.environ.setdefault("DISABLED_ROUTERS", "")
+# S9-4a: the env override can no longer switch Tier A (broken/insecure) routers
+# on by itself. The suite tests those routers too, so it lifts the lock — which
+# config.py only honours in development (set just above).
+os.environ.setdefault("ALLOW_UNSAFE_ROUTERS", "1")
 
 
 def pytest_addoption(parser):
