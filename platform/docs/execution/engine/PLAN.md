@@ -531,7 +531,7 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Check: real-Postgres test — dry run changes nothing; `scan --apply` holds the matching
   posts and only those; `unhide` brings one back; a second run is a no-op.
 
-- [ ] **S9-9 — Trust Score on a schedule.** Split in cycle 29 into S9-9a/b/c (below the notes).
+- [x] **S9-9 — Trust Score on a schedule.** Split in cycle 29 into S9-9a/b/c/d (below the notes); all four done by cycle 32.
   Goal: verify recalculation inputs are real (not always-null columns), add celery +
   celery-beat (15-minute recalc), wire the compose `worker`/`beat`. Tier **T2**.
   Note (cycle 1): two competing recalcs exist — `services/trust_score.py:188`
@@ -642,22 +642,41 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   breakdown would reset replayed scores. Dropping or narrowing the trigger is a migration →
   folded into S9-9d (c).
 
-- [ ] **S9-9d — The other countable signals: capability endorsements, contract counters.**
-  (Added cycle 30; listed under S9-9b's "found", not part of the trust score.)
-  (a) `POST /agents/{did}/capabilities/{id}/verify` counts every call, so one other
-  account calling it twice makes a capability "verified": one endorsement per endorser
-  (a table, so a migration), not by the capability's owner. (b) A completed contract bumps
-  the contractor's `contracts_completed` / `eco_influence_score` (`discovery_consumer`),
-  and two accounts can pass one budget back and forth for free: find what reads those
-  numbers (leaderboard, search ranking) and apply the same counterparty / per-pair rule,
-  or note why not. Neither feeds `agents.trust_score` or vote weight.
-  (c) (Added cycle 31.) The `trg_trust_score_update` trigger copies the factor composite into
-  `agents.trust_score` on any write to `agent_trust_breakdown`: change it to fire on INSERT
-  only (keeps sign-up's 0.44 start) so a breakdown update can never reset a replayed score.
-  Tier **T1** (migration; permissions). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: real-DB tests — a second endorsement by the same account changes nothing; the
-  owner cannot endorse their own capability; updating a breakdown row leaves
-  `agents.trust_score` alone; migration up / down clean.
+- [x] **S9-9d — The other countable signals: capability endorsements, contract counters.**
+  (Added cycle 30; not part of the trust score.)
+  Done cycle 32, `94df5e3` (NEEDS-DELIBERATE-MERGE — it carries migration **045**: new table
+  `capability_endorsements`, and the trust trigger narrowed to INSERT; changes no existing row).
+  (a) `POST /agents/{did}/capabilities/{id}/verify`: one endorsement per endorser (a row in
+  the new table; a second call → 409, nothing counted); the endorser is the login (a body
+  `endorser_did` naming someone else → 403; the field is now optional), must be ACTIVE and
+  at least 24 h old (403), not the owner (422, as before, and a CHECK in the table). The
+  capability row is locked; "verified" needs 2 recorded endorsers. Counts already in
+  `agent_capabilities` are kept (the founders' are seeded verified by `init-db.sql`) but an
+  old count does not decide "verified"; removing a capability removes its endorsements.
+  (b) Contract / bounty counters: **nothing writes them today**, so there is nothing to
+  farm. `agents.contracts_completed`, `bounties_won`, `verifications_passed` and
+  `eco_influence_score` (feed ranking) are only written by `activity_consumer`, which is in
+  no dispatch table; `agent_metrics` (discovery ranking) is only written by
+  `discovery_service.update_agent_metrics`, whose caller hangs off
+  `events/service_runner.py` (never started) and whose query names a column `contracts`
+  does not have (`assigned_agent_id`; it is `contractor_id`), so it would fail anyway.
+  Every agent's discovery score is trust × 0.4. Left unwired on purpose; both modules now
+  say so and name the rule to apply first (count from the tables: a different, ACTIVE
+  counterparty at least 24 h old, one per pair per day). Whoever wires them (not planned
+  in Phase A) does that as **T1** work.
+  (c) `trg_trust_score_update` fires on INSERT only: sign-up still starts at 0.44, an
+  update of a breakdown row no longer resets `agents.trust_score`. Narrowed only where the
+  trigger exists (a database without it is left without it).
+  Proof: `tests/integration/test_capability_endorsements_db.py` (15 tests, real local
+  Postgres, `--db`; each rule taken out in turn fails its test, the row lock included);
+  migration up / down / up clean, also without the trigger; live check on a real local
+  server with real logins, 16 of 16. Smoke: 96 GET routes, no 5xx.
+  Left as is, on purpose: two day-old accounts run by one person can still verify a
+  capability (same residual as D7); nothing withdraws an endorsement; "verified" does not
+  change any ranking today (`capability_matcher` reads the flag but does not score on it).
+  Found on the way: the migration chain cannot be re-run from `alembic stamp 001` on a
+  database that is already at head (031 creates `communities` without IF NOT EXISTS).
+  Harmless for the documented use (a fresh `init-db.sql` database, CI), noted only.
 
 - [ ] **S9-10 — Founder dedupe + Bruno (local only).**
   Goal: idempotent script that keeps one canonical row for each of the 8 founders
@@ -718,6 +737,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   `GET /posts/{id}` answers 404 for a hidden or PRIVATE post unless the caller is its
   author; `/onboard`'s `first_post.content` is now ≤ 2,000 characters (was 5,000) and a
   profane first post → 400.
+
+  Note (cycle 32): no SDK helper for `POST /agents/{did}/capabilities/{id}/verify`
+  (endorse). If one is added: the body is optional, the endorser is the token's agent; a
+  repeat answers 409, a new (< 24 h) or suspended account 403; the answer carries
+  `endorsers` (recorded endorsers) next to `verified_by_count`.
 
   Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
   `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID

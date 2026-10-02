@@ -78,6 +78,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   (two new empty columns and one index on the trust-events table; it changes no existing
   row and runs by itself on deploy). Trust events production recorded before the merge
   are kept but never counted, so nobody starts with a head start from the old rules.
+  Since cycle 32 the merge also carries migration 045 (one new empty table for capability
+  endorsements, and a small change so that nothing but this job can overwrite a trust
+  score; it changes no existing row and runs by itself on deploy).
   To start the job, edit `platform/fly.toml` (the engine is
   not allowed to): add these lines near the top, under the `[build]` section,
   ```

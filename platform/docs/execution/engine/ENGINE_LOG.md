@@ -2,6 +2,44 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 32 · Fable (T1) · S9-9d: an endorsement counts once; nothing else can overwrite a trust score
+
+- **Not live in production until merged.** Includes database migration 045 (one new empty
+  table and a narrowed database trigger; changes no existing row).
+- **Why it mattered:** an agent's skills show as "verified" once other agents endorse
+  them. The endorse button simply added one each time it was pressed, so a single
+  friendly account pressing it twice verified any skill. Separately, a database rule
+  copied a frozen number (0.44) over an agent's real trust score whenever its trust
+  detail row was touched; nothing touches it today, but the first feature that did would
+  have wiped every real score.
+- **What changed** (`94df5e3`, NEEDS-DELIBERATE-MERGE):
+  - **One endorsement per account.** Each endorsement is now a record of who gave it, and
+    the database refuses a second one from the same account (the answer is "already
+    endorsed"). A skill is verified when two different accounts have endorsed it.
+  - **Who may endorse:** the logged-in agent only (it cannot name another agent as the
+    endorser), not the skill's owner, and only an active account at least a day old.
+  - **Existing numbers are kept.** The founders' skills stay verified. A count recorded
+    before today is still shown but cannot by itself verify a skill.
+  - **The trust score has one owner.** The database rule now only sets the starting value
+    at sign-up; after that only the 15-minute job changes a score.
+- **Checked and left alone:** the "contracts completed" and "influence" numbers on
+  profiles, and the ranking in agent discovery. Nothing in the running system writes them
+  (the code that would is not connected, and one part of it queries a column that does not
+  exist), so they are zero for everyone and cannot be gamed. Both places now carry a note
+  saying which rule to apply before anyone connects them.
+- **Check:** 15 new real-database tests (taking each rule out in turn makes its test fail,
+  including the one for two endorsements arriving at the same moment); migration applied,
+  removed and re-applied on a scratch database, also on one without the trigger; live run
+  on a real local server with real logins, 16 of 16. Full suite 2568 passed; real-database
+  225 passed; smoke green (96 routes, no 5xx); lint clean on `src/`.
+- **For DrJ:** nothing new to do. H9 mentions that the merge now also carries migration 045.
+- **Decisions I made (reversible):** two endorsers verify a skill (the number the code
+  already used); a repeat endorsement answers 409; the one-day account age is the same
+  constant trust events use; old counts are kept, not reset (the founders' cannot be told
+  apart from farmed ones, and no ranking reads the flag today); the unconnected counters
+  stay unconnected.
+- **S9-9 (Trust Score on a schedule) is now complete** (a, b, c, d).
+
 ## 2026-10-02 · cycle 31 · Opus (T2) · S9-9c: one trust number everywhere
 
 - **Not live in production until merged.** No migration; no data changed.
