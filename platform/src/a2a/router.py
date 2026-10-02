@@ -14,8 +14,9 @@ Endpoints:
            tasks/get     — retrieve a task by ID
 
 Both Agent Card endpoints are publicly accessible (no auth required).
-The JSON-RPC endpoint validates the envelope but currently accepts
-unauthenticated calls (external A2A agents may not have a platform token).
+On the JSON-RPC endpoint ``tasks/get`` is public; ``message/send`` creates a
+task, so it needs the Bearer token the Agent Cards advertise and the task
+belongs to that agent (an agent without one gets it from POST /onboard).
 
 References:
   https://google.github.io/A2A/specification/
@@ -26,9 +27,12 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
+from ..auth.middleware import AgentRecord, get_current_agent_optional
 from ..database import get_db
 from .agent_card import AgentCard, generate_agent_card, generate_platform_card
 from .handler import handle_message_send, handle_tasks_get
@@ -129,10 +133,12 @@ async def agent_agent_card(agent_did: str) -> JSONResponse:
 
 # ── JSON-RPC 2.0 endpoint ─────────────────────────────────────────────────────
 
-# Method registry — maps A2A method names to handler coroutines
+# Method registry — maps A2A method names to (handler coroutine, needs login).
+# A method that needs a login is called with the caller's DID; it never takes
+# the acting agent from the request body.
 _METHODS = {
-    "message/send": handle_message_send,
-    "tasks/get":    handle_tasks_get,
+    "message/send": (handle_message_send, True),
+    "tasks/get":    (handle_tasks_get, False),
 }
 
 
@@ -141,16 +147,20 @@ _METHODS = {
     summary="A2A JSON-RPC 2.0 endpoint",
     description=(
         "Accepts JSON-RPC 2.0 requests compliant with the A2A protocol. "
-        "Supported methods: ``message/send``, ``tasks/get``. "
+        "Supported methods: ``message/send`` (Bearer token required), ``tasks/get``. "
         "Returns JSON-RPC 2.0 response envelopes."
     ),
 )
-async def a2a_jsonrpc(request: Request) -> JSONResponse:
+async def a2a_jsonrpc(
+    request: Request,
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+) -> JSONResponse:
     """Handle an A2A JSON-RPC 2.0 request.
 
     Parses the JSON-RPC envelope, dispatches to the appropriate handler,
-    and returns a JSON-RPC 2.0 response.  All errors are returned as
-    JSON-RPC error objects (never as HTTP error status codes), per spec.
+    and returns a JSON-RPC 2.0 response.  Protocol errors are returned as
+    JSON-RPC error objects with HTTP 200, per spec.  Authentication failures
+    also carry HTTP 401 / 403, as the A2A specification asks of servers.
     """
     # ── Parse request body ────────────────────────────────────────────────────
     try:
@@ -177,7 +187,7 @@ async def a2a_jsonrpc(request: Request) -> JSONResponse:
     logger.info("a2a: JSON-RPC %s (id=%s)", rpc.method, rpc.id)
 
     # ── Dispatch to handler ───────────────────────────────────────────────────
-    handler = _METHODS.get(rpc.method)
+    handler, needs_login = _METHODS.get(rpc.method, (None, False))
     if handler is None:
         resp = JSONRPCResponse.err(
             rpc.id,
@@ -187,9 +197,30 @@ async def a2a_jsonrpc(request: Request) -> JSONResponse:
         )
         return JSONResponse(content=resp.model_dump(exclude_none=True))
 
+    if needs_login and caller is None:
+        resp = JSONRPCResponse.err(
+            rpc.id,
+            JSONRPCError.INVALID_REQUEST,
+            f"Authentication required: '{rpc.method}' needs a valid Bearer token",
+        )
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=resp.model_dump(exclude_none=True),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
-        result = await handler(rpc.params)
+        if needs_login:
+            result = await handler(rpc.params, caller_did=caller.did)
+        else:
+            result = await handler(rpc.params)
         resp = JSONRPCResponse.ok(rpc.id, result)
+    except PermissionError as exc:
+        resp = JSONRPCResponse.err(rpc.id, JSONRPCError.INVALID_REQUEST, str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=resp.model_dump(exclude_none=True),
+        )
     except ValueError as exc:
         resp = JSONRPCResponse.err(
             rpc.id,
