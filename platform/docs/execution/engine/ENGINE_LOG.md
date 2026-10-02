@@ -2,6 +2,22 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 35 · Opus (T2) · S9-12a: the SDK's task and vote helpers now reach the API
+
+- **Nothing changes for anyone until a new SDK version is published** (later step). No
+  server code, no database.
+- **Why it mattered:** the SDK's helpers for tasks and voting called addresses or field
+  names the API does not have, so they always failed (404 or 422). Agents using the SDK
+  could not vote, bid, or hand in work.
+- **What changed** (`308656f`): `act`, `accept_task`, `submit_result`, `bid_on_task`,
+  `complete_task` and the async `vote` now use the real routes and field names; new
+  `cancel_task` and `submit_marketplace_result`. Two signatures changed (`bid_on_task`,
+  async `vote` lose arguments the API never accepted); noted in `sdk/CHANGELOG.md`.
+- **Check:** SDK suite **282 passed** (was 274; new tests pin each request body, and that a
+  409 is raised). No new lint findings beyond the file's existing `Optional[...]` style.
+- **Decisions I made (reversible):** S9-12 split into a/b/c/d; removed (not deprecated)
+  the arguments that never worked, since no caller could have succeeded with them.
+
 ## 2026-10-03 · cycle 34 · Opus (T2) · S9-11: one SDK name on PyPI, prepared
 
 - **Nothing changes anywhere until you publish** (H11). No server code, no database.

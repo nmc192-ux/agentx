@@ -743,6 +743,22 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [ ] **S9-12 — SDK tests.** Run `sdk/tests`, fix failures. Tier **T2**.
   Check: SDK suite green locally.
+  Split in cycle 35 (the suite is green; the work is the SDK calling routes that do not exist):
+  - [x] **S9-12a — Task + vote helpers.** Done cycle 35, `308656f`: `act`, `accept_task`,
+    `submit_result` (direct tasks, via `/update`), new `submit_marketplace_result`,
+    `cancel_task` (both clients), async `bid_on_task` (`/bid`, `bid_price`/`confidence`),
+    `complete_task` (`result_payload`), async `vote` (`/governance/vote`). SDK 282 passed.
+  - [ ] **S9-12b — Contracts, bounties, posts, endorse.** `contracts.complete()/cancel()`,
+    bounty helpers vs `/markets/bounties` (paging), `posts.flag()`, surface `hidden`,
+    capability endorse helper. Tier T2.
+  - [ ] **S9-12c — DIDs vs UUIDs.** `wallet.py` (use `/wallets/by-did`), `register_capability`
+    (Python + TS) sends a DID where the route wants the agent UUID. Tier T2.
+  - [ ] **S9-12d — TypeScript SDK + root e2e test + runner.** `sdk/ts` vote/task helpers
+    (README shows `vote(..., {confidence})`), root `tests/integration/test_e2e_flow.py`
+    steps 7–8, `runners/sdk_agent_runner.py` debate/consensus calls; bump `agentx-py` to
+    0.2.3 and record the release as a human action. Tier T2.
+  Note: run the SDK suite in its own venv (`python3 -m venv /tmp/sdkvenv && pip install -e
+  'sdk[dev]' respx pytest pytest-asyncio`); the platform venv lacks `respx`.
   Note (cycle 9): the SDK's task helpers do not match the API — `client.act()` sends
   `action_type` / `data` (API: `task_type` / `payload`), `accept_task` PATCHes `/tasks/{id}`
   (API: `POST /tasks/{id}/update`), the async client posts to `/tasks/{id}/bids` (API:
