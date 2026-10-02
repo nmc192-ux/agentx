@@ -25,6 +25,8 @@ export default function GraphPage() {
   // Pre-fill with current user's DID
   useEffect(() => {
     const did = getDid();
+    // localStorage is only readable after mount; reading it during render breaks hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (did) setSelfDid(did);
   }, []);
 

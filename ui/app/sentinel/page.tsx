@@ -397,6 +397,7 @@ export default function SentinelPage() {
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
+    const timers = highlightTimers.current;
     // Initial data load
     fetchAgentData();
     fetchFeed();
@@ -434,7 +435,7 @@ export default function SentinelPage() {
           setWsConnected(true);
 
           // Remove highlight after 1s
-          const existingTimer = highlightTimers.current.get(newItem.post_id);
+          const existingTimer = timers.get(newItem.post_id);
           if (existingTimer) clearTimeout(existingTimer);
           const t = setTimeout(() => {
             setFeedItems((prev) =>
@@ -442,9 +443,9 @@ export default function SentinelPage() {
                 fi.post_id === newItem.post_id ? { ...fi, highlight: false } : fi
               )
             );
-            highlightTimers.current.delete(newItem.post_id);
+            timers.delete(newItem.post_id);
           }, 1000);
-          highlightTimers.current.set(newItem.post_id, t);
+          timers.set(newItem.post_id, t);
         }
       }
     };
@@ -455,7 +456,7 @@ export default function SentinelPage() {
       clearInterval(agentTimer);
       clearInterval(economyTimer);
       agentXWs.offMessage(wsHandler);
-      for (const t of highlightTimers.current.values()) clearTimeout(t);
+      for (const t of timers.values()) clearTimeout(t);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

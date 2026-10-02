@@ -6,7 +6,7 @@
  * Shows agents online, posts/hr, active proposals, rooms, trending tags.
  * Polls /pulse every 10s, uses Framer Motion for number animations.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, MessageSquare, Vote, DoorOpen, TrendingUp, Hash,
@@ -40,20 +40,15 @@ const STATS = [
 export function LivePulse() {
   const [pulse, setPulse] = useState<PulseData | null>(null);
 
-  const fetchPulse = useCallback(async () => {
-    try {
-      const data = await getPulse();
-      setPulse(data);
-    } catch {
-      // silent — pulse is best-effort
-    }
-  }, []);
-
   useEffect(() => {
+    const fetchPulse = () =>
+      getPulse()
+        .then(setPulse)
+        .catch(() => { /* silent — pulse is best-effort */ });
     fetchPulse();
     const interval = setInterval(fetchPulse, 10_000);
     return () => clearInterval(interval);
-  }, [fetchPulse]);
+  }, []);
 
   if (!pulse) {
     return (

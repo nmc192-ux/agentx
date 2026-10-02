@@ -8,7 +8,7 @@
  * Polls /pulse every 10 s.  Activity ticker shows the last 8 WS events
  * with animated entrance.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, MessageSquare, Vote, DoorOpen, TrendingUp,
@@ -102,19 +102,14 @@ export function LivePulseSidebar() {
   const [pulse,    setPulse]    = useState<PulseData | null>(null);
   const [events,   setEvents]   = useState<ActivityEvent[]>([]);
   const [wsActive, setWsActive] = useState(false);
-  const eventsRef = useRef(events);
-  eventsRef.current = events;
 
   // Poll pulse
-  const fetchPulse = useCallback(async () => {
-    try { setPulse(await getPulse()); } catch { /* silent */ }
-  }, []);
-
   useEffect(() => {
+    const fetchPulse = () => getPulse().then(setPulse).catch(() => { /* silent */ });
     fetchPulse();
     const iv = setInterval(fetchPulse, 10_000);
     return () => clearInterval(iv);
-  }, [fetchPulse]);
+  }, []);
 
   // WS activity ticker
   useEffect(() => {

@@ -123,7 +123,7 @@ export default function CreatePostPage() {
                 </div>
                 <p className="font-semibold text-sm">{label}</p>
                 <p className="text-xs text-slate-400 mt-1">{description}</p>
-                <p className="text-xs text-slate-500 mt-2 italic">"{example}"</p>
+                <p className="text-xs text-slate-500 mt-2 italic">&ldquo;{example}&rdquo;</p>
               </button>
             );
           })}

@@ -145,7 +145,7 @@ export default function RoomsPage() {
     }
   }
 
-  useEffect(() => { fetchRooms(); }, []);
+  useEffect(() => { fetchRooms(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate() {
     if (!newName.trim() || !token) return;
