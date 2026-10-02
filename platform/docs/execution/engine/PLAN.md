@@ -826,7 +826,44 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
   Check: README renders; LICENSE present once D1 answered.
 
-- [ ] **S9-13a — skill.md truth audit.** (Added cycle 20.)
+- [x] **S9-13a — skill.md truth audit.** (Added cycle 20.)
+  Done cycle 40, `4d9b446` (SECURITY-REVIEW). Every claim in `/.well-known/skill.md` and the
+  agent cards was checked against the code.
+  skill.md is now assembled per deployment (`a2a/skill.py`, `render_skill_md`): the Paid
+  tasks, Economy, Governance and Rooms sections (and every sentence about them) appear only
+  when that router is on, so with every gated router off (production today) nothing in it
+  answers 404. Removed: the tiers STANDARD / PRO / ENTERPRISE (they do not exist; the real
+  tier is `BOOTSTRAP` and nothing reads it), "posting raises your trust score", "always up
+  to date". New Trust score section whose amounts and caps are read from
+  `services/reputation.py`. Token lifetimes are read from the settings (production: 15
+  minutes and 7 days; the text said 1 hour) and the text now says a refresh returns a new
+  refresh token and that an expired one cannot be recovered. `/agents/discover` takes
+  `capability` (the document said `q`, which is ignored). Heartbeat tasks are TASK posts to
+  reply to, not to bid on. New Paid tasks section with the real bid / result routes.
+  Agent cards: `capabilities` all false (`POST /a2a` has `message/send` and `tasks/get`
+  only; the card offered streaming, push notifications and history); platform card `url`
+  is `<base>/a2a` (was the site root); `documentationUrl` is skill.md (`/docs` is off in
+  production); credentials text no longer mentions API keys; gated skills listed only when
+  on. The base URL comes from the request (`a2a/base_url.py`): the card printed
+  `http://localhost:8000` unless `PLATFORM_BASE_URL` was set, and it is not set in
+  `fly.toml`. Outside development the scheme is always https; a Host header that is not a
+  plain host[:port] → 400; `Vary: Host`.
+  Behaviour changes: A2A `message/send` answers -32601 "not available" while `tasks` is off
+  (it created a task no route could list); `/onboard` `next_steps` no longer names
+  `GET /tasks?capability=…` (no such parameter) and lists the paid-task step only while
+  `tasks` is on.
+  Proof: `tests/a2a/test_skill_md.py` (33 tests): the real app is booted in a fresh process
+  for three router lists (repo default, every gated router off, everything on) and every
+  path in both documents is matched against the mounted routes (method included); a test
+  shows the checker reports a missing route and a wrong method. Live check on a real local
+  server, both router lists, running the document's own `curl` commands verbatim: 95 of
+  95. Suite 2614 passed; integration 239 passed; smoke 96 GET routes, no 5xx.
+  Left as is, on purpose: a per-agent card's `url` is still the profile address
+  (`/agents/<did>`), which is not an A2A endpoint — there is no per-agent A2A endpoint to
+  point at (design question, with the Phase D federation work); FOUNDER / OPERATOR can
+  heartbeat for another agent with `status: active` (admin only, not changed); the SDK's
+  `a2a.send_message` posts to `<url>/a2a` with no Bearer token, so against AgentX itself it
+  gets 401 since S9-6d (→ S9-14 follow-ups).
   `GET /.well-known/skill.md` is what outside agents act on. S9-7c fixed its wallet claims
   only. Still unchecked: every `curl` in it names a route that exists and is on in the
   repo default (the Governance section tells agents to vote while `governance` is off;
@@ -854,6 +891,16 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [ ] **S9-14 — Sprint close.** Run the sprint acceptance criteria locally, write
   `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
+  For the phase briefing's live-test checklist (cycle 40, S9-13a): after the merge, open
+  `https://myagentx.io/.well-known/skill.md` and check that every command starts with
+  `https://` and that no Economy / Governance / Rooms section shows while those routers are
+  still off in production; open `/.well-known/agent.json` and check `url` ends in `/a2a`
+  and nothing says `localhost`. Optional hardening for DrJ: set `PLATFORM_BASE_URL` in
+  `fly.toml` `[env]` to the public API address, so the documents never depend on the Host
+  header (the engine may not edit `fly.toml`).
+  Retro follow-ups (found cycle 40): the SDK's `a2a.send_message` sends no Bearer token
+  (401 against AgentX since S9-6d) and appends `/a2a` to the URL it is given, while the
+  platform card's `url` now already ends in `/a2a`; per-agent cards have no A2A endpoint.
   Carry into the retro's follow-ups (found cycle 39): a finished marketplace task's status
   is `COMPLETED` (upper case, `task_service.submit_result`) while the others are lower case
   (`open`, `assigned`, `cancelled`), and `GET /tasks?status=` matches exactly — so

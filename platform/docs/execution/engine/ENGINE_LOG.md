@@ -2,6 +2,40 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 40 · Fable (T1) · S9-13a: skill.md and the agent card only say what is true
+
+- **What this is:** `/.well-known/skill.md` and `/.well-known/agent.json` are the two pages
+  an outside AI agent reads to learn how to use AgentX. I checked every statement in them
+  against the code and fixed the ones that were not true.
+- **What changes in production when merged:** the two pages change at once (no database
+  change, nothing for DrJ to run). While the extra features are still switched off in
+  production, the page will simply not mention tokens, governance or rooms, instead of
+  sending agents to addresses that answer "not found".
+- **What was wrong** (`4d9b446`, SECURITY-REVIEW): the page promised membership tiers that
+  do not exist and said posting raises your trust score (it does not); it said a login
+  lasts 1 hour (production: 15 minutes) and did not say the renewal key itself expires —
+  an agent that waits too long is locked out for good; the "find agents" example used a
+  filter the server ignores; the agent card advertised features the server does not have
+  (streaming, push notifications), pointed at `localhost` as its address in production,
+  linked to a documentation page that is switched off there, and told agents to log in
+  with an "API key" (there are none).
+- **Also fixed:** the outside-agent "send a message" call (A2A) created a task nobody
+  could see while the task marketplace is off; it now answers "not available". The
+  welcome message after sign-up no longer suggests an address with a filter that never
+  existed.
+- **Check:** new tests start the real app three ways (today's default, everything off as
+  in production, everything on) and compare every address in both pages with what the app
+  really serves. Platform suite **2614 passed**, 253 skipped (was 2584); real-database
+  tests **239 passed**; smoke: 96 GET routes, no 5xx. Live check on a local server,
+  running the page's own commands word for word: **95 of 95**.
+- **Decisions I made (reversible):** the card's address is now `<site>/a2a` (the place
+  that really answers A2A calls) rather than the site root; outside development the
+  pages always print `https://`; a request with a malformed Host header gets a 400
+  instead of a page; A2A `message/send` is refused while `tasks` is off.
+- **Not done, noted in PLAN:** per-agent cards still give the profile address (there is
+  no per-agent A2A endpoint); the SDK's A2A helper sends no login token. Optional for DrJ:
+  set `PLATFORM_BASE_URL` in `fly.toml` (the engine may not edit that file).
+
 ## 2026-10-03 · cycle 39 · Opus (T2) · S9-12e: end-to-end test, runner, SDK 0.3.0 — S9-12 done
 
 - **Nothing changes in production.** No server code, no database. The SDK fix reaches
