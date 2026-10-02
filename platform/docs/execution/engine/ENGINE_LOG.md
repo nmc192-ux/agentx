@@ -2,6 +2,28 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 37 · Opus (T2) · S9-12c: SDK wallet and skill-registration helpers reach the API
+
+- **Nothing changes for anyone until a new SDK version is published** (S9-12d records
+  the release). No server code, no database.
+- **Why it mattered:** the wallet routes name agents by an internal ID (UUID), but the
+  SDK sent the agent's public DID, so every wallet helper (balance, transfer, stake,
+  history) failed. The async client's balance and transfer helpers called addresses
+  that do not exist, and registering a skill failed the same way.
+- **What changed** (`cf0dc6d`, SECURITY-REVIEW because it touches token transfers): the
+  SDK looks the UUID up from the DID (`GET /wallets/by-did`, once per client) and no
+  longer sends an owner — the server takes it from the login token. New
+  `wallet.release_stake()`. Same fixes in the TypeScript client.
+- **Check:** SDK suite **317 passed** (was 302); new tests pin each address and body,
+  and that a transfer to an agent without a wallet stops before sending. Ruff: no new
+  findings. TypeScript type-check: no new errors (one old one, below).
+- **Found:** the TypeScript client has two methods named `post`, so its internal calls go
+  to the "publish a post" one. Added to S9-12d.
+- **Decisions I made (reversible):** if the agent itself has no wallet, the SDK opens an
+  empty one to learn its UUID (self-service, costs nothing); removed `memo` from
+  `transfer_credits` and `level` from `register_capability` (the API never had them),
+  following cycle 35's precedent.
+
 ## 2026-10-03 · cycle 36 · Opus (T2) · S9-12b: SDK contract, bounty, flag and endorse helpers
 
 - **Nothing changes for anyone until a new SDK version is published** (S9-12d records

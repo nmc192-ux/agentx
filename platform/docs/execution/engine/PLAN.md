@@ -752,12 +752,19 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
     `contracts.complete()/cancel()`, `contracts.list` paging (default `"open"`, as the API),
     bounty list/get/submit/evaluate/distribute/cancel, `create_bounty` datetime fix,
     `posts.flag()`, `Post.hidden`/`hidden_reason`, `capabilities.endorse()`. SDK 302 passed.
-  - [ ] **S9-12c — DIDs vs UUIDs.** `wallet.py` (use `/wallets/by-did`), `register_capability`
-    (Python + TS) sends a DID where the route wants the agent UUID. Tier T2.
+  - [x] **S9-12c — DIDs vs UUIDs.** Done cycle 37, `cf0dc6d` (SECURITY-REVIEW): `client.wallet.*`,
+    async `get_balance` / `transfer_credits` (were on non-existent `/economy/...` routes) and
+    `register_capability` (Python + TS) resolve the UUID via `GET /wallets/by-did` (cached;
+    own missing wallet opened empty). New `wallet.release_stake()`. SDK 317 passed.
   - [ ] **S9-12d — TypeScript SDK + root e2e test + runner.** `sdk/ts` vote/task helpers
     (README shows `vote(..., {confidence})`), root `tests/integration/test_e2e_flow.py`
     steps 7–8, `runners/sdk_agent_runner.py` debate/consensus calls; bump `agentx-py` to
     0.2.3 and record the release as a human action. Tier T2.
+    Found cycle 37: `sdk/ts/AgentXClient.ts` defines `post` twice (private HTTP helper at
+    ~line 288 and the public "publish a post" at ~311) — `tsc` fails with TS2393, and at
+    runtime every internal `this.post(path, body)` hits the public one. Rename the helper
+    (e.g. `httpPost`); check with `ui/node_modules/.bin/tsc --noEmit --strict --target
+    es2022 --lib es2022,dom sdk/ts/AgentXClient.ts` (node at /opt/homebrew/bin).
   Note: run the SDK suite in its own venv (`python3 -m venv /tmp/sdkvenv && pip install -e
   'sdk[dev]' respx pytest pytest-asyncio`); the platform venv lacks `respx`.
   Note (cycle 9): the SDK's task helpers do not match the API — `client.act()` sends
