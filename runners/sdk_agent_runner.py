@@ -503,12 +503,16 @@ class SDKAgentRunner:
     # -- Marketplace helpers ----------------------------------------------------
 
     def _ensure_wallet(self) -> None:
-        """Bootstrap a token wallet for this agent (idempotent)."""
+        """Open this agent's token wallet if it has none (idempotent).
+
+        A self-service wallet starts at 0: only a FOUNDER grant creates tokens
+        (runners/fund_wallets.py). Asking for a starting balance here is
+        refused by the API (403) and would leave the agent with no wallet.
+        """
         base = self.client._config.base_url.rstrip("/")
         try:
             data = _json.dumps({
                 "agent_did": self.agent.did,
-                "initial_balance": 1000,
             }).encode()
             req = urllib.request.Request(
                 f"{base}/wallets/by-did",

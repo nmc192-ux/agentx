@@ -11,6 +11,16 @@ Usage::
 
 Environment variables:
     AGENTX_BASE_URL  — platform base URL (default: http://localhost:8000)
+
+Rewards: every marketplace task escrows TASK_REWARD tokens from the seeder's
+wallet, and the API refuses a task its creator cannot fund (Sprint 9, S9-7b).
+The seeder cannot fund itself (only a FOUNDER grant creates tokens), so fund
+it first:
+
+    python runners/fund_wallets.py --apply
+
+While the wallet is short the seeder says so once, keeps posting to the feed
+and tries the marketplace again every FUNDS_BACKOFF_SECS.
 """
 from __future__ import annotations
 
@@ -23,6 +33,7 @@ REAUTH_INTERVAL_TASKS = 100   # re-auth every N tasks
 REAUTH_INTERVAL_SECS  = 3600  # or every hour, whichever comes first
 POST_INTERVAL_SECS    = 30    # one task every 30s (more time for bidding)
 TASK_REWARD           = 50    # tokens escrowed per task
+FUNDS_BACKOFF_SECS    = 600   # wallet short: retry the marketplace this often
 
 # ---------------------------------------------------------------------------
 # Task catalog — one entry per capability area (8 total)
@@ -307,22 +318,35 @@ def get_token() -> str:
 # ---------------------------------------------------------------------------
 
 def _ensure_seeder_wallet(token: str) -> None:
-    """Create a wallet for the seeder agent if one doesn't exist."""
+    """Open the seeder's wallet if it has none. A self-service wallet starts
+    at 0 — funding it is a FOUNDER grant (runners/fund_wallets.py)."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    payload = {"agent_did": SEEDER_DID, "initial_balance": 50_000}
+    payload = {"agent_did": SEEDER_DID}
     try:
         status, body = _post_json(f"{BASE_URL}/wallets/by-did", payload, headers)
         if status in (200, 201):
-            data = _json_mod.loads(body)
-            print(f"[Seeder] Wallet ready — balance: {data.get('balance', '?')} AX")
+            balance = _json_mod.loads(body).get("balance", 0)
+            print(f"[Seeder] Wallet ready — balance: {balance} AX")
+            if isinstance(balance, int) and balance < TASK_REWARD:
+                print(f"[Seeder] Balance is below one reward ({TASK_REWARD} AX). "
+                      "Fund it: python runners/fund_wallets.py --apply")
         else:
             print(f"[Seeder] Wallet: {status} {body[:120]}")
     except Exception as exc:
         print(f"[Seeder] Wallet setup: {exc}")
 
 
+class InsufficientFunds(Exception):
+    """POST /tasks was refused because the seeder's wallet cannot cover the reward."""
+
+
+def _is_insufficient_funds(status: int, body: str) -> bool:
+    return status == 400 and "insufficient funds" in body.lower()
+
+
 def _create_marketplace_task(task_def: dict, token: str) -> str | None:
-    """Create a marketplace task via POST /tasks. Returns task_id or None."""
+    """Create a marketplace task via POST /tasks. Returns task_id or None.
+    Raises InsufficientFunds when the wallet cannot cover the reward."""
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     payload = {
         "creator_agent_did": SEEDER_DID,
@@ -345,8 +369,40 @@ def _create_marketplace_task(task_def: dict, token: str) -> str | None:
         task_id = data.get("task_id", "")
         print(f"[Seeder] Marketplace task created: {task_id[:8]}  reward={TASK_REWARD} AX")
         return str(task_id)
-    else:
-        print(f"[Seeder] Marketplace task failed ({status}): {body[:150]}")
+
+    if _is_insufficient_funds(status, body):
+        raise InsufficientFunds(body[:150])
+    print(f"[Seeder] Marketplace task failed ({status}): {body[:150]}")
+    return None
+
+
+class MarketplaceGate:
+    """Decides whether to try the marketplace this round. After an
+    "insufficient funds" answer it says so once and stays shut for
+    FUNDS_BACKOFF_SECS, instead of sending a doomed request every loop."""
+
+    def __init__(self, clock=time.monotonic):
+        self._clock = clock
+        self._retry_at = 0.0
+
+    def is_open(self) -> bool:
+        return self._clock() >= self._retry_at
+
+    def out_of_funds(self) -> None:
+        self._retry_at = self._clock() + FUNDS_BACKOFF_SECS
+        print(f"[Seeder] Wallet cannot cover a {TASK_REWARD} AX reward — no marketplace "
+              f"tasks for {FUNDS_BACKOFF_SECS // 60} min (feed posts continue). "
+              "Fund it: python runners/fund_wallets.py --apply")
+
+
+def _seed_marketplace_task(task_def: dict, token: str, gate: MarketplaceGate) -> str | None:
+    """One round of the marketplace step, behind the funds gate."""
+    if not gate.is_open():
+        return None
+    try:
+        return _create_marketplace_task(task_def, token)
+    except InsufficientFunds:
+        gate.out_of_funds()
         return None
 
 
@@ -391,8 +447,9 @@ def main() -> None:
     task_count = 0
     catalog_len = len(TASK_CATALOG)
 
-    # Bootstrap wallet for escrow
+    # Open the wallet the rewards are escrowed from (funded by a FOUNDER grant)
     _ensure_seeder_wallet(token)
+    gate = MarketplaceGate()
 
     try:
         while True:
@@ -411,8 +468,8 @@ def main() -> None:
 
             task_def = TASK_CATALOG[task_count % catalog_len]
 
-            # 1. Create marketplace task (escrows reward)
-            marketplace_id = _create_marketplace_task(task_def, token)
+            # 1. Create marketplace task (escrows reward; skipped while unfunded)
+            marketplace_id = _seed_marketplace_task(task_def, token, gate)
 
             # 2. Create feed post (linked to marketplace task for agent discovery)
             _create_feed_post(task_def, marketplace_id, token)
