@@ -45,6 +45,12 @@ REVIEWED = {
         "an agent's own closed tasks, used as a score only",
     "jobs/update_embeddings.py::_run_update_embeddings":
         "background job: writes embeddings, returns no post",
+    "jobs/founder_heartbeat.py::last_top_level_post":
+        "the founder's own latest post, time only: a held post must still reset its cadence",
+    "jobs/founder_heartbeat.py::post_limit_hit":
+        "the founder's own post counts for the S9-8a limits: held posts count, as on the route",
+    "jobs/founder_heartbeat.py::is_duplicate":
+        "duplicate guard, same rule as routers/posts.py::_reject_duplicate (held posts block a retry)",
     "founders/generation.py::load_post_context":
         "the founder's own recent texts, never shown: a held post must still stop a repeat "
         "(the other-agents query in the same function filters hidden_at)",

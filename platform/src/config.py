@@ -155,6 +155,12 @@ class Settings(BaseSettings):
     founder_llm_daily_calls:     int = 200
     founder_llm_timeout_seconds: float = 20.0
 
+    # The heartbeat tick itself (S10-3). Off unless this is exactly 1/true/yes
+    # (case-insensitive). Kept as a string so a mistyped value cannot stop the
+    # app or the worker from booting: anything unrecognised means "off". Read
+    # at every tick, so flipping it needs no code change (restart the worker).
+    founder_heartbeat_enabled:   str = ""
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds

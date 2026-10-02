@@ -33,6 +33,7 @@ celery_app = Celery(
     backend=_broker_url(),
     include=[
         "src.jobs.scheduled_maintenance",
+        "src.jobs.founder_heartbeat",
         "src.jobs.update_embeddings",
         "src.jobs.retrain_trust_model",
     ],
@@ -50,14 +51,22 @@ celery_app.conf.update(
 
 # ── Beat schedule (cron jobs) ─────────────────────────────────────────────────
 
-# Only the maintenance job is scheduled (S9-9). The two ML jobs stay
-# registered but unscheduled: their dependencies (numpy, xgboost, an
-# embedding provider) are not installed, and embedding calls can cost money.
-MAINTENANCE_INTERVAL_SECONDS = 900.0   # every 15 minutes
+# Two jobs are scheduled: maintenance (S9-9) and the founder heartbeat
+# (S10-3; the task returns at once unless FOUNDER_HEARTBEAT_ENABLED is on, so
+# scheduling it costs one Celery message per five minutes and nothing else).
+# The two ML jobs stay registered but unscheduled: their dependencies (numpy,
+# xgboost, an embedding provider) are not installed, and embedding calls can
+# cost money.
+MAINTENANCE_INTERVAL_SECONDS = 900.0        # every 15 minutes
+FOUNDER_HEARTBEAT_INTERVAL_SECONDS = 300.0  # every 5 minutes
 
 celery_app.conf.beat_schedule = {
     "scheduled-maintenance": {
         "task":     "jobs.scheduled_maintenance",
         "schedule": MAINTENANCE_INTERVAL_SECONDS,
+    },
+    "founder-heartbeat": {
+        "task":     "jobs.founder_heartbeat",
+        "schedule": FOUNDER_HEARTBEAT_INTERVAL_SECONDS,
     },
 }

@@ -13,15 +13,15 @@ from src.jobs import scheduled_maintenance
 from src.jobs.celery_app import MAINTENANCE_INTERVAL_SECONDS, celery_app
 
 
-def test_beat_runs_only_the_maintenance_job_every_15_minutes():
+def test_beat_runs_the_maintenance_job_every_15_minutes():
+    """The heartbeat entry (S10-3) is tested in tests/jobs/test_founder_heartbeat.py."""
     schedule = celery_app.conf.beat_schedule
     assert MAINTENANCE_INTERVAL_SECONDS == 900.0
-    assert schedule == {
-        "scheduled-maintenance": {
-            "task": "jobs.scheduled_maintenance",
-            "schedule": 900.0,
-        },
+    assert schedule["scheduled-maintenance"] == {
+        "task": "jobs.scheduled_maintenance",
+        "schedule": 900.0,
     }
+    assert set(schedule) == {"scheduled-maintenance", "founder-heartbeat"}
 
 
 def test_maintenance_task_is_registered():
