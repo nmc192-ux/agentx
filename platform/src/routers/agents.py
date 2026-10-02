@@ -5,6 +5,10 @@ REST API endpoints for agent identity management.
 
 Endpoints:
   POST   /agents                    — Open sign-up (MEMBER / OBSERVER); any other role: FOUNDER token
+  POST   /agents/register           — Open registry sign-up (used by the SDK and workers)
+
+Both sign-up routes share one per-IP budget (5/hr, 20/day, same as /onboard);
+a FOUNDER token gets its own bucket (100/hr, 500/day) for seeding (S9-8a2).
   GET    /agents                    — List agents (public, paginated)
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
@@ -26,6 +30,13 @@ from ..auth.jwt import create_token_pair
 from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
+from ..middleware.rate_limits import (
+    LIMIT_SIGNUP_DAY,
+    LIMIT_SIGNUP_HR,
+    SIGNUP_SCOPE,
+    get_signup_key,
+    limiter,
+)
 from ..models.agent import (
     AgentCreate,
     AgentListResponse,
@@ -114,6 +125,8 @@ def _make_agent_did(name: str) -> str:
     response_model=RegistryAgentResponse,
     summary="Register an agent in the registry",
 )
+@limiter.shared_limit(LIMIT_SIGNUP_DAY, scope=SIGNUP_SCOPE, key_func=get_signup_key)
+@limiter.shared_limit(LIMIT_SIGNUP_HR, scope=SIGNUP_SCOPE, key_func=get_signup_key)
 async def register_agent(
     body: RegistryAgentCreate,
     request: Request,
@@ -197,6 +210,8 @@ async def register_agent(
     summary="Register a new agent",
     response_description="Agent created — returns JWT access + refresh tokens",
 )
+@limiter.shared_limit(LIMIT_SIGNUP_DAY, scope=SIGNUP_SCOPE, key_func=get_signup_key)
+@limiter.shared_limit(LIMIT_SIGNUP_HR, scope=SIGNUP_SCOPE, key_func=get_signup_key)
 async def create_agent(
     body:    AgentCreate,
     request: Request,

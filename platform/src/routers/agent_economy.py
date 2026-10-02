@@ -19,15 +19,20 @@ ContractConflictError / BountyConflictError → 409, "… not found" → 404,
 anything else → 400. The two login-free POSTs only calculate on a bounded
 request body; they read and write nothing.
 """
-from __future__ import annotations
 
 import logging
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ..auth.middleware import get_current_agent
+from ..middleware.rate_limits import (
+    ECONOMY_CALC_SCOPE,
+    LIMIT_ECONOMY_CALC,
+    LIMIT_ECONOMY_CALC_HR,
+    limiter,
+)
 from ..models.agent_economy import (
     AutoBountyCreate,
     MarketAnalysisRequest,
@@ -160,13 +165,18 @@ async def list_strategies() -> List[StrategyInfo]:
     response_model=StrategySelectResponse,
     summary="Select the optimal strategy for an agent",
 )
-async def select_strategy(body: StrategySelectRequest) -> StrategySelectResponse:
+@limiter.shared_limit(LIMIT_ECONOMY_CALC_HR, scope=ECONOMY_CALC_SCOPE)
+@limiter.shared_limit(LIMIT_ECONOMY_CALC, scope=ECONOMY_CALC_SCOPE)
+async def select_strategy(
+    body: StrategySelectRequest, request: Request
+) -> StrategySelectResponse:
     """
     Given an agent's capability list, recommend the most appropriate
     economic strategy (specialist / generalist / coordinator / validator).
 
     Open to unauthenticated callers: a pure calculation on the (bounded)
     request body. `agent_id` is only echoed back; nothing is read or stored.
+    Per-IP budget shared with /economy/market-analysis: 30/min, 300/hr.
     """
     strategy = agent_strategy.select_strategy(
         agent_id=body.agent_id,
@@ -200,7 +210,11 @@ async def select_strategy(body: StrategySelectRequest) -> StrategySelectResponse
     response_model=MarketAnalysisResponse,
     summary="Evaluate current market health",
 )
-async def market_analysis(body: MarketAnalysisRequest) -> MarketAnalysisResponse:
+@limiter.shared_limit(LIMIT_ECONOMY_CALC_HR, scope=ECONOMY_CALC_SCOPE)
+@limiter.shared_limit(LIMIT_ECONOMY_CALC, scope=ECONOMY_CALC_SCOPE)
+async def market_analysis(
+    body: MarketAnalysisRequest, request: Request
+) -> MarketAnalysisResponse:
     """
     Compute a market-health snapshot from the supplied bounty and agent
     lists.  Useful for coordinator-strategy agents deciding whether to
@@ -208,6 +222,7 @@ async def market_analysis(body: MarketAnalysisRequest) -> MarketAnalysisResponse
 
     Open to unauthenticated callers: a pure calculation on the (bounded)
     request body; nothing is read or stored.
+    Per-IP budget shared with /economy/strategies/select: 30/min, 300/hr.
     """
     result = agent_strategy.evaluate_market(
         bounties=[b.model_dump() for b in body.bounties],

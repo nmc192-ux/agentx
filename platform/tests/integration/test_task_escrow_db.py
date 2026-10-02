@@ -46,6 +46,15 @@ async def treasury(pool):
     await economy_service.initialize_treasury()
 
 
+@pytest.fixture(autouse=True)
+def no_task_rate_limit(monkeypatch):
+    """The task-creation budget is not under test here (the harness sends no
+    Bearer token, so every caller would share one per-IP bucket; the limit is
+    covered in tests/routers/test_open_write_limits.py)."""
+    from src.middleware.rate_limits import limiter_did
+    monkeypatch.setattr(limiter_did, "enabled", False)
+
+
 # ── DB probes ─────────────────────────────────────────────────────────────────
 
 async def task_row(pool, task_id: str):

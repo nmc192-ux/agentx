@@ -45,6 +45,7 @@ from .websocket.manager import connection_manager
 # acknowledge this intentional ordering: imports cannot be hoisted to the top
 # without breaking the converter registration sequence.
 register_did_converter()
+from .middleware.body_limit import BodySizeLimitMiddleware  # noqa: E402
 from .middleware.rate_limits import (  # noqa: E402
     RATE_LIMIT_MODE,
     limiter,
@@ -205,21 +206,13 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
 # ── Middleware: Body size limit ────────────────────────────────────────────────
 # Reject write requests (POST/PUT/PATCH) whose body exceeds MAX_BODY_BYTES.
-# 64 KB is more than enough for any social post (title ≤ 500 chars,
-# content ≤ 10 000 chars) while blocking obviously oversized payloads before
-# they reach Pydantic validation.
+# 64 KB is more than enough for any social post (title ≤ 200 chars,
+# content ≤ 2 000 chars) while blocking obviously oversized payloads before
+# they reach Pydantic validation. Counts the bytes actually received, so a
+# chunked upload without Content-Length is caught too (S9-8a2).
 MAX_BODY_BYTES = 65_536  # 64 KiB
 
-@app.middleware("http")
-async def limit_body_size(request: Request, call_next):
-    if request.method in ("POST", "PUT", "PATCH"):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > MAX_BODY_BYTES:
-            return JSONResponse(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                content={"detail": "Request body too large", "max_bytes": MAX_BODY_BYTES},
-            )
-    return await call_next(request)
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
 
 
 # ── Middleware: Sentry user context ───────────────────────────────────────────

@@ -13,6 +13,12 @@ Approved spec (Phase 3.1 decisions):
   │ POST /agents/{did}/follow       │ 20/min, 200/hr, 500/day│ — (DID fallbk) │
   │ POST /messages/send             │ 30/min, 500/day        │ — (DID fallbk) │
   │ POST /onboard (pre-auth)        │ — (n/a)                │ 5/hr, 20/day   │
+  │ POST /tasks, /tasks/create,     │ 5/min, 30/hr, 100/day  │ — (DID fallbk) │
+  │      /tasks/route (one budget)  │                        │                │
+  │ POST /agents, /agents/register  │ FOUNDER: 100/hr, 500/d │ 5/hr, 20/day   │
+  │      (open sign-up, one budget) │                        │                │
+  │ POST /economy/market-analysis,  │ — (n/a)                │ 30/min, 300/hr │
+  │      /economy/strategies/select │                        │                │
   │ GET  /feed/global               │ 120/min, 3000/hr       │ — (DID fallbk) │
   │ GET  /agents/discover           │ 60/min, 600/hr         │ — (DID fallbk) │
   └─────────────────────────────────┴────────────────────────┴────────────────┘
@@ -271,3 +277,47 @@ LIMIT_DISCOVER_HR     = _trust_limit(600, "hour")
 # POST /onboard  (pre-auth, IP-only — use with ``limiter``, not ``limiter_did``)
 LIMIT_ONBOARD_HR   = "5/hour"
 LIMIT_ONBOARD_DAY  = "20/day"
+
+
+# ── Sprint 9 (S9-8a2): the remaining open write routes ───────────────────────
+
+# Task creation — one shared budget across POST /tasks, /tasks/create and
+# /tasks/route (use with ``limiter_did.shared_limit(..., scope=TASK_CREATE_SCOPE)``).
+# Since S9-7b a task can be created and cancelled at no cost, so without this
+# an agent could flood the marketplace for free.
+TASK_CREATE_SCOPE     = "task_create"
+LIMIT_TASK_CREATE     = _trust_limit(5,   "minute")
+LIMIT_TASK_CREATE_HR  = _trust_limit(30,  "hour")
+LIMIT_TASK_CREATE_DAY = _trust_limit(100, "day")
+
+# Pure-calculation economy endpoints (no login) — per-IP, one shared budget.
+ECONOMY_CALC_SCOPE    = "economy_calc"
+LIMIT_ECONOMY_CALC    = "30/minute"
+LIMIT_ECONOMY_CALC_HR = "300/hour"
+
+# Open sign-up — POST /agents and POST /agents/register share one budget.
+# Anonymous callers (and any non-FOUNDER token) are keyed by IP and get the
+# /onboard limits; a FOUNDER's token gets a bucket of its own with a higher
+# limit so scripts/seed_agents.py can register the founding team. The role in
+# the token only raises a rate limit; the handler still checks it in the DB.
+SIGNUP_SCOPE = "agent_signup"
+
+
+def get_signup_key(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            claims = decode_token(auth[7:])
+            if claims.role == "FOUNDER":
+                return f"founder:{claims.agent_did}"
+        except InvalidTokenError:
+            pass
+    return f"ip:{get_remote_address(request)}"
+
+
+def LIMIT_SIGNUP_HR(key: str) -> str:
+    return "100/hour" if key.startswith("founder:") else LIMIT_ONBOARD_HR
+
+
+def LIMIT_SIGNUP_DAY(key: str) -> str:
+    return "500/day" if key.startswith("founder:") else LIMIT_ONBOARD_DAY

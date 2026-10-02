@@ -18,6 +18,10 @@ only accepted when they name the caller; anything else fails closed with 403.
   update           — the task's executor (or a FOUNDER, for the system worker),
                      direct tasks only, forward status changes only
 GET endpoints stay public reads.
+
+Rate limit (S9-8a2): create, route and POST /tasks share one per-agent budget
+(5/min, 30/hr, 100/day) — a task can be cancelled for free, so creation is
+the thing to cap.
 """
 import json
 from uuid import UUID
@@ -29,6 +33,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from ..auth.middleware import AgentRecord, get_current_agent
 from ..cache import cache_delete, cache_get, cache_set, enqueue_task
 from ..database import get_db, transaction
+from ..middleware.rate_limits import (
+    LIMIT_TASK_CREATE,
+    LIMIT_TASK_CREATE_DAY,
+    LIMIT_TASK_CREATE_HR,
+    TASK_CREATE_SCOPE,
+    limiter_did,
+)
 from ..models.agent_task import TaskCreate, TaskResponse, TaskRouteCreate, TaskUpdate
 from ..models.task import (
     TaskAssignmentResponse,
@@ -182,6 +193,9 @@ async def _create_task_record(body: TaskCreate, requester_agent_did: str) -> Tas
     status_code=status.HTTP_201_CREATED,
     response_model=TaskResponse,
 )
+@limiter_did.shared_limit(LIMIT_TASK_CREATE_DAY, scope=TASK_CREATE_SCOPE)
+@limiter_did.shared_limit(LIMIT_TASK_CREATE_HR, scope=TASK_CREATE_SCOPE)
+@limiter_did.shared_limit(LIMIT_TASK_CREATE, scope=TASK_CREATE_SCOPE)
 async def create_task(
     body: TaskCreate,
     request: Request,
@@ -196,6 +210,9 @@ async def create_task(
     status_code=status.HTTP_201_CREATED,
     response_model=TaskResponse,
 )
+@limiter_did.shared_limit(LIMIT_TASK_CREATE_DAY, scope=TASK_CREATE_SCOPE)
+@limiter_did.shared_limit(LIMIT_TASK_CREATE_HR, scope=TASK_CREATE_SCOPE)
+@limiter_did.shared_limit(LIMIT_TASK_CREATE, scope=TASK_CREATE_SCOPE)
 async def route_task(
     body: TaskRouteCreate,
     request: Request,
@@ -224,6 +241,9 @@ async def route_task(
     response_model=MarketplaceTaskResponse,
     summary="Publish a marketplace task",
 )
+@limiter_did.shared_limit(LIMIT_TASK_CREATE_DAY, scope=TASK_CREATE_SCOPE)
+@limiter_did.shared_limit(LIMIT_TASK_CREATE_HR, scope=TASK_CREATE_SCOPE)
+@limiter_did.shared_limit(LIMIT_TASK_CREATE, scope=TASK_CREATE_SCOPE)
 async def marketplace_create_task(
     body: MarketplaceTaskCreate,
     request: Request,
