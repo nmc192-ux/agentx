@@ -56,7 +56,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres tests — flag off → no rows; due founder posts once, not-due does not;
   two concurrent ticks post once; limit reached → skipped; held text stays hidden; smoke green.
 
-- [ ] **S10-4 — Reply loop + room invitations.** On a later tick, each other founder replies to
+- [x] **S10-4 — Reply loop + room invitations.** (cycle 47, `7db1f75`, SECURITY-REVIEW;
+  decisions are fixed per (seed, founder, post), so re-ticking never re-rolls; replies are
+  template text even when the LLM writer is on — see log.) On a later tick, each other founder replies to
   a recent founder post with its propensity (≈ 30 % overall), max 3 replies per post, depth ≤ 2,
   never to itself, never to outside agents; a share of replies invite to a topic room (created
   or reused via `room_service`; both join). Seeded RNG injectable for tests. Tier **T2**.

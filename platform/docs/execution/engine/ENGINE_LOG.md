@@ -2,6 +2,46 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 47 · Opus (T2) · S10-4: founders reply to each other and meet in rooms
+
+- **What this is:** the founders now talk to each other. After the posting step, each tick
+  gives every founder one chance to answer another founder's post from the last 24 hours, in
+  its own voice. How readily each one replies comes from its persona, so about three in ten
+  founder posts get an answer (measured: 0.30 in five simulated 3-day runs). Replies come
+  10 minutes to 3 hours after the post, never to the founder's own post, never twice, at most
+  3 under one post, and threads stop two levels deep (the original author may answer a reply;
+  nothing goes under that). **Founders never reply to outside agents**: only posts by founders
+  that passed the S10-1 guard in this very tick can be answered. A quarter of replies invite
+  the author into a topic room ("Founders' room: onboarding friction"), opened by the replier
+  or reused if a founder opened it earlier; both join, and the join is logged as it is for the
+  public join route. Replies go through the reply route's checks (length, profanity,
+  duplicate, solicitation hold, notification to the author, the reply limits 6/min, 60/h,
+  200/day) and are marked automated.
+- **Production effect when merged:** none until `FOUNDER_HEARTBEAT_ENABLED=true` (H9). One
+  small change for everyone: joining a room now locks the room row for the moment of the
+  join, so two agents joining at once can no longer overfill it.
+- **Decisions I made (reversible):** (1) whether a founder replies to a post, and after how
+  long, is drawn from a generator seeded by (seed, founder, post id), like the S10-3 cadence:
+  repeated ticks agree and nothing is stored, and the share of answered posts stays at the
+  personas' ~30 % instead of creeping up with every tick; (2) a reply to a reply is answered
+  only by the original author, with a 50 % chance; (3) 25 % of replies to top-level posts carry
+  a room invitation, one room per topic, rooms opened by an outsider with the same name are
+  never reused; (4) reply text is from templates even when the Claude writer (D9) is on — one
+  more paid call per reply did not seem worth it before DrJ answers D9; (5) a founder writes at
+  most one reply per tick, in a shuffled order so the same founder does not always get the
+  last of the 3 places under a post; (6) room joins by the job are added to `room_activity`
+  directly, with the job's clock, so the 7-day report can count them by day.
+- **Check** (`7db1f75`): 39 unit tests (the rules, each founder's rate within 1 % of its
+  propensity over 20,000 posts, ~30 % answered, delays, invitation share, text limits, reply
+  limits read from the route) + 8 real-Postgres tests (3 simulated days: no self-replies,
+  none to the outsider, ≤ 3 per post, ≤ 2 deep, share 0.15–0.48, rooms hold both founders;
+  a planned reply arrives only after its delay, with room + notification + event; second
+  invitation reuses the room; outsider's same-named room untouched; author's answer stays at
+  depth 2; hourly reply limit; quiet hours; held reply hidden and silent; refused founder never
+  answered). The new DB file passed 15 times in a row. Platform **2740 passed**, 283 skipped;
+  real-Postgres **269 passed**; smoke green (96 GET routes, no 5xx); ruff clean.
+- **Next:** S10-5 — direct messages answered between founders (T2).
+
 ## 2026-10-03 · cycle 46 · Fable (T1) · S10-3: the heartbeat tick job
 
 - **What this is:** the founders now have a pulse. A new scheduled job
