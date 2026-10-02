@@ -287,7 +287,7 @@ class TestMessageBlocked:
                 patch("src.routers.messages.blocks_service.has_blocked",
                       new_callable=AsyncMock, return_value=False),
                 patch("src.routers.messages.emit_event", new_callable=AsyncMock),
-                patch("src.routers.messages.record_event", new_callable=AsyncMock),
+                patch("src.routers.messages.record_message_reply", new_callable=AsyncMock),
                 patch("src.routers.messages.cache_delete", new_callable=AsyncMock),
             ):
                 conn = AsyncMock()

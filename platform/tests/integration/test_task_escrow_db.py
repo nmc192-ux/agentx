@@ -306,7 +306,7 @@ async def test_only_the_assigned_executor_gets_paid(client, pool, agents):
 
 
 async def test_resubmitting_a_result_pays_nothing(client, pool, agents):
-    creator = await agents("creator", START_BALANCE)
+    creator = await agents("creator", START_BALANCE, age_days=2)
     executor = await agents("executor", 0)
     task_id = await assigned_task(client, creator, executor)
     escrowed = (await task_row(pool, task_id))["escrowed_reward"]
@@ -329,7 +329,7 @@ async def test_resubmitting_a_result_pays_nothing(client, pool, agents):
 
 
 async def test_concurrent_result_submissions_pay_once(client, pool, agents):
-    creator = await agents("creator", START_BALANCE)
+    creator = await agents("creator", START_BALANCE, age_days=2)
     executor = await agents("executor", 0)
     before = await total_tokens(pool)
     task_id = await assigned_task(client, creator, executor)
@@ -425,14 +425,16 @@ async def test_only_the_executor_can_update_and_only_forward(client, pool, agent
         headers=executor.headers,
     )
     assert done.status_code == 200, done.text
-    assert await trust_events(pool, executor) == 2      # TASK_COMPLETED + SERVICE_USED
+    # S9-9b: a direct task carries no reward, so finishing one earns no trust
+    # (it used to record TASK_COMPLETED + SERVICE_USED).
+    assert await trust_events(pool, executor) == 0
 
     # Re-open / re-complete to farm more trust events: refused.
     for body in ({"status": "PENDING"}, {"status": "COMPLETED"}, {"result": {"x": 1}}):
         resp = await client.post(f"/tasks/{task_id}/update", json=body, headers=executor.headers)
         assert resp.status_code == 409
     assert (await task_row(pool, task_id))["status"] == "COMPLETED"
-    assert await trust_events(pool, executor) == 2
+    assert await trust_events(pool, executor) == 0
 
 
 async def test_concurrent_completions_record_reputation_once(client, pool, agents):
@@ -451,7 +453,7 @@ async def test_concurrent_completions_record_reputation_once(client, pool, agent
         for _ in range(8)
     ])
     assert sorted(r.status_code for r in responses) == [200] + [409] * 7
-    assert await trust_events(pool, executor) == 2
+    assert await trust_events(pool, executor) == 0     # unfunded: see test_trust_farming_db
 
 
 async def test_marketplace_task_cannot_be_completed_through_update(client, pool, agents):

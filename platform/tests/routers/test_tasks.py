@@ -709,15 +709,26 @@ class TestUpdateTask:
             patch("src.routers.tasks.transaction", return_value=_conn_ctx(conn)),
             patch("src.routers.tasks.cache_delete", new=AsyncMock()),
             patch("src.routers.tasks.emit_event", new=AsyncMock()),
-            patch("src.routers.tasks.record_event", new=AsyncMock()),
+            patch("src.routers.tasks.record_task_completed", new=AsyncMock()),
+            patch("src.routers.tasks.record_task_failed", new=AsyncMock()),
             patch("src.routers.tasks.update_workflow_for_task", new=AsyncMock()),
         )
 
     async def _update(self, client, conn, body, caller):
-        tx, cache, emit, record, workflow = self._patches(conn)
-        with _as(caller), tx, cache, emit as mock_emit, record as mock_record, workflow:
+        """Returns (response, emit mock, record mock). The record mock stands
+        for both reputation calls: `.completed` and `.failed` are the two
+        functions, and its own await count is the two together."""
+        tx, cache, emit, completed, failed, workflow = self._patches(conn)
+        with (
+            _as(caller), tx, cache, emit as mock_emit,
+            completed as mock_completed, failed as mock_failed, workflow,
+        ):
             resp = await client.post(f"/tasks/{uuid4()}/update", json=body)
-        return resp, mock_emit, mock_record
+        record = MagicMock(completed=mock_completed, failed=mock_failed)
+        record.assert_not_awaited = lambda: (
+            mock_completed.assert_not_awaited(), mock_failed.assert_not_awaited(),
+        )
+        return resp, mock_emit, record
 
     def _conn(self, existing_status, executor, updated_status=None, requester="did:agentx:req-001"):
         conn = AsyncMock()
@@ -736,7 +747,9 @@ class TestUpdateTask:
         assert resp.status_code == 200
         assert resp.json()["status"] == "COMPLETED"
         assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
-        assert [c.args[1] for c in record.await_args_list] == ["TASK_COMPLETED", "SERVICE_USED"]
+        # One report; whether it counts is the reputation service's decision.
+        record.completed.assert_awaited_once()
+        record.failed.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_non_executor_403_and_nothing_written(self, client):
@@ -798,13 +811,16 @@ class TestUpdateTask:
         assert conn.fetchrow.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_self_assigned_task_earns_no_reputation(self, client):
-        conn = self._conn("PENDING", CALLER_DID, updated_status="COMPLETED", requester=CALLER_DID)
-        resp, _, record = await self._update(
-            client, conn, {"status": "COMPLETED"}, _make_agent(),
-        )
+    async def test_failure_is_reported_with_who_marked_it(self, client):
+        """The reputation service penalises only a failure the executor
+        reported, so the route must say who the caller was — here a FOUNDER."""
+        founder = _make_agent(role="FOUNDER")
+        conn = self._conn("PENDING", "did:agentx:exec-001", updated_status="FAILED")
+        resp, _, record = await self._update(client, conn, {"status": "FAILED"}, founder)
         assert resp.status_code == 200
-        record.assert_not_awaited()
+        record.completed.assert_not_awaited()
+        record.failed.assert_awaited_once()
+        assert record.failed.await_args.kwargs == {"reported_by_did": founder.did}
 
     @pytest.mark.asyncio
     async def test_unknown_task_404(self, client):

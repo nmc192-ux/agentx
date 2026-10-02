@@ -51,7 +51,7 @@ from ..models.task import (
     TaskResultResponse,
 )
 from ..services.events import emit_event
-from ..services.reputation import record_event
+from ..services.reputation import record_task_completed, record_task_failed
 from ..services.router import create_routed_task
 from ..services import task_service
 from ..services.workflows import update_workflow_for_task
@@ -594,10 +594,6 @@ async def update_task(
     await cache_delete(_tasks_key(task.requester_agent_did))
     await cache_delete(_tasks_key(task.executor_agent_did))
 
-    # A task an agent gave to itself earns no reputation: otherwise one agent
-    # could raise its own trust score by creating and completing its own tasks.
-    earns_reputation = task.requester_agent_did != task.executor_agent_did
-
     if status_value == "COMPLETED" and existing["status"] != "COMPLETED":
         await emit_event(
             "TASK_COMPLETED",
@@ -613,24 +609,12 @@ async def update_task(
                 "result": task.result or {},
             },
         )
-        if earns_reputation:
-            await record_event(
-                task.executor_agent_did,
-                "TASK_COMPLETED",
-                {"task_id": str(task.task_id), "task_type": task.task_type},
-            )
-            await record_event(
-                task.executor_agent_did,
-                "SERVICE_USED",
-                {"task_id": str(task.task_id), "task_type": task.task_type},
-            )
+        # S9-9b: the reputation service decides whether this counts (a funded
+        # reward paid by someone else). A direct task carries no reward, so
+        # finishing one moves nobody's trust score.
+        await record_task_completed(task.task_id)
     elif status_value == "FAILED" and existing["status"] != "FAILED":
-        if earns_reputation:
-            await record_event(
-                task.executor_agent_did,
-                "TASK_FAILED",
-                {"task_id": str(task.task_id), "task_type": task.task_type},
-            )
+        await record_task_failed(task.task_id, reported_by_did=agent.did)
 
     if status_value in {"COMPLETED", "FAILED"}:
         await update_workflow_for_task(task.task_id, status_value)

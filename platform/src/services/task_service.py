@@ -53,7 +53,7 @@ from ..models.task import (  # noqa: E402
     TaskResultResponse,
 )
 from ..models.capability import EligibleAgentResponse  # noqa: E402
-from ..services.reputation import record_event  # noqa: E402
+from ..services.reputation import record_task_completed  # noqa: E402
 from .token_service import InsufficientFundsError  # noqa: E402,F401  (re-exported for the router)
 
 
@@ -543,12 +543,9 @@ async def submit_result(
         )
 
     # Record reputation event outside the transaction to avoid nested locks
-    # (existing direct-call path — preserved for backward compatibility)
-    await record_event(
-        agent_did,
-        "task_completed",
-        {"task_id": str(task_id)},
-    )
+    # (existing direct-call path — preserved for backward compatibility).
+    # S9-9b: counted once per task, and only if the escrow paid a reward.
+    await record_task_completed(task_id)
 
     # Phase 7: Publish TASK_COMPLETED event alongside existing direct calls
     await publish_event(

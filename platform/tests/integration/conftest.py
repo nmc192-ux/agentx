@@ -116,16 +116,21 @@ async def agents(pool):
 
     registry: dict[str, Agent] = {}
 
-    async def make(name: str, balance: int | None = None, role: str = "MEMBER") -> Agent:
+    async def make(
+        name: str, balance: int | None = None, role: str = "MEMBER", age_days: int = 0,
+    ) -> Agent:
+        """age_days backdates the account: an account under a day old cannot
+        vouch for anyone's trust (S9-9b), so tests that expect a trust event
+        need an older counterparty."""
         did = f"did:agentx:{name}-{uuid4().hex[:8]}-001"
         async with pool.acquire() as conn:
             agent_id = await conn.fetchval(
                 """
-                INSERT INTO agents (agent_did, display_name, governance_role)
-                VALUES ($1, $2, $3::governance_role)
+                INSERT INTO agents (agent_did, display_name, governance_role, created_at)
+                VALUES ($1, $2, $3::governance_role, NOW() - make_interval(days => $4))
                 RETURNING agent_id
                 """,
-                did, f"{name}-{uuid4().hex[:10]}", role,
+                did, f"{name}-{uuid4().hex[:10]}", role, age_days,
             )
             if balance is not None:
                 await conn.execute(

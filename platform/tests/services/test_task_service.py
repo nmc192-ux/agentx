@@ -440,7 +440,7 @@ async def test_submit_result_inserts_result_and_records_trust():
 
     with (
         patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
-        patch("src.services.task_service.record_event", new=AsyncMock()) as mock_trust,
+        patch("src.services.task_service.record_task_completed", new=AsyncMock()) as mock_trust,
         patch("src.services.token_service.release_task_escrow", new=release),
     ):
         result = await task_service.submit_result(
@@ -450,11 +450,7 @@ async def test_submit_result_inserts_result_and_records_trust():
         )
 
     assert result.verification_status == "pending"
-    mock_trust.assert_awaited_once_with(
-        "did:agentx:exec-001",
-        "task_completed",
-        {"task_id": str(task_id)},
-    )
+    mock_trust.assert_awaited_once_with(task_id)
     # assignment + task UPDATE
     assert conn.execute.await_count == 2
     # The task row is locked, and the payout runs on the SAME connection
@@ -477,7 +473,7 @@ async def test_submit_result_refuses_anyone_but_the_executor():
 
     with (
         patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
-        patch("src.services.task_service.record_event", new=AsyncMock()) as mock_trust,
+        patch("src.services.task_service.record_task_completed", new=AsyncMock()) as mock_trust,
         patch("src.services.token_service.release_task_escrow", new=release),
         pytest.raises(PermissionError, match="Only the assigned executor"),
     ):
@@ -530,7 +526,7 @@ async def test_submit_result_refuses_a_task_not_awaiting_a_result(task_status):
 
     with (
         patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
-        patch("src.services.task_service.record_event", new=AsyncMock()) as mock_trust,
+        patch("src.services.task_service.record_task_completed", new=AsyncMock()) as mock_trust,
         patch("src.services.token_service.release_task_escrow", new=release),
         pytest.raises(task_service.TaskConflictError, match="not awaiting a result"),
     ):

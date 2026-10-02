@@ -54,7 +54,7 @@ async def no_side_channels(monkeypatch):
     monkeypatch.setattr(messages, "cache_get", _async(None))
     monkeypatch.setattr(messages, "cache_set", _async(None))
     monkeypatch.setattr(messages, "cache_delete", _async(None))
-    monkeypatch.setattr(messages, "record_event", _async(None))
+    monkeypatch.setattr(messages, "record_message_reply", _async(None))
 
 
 def _async(value):

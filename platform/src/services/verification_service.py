@@ -36,6 +36,8 @@ Design notes
 • Verifier rewards are NOT paid (S9-6b): nothing ever funds ``reward_pool``
   (no wallet is debited for it), so paying from it would create tokens from
   nothing. See _distribute_rewards.
+• Trust (S9-9b): once a verification is final, the verifiers on the winning
+  side get one ``peer_validation`` each (reputation.record_verification_outcome).
 • Events are fire-and-forget; failures are logged, never bubble up.
 """
 from __future__ import annotations
@@ -53,6 +55,7 @@ from ..models.verification import (
     VerificationVoteCreate,
     VerificationVoteResponse,
 )
+from .reputation import record_verification_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -443,10 +446,16 @@ async def submit_vote(
         )
 
         # Auto-finalise when enough votes have been collected
-        if updated_v["vote_count"] >= updated_v["required_votes"]:
+        finalised = updated_v["vote_count"] >= updated_v["required_votes"]
+        if finalised:
             await _do_finalize(conn, verification_id)
 
     vote = _row_to_vote(vote_row)
+
+    # S9-9b: a vote earns trust only once the outcome is known, and only on
+    # the winning side (it was +0.03 for every vote cast, through the bus).
+    if finalised:
+        await record_verification_outcome(verification_id)
 
     try:
         await publish_event(
@@ -624,6 +633,8 @@ async def finalize_verification(verification_id: UUID) -> VerificationResponse:
         await _distribute_rewards(conn, verification_id, winning_vote)
 
     result = _row_to_verification(updated)
+
+    await record_verification_outcome(verification_id)
 
     # Publish post-transaction event
     event_type = (

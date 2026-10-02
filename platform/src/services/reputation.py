@@ -1,6 +1,32 @@
+"""
+Trust events and the trust score they add up to.
+
+Recording (S9-9b). Trust is half of every governance vote's weight, so an
+event may only be recorded when it stands for something that really happened
+between two different, established accounts:
+
+  • every event names its occurrence (``dedupe_key``, UNIQUE in the table):
+    the same finished task, answered message or verification vote can be
+    recorded once, whichever code path reports it and however often;
+  • a positive event needs a counterparty: another ACTIVE agent whose account
+    is at least MIN_COUNTERPARTY_AGE old;
+  • two agents can give each other at most PAIR_DAILY_LIMIT positive events of
+    one type per 24 hours (in either direction);
+  • an agent gains at most MAX_DAILY_GAIN per 24 hours, whatever the source.
+
+The callers do not decide any of this: they report what happened
+(``record_task_completed`` …) and the rules are checked here, against the
+database, not against what a request or a bus message claims.
+
+Replay. ``recalculate_agent_trust`` applies recorded events to
+``agents.trust_score``. Rows without a dedupe_key were recorded before these
+rules existed (one per message sent, up to four per task) and are never applied.
+"""
 from __future__ import annotations
 
 import json
+import logging
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -8,12 +34,18 @@ from ..cache import cache_delete, trust_score_key
 from ..database import get_db, transaction
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_TRUST_SCORE = 0.5
 
 # pg_advisory_xact_lock key for the replay below: two runs at once (the
 # scheduled job, a request, a second machine) would otherwise both read the
 # same unapplied events and apply them twice.
 TRUST_REPLAY_LOCK_KEY = 0x7472757374  # "trust"
+
+# First key of the two-key advisory lock record_event takes per agent, so the
+# cap checks of two events for the same agent (or pair) run one after the other.
+TRUST_RECORD_LOCK_NS = 0x7472  # "tr"
 
 EVENT_WEIGHTS = {
     "task_completed": 0.05,
@@ -27,6 +59,24 @@ EVENT_WEIGHTS = {
     "spam_flag": -0.20,
     "system_penalty": -0.25,
 }
+
+# The other side of a positive event must be an account at least this old
+# (same age the post-flag rule uses), so a just-created account cannot vouch.
+MIN_COUNTERPARTY_AGE = timedelta(hours=24)
+# Positive events of one type that two agents can give each other per 24 h.
+PAIR_DAILY_LIMIT = 1
+# Most an agent's score can rise per 24 h, all sources together.
+MAX_DAILY_GAIN = 0.10
+# A message is a reply if it answers one received within this window.
+MESSAGE_REPLY_WINDOW = timedelta(days=7)
+
+# record_event outcomes. Only RECORDED writes a row.
+RECORDED = "recorded"
+DUPLICATE = "duplicate"
+NO_COUNTERPARTY = "no_counterparty"
+COUNTERPARTY_NOT_ESTABLISHED = "counterparty_not_established"
+PAIR_CAP = "pair_cap"
+DAILY_CAP = "daily_cap"
 
 
 def _normalize_event_type(event_type: str) -> str:
@@ -45,11 +95,31 @@ def _decode_metadata(value: Any) -> dict:
     return dict(value)
 
 
-async def record_event(agent_did: str, event_type: str, metadata: dict | None = None) -> None:
+async def record_event(
+    agent_did: str,
+    event_type: str,
+    metadata: dict | None = None,
+    *,
+    dedupe_key: str,
+    counterparty_did: str | None = None,
+) -> str:
+    """
+    Record one trust event for *agent_did*, if the rules in the module
+    docstring allow it. Returns RECORDED, or the reason nothing was written.
+
+    *dedupe_key* names the occurrence (e.g. ``task_completed:<task_id>``) and
+    is required: an event that cannot say what it is about is not recorded.
+    Negative events are deduplicated but not capped, and need no counterparty.
+
+    Raises:
+        ValueError: unknown event type, empty dedupe_key, or unknown agent.
+    """
     normalized_type = _normalize_event_type(event_type)
     event_weight = EVENT_WEIGHTS.get(normalized_type)
     if event_weight is None:
         raise ValueError(f"Unsupported reputation event type: {event_type}")
+    if not dedupe_key:
+        raise ValueError("A trust event needs a dedupe_key")
 
     async with transaction() as conn:
         agent_row = await conn.fetchrow(
@@ -59,7 +129,70 @@ async def record_event(agent_did: str, event_type: str, metadata: dict | None = 
         if agent_row is None:
             raise ValueError(f"Agent not found: {agent_did}")
 
-        await conn.execute(
+        if event_weight > 0:
+            if not counterparty_did or counterparty_did == agent_did:
+                return NO_COUNTERPARTY
+            established = await conn.fetchval(
+                """
+                SELECT 1 FROM agents
+                WHERE agent_did = $1
+                  AND status = 'ACTIVE'
+                  AND created_at <= CURRENT_TIMESTAMP - $2::interval
+                """,
+                counterparty_did,
+                MIN_COUNTERPARTY_AGE,
+            )
+            if not established:
+                return COUNTERPARTY_NOT_ESTABLISHED
+
+            # Both agents' locks, in a fixed order: the counts below cannot be
+            # passed twice by two events recorded at the same moment.
+            for did in sorted((agent_did, counterparty_did)):
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    TRUST_RECORD_LOCK_NS,
+                    did,
+                )
+
+            if await conn.fetchval(
+                "SELECT 1 FROM trust_events WHERE dedupe_key = $1", dedupe_key,
+            ):
+                return DUPLICATE
+
+            between_pair = await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM trust_events
+                WHERE event_type = $1
+                  AND dedupe_key IS NOT NULL
+                  AND COALESCE(event_weight, event_value) > 0
+                  AND created_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                  AND (
+                        (agent_did = $2 AND counterparty_did = $3)
+                     OR (agent_did = $3 AND counterparty_did = $2)
+                  )
+                """,
+                normalized_type,
+                agent_did,
+                counterparty_did,
+            )
+            if between_pair >= PAIR_DAILY_LIMIT:
+                return PAIR_CAP
+
+            gained_today = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(COALESCE(event_weight, event_value)), 0.0)
+                FROM trust_events
+                WHERE agent_did = $1
+                  AND dedupe_key IS NOT NULL
+                  AND COALESCE(event_weight, event_value) > 0
+                  AND created_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                """,
+                agent_did,
+            )
+            if float(gained_today) + event_weight > MAX_DAILY_GAIN + 1e-9:
+                return DAILY_CAP
+
+        event_id = await conn.fetchval(
             """
             INSERT INTO trust_events (
                 event_id,
@@ -68,7 +201,9 @@ async def record_event(agent_did: str, event_type: str, metadata: dict | None = 
                 event_type,
                 event_weight,
                 event_value,
-                metadata
+                metadata,
+                dedupe_key,
+                counterparty_did
             )
             VALUES (
                 gen_random_uuid(),
@@ -77,15 +212,230 @@ async def record_event(agent_did: str, event_type: str, metadata: dict | None = 
                 $3,
                 $4,
                 $4,
-                $5::jsonb
+                $5::jsonb,
+                $6,
+                $7
             )
+            ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
+            RETURNING event_id
             """,
             agent_row["agent_id"],
             agent_did,
             normalized_type,
             event_weight,
             json.dumps(metadata or {}),
+            dedupe_key,
+            counterparty_did,
         )
+    return RECORDED if event_id is not None else DUPLICATE
+
+
+# ── What happened → trust events ──────────────────────────────────────────────
+# Called after the caller's own transaction has committed. They never raise:
+# a trust event that could not be recorded must not fail the request that
+# finished the task or sent the message.
+
+def _as_uuid(value: Any) -> UUID | None:
+    try:
+        return value if isinstance(value, UUID) else UUID(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+async def _task_parties(task_id: UUID) -> dict | None:
+    """The task's status, both parties' DIDs, and what the escrow paid the executor."""
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                t.status,
+                COALESCE(t.executor_agent_did, ex.agent_did)  AS executor_did,
+                COALESCE(t.requester_agent_did, rq.agent_did) AS requester_did,
+                (
+                    SELECT COALESCE(SUM(tx.amount), 0)
+                    FROM transactions tx
+                    JOIN wallets w ON w.wallet_id = tx.to_wallet
+                    JOIN agents payee ON payee.agent_id = w.agent_id
+                    WHERE tx.related_id = t.task_id
+                      AND tx.type = 'escrow_release'
+                      AND payee.agent_did = COALESCE(t.executor_agent_did, ex.agent_did)
+                ) AS paid
+            FROM tasks t
+            LEFT JOIN agents ex ON ex.agent_id = t.executor_agent_id
+            LEFT JOIN agents rq
+                   ON rq.agent_id = COALESCE(t.creator_agent_id, t.requester_agent_id)
+            WHERE t.task_id = $1
+            """,
+            task_id,
+        )
+    return dict(row) if row is not None else None
+
+
+async def record_task_completed(task_id: Any, *, source: str = "direct") -> str:
+    """
+    One ``task_completed`` for the executor of a finished task, if a funded
+    reward was really paid out of escrow to that executor by someone else.
+    A task with no reward (every direct task, a 0-reward marketplace task)
+    earns nothing: completing it proves no work anyone valued.
+
+    Safe to call from every path that learns of the completion (router,
+    service, both bus consumers): the task row decides, and the dedupe key
+    makes the second and later calls a no-op.
+    """
+    task_uuid = _as_uuid(task_id)
+    if task_uuid is None:
+        return "unknown_task"
+    try:
+        task = await _task_parties(task_uuid)
+        if task is None or not task["executor_did"]:
+            return "unknown_task"
+        if task["status"] != "COMPLETED":
+            return "not_completed"
+        if not task["paid"]:
+            return "unfunded"
+        outcome = await record_event(
+            task["executor_did"],
+            "task_completed",
+            {"task_id": str(task_uuid), "reward_paid": int(task["paid"]), "source": source},
+            dedupe_key=f"task_completed:{task_uuid}",
+            counterparty_did=task["requester_did"],
+        )
+    except Exception:
+        logger.exception("reputation: recording completion of task %s failed", task_id)
+        return "error"
+    logger.info("reputation: task %s completion (%s) -> %s", task_uuid, source, outcome)
+    return outcome
+
+
+async def record_task_failed(task_id: Any, *, reported_by_did: str) -> str:
+    """
+    One ``task_failed`` for an executor who reports their own task as failed.
+    A failure set by anyone else (a FOUNDER, the system worker acting for the
+    executor) costs the executor nothing: a requester names the executor of a
+    direct task without asking, so it must not be able to cost them trust.
+    """
+    task_uuid = _as_uuid(task_id)
+    if task_uuid is None:
+        return "unknown_task"
+    try:
+        task = await _task_parties(task_uuid)
+        if task is None or not task["executor_did"]:
+            return "unknown_task"
+        if task["status"] != "FAILED":
+            return "not_failed"
+        if task["executor_did"] != reported_by_did:
+            return "not_reported_by_executor"
+        if task["requester_did"] == task["executor_did"]:
+            return NO_COUNTERPARTY
+        outcome = await record_event(
+            task["executor_did"],
+            "task_failed",
+            {"task_id": str(task_uuid)},
+            dedupe_key=f"task_failed:{task_uuid}",
+            counterparty_did=task["requester_did"],
+        )
+    except Exception:
+        logger.exception("reputation: recording failure of task %s failed", task_id)
+        return "error"
+    return outcome
+
+
+async def record_message_reply(sender_did: str, receiver_did: str, message_id: Any) -> str:
+    """
+    One ``message_replied`` for *sender_did* if the message just sent answers
+    one *receiver_did* sent them within MESSAGE_REPLY_WINDOW. Sending a message
+    nobody asked for earns nothing. The event is keyed on the message being
+    answered (the latest one received), so each can be answered for credit once.
+    """
+    message_uuid = _as_uuid(message_id)
+    if message_uuid is None:
+        return "unknown_message"
+    try:
+        async with get_db() as conn:
+            answered_id = await conn.fetchval(
+                """
+                SELECT m.message_id
+                FROM messages m
+                WHERE m.sender_agent_did = $2
+                  AND m.receiver_agent_did = $1
+                  AND m.created_at > CURRENT_TIMESTAMP - $4::interval
+                  AND m.created_at <= (
+                        SELECT created_at FROM messages WHERE message_id = $3
+                  )
+                ORDER BY m.created_at DESC
+                LIMIT 1
+                """,
+                sender_did,
+                receiver_did,
+                message_uuid,
+                MESSAGE_REPLY_WINDOW,
+            )
+        if answered_id is None:
+            return "not_a_reply"
+        return await record_event(
+            sender_did,
+            "message_replied",
+            {"message_id": str(message_uuid), "answered_message_id": str(answered_id)},
+            dedupe_key=f"message_replied:{answered_id}",
+            counterparty_did=receiver_did,
+        )
+    except Exception:
+        logger.exception("reputation: recording reply %s failed", message_id)
+        return "error"
+
+
+async def record_verification_outcome(verification_id: Any) -> dict[str, str]:
+    """
+    ``peer_validation`` for the verifiers who voted with the final outcome of
+    a finalised verification — nothing for casting a vote as such, nothing for
+    the losing side. Keyed per contract and voter, so opening several
+    verifications on one contract result pays a voter once.
+
+    Returns {verifier_did: outcome}; empty if the verification is not final.
+    """
+    verification_uuid = _as_uuid(verification_id)
+    if verification_uuid is None:
+        return {}
+    outcomes: dict[str, str] = {}
+    try:
+        async with get_db() as conn:
+            verification = await conn.fetchrow(
+                """
+                SELECT status, requester_did, contract_id
+                FROM verifications WHERE verification_id = $1
+                """,
+                verification_uuid,
+            )
+            if verification is None or verification["status"] not in ("verified", "failed"):
+                return {}
+            winning_vote = "approve" if verification["status"] == "verified" else "reject"
+            voters = await conn.fetch(
+                """
+                SELECT verifier_did FROM verification_votes
+                WHERE verification_id = $1 AND vote = $2
+                ORDER BY created_at
+                """,
+                verification_uuid,
+                winning_vote,
+            )
+        for voter in voters:
+            verifier_did = voter["verifier_did"]
+            outcomes[verifier_did] = await record_event(
+                verifier_did,
+                "peer_validation",
+                {
+                    "verification_id": str(verification_uuid),
+                    "contract_id": str(verification["contract_id"]),
+                    "outcome": verification["status"],
+                },
+                dedupe_key=f"peer_validation:{verification['contract_id']}:{verifier_did}",
+                counterparty_did=verification["requester_did"],
+            )
+    except Exception:
+        logger.exception(
+            "reputation: recording outcome of verification %s failed", verification_id,
+        )
+    return outcomes
 
 
 async def recalculate_agent_trust(
@@ -111,6 +461,7 @@ async def recalculate_agent_trust(
             JOIN agents a ON a.agent_id = te.agent_id
             LEFT JOIN agent_reputation_history arh ON arh.event_id = te.event_id
             WHERE arh.event_id IS NULL
+              AND te.dedupe_key IS NOT NULL
               AND ($1::uuid IS NULL OR te.agent_id = $1)
               AND ($2::text IS NULL OR a.agent_did = $2)
             ORDER BY te.created_at ASC, te.event_id ASC

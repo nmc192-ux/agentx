@@ -9,7 +9,7 @@ from ..middleware.rate_limits import limiter_did, LIMIT_MSG_SEND, LIMIT_MSG_SEND
 from ..models.agent_message import MessageCreate, MessageResponse
 from ..services import blocks_service
 from ..services.events import emit_event
-from ..services.reputation import record_event
+from ..services.reputation import record_message_reply
 
 router = APIRouter(prefix="/messages", tags=["Messages"])
 
@@ -154,10 +154,10 @@ async def send_message(
             "receiver_agent_did": body.receiver_agent_did,
         },
     )
-    await record_event(
-        body.sender_agent_did,
-        "MESSAGE_REPLIED",
-        {"receiver_agent_did": body.receiver_agent_did},
+    # S9-9b: only a message that answers one the receiver sent earns trust
+    # (this used to be +0.01 for every message sent, to anyone).
+    await record_message_reply(
+        body.sender_agent_did, body.receiver_agent_did, message.message_id,
     )
     return message
 

@@ -20,8 +20,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
+
+from src.services.reputation import EVENT_WEIGHTS
 
 from .conftest import PG_PORT, PG_USER, smoke
 from .test_governance_db import end_voting, propose, proposal_row
@@ -51,16 +54,27 @@ async def _history(pool, agent) -> int:
     )
 
 
+async def _recorded(pool, agent, event_type: str) -> None:
+    """One recorded trust event, as services/reputation.record_event stores it.
+    Written directly: these tests are about applying events, not about which
+    events may be recorded (tests/integration/test_trust_farming_db.py)."""
+    weight = EVENT_WEIGHTS[event_type]
+    await pool.execute(
+        "INSERT INTO trust_events (agent_id, agent_did, event_type, event_weight, "
+        "event_value, dedupe_key) VALUES ($1, $2, $3, $4, $4, $5)",
+        agent.agent_id, agent.did, event_type, weight, f"test:{uuid4()}",
+    )
+
+
 async def test_one_run_moves_scores_apart_and_a_second_run_changes_nothing(pool, agents):
     from src.jobs.scheduled_maintenance import run_maintenance
-    from src.services.reputation import record_event
 
     worker = await _trusted(agents, pool, "worker")
     flaky = await _trusted(agents, pool, "flaky")
     quiet = await _trusted(agents, pool, "quiet")
     for _ in range(3):
-        await record_event(worker.did, "task_completed", {"source": "test"})
-    await record_event(flaky.did, "task_failed", {"source": "test"})
+        await _recorded(pool, worker, "task_completed")
+    await _recorded(pool, flaky, "task_failed")
 
     first = await run_maintenance()
 
@@ -78,11 +92,11 @@ async def test_one_run_moves_scores_apart_and_a_second_run_changes_nothing(pool,
 
 
 async def test_runs_at_the_same_time_apply_each_event_once(pool, agents):
-    from src.services.reputation import recalculate_agent_trust, record_event
+    from src.services.reputation import recalculate_agent_trust
 
     busy = await _trusted(agents, pool, "busy")
     for _ in range(5):
-        await record_event(busy.did, "task_completed", {"source": "test"})
+        await _recorded(pool, busy, "task_completed")
 
     results = await asyncio.gather(*[recalculate_agent_trust() for _ in range(4)])
 
@@ -124,10 +138,8 @@ async def test_a_failing_part_does_not_stop_the_other(client, pool, agents, monk
 
 
 async def test_job_runs_end_to_end_as_its_own_process(pool, agents, escrow_db):
-    from src.services.reputation import record_event
-
     solo = await _trusted(agents, pool, "solo")
-    await record_event(solo.did, "peer_validation", {"source": "test"})
+    await _recorded(pool, solo, "peer_validation")
     env = {
         **{k: v for k, v in os.environ.items()
            if not k.startswith(("POSTGRES_", "REDIS_", "DISABLED_ROUTERS"))},

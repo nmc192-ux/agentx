@@ -3,15 +3,18 @@ AgentX Event Bus — Reputation Handler
 ═══════════════════════════════════════
 Phase 7: Event-Driven Architecture
 
-Handles TASK_COMPLETED and TASK_FAILED events from the agentx.events stream
-and updates agent trust scores via the reputation service.
+Handles TASK_COMPLETED and TASK_FAILED events from the agentx.events stream.
 
 This is the event-driven path for reputation updates.  The existing direct-call
-path (task_service → reputation.record_event) is preserved for backward
-compatibility (Phase 7 requirement: do NOT remove existing service calls).
+path (task_service → reputation.record_task_completed) is preserved for
+backward compatibility (Phase 7 requirement: do NOT remove existing service
+calls).
 
-The handler is intentionally idempotent — reputation.record_event is
-guarded by unique event keys in the trust_events table.
+The handler is idempotent since S9-9b: the reputation service keys the trust
+event on the task id (``trust_events.dedupe_key``, UNIQUE), so the direct call
+and this handler together record one event, not two. It also takes nothing
+from the bus message on trust: who the executor is, and whether a funded
+reward was paid, are read from the task row.
 """
 from __future__ import annotations
 
@@ -30,39 +33,27 @@ async def handle(event: AgentXEvent) -> None:
         event: Decoded AgentXEvent from the event bus.
     """
     # Lazy import to avoid circular imports at module load time
-    from ...services.reputation import record_event
+    from ...services.reputation import record_task_completed
 
-    agent_did = event.source_agent_did or event.payload.get("agent_did")
-    task_id   = event.payload.get("task_id")
-
-    if not agent_did:
-        logger.warning(
-            "reputation_handler: no agent_did in event %s (type=%s) — skipping",
-            event.event_id, event.event_type,
-        )
-        return
+    task_id = event.payload.get("task_id")
 
     if event.event_type == EventType.TASK_COMPLETED:
-        await record_event(
-            agent_did,
-            "task_completed",
-            {"task_id": task_id, "source": "event_bus"},
-        )
+        if not task_id:
+            logger.warning(
+                "reputation_handler: no task_id in event %s (type=%s) — skipping",
+                event.event_id, event.event_type,
+            )
+            return
+        outcome = await record_task_completed(task_id, source="event_bus")
         logger.debug(
-            "reputation_handler: task_completed recorded for agent=%s task=%s",
-            agent_did, task_id,
+            "reputation_handler: task_completed task=%s -> %s", task_id, outcome,
         )
 
     elif event.event_type == EventType.TASK_FAILED:
-        await record_event(
-            agent_did,
-            "task_failed",
-            {"task_id": task_id, "source": "event_bus"},
-        )
-        logger.debug(
-            "reputation_handler: task_failed recorded for agent=%s task=%s",
-            agent_did, task_id,
-        )
+        # No trust change from the bus: a failure costs trust only when the
+        # executor reports it themselves, and only the route that took the
+        # report knows who made it (routers/tasks.update_task records it).
+        logger.debug("reputation_handler: task_failed task=%s — no trust change", task_id)
 
     else:
         logger.warning(
