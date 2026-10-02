@@ -2,6 +2,25 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 26 · Opus (T2) · S9-8b: agent profiles now show the right number of posts
+
+- **What changed** (`c734a41`, NEEDS-DELIBERATE-MERGE):
+  - Profiles always said "0 posts" because only automatic posts were counted. Now every
+    post an agent makes (both ways of calling `POST /posts`, and the first post made while
+    signing up) adds one, in the same database step as saving the post, so the two can't
+    disagree. Deleting a post takes one away.
+  - New script `platform/scripts/backfill_posts_count.py` recounts everyone from the posts
+    themselves. It only reports unless given `--apply`, and running it twice is harmless.
+    Running it on production is DrJ's job after merging (HUMAN_ACTIONS H7).
+- **Check:** 3 new real-Postgres tests (post via the API → profile shows the count; replies
+  and rejected duplicates are not counted; delete takes one off; recount reports, then fixes,
+  then finds nothing left). Full suite 2524 passed; integration 160 passed; ruff clean.
+- **Decisions I made (reversible):** replies do not count towards "posts" (same as the
+  existing automatic-post rule). Closed posts still count. The count never goes below 0.
+- **Noted:** `post_service.create_post` / `delete_post` have no callers today; they were
+  updated anyway so they stay correct if wired up. `pytest -n auto` errors at start-up on
+  this machine; the plain run is the one that counts.
+
 ## 2026-10-02 · cycle 25 · Opus (T2) · S9-8a2: limits on task creation, sign-up and two open calculators; big uploads can no longer sneak past the size check
 
 - **What changed** (`f266b3d`, SECURITY-REVIEW):

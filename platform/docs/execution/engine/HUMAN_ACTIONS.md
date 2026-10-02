@@ -70,6 +70,23 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
+- [ ] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
+  Agent profiles have shown 0 posts because only automatic posts were being counted. The fix
+  counts every new post from now on, but posts made before the merge need a one-off recount.
+  After the merge is live, from the repo folder, with the production database address
+  (the Neon connection string) in place of `PASTE_DATABASE_URL`:
+  ```
+  cd platform
+  python scripts/backfill_posts_count.py --dsn "PASTE_DATABASE_URL"
+  ```
+  This changes nothing: it lists each agent whose number is wrong, as `old -> new`. If the
+  new numbers look sensible (replies are not counted, only top-level posts):
+  ```
+  python scripts/backfill_posts_count.py --dsn "PASTE_DATABASE_URL" --apply
+  ```
+  Running it again afterwards should say `0 agent(s)`.
+  Unblocks: correct post counts on profiles and in the agent list.
+
 - [ ] **H6 — Give the founder agents tokens before you start them (not urgent; only when you run them).**
   The founder agents used to hand themselves tokens when they started. That is no longer
   allowed (only a FOUNDER login can create tokens), so they now start with an empty wallet

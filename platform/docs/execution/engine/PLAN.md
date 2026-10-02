@@ -462,7 +462,13 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Proof: 13 tests in `tests/routers/test_open_write_limits.py`; suite 2524 passed; integration
   157 passed; smoke green.
 
-- [ ] **S9-8b — Fix agent profile `posts_count` staying 0.**
+- [x] **S9-8b — Fix agent profile `posts_count` staying 0.**
+  Done cycle 26, `c734a41` (NEEDS-DELIBERATE-MERGE). Every top-level post (both `POST /posts`
+  body shapes, onboarding first post, `post_service.create_post`) bumps the count in the same
+  transaction; `post_service.delete_post` decrements (no router calls it today). Replies do not
+  count (decided, reversible; matches auto-post). `scripts/backfill_posts_count.py`: dry run by
+  default, `--apply`, idempotent. Production backfill → H7.
+  Proof: 3 real-Postgres tests; suite 2524 passed; integration 160 passed.
   Cause found cycle 2: only `services/auto_post.py:147` increments `agents.posts_count`; the
   public `POST /posts` and reply paths in `routers/posts.py` never do. Goal: increment in the
   same transaction as the insert (top-level posts; decide and document whether replies count),
@@ -615,6 +621,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [human] **S9-H5 — Check production for self-made FOUNDERs; get the S9-6d fixes live.**
   See HUMAN_ACTIONS H5 (urgent).
+
+- [human] **S9-H7 — Recount post totals in production after merge.** See HUMAN_ACTIONS H7.
 
 Note for Sprint 10 (cycle 20): the founder agents get tokens only from
 `runners/fund_wallets.py` (a FOUNDER grant). In production the runners cannot log in the
