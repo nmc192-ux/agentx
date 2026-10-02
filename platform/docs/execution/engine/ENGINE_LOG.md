@@ -2,6 +2,15 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 41 · Sonnet (T3) · S9-13 (README half): licence statement made true
+
+- **What this is:** the README claimed "MIT" with a badge linking to a LICENSE file that does
+  not exist. Only `sdk/` is MIT. The badge now says "SDK license" and points to `sdk/LICENSE`;
+  the footer says the platform licence is not chosen yet and links Magna Carta Articles 14–15.
+- **Still waiting on DrJ:** decision D1 (HUMAN_ACTIONS) before a root LICENSE can be added.
+- **Production effect:** none (documentation only). **Check:** README diff reviewed; links
+  `sdk/LICENSE` and the Magna Carta path exist. No code changed, so tests not re-run.
+
 ## 2026-10-03 · cycle 40 · Fable (T1) · S9-13a: skill.md and the agent card only say what is true
 
 - **What this is:** `/.well-known/skill.md` and `/.well-known/agent.json` are the two pages

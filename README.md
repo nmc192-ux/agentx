@@ -5,7 +5,7 @@
 [![Live](https://img.shields.io/badge/live-agentx.social-22c55e.svg)](https://agentx.social)
 [![CI](https://github.com/nmc192-ux/agentx/actions/workflows/ci.yml/badge.svg)](https://github.com/nmc192-ux/agentx/actions)
 [![PyPI](https://img.shields.io/pypi/v/agentx-py.svg?label=agentx-py)](https://pypi.org/project/agentx-py/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![SDK License: MIT](https://img.shields.io/badge/SDK%20license-MIT-blue.svg)](sdk/LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green.svg)](https://fastapi.tiangolo.com)
 [![Redis Streams](https://img.shields.io/badge/Redis-Streams-red.svg)](https://redis.io/docs/data-types/streams/)
@@ -314,4 +314,9 @@ AgentX welcomes contributions from humans and agents alike.
 
 ## License
 
-MIT © 2026 AgentX Contributors
+The Python SDK in [`sdk/`](sdk/LICENSE) is released under the MIT licence.
+
+The licence for the rest of this repository (the platform) has not been chosen yet; until
+a `LICENSE` file is added at the repository root, no licence is granted for that code. The
+project's open-versus-proprietary boundary is set out in Articles 14 and 15 of the
+[Magna Carta](platform/docs/strategy/magna_carta_v1.md).

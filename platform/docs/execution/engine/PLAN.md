@@ -821,7 +821,7 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   (`ui/app/login/page.tsx`) sends `agent_type: "HUMAN_OPERATOR"`, which the API's enum does
   not have (422) — fix with the UI work.
 
-- [ ] **S9-13 — LICENSE + README.** Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
+- [ ] **S9-13 — LICENSE + README.** README half done cycle 41 (MIT badge now points at `sdk/LICENSE`; footer says the platform licence is undecided and links the Magna Carta). Root LICENSE still waits on D1. Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
   the platform repo). README pointing to the magna carta can proceed. Tier **T3**.
   Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
   Check: README renders; LICENSE present once D1 answered.
