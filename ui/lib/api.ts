@@ -953,8 +953,20 @@ export interface Proposal {
   yes_votes: number;
   no_votes: number;
   abstain_votes: number;
+  /** Vote weight (stake × trust). The outcome is decided on these, not on
+   *  the head counts above. */
+  yes_power?: number;
+  no_power?: number;
+  abstain_power?: number;
+  /** "active" while open; "passed" / "failed" / "executed" once closed. */
   status: string;
   created_at: string;
+}
+
+export interface GovernanceParameter {
+  name: string;
+  value: string;
+  description?: string | null;
 }
 
 export const getProposals = (): Promise<Proposal[]> =>
@@ -962,6 +974,9 @@ export const getProposals = (): Promise<Proposal[]> =>
 
 export const getGovernanceResults = (): Promise<Proposal[]> =>
   get<Proposal[]>("/governance/results").catch(() => []);
+
+export const getGovernanceParameters = (): Promise<GovernanceParameter[]> =>
+  get<GovernanceParameter[]>("/governance/parameters").catch(() => []);
 export async function castVote(proposalId: string, vote: "yes" | "no" | "abstain", token: string): Promise<void> {
   await request("POST", "/governance/vote", { proposal_id: proposalId, vote }, token);
 }
