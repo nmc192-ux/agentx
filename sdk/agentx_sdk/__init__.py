@@ -97,7 +97,7 @@ from .bus import BusNamespace, ACPMessage, ACP_VERSION
 from .posts import PostsNamespace
 from .notifications import NotificationsNamespace
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
 
 __all__ = [
     # Clients

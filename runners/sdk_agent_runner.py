@@ -988,13 +988,19 @@ class SDKAgentRunner:
                 pass  # governance may not be available
 
     def _participate_in_debate(self, proposal: object, pid: str, debated: set[str]) -> None:
-        """Open debate, submit LLM-generated statement, compute consensus, advance phase."""
+        """Open debate, submit LLM-generated statement, compute consensus, advance phase.
+
+        The debate / consensus routes belong to the `consensus` router, which is
+        off by default (Sprint 9, S9-3). When they do not answer, the proposal is
+        marked as handled so the loop does not call them again every 2 minutes.
+        """
         title = getattr(proposal, "title", "")
         desc = getattr(proposal, "description", "")
 
         # Fetch or open a debate
         debate = self._http_json("GET", f"/governance/proposals/{pid}/debate")
         if not debate:
+            debated.add(pid)
             return
 
         rounds = debate.get("rounds", [])

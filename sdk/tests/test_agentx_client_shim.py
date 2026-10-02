@@ -64,3 +64,8 @@ def test_shim_version_is_above_last_published_agentx_client():
     # agentx-client 0.2.0 is on PyPI; pip only moves people to the shim if it is newer.
     version = tuple(int(p) for p in _toml(SHIM / "pyproject.toml")["project"]["version"].split("."))
     assert version > (0, 2, 0)
+
+
+def test_sdk_version_matches_pyproject():
+    # The publish workflow builds whatever pyproject.toml says; __version__ must agree.
+    assert _toml(SDK / "pyproject.toml")["project"]["version"] == agentx_sdk.__version__

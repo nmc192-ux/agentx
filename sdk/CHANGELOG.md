@@ -6,7 +6,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — task, vote, contract, bounty, flag, endorse and wallet helpers match the API
+## [0.3.0] — task, vote, contract, bounty, flag, endorse and wallet helpers match the API
 
 ### Fixed
 

@@ -6,8 +6,12 @@ Tests the FULL economic path:
   SDK → HTTP API → PostgreSQL → Redis events
 
 Prerequisites:
-  The platform docker-compose stack must be running:
-    cd ~/AgentX/platform && docker compose up -d
+  A local API must be running (default http://localhost:8000; set BASE_URL to
+  point elsewhere — localhost only, never production):
+    cd platform && docker compose up -d
+  For the paid steps, set AGENTX_FOUNDER_TOKEN to a FOUNDER agent's Bearer
+  token on that local stack (funding a wallet mints tokens, FOUNDER-only).
+  Without it the task carries no reward and the balance checks skip.
 
 Run just this file:
     pytest tests/integration/test_e2e_flow.py -v -m integration
@@ -15,36 +19,39 @@ Run just this file:
 Skip during unit test runs:
     pytest tests/ -m "not integration"
 
-The test exercises:
-  1.  Two agents register (alice = task creator, bob = task executor)
-  2.  Both agents create wallets (alice: 1000 tokens, bob: 0 tokens)
-  3.  Alice creates a TASK post with bounty_rep=100 and capability="python"
-  4.  Bob discovers the task via discover_tasks(capability="python")
-  5.  Bob accepts and executes the task
-  6.  Bob submits a result
-  7.  Wallet balances are verified (escrow released to bob)
-  8.  Trust scores exist for both agents
-  9.  Events endpoint shows activity
+The test exercises the marketplace task flow (the one that moves tokens):
+  1.  Alice signs up (POST /onboard → DID + Bearer token)
+  2.  Bob signs up
+  3.  A founder funds Alice's wallet (1000 tokens)       [needs founder token]
+  4.  Bob opens his own wallet at 0 (SDK wallet helper)
+  5.  Alice publishes a marketplace task (POST /tasks); the reward is escrowed
+  6.  Bob discovers it (GET /tasks?status=open)
+  7.  Bob bids low (POST /tasks/{id}/bid), Alice accepts it (POST /tasks/{id}/accept)
+  8.  Bob submits the result (SDK submit_marketplace_result → POST /tasks/{id}/result)
+  9.  Bob's wallet received the reward (less the platform fee) [needs founder token]
+  10. Alice's wallet paid exactly the reward                  [needs founder token]
+  11. Trust scores exist for both agents
+  12. The task is completed and the events / feed endpoint answers
 
 If any step fails the assertion message contains the step number and the
 raw API response to make debugging straightforward.
 """
 import os
-import time
+import sys
 import uuid
+from pathlib import Path
 
 import pytest
 import requests
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
 HEALTH_URL = f"{BASE_URL}/health"
+SDK_DIR = Path(__file__).resolve().parents[2] / "sdk"
 
 # Test uses short-lived unique suffixes so parallel runs don't collide.
 _RUN_ID = uuid.uuid4().hex[:8]
-ALICE_TOKEN = f"alice-token-{_RUN_ID}"
-BOB_TOKEN   = f"bob-token-{_RUN_ID}"
 # Funding a wallet mints tokens and is FOUNDER-only (S9-1). Set this to a
 # founder JWT for the local stack to run the funded steps.
 FOUNDER_TOKEN = os.getenv("AGENTX_FOUNDER_TOKEN", "")
@@ -52,9 +59,9 @@ FOUNDER_TOKEN = os.getenv("AGENTX_FOUNDER_TOKEN", "")
 ALICE_NAME = f"AliceTest-{_RUN_ID}"
 BOB_NAME   = f"BobTest-{_RUN_ID}"
 
-BOUNTY_REP       = 100
-TASK_CAPABILITY  = "python"
-POLL_TIMEOUT_SEC = 30   # max seconds to wait for async balance update
+ALICE_FUNDING   = 1000
+TASK_REWARD     = 100
+TASK_CAPABILITY = "python"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,6 +85,25 @@ def _assert_step(condition: bool, step: int, desc: str, response=None) -> None:
     assert condition, f"STEP {step} FAILED — {desc}{detail}"
 
 
+def _sdk_client(token: str):
+    """AgentXClient (the in-repo SDK) authenticated as the given agent."""
+    if str(SDK_DIR) not in sys.path:
+        sys.path.insert(0, str(SDK_DIR))
+    from agentx_sdk import AgentXClient
+    return AgentXClient(api_key=token, base_url=BASE_URL, max_retries=1)
+
+
+def _balance(did: str) -> int:
+    r = requests.get(f"{BASE_URL}/wallets/by-did", params={"agent_did": did}, timeout=10)
+    _assert_step(r.status_code == 200, 0, f"wallet fetch for {did} failed", r)
+    return r.json()["balance"]
+
+
+def _require_funded() -> None:
+    if not FOUNDER_TOKEN:
+        pytest.skip("AGENTX_FOUNDER_TOKEN not set — funding a wallet is FOUNDER-only")
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="module")
@@ -86,347 +112,222 @@ def platform_available():
     try:
         r = requests.get(HEALTH_URL, timeout=5)
         if r.status_code != 200:
-            pytest.skip(f"Platform health check returned {r.status_code} — start docker-compose first")
+            pytest.skip(f"Platform health check returned {r.status_code} — start the local stack first")
     except requests.ConnectionError:
-        pytest.skip(f"Cannot reach {HEALTH_URL} — start docker-compose first")
-
-
-@pytest.fixture(scope="module")
-def alice_client():
-    """AgentXClient configured as Alice."""
-    # Import here so pytest can skip the module before import errors occur
-    import sys, os
-    sys.path.insert(0, os.path.expanduser("~/agentx/sdk"))
-    from agentx_sdk import AgentXClient
-    return AgentXClient(api_key=ALICE_TOKEN, base_url=BASE_URL, max_retries=1)
-
-
-@pytest.fixture(scope="module")
-def bob_client():
-    import sys, os
-    sys.path.insert(0, os.path.expanduser("~/agentx/sdk"))
-    from agentx_sdk import AgentXClient
-    return AgentXClient(api_key=BOB_TOKEN, base_url=BASE_URL, max_retries=1)
+        pytest.skip(f"Cannot reach {HEALTH_URL} — start the local stack first")
 
 
 # ── Main Test ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.integration
 class TestE2EEconomicFlow:
-    """Full economic flow: register → wallet → task → result → balance check."""
+    """Full economic flow: sign up → wallet → task → bid → result → balance check."""
 
     alice_did: str = ""
     bob_did:   str = ""
-    alice_agent_id: str = ""
-    bob_agent_id:   str = ""
-    task_post_id: str = ""
-    task_id:      str = ""
+    alice_token: str = ""
+    bob_token:   str = ""
+    task_id:  str = ""
+    reward:   int = 0
+    alice_start: int = 0
 
-    # ── 1. Register Alice ────────────────────────────────────────────────────
+    # ── 1–2. Sign up ─────────────────────────────────────────────────────────
 
-    def test_01_register_alice(self, platform_available, alice_client):
-        _step(1, f"Register Alice ({ALICE_NAME})")
+    @staticmethod
+    def _onboard(step: int, name: str, capabilities: list[str]) -> tuple[str, str]:
         r = requests.post(
-            f"{BASE_URL}/agents/register",
-            json={
-                "name":            ALICE_NAME,
-                "display_name":    ALICE_NAME,
-                "agent_type":      "AUTONOMOUS",
-                "governance_role": "MEMBER",
-                "specialization":  "task_creation",
-            },
-            headers=_headers(ALICE_TOKEN),
+            f"{BASE_URL}/onboard",
+            json={"name": name, "capabilities": capabilities, "bio": "e2e test agent"},
+            timeout=10,
         )
-        _assert_step(r.status_code in (200, 201), 1, "Alice registration failed", r)
+        _assert_step(r.status_code == 201, step, f"{name} onboarding failed", r)
         data = r.json()
-        TestE2EEconomicFlow.alice_did = data.get("agent_did", "")
-        TestE2EEconomicFlow.alice_agent_id = data.get("agent_id", "")
-        assert TestE2EEconomicFlow.alice_did, "Step 1: alice_did is empty in response"
-        print(f"  Alice DID: {TestE2EEconomicFlow.alice_did}")
+        assert data.get("agent_did") and data.get("token"), f"Step {step}: DID or token missing"
+        print(f"  {name} DID: {data['agent_did']}")
+        return data["agent_did"], data["token"]
 
-    # ── 2. Register Bob ──────────────────────────────────────────────────────
+    def test_01_onboard_alice(self, platform_available):
+        _step(1, f"Onboard Alice ({ALICE_NAME})")
+        cls = TestE2EEconomicFlow
+        cls.alice_did, cls.alice_token = self._onboard(1, ALICE_NAME, ["task_creation"])
 
-    def test_02_register_bob(self, platform_available, bob_client):
-        _step(2, f"Register Bob ({BOB_NAME})")
+    def test_02_onboard_bob(self, platform_available):
+        _step(2, f"Onboard Bob ({BOB_NAME})")
+        cls = TestE2EEconomicFlow
+        cls.bob_did, cls.bob_token = self._onboard(2, BOB_NAME, [TASK_CAPABILITY])
+
+    # ── 3. A founder funds Alice ─────────────────────────────────────────────
+
+    def test_03_founder_funds_alice(self, platform_available):
+        _step(3, f"Founder funds Alice's wallet ({ALICE_FUNDING})")
+        _require_funded()
         r = requests.post(
-            f"{BASE_URL}/agents/register",
-            json={
-                "name":            BOB_NAME,
-                "display_name":    BOB_NAME,
-                "agent_type":      "AUTONOMOUS",
-                "governance_role": "MEMBER",
-                "specialization":  TASK_CAPABILITY,
-            },
-            headers=_headers(BOB_TOKEN),
-        )
-        _assert_step(r.status_code in (200, 201), 2, "Bob registration failed", r)
-        data = r.json()
-        TestE2EEconomicFlow.bob_did = data.get("agent_did", "")
-        TestE2EEconomicFlow.bob_agent_id = data.get("agent_id", "")
-        assert TestE2EEconomicFlow.bob_did, "Step 2: bob_did is empty in response"
-        print(f"  Bob DID: {TestE2EEconomicFlow.bob_did}")
-
-    # ── 3. Alice creates wallet with 1000 tokens ─────────────────────────────
-
-    def test_03_alice_creates_wallet(self, platform_available, alice_client):
-        _step(3, "Founder funds Alice's wallet (initial_balance=1000)")
-        if not FOUNDER_TOKEN:
-            pytest.skip("AGENTX_FOUNDER_TOKEN not set — funding a wallet is FOUNDER-only")
-        alice_id = TestE2EEconomicFlow.alice_agent_id or TestE2EEconomicFlow.alice_did
-        r = requests.post(
-            f"{BASE_URL}/wallets",
-            json={"agent_id": alice_id, "initial_balance": 1000},
+            f"{BASE_URL}/wallets/by-did",
+            json={"agent_did": TestE2EEconomicFlow.alice_did, "initial_balance": ALICE_FUNDING},
             headers=_headers(FOUNDER_TOKEN),
+            timeout=10,
         )
-        _assert_step(r.status_code in (200, 201), 3, "Alice wallet creation failed", r)
-        data = r.json()
-        balance = data.get("balance", 0)
+        _assert_step(r.status_code in (200, 201), 3, "Founder funding of Alice failed", r)
+        balance = r.json().get("balance", 0)
         print(f"  Alice wallet balance: {balance}")
-        assert balance >= 1000, f"Step 3: expected balance >= 1000, got {balance}"
+        assert balance >= ALICE_FUNDING, f"Step 3: expected balance >= {ALICE_FUNDING}, got {balance}"
+        TestE2EEconomicFlow.alice_start = balance
+        TestE2EEconomicFlow.reward = TASK_REWARD
 
-    # ── 4. Bob creates wallet with 0 tokens ──────────────────────────────────
+    # ── 4. Bob opens his own wallet ──────────────────────────────────────────
 
-    def test_04_bob_creates_wallet(self, platform_available, bob_client):
-        _step(4, "Bob creates wallet (initial_balance=0)")
-        bob_id = TestE2EEconomicFlow.bob_agent_id or TestE2EEconomicFlow.bob_did
+    def test_04_bob_opens_wallet(self, platform_available):
+        _step(4, "Bob opens his own wallet at 0 (SDK)")
+        with _sdk_client(TestE2EEconomicFlow.bob_token) as bob:
+            wallet = bob.wallet.create_wallet()
+        print(f"  Bob wallet balance: {wallet.balance}")
+        assert wallet.balance == 0, f"Step 4: expected balance == 0, got {wallet.balance}"
+
+    # ── 5. Alice publishes a marketplace task ────────────────────────────────
+
+    def test_05_alice_publishes_task(self, platform_available):
+        reward = TestE2EEconomicFlow.reward
+        _step(5, f"Alice publishes a marketplace task (type={TASK_CAPABILITY}, reward={reward})")
         r = requests.post(
-            f"{BASE_URL}/wallets",
-            json={"agent_id": bob_id, "initial_balance": 0},
-            headers=_headers(BOB_TOKEN),
-        )
-        _assert_step(r.status_code in (200, 201), 4, "Bob wallet creation failed", r)
-        data = r.json()
-        balance = data.get("balance", -1)
-        print(f"  Bob wallet balance: {balance}")
-        assert balance == 0, f"Step 4: expected balance == 0, got {balance}"
-
-    # ── 5. Alice creates a TASK post with bounty ──────────────────────────────
-
-    def test_05_alice_creates_task_post(self, platform_available, alice_client):
-        _step(5, f"Alice creates TASK post (capability={TASK_CAPABILITY}, bounty={BOUNTY_REP})")
-        r = requests.post(
-            f"{BASE_URL}/posts",
+            f"{BASE_URL}/tasks",
             json={
-                "post_type":   "TASK",
-                "title":       f"Python task {_RUN_ID}",
-                "content":     "Write a Python function to sort a list.",
-                "tags":        [TASK_CAPABILITY],
-                "visibility":  "PUBLIC",
-                "metadata": {
-                    "bounty_rep":          BOUNTY_REP,
-                    "capability_required": TASK_CAPABILITY,
-                },
+                "task_type": TASK_CAPABILITY,
+                "payload": {"title": f"Python task {_RUN_ID}",
+                            "spec": "Write a Python function to sort a list."},
+                "reward": reward,
             },
-            headers=_headers(ALICE_TOKEN),
+            headers=_headers(TestE2EEconomicFlow.alice_token),
+            timeout=10,
         )
-        _assert_step(r.status_code in (200, 201), 5, "Alice task post creation failed", r)
+        _assert_step(r.status_code == 201, 5, "Alice task creation failed", r)
         data = r.json()
-        TestE2EEconomicFlow.task_post_id = (
-            data.get("post_id") or data.get("id", "")
-        )
-        assert TestE2EEconomicFlow.task_post_id, "Step 5: task post_id missing from response"
-        print(f"  Task post ID: {TestE2EEconomicFlow.task_post_id}")
-
-    # ── 6. Bob discovers the task ─────────────────────────────────────────────
-
-    def test_06_bob_discovers_task(self, platform_available, bob_client):
-        _step(6, f"Bob discovers tasks with capability={TASK_CAPABILITY}")
-        r = requests.get(
-            f"{BASE_URL}/posts",
-            params={"type": "TASK", "status": "ACTIVE", "capability": TASK_CAPABILITY, "limit": 50},
-            headers=_headers(BOB_TOKEN),
-        )
-        _assert_step(r.status_code == 200, 6, "Task discovery failed", r)
-        data = r.json()
-        tasks = data if isinstance(data, list) else data.get("items", [])
-        # Find the task created in step 5
-        matching = [
-            t for t in tasks
-            if TestE2EEconomicFlow.task_post_id and
-               (t.get("post_id") == TestE2EEconomicFlow.task_post_id or
-                t.get("id") == TestE2EEconomicFlow.task_post_id)
-        ]
-        if not matching:
-            # Fallback: any task with matching tag
-            matching = [
-                t for t in tasks
-                if TASK_CAPABILITY in (t.get("tags") or [])
-            ]
-        _assert_step(
-            len(matching) > 0, 6,
-            f"Bob found 0 tasks with capability={TASK_CAPABILITY}. "
-            f"Total tasks returned: {len(tasks)}",
-        )
-        print(f"  Bob found {len(matching)} matching task(s)")
-
-    # ── 7. Bob accepts the task ───────────────────────────────────────────────
-
-    def test_07_bob_accepts_task(self, platform_available, bob_client):
-        _step(7, "Bob accepts the task (creates a Task record)")
-        bob_did = TestE2EEconomicFlow.bob_did
-        alice_did = TestE2EEconomicFlow.alice_did
-        r = requests.post(
-            f"{BASE_URL}/tasks/create",
-            json={
-                "requester_agent_did": alice_did,
-                "executor_agent_did":  bob_did,
-                "task_type":           TASK_CAPABILITY,
-                "payload": {
-                    "post_id":    TestE2EEconomicFlow.task_post_id,
-                    "bounty_rep": BOUNTY_REP,
-                    "action":     "ACCEPT_TASK",
-                },
-            },
-            headers=_headers(BOB_TOKEN),
-        )
-        _assert_step(r.status_code in (200, 201), 7, "Bob task accept failed", r)
-        data = r.json()
-        TestE2EEconomicFlow.task_id = str(
-            data.get("task_id") or data.get("id", "")
-        )
-        assert TestE2EEconomicFlow.task_id, "Step 7: task_id missing from response"
+        TestE2EEconomicFlow.task_id = str(data.get("task_id", ""))
+        assert TestE2EEconomicFlow.task_id, "Step 5: task_id missing from response"
         print(f"  Task ID: {TestE2EEconomicFlow.task_id}")
 
-    # ── 8. Bob submits a result ───────────────────────────────────────────────
+    # ── 6. Bob discovers the task ────────────────────────────────────────────
 
-    def test_08_bob_submits_result(self, platform_available, bob_client):
-        _step(8, "Bob submits task result")
+    def test_06_bob_discovers_task(self, platform_available):
+        _step(6, "Bob discovers open marketplace tasks")
+        r = requests.get(
+            f"{BASE_URL}/tasks",
+            params={"status": "open", "limit": 200},
+            headers=_headers(TestE2EEconomicFlow.bob_token),
+            timeout=10,
+        )
+        _assert_step(r.status_code == 200, 6, "Task discovery failed", r)
+        tasks = r.json()
+        matching = [t for t in tasks if str(t.get("task_id")) == TestE2EEconomicFlow.task_id]
+        _assert_step(
+            len(matching) == 1, 6,
+            f"Bob did not find task {TestE2EEconomicFlow.task_id} among {len(tasks)} open task(s)",
+        )
+
+    # ── 7. Bob bids, Alice accepts ───────────────────────────────────────────
+
+    def test_07_bob_bids_alice_accepts(self, platform_available):
+        _step(7, "Bob bids; Alice accepts the bid")
         task_id = TestE2EEconomicFlow.task_id
-        assert task_id, "Step 8: task_id not set — did step 7 pass?"
+        assert task_id, "Step 7: task_id not set — did step 5 pass?"
+        # A bid with confidence >= 0.3 is auto-accepted; bid below that so the
+        # creator's accept route is exercised too.
+        r = requests.post(
+            f"{BASE_URL}/tasks/{task_id}/bid",
+            json={"confidence": 0.2, "bid_price": TestE2EEconomicFlow.reward},
+            headers=_headers(TestE2EEconomicFlow.bob_token),
+            timeout=10,
+        )
+        _assert_step(r.status_code == 201, 7, "Bob's bid failed", r)
+        bid_id = r.json()["bid_id"]
 
+        r = requests.post(
+            f"{BASE_URL}/tasks/{task_id}/accept",
+            params={"bid_id": bid_id},
+            headers=_headers(TestE2EEconomicFlow.alice_token),
+            timeout=10,
+        )
+        _assert_step(r.status_code == 200, 7, "Alice's accept failed", r)
+        print(f"  Bid {bid_id} accepted, assignment status: {r.json().get('status')}")
+
+    # ── 8. Bob submits the result ────────────────────────────────────────────
+
+    def test_08_bob_submits_result(self, platform_available):
+        _step(8, "Bob submits the task result (SDK)")
+        task_id = TestE2EEconomicFlow.task_id
+        assert task_id, "Step 8: task_id not set — did step 5 pass?"
         result_payload = {
             "output":   "def sort_list(lst): return sorted(lst)",
             "language": "python",
             "status":   "success",
         }
-
-        # Try dedicated result endpoint first, fall back to status patch
-        r = requests.post(
-            f"{BASE_URL}/tasks/{task_id}/result",
-            json={"result": result_payload},
-            headers=_headers(BOB_TOKEN),
-        )
-        if r.status_code == 404:
-            # Some platform versions use PATCH to update status + result
-            r = requests.patch(
-                f"{BASE_URL}/tasks/{task_id}",
-                json={"status": "COMPLETED", "result": result_payload},
-                headers=_headers(BOB_TOKEN),
-            )
-        _assert_step(
-            r.status_code in (200, 201, 204),
-            8, "Bob result submission failed", r,
-        )
+        with _sdk_client(TestE2EEconomicFlow.bob_token) as bob:
+            data = bob.submit_marketplace_result(task_id, result_payload)
+        assert str(data.get("task_id")) == task_id, f"Step 8: unexpected answer {data}"
         print("  Result submitted successfully")
 
-    # ── 9. Verify Bob's wallet balance increased ──────────────────────────────
+    # ── 9. Bob was paid ──────────────────────────────────────────────────────
 
-    def test_09_verify_bob_wallet_increased(self, platform_available, bob_client):
-        _step(9, "Verify Bob's wallet balance increased after escrow release")
-        bob_id = TestE2EEconomicFlow.bob_agent_id or TestE2EEconomicFlow.bob_did
-
-        # Poll with timeout — escrow release may be async via worker
-        deadline = time.time() + POLL_TIMEOUT_SEC
-        balance = 0
-        last_response = None
-        while time.time() < deadline:
-            r = requests.get(
-                f"{BASE_URL}/wallets/{bob_id}",
-                headers=_headers(BOB_TOKEN),
-            )
-            last_response = r
-            if r.status_code == 200:
-                balance = r.json().get("balance", 0)
-                if balance > 0:
-                    break
-            time.sleep(2)
-
-        _assert_step(
-            last_response is not None and last_response.status_code == 200,
-            9, "Bob wallet fetch failed", last_response,
-        )
-        # Escrow release amount depends on platform config; just verify > 0
-        _assert_step(
-            balance > 0,
-            9,
-            f"Bob's balance should be > 0 after task completion, got {balance}. "
-            f"Escrow release may not be configured or the worker is not running.",
-        )
+    def test_09_verify_bob_paid(self, platform_available):
+        _step(9, "Verify Bob's wallet received the reward (less the platform fee)")
+        _require_funded()
+        balance = _balance(TestE2EEconomicFlow.bob_did)
         print(f"  Bob's balance after task: {balance}")
-
-    # ── 10. Verify Alice's wallet balance decreased ───────────────────────────
-
-    def test_10_verify_alice_wallet_decreased(self, platform_available, alice_client):
-        _step(10, "Verify Alice's wallet balance decreased")
-        alice_id = TestE2EEconomicFlow.alice_agent_id or TestE2EEconomicFlow.alice_did
-
-        r = requests.get(
-            f"{BASE_URL}/wallets/{alice_id}",
-            headers=_headers(ALICE_TOKEN),
-        )
-        _assert_step(r.status_code == 200, 10, "Alice wallet fetch failed", r)
-        balance = r.json().get("balance", 1000)
-        print(f"  Alice's balance: {balance}")
         _assert_step(
-            balance < 1000,
-            10,
-            f"Alice's balance should be < 1000 after paying bounty, got {balance}. "
-            f"Escrow deduction may not be configured or the worker is not running.",
+            0 < balance <= TestE2EEconomicFlow.reward, 9,
+            f"Bob's balance should be in (0, {TestE2EEconomicFlow.reward}], got {balance}",
         )
 
-    # ── 11. Verify trust scores exist ────────────────────────────────────────
+    # ── 10. Alice paid exactly the reward ────────────────────────────────────
+
+    def test_10_verify_alice_paid(self, platform_available):
+        _step(10, "Verify Alice's wallet paid exactly the reward")
+        _require_funded()
+        balance = _balance(TestE2EEconomicFlow.alice_did)
+        expected = TestE2EEconomicFlow.alice_start - TestE2EEconomicFlow.reward
+        print(f"  Alice's balance: {balance}")
+        _assert_step(balance == expected, 10, f"Alice's balance should be {expected}, got {balance}")
+
+    # ── 11. Trust scores exist ───────────────────────────────────────────────
 
     def test_11_verify_trust_scores(self, platform_available):
         _step(11, "Verify trust scores exist for both agents")
         for label, did, token in [
-            ("Alice", TestE2EEconomicFlow.alice_did, ALICE_TOKEN),
-            ("Bob",   TestE2EEconomicFlow.bob_did,   BOB_TOKEN),
+            ("Alice", TestE2EEconomicFlow.alice_did, TestE2EEconomicFlow.alice_token),
+            ("Bob",   TestE2EEconomicFlow.bob_did,   TestE2EEconomicFlow.bob_token),
         ]:
-            r = requests.get(
-                f"{BASE_URL}/agents/{did}",
-                headers=_headers(token),
-            )
-            _assert_step(
-                r.status_code == 200, 11,
-                f"{label} agent profile fetch failed", r,
-            )
+            r = requests.get(f"{BASE_URL}/agents/{did}", headers=_headers(token), timeout=10)
+            _assert_step(r.status_code == 200, 11, f"{label} agent profile fetch failed", r)
             data = r.json()
             trust_score = data.get("trust_score")
             _assert_step(
-                trust_score is not None,
-                11,
+                trust_score is not None, 11,
                 f"{label} trust_score missing from profile. Got keys: {list(data.keys())}",
             )
             print(f"  {label} trust_score: {trust_score}")
 
-    # ── 12. Verify events were published ─────────────────────────────────────
+    # ── 12. Task completed, events / feed answer ─────────────────────────────
 
-    def test_12_verify_events_published(self, platform_available):
-        _step(12, "Verify events were published via /events or /feed")
-        # Try /events endpoint; fall back to /feed/global
-        for endpoint, params in [
-            ("/events",      {"limit": 20}),
-            ("/feed/global", {"limit": 20}),
-        ]:
+    def test_12_task_completed_and_feed(self, platform_available):
+        _step(12, "Verify the task is completed and /events or /feed answers")
+        r = requests.get(
+            # A finished marketplace task's status is upper-case 'COMPLETED'.
+            f"{BASE_URL}/tasks", params={"status": "COMPLETED", "limit": 200}, timeout=10,
+        )
+        _assert_step(r.status_code == 200, 12, "Completed-task listing failed", r)
+        ids = {str(t.get("task_id")) for t in r.json()}
+        _assert_step(
+            TestE2EEconomicFlow.task_id in ids, 12,
+            f"task {TestE2EEconomicFlow.task_id} is not listed as completed",
+        )
+
+        for endpoint in ("/events", "/feed/global"):
             r = requests.get(
-                f"{BASE_URL}{endpoint}",
-                params=params,
-                headers=_headers(ALICE_TOKEN),
+                f"{BASE_URL}{endpoint}", params={"limit": 20},
+                headers=_headers(TestE2EEconomicFlow.alice_token), timeout=10,
             )
             if r.status_code == 200:
-                data = r.json()
-                items = data if isinstance(data, list) else (
-                    data.get("items") or data.get("events") or data.get("posts") or []
-                )
-                print(f"  {endpoint}: {len(items)} item(s) returned")
-                # Events exist (at least the TASK post we created)
-                _assert_step(
-                    len(items) >= 0,  # non-negative — endpoint works
-                    12,
-                    f"{endpoint} returned unexpected structure",
-                )
-                return  # At least one endpoint succeeded — pass
-
+                print(f"  {endpoint}: 200")
+                return
         pytest.fail(
             "Step 12 FAILED — neither /events nor /feed/global returned 200. "
             "Check that the platform is running and the router is mounted."

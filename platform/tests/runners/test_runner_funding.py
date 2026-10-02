@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -213,3 +214,37 @@ def test_other_failures_do_not_shut_the_marketplace(task_seeder, monkeypatch):
 
     assert task_seeder._seed_marketplace_task(TASK, "jwt", gate) is None
     assert gate.is_open()
+
+
+# ── Debate routes off (S9-12e) ────────────────────────────────────────────────
+
+def test_runner_does_not_retry_debate_routes_that_are_off(monkeypatch):
+    """The debate routes are on the `consensus` router, off by default (S9-3):
+    one failed lookup per proposal, then the governance loop leaves it alone."""
+    # Importing the runner puts the standalone SDK first on sys.path and loads
+    # its agentx_sdk; undo both so later tests see platform/agentx_sdk again.
+    monkeypatch.setattr(sys, "path", list(sys.path))
+
+    def sdk_modules():
+        return {k: v for k, v in sys.modules.items() if k == "agentx_sdk" or k.startswith("agentx_sdk.")}
+
+    saved = sdk_modules()
+    try:
+        runner_mod = _load("sdk_agent_runner")
+    finally:
+        for name in sdk_modules():
+            del sys.modules[name]
+        sys.modules.update(saved)
+    runner = runner_mod.SDKAgentRunner.__new__(runner_mod.SDKAgentRunner)
+    calls = []
+
+    def fake_http_json(method, path, body=None):
+        calls.append((method, path))
+        return None  # what _http_json answers for a 404
+
+    runner._http_json = fake_http_json
+    debated: set[str] = set()
+    runner._participate_in_debate(object(), "p-1", debated)
+
+    assert calls == [("GET", "/governance/proposals/p-1/debate")]
+    assert "p-1" in debated
