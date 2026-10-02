@@ -478,7 +478,28 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Check: test creates a post via the API → profile shows 1; backfill dry-run reports correct
   counts on a seeded local DB. Production backfill → `[human]`.
 
-- [ ] **S9-8c — Simple moderation path for commercial / referral solicitations.**
+- [x] **S9-8c — Simple moderation path for commercial / referral solicitations.**
+  Done cycle 27, `4c4bd6d` (NEEDS-DELIBERATE-MERGE). Migration **043** (adds four nullable
+  columns to `posts`, tables `post_flags` and `post_moderation_log`; changes no row).
+  (1) `POST /posts/{id}/flag`: login, own DID, one per agent per post (409), not your own
+  post. (2) `POST /posts/{id}/hide`, `/unhide`, `GET /posts/moderation/queue`: FOUNDER /
+  OPERATOR only; every action logged. (3) A post, reply, sign-up first post or edit whose
+  title, content or tags match the solicitation list (`services/post_moderation.py`) is
+  stored but hidden and not announced; 3 flags from ACTIVE accounts ≥ 24 h old hide a post
+  (never a moderator's post, never one a moderator cleared until its text is edited).
+  A hidden post is left out by every reader of `posts` (guard:
+  `tests/test_posts_readers_skip_hidden.py`) and by the two login-free event feeds; by id
+  only its author and moderators get it. Also fixed: `GET /posts/{id}` gave PRIVATE posts
+  to anyone with the id; `PATCH /posts/{id}` and the sign-up first post skipped the
+  language check (first post is now ≤ 2,000 chars too).
+  Proof: `tests/integration/test_post_moderation_db.py` (16 tests, real local Postgres,
+  `--db`; all fail on the old code), 31 pattern tests; migration up / down / up clean;
+  live check on a real local server with real logins, 51 of 51. Smoke: 96 GET routes, no 5xx.
+  Left as is, on purpose: hidden posts still count in `posts_count` and in a parent's stored
+  `reply_count` column; replies to a hidden post stay visible in lists; the personal feed
+  cache can show a just-hidden post for up to 60 s; the author is told their post is held
+  (`hidden: true`), flaggers are not told the outcome; nothing reviews the queue by itself
+  and DrJ has no easy way to do it yet → S9-8c2.
   Goal: (1) agents can flag a post (`POST /posts/{id}/flag`, reason enum incl. `solicitation`,
   one flag per agent per post, authenticated DID only); (2) admin/system-only hide/unhide
   (`hidden_at`, `hidden_reason` columns via a new migration) — hidden posts drop out of
@@ -488,6 +509,20 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Tier **T1** (permissions + migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
   Check: tests prove non-admin hide → 403, unauthenticated flag → 401, hidden post absent from
   feed/list/search, OrchardsGuide-style text is held; migration upgrade/downgrade clean locally.
+
+- [ ] **S9-8c2 — A moderation tool DrJ can run; hold the solicitations already posted.** (Added cycle 27.)
+  The API needs a FOUNDER login, which DrJ cannot easily get in production (the
+  `client_credentials` grant is refused there). Goal: `platform/scripts/moderate_posts.py`
+  on the same lines as `backfill_posts_count.py` (`--dsn`, dry run unless `--apply`), using
+  the functions in `services/post_moderation.py` so every action lands in
+  `post_moderation_log`: `queue` (hidden + flagged posts), `hide <post_id>`,
+  `unhide <post_id>`, and `scan` (list existing posts that match the solicitation list;
+  with `--apply` hold them — the migration hides nothing by itself, so OrchardsGuide's post
+  stays up until H4 or this). Then write the HUMAN_ACTIONS item (H8) with the exact commands.
+  Optional, only if small: a "Report" button on posts in the UI.
+  Tier **T2** (data-affecting script → commit prefix `NEEDS-DELIBERATE-MERGE:`).
+  Check: real-Postgres test — dry run changes nothing; `scan --apply` holds the matching
+  posts and only those; `unhide` brings one back; a second run is a no-op.
 
 - [ ] **S9-9 — Trust Score on a schedule.**
   Goal: verify recalculation inputs are real (not always-null columns), add celery +
@@ -581,6 +616,12 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   can answer 409 while the caller has a weighted vote on an open proposal.
   `runners/sdk_agent_runner.py` (~line 996) calls the debate / consensus routes, which are off.
 
+  Note (cycle 27): posts. No SDK helper for `POST /posts/{id}/flag`; post answers carry
+  `hidden` / `hidden_reason` (a held post is a 201 with `hidden: true` — surface it);
+  `GET /posts/{id}` answers 404 for a hidden or PRIVATE post unless the caller is its
+  author; `/onboard`'s `first_post.content` is now ≤ 2,000 characters (was 5,000) and a
+  profane first post → 400.
+
   Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
   `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID
   (422 today). SDK callers of `/services/register`, `/a2a` `message/send` and
@@ -604,6 +645,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   vote's weight is stake × trust, the tier plays no part). The agent card
   (`a2a/agent_card.py`, `/.well-known/agent.json`) lists the governance, token and contract
   skills whether or not those routers are on — gate them the same way.
+  Cycle 27 added a "No advertising" paragraph (held posts, `POST /posts/<post_id>/flag`);
+  include that path in the route-existence test.
   Goal: each claim true or removed; sections for gated routers shown
   only when the router is on; a test that every path in the document is a mounted route
   (extend `tests/a2a/test_skill_md.py`).
@@ -623,6 +666,9 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   See HUMAN_ACTIONS H5 (urgent).
 
 - [human] **S9-H7 — Recount post totals in production after merge.** See HUMAN_ACTIONS H7.
+
+- [human] **S9-H8 — Review held posts in production after merge.** See HUMAN_ACTIONS H8
+  (the tool comes with S9-8c2).
 
 Note for Sprint 10 (cycle 20): the founder agents get tokens only from
 `runners/fund_wallets.py` (a FOUNDER grant). In production the runners cannot log in the

@@ -70,6 +70,22 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
+- [ ] **H8 — Posts that look like adverts are now hidden until someone reviews them (after you merge; nothing to do yet).**
+  Added in cycle 27. Once merged, a post that reads like a referral or affiliate offer, a
+  commission deal, paid followers or a crypto-payout scheme is saved but hidden from
+  everyone except its author, and a post that three established agents report is hidden
+  too. Nothing un-hides a post by itself: a moderator (you) has to look and decide.
+  **You do not need to do anything now.** The rule only catches very specific sales
+  wording, so wrongly hidden posts should be rare, and a hidden post is never deleted.
+  The engine's next step (S9-8c2) adds a small command you can run to see the hidden
+  posts, bring one back, or hide one — the exact lines to copy will replace this
+  paragraph then. Two things to know before that:
+  - The merge adds database migration 043. It only adds new empty columns and two new
+    tables; it changes and hides no existing post, and it runs by itself on deploy.
+  - It does **not** hide the OrchardsGuide post that is already there. H4 below (delete
+    it by hand) still applies, or wait for the S9-8c2 command, which can hide it instead.
+  Unblocks: nothing is blocked; this is for your information.
+
 - [ ] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
   Agent profiles have shown 0 posts because only automatic posts were being counted. The fix
   counts every new post from now on, but posts made before the merge need a one-off recount.

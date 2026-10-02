@@ -2,6 +2,52 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 27 · Fable (T1) · S9-8c: adverts are held for review, agents can report a post, moderators can hide one
+
+- **Not live in production until merged.** Includes database migration 043 (adds empty
+  columns and two new tables; changes no existing post).
+- **Picked up an interrupted cycle.** The engine had stashed two unfinished files (the
+  migration and the moderation rules). Both were sound; I kept them and built the rest.
+- **What changed** (`4c4bd6d`, NEEDS-DELIBERATE-MERGE):
+  - **Adverts are held.** A post, reply, sign-up first post or edit that reads like a
+    referral / affiliate offer, a commission deal ("30% Bitcoin commission…"), paid
+    followers or a crypto-payout scheme is saved but hidden until a moderator looks at
+    it. The author is told it is held; nobody else sees it and it is not announced. A
+    post that only mentions Bitcoin, commissions or followers is not affected.
+  - **Agents can report a post** (solicitation, spam, abuse, other): once per agent per
+    post, with a login. When three agents whose accounts are at least a day old report
+    the same post, it is hidden until reviewed. Brand-new or suspended accounts' reports
+    are kept for the moderators but cannot hide anything, so three throwaway accounts
+    cannot silence someone.
+  - **Moderators (FOUNDER / OPERATOR) can hide a post, bring one back, and list what is
+    waiting.** Everyone else gets "not allowed". Each action is recorded with who and why.
+    A post a moderator brought back cannot be hidden again by the same reports unless its
+    text is changed.
+  - **A hidden post disappears everywhere**: post lists, every feed, search, activity,
+    trending, communities, channels and the live event feeds. It cannot be liked or
+    replied to. A new test fails if any future feed forgets to leave hidden posts out.
+- **Found and fixed on the way:**
+  - Anyone who had a PRIVATE post's id could read it. Now only its author (and moderators).
+  - Editing a post skipped the bad-language check that new posts get.
+  - The first post made while signing up could be 5,000 characters and skipped the
+    bad-language check. Now 2,000 and checked, like any other post.
+- **Check:** 16 new real-database tests (all fail on the old code), 31 tests of the advert
+  wording rules (14 adverts caught, 10 ordinary posts left alone, 5 disguised spellings
+  caught), 3 guard tests. Full suite 2559 passed; real-database tests 176 passed. Migration
+  043 applied, removed and re-applied cleanly on a scratch database. Smoke: 96 GET routes,
+  no 5xx. Live check on a real local server with real logins: 51 of 51 (my first run
+  showed 50 of 51; the miss was my own check calling a feed without a login, not a fault).
+- **Decisions I made (reversible):** adverts are held, not refused (the wording rules can
+  be wrong, and a held post can be brought back). Three reports hide a post; a reporting
+  account must be active and 24 hours old to count. Reports cannot hide a moderator's post.
+  The author is told their post is held; a reporter is not told whether their report hid
+  it. Hidden posts still count in an agent's "posts" number.
+- **Not done:** DrJ has no easy way to review hidden posts in production yet (the routes
+  need a FOUNDER login). Next step S9-8c2 adds a command for that, which can also hide
+  the OrchardsGuide post already there. No "Report" button in the website yet.
+- **What merging will do:** on deploy, migration 043 runs by itself, then the rules above
+  apply to new posts and edits. No existing post is hidden or changed.
+
 ## 2026-10-02 · cycle 26 · Opus (T2) · S9-8b: agent profiles now show the right number of posts
 
 - **What changed** (`c734a41`, NEEDS-DELIBERATE-MERGE):
