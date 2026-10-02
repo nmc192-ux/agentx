@@ -88,10 +88,11 @@ export interface Proposal {
 
 export interface Transaction {
   transaction_id: string;
-  sender_did: string;
-  recipient_did: string;
+  from_wallet: string | null;
+  to_wallet: string | null;
   amount: number;
-  memo: string;
+  type: string;
+  related_id: string | null;
   timestamp: string;
 }
 
@@ -172,6 +173,7 @@ export class AgentClient {
   private readonly secret: string | undefined;
   private readonly timeout: number;
   private token: string | null = null;
+  private agentUuid: string | null = null;
 
   constructor(options: AgentClientOptions = {}) {
     this.baseUrl  = (options.baseUrl ?? "http://localhost:8000").replace(/\/$/, "");
@@ -368,7 +370,33 @@ export class AgentClient {
   // ── Economic ──────────────────────────────────────────────────────────────
 
   /**
-   * Return the current AXT token balance for this agent.
+   * Resolve an agent DID to the UUID the wallet and discovery routes use
+   * (`GET /wallets/by-did`; 404 if that agent has no wallet). A UUID is
+   * returned unchanged. For this agent, a missing wallet is opened (empty,
+   * self-service) and the UUID is cached.
+   */
+  private async agentIdFor(didOrUuid: string): Promise<string> {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(didOrUuid)) {
+      return didOrUuid;
+    }
+    const isMe = didOrUuid === this.agentDid;
+    if (isMe && this.agentUuid) return this.agentUuid;
+    let raw: { agent_id: string };
+    try {
+      raw = await this.get<{ agent_id: string }>("/wallets/by-did", { agent_did: didOrUuid });
+    } catch (err) {
+      if (!isMe || !(err instanceof NotFoundError)) throw err;
+      raw = await this.request<{ agent_id: string }>("POST", "/wallets", {
+        body: { initial_balance: 0 },
+      });
+    }
+    if (isMe) this.agentUuid = raw.agent_id;
+    return raw.agent_id;
+  }
+
+  /**
+   * Return this agent's spendable token balance (whole AXT).
+   * Throws `NotFoundError` if the agent has no wallet yet.
    *
    * @example
    * const balance = await agent.getBalance();
@@ -376,30 +404,31 @@ export class AgentClient {
    */
   async getBalance(): Promise<number> {
     if (!this.agentDid) throw new AgentXError("agentDid must be set to check balance.");
-    const raw = await this.get<{ balance: number }>(`/economy/wallets/${this.agentDid}`);
+    const raw = await this.get<{ balance: number }>("/wallets/by-did", { agent_did: this.agentDid });
     return raw.balance;
   }
 
   /**
-   * Transfer AXT tokens to another agent.
+   * Transfer tokens from this agent's wallet to another agent.
    *
-   * @param recipientDid  Recipient agent DID.
-   * @param amount        AXT amount (must be > 0).
-   * @param memo          Optional memo.
+   * @param recipientDid  Recipient agent DID (or UUID).
+   * @param amount        Whole AXT (must be > 0). Insufficient funds → HTTP 400.
+   * @param options.type  "transfer", "payment" (default) or "tip".
    *
    * @example
-   * await agent.transferCredits("did:agentx:nova-006", 100, { memo: "payment" });
+   * await agent.transferCredits("did:agentx:nova-006", 100);
    */
   async transferCredits(
     recipientDid: string,
     amount: number,
-    options: { memo?: string } = {},
+    options: { type?: "transfer" | "payment" | "tip" } = {},
   ): Promise<Transaction> {
-    return this.post<Transaction>("/economy/transfer", {
-      sender_did:    this.agentDid,
-      recipient_did: recipientDid,
-      amount,
-      memo:          options.memo ?? "",
+    return this.request<Transaction>("POST", "/wallets/transfer", {
+      body: {
+        to_id:  await this.agentIdFor(recipientDid),
+        amount,
+        type:   options.type ?? "payment",
+      },
     });
   }
 
@@ -430,19 +459,20 @@ export class AgentClient {
   // ── Development ───────────────────────────────────────────────────────────
 
   /**
-   * Register a capability on this agent's profile.
+   * Register a capability for this agent in the discovery registry
+   * (`POST /agents/{agent_id}/discovery/capabilities`, by UUID).
    *
-   * @param capability  Capability in `domain.task.level` format.
-   * @param level       Proficiency level if not included in capability string.
+   * @param capability  Capability name, 1–100 characters.
+   * @param confidence  Self-declared confidence, 0.0–1.0 (default 1.0).
    *
    * @example
-   * await agent.registerCapability("market.analysis.expert");
+   * await agent.registerCapability("market.analysis", 0.8);
    */
-  async registerCapability(capability: string, level = "intermediate"): Promise<Record<string, unknown>> {
+  async registerCapability(capability: string, confidence = 1.0): Promise<Record<string, unknown>> {
     if (!this.agentDid) throw new AgentXError("agentDid must be set to register capabilities.");
-    return this.post(`/agents/${this.agentDid}/discovery/capabilities`, {
-      capability,
-      level,
+    const agentId = await this.agentIdFor(this.agentDid);
+    return this.request("POST", `/agents/${agentId}/discovery/capabilities`, {
+      body: { capability, confidence },
     });
   }
 

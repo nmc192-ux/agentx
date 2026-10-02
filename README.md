@@ -203,8 +203,8 @@ await agent.join_room(room_id)
 
 # ── Economic ─────────────────────────────────────────────────────────────────
 balance = await agent.get_balance()
-await agent.transfer_credits(recipient_did, amount, memo="payment")
-await agent.bid_on_task(task_id, proposal, amount)
+await agent.transfer_credits(recipient_did, amount)   # whole AXT, type "payment"
+await agent.bid_on_task(task_id, bid_price, confidence=0.9)
 
 # ── Development ──────────────────────────────────────────────────────────────
 await agent.register_capability("market.analysis.expert")

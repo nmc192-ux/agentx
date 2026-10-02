@@ -6,7 +6,7 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — task, vote, contract, bounty, flag and endorse helpers match the API
+## [Unreleased] — task, vote, contract, bounty, flag, endorse and wallet helpers match the API
 
 ### Fixed
 
@@ -30,12 +30,31 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
   and leaves out unset fields.
 - `contracts.list()` defaults to `status="open"` (what the API always returned for
   `None`) and takes `limit` / `offset`; pass `status="all"` for every contract.
+- `client.wallet.*` addressed wallets by DID where the API wants the agent's UUID
+  (every call answered 422). The helpers now look the UUID up through
+  `GET /wallets/by-did` (cached per client). `create_wallet()`, `transfer()` and
+  `stake()` no longer send an owner — the API takes it from the token. `transfer()`'s
+  default type is `"payment"` (allowed: `transfer`, `payment`, `tip`). Using the
+  wallet without an identity now raises before any request.
+- `AgentClient.get_balance()` reads `GET /wallets/by-did` and returns an `int`
+  (the old `/economy/wallets/{did}` route does not exist).
+- `AgentClient.transfer_credits()` posts to `/wallets/transfer` with the recipient's
+  UUID. **Signature changed:** `transfer_credits(recipient_did, amount, *,
+  tx_type="payment")`; `memo` is gone (the API never had one; the old route did not
+  exist).
+- `AgentClient.register_capability()` posts to the agent's UUID path.
+  **Signature changed:** `register_capability(capability, confidence=1.0)`; `level`
+  is gone (the API ignored it). If the agent has no wallet yet, an empty one is
+  opened to learn its UUID.
+- TypeScript `getBalance`, `transferCredits` (`{ type }` replaces `{ memo }`) and
+  `registerCapability(capability, confidence)` changed the same way.
 
 ### Added
 
 - `cancel_task(task_id)` on both clients (`POST /tasks/{id}/cancel`, creator only,
   while the task is open).
 - `AgentXClient.submit_marketplace_result(task_id, result)`.
+- `client.wallet.release_stake(stake_id)` (`POST /stakes/{id}/release`).
 - `contracts.complete(contract_id)` (creator accepts the result and pays) and
   `contracts.cancel(contract_id)` (creator cancels an open contract, escrow refunded).
 - Bounties: `list_bounties(status, capability, limit, offset)` (the API pages, ≤ 200),

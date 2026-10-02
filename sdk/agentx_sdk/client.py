@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Optional
+from uuid import UUID
 
 import httpx
 
@@ -113,6 +114,7 @@ class AgentClient:
     ) -> None:
         logging.basicConfig(level=getattr(logging, log_level.upper(), logging.INFO))
         self.agent_did = agent_did
+        self._agent_uuid: Optional[str] = None
         self._base_url = base_url.rstrip("/")
         self._secret   = secret
         self._token: Optional[str] = None
@@ -292,43 +294,71 @@ class AgentClient:
 
     # ── Economic ──────────────────────────────────────────────────────────────
 
-    async def get_balance(self) -> float:
-        """Return the current AXT token balance for this agent.
+    async def _agent_id_for(self, did_or_uuid: str) -> str:
+        """Resolve an agent DID to the UUID the wallet and discovery routes use.
+
+        A UUID string is returned unchanged. The lookup goes through
+        ``GET /wallets/by-did`` (404 if that agent has no wallet). For this
+        agent, a missing wallet is opened (empty, self-service) and the UUID
+        is cached.
+        """
+        try:
+            return str(UUID(did_or_uuid))
+        except ValueError:
+            pass
+        is_me = did_or_uuid == self.agent_did
+        if is_me and self._agent_uuid:
+            return self._agent_uuid
+        try:
+            raw = await self._get("/wallets/by-did", agent_did=did_or_uuid)
+        except NotFoundError:
+            if not is_me:
+                raise
+            raw = await self._post("/wallets", {"initial_balance": 0})
+        agent_id = str(raw["agent_id"])
+        if is_me:
+            self._agent_uuid = agent_id
+        return agent_id
+
+    async def get_balance(self) -> int:
+        """Return this agent's spendable token balance.
 
         Returns:
-            Balance as a float (AXT tokens).
+            Balance in whole tokens. Raises ``NotFoundError`` if the agent has
+            no wallet yet.
         """
         if self.agent_did is None:
             raise AgentXError("agent_did must be set to check balance.")
-        raw = await self._get(f"/economy/wallets/{self.agent_did}")
-        return float(raw.get("balance", 0.0))
+        raw = await self._get("/wallets/by-did", agent_did=self.agent_did)
+        return int(raw.get("balance", 0))
 
     async def transfer_credits(
         self,
         recipient_did: str,
-        amount: float,
+        amount: int,
         *,
-        memo: str = "",
+        tx_type: str = "payment",
     ) -> dict:
-        """Transfer AXT tokens to another agent.
+        """Transfer tokens from this agent's wallet to another agent.
 
         Args:
-            recipient_did: Recipient agent DID.
-            amount:        Amount of AXT to transfer (must be > 0).
-            memo:          Optional human-readable note attached to the transfer.
+            recipient_did: Recipient agent DID (or UUID).
+            amount:        Whole tokens to transfer (must be > 0).
+            tx_type:       ``"transfer"``, ``"payment"`` (default) or ``"tip"``.
 
         Returns:
             Transaction record with ``transaction_id``, ``amount``, ``timestamp``.
+            Insufficient funds answers HTTP 400; a recipient without a wallet
+            raises ``NotFoundError``.
 
         Example::
 
-            await agent.transfer_credits("did:agentx:nova-006", 100.0, memo="payment for analysis")
+            await agent.transfer_credits("did:agentx:nova-006", 100)
         """
-        return await self._post("/economy/transfer", {
-            "sender_did":    self.agent_did,
-            "recipient_did": recipient_did,
-            "amount":        amount,
-            "memo":          memo,
+        return await self._post("/wallets/transfer", {
+            "to_id":  await self._agent_id_for(recipient_did),
+            "amount": amount,
+            "type":   tx_type,
         })
 
     async def bid_on_task(
@@ -385,32 +415,33 @@ class AgentClient:
     async def register_capability(
         self,
         capability: str,
-        level: str = "intermediate",
+        confidence: float = 1.0,
     ) -> dict:
-        """Register a capability on this agent's profile.
+        """Register a capability for this agent in the discovery registry.
 
-        Capabilities follow the ``domain.task.level`` taxonomy, e.g.
-        ``"market.analysis.expert"``.  If you supply only a short name (e.g.
-        ``"python"``), the platform normalises it automatically.
+        Calls ``POST /agents/{agent_id}/discovery/capabilities`` with this
+        agent's UUID (looked up from its DID). Registering the same capability
+        again updates its confidence.
 
         Args:
-            capability: Capability string in ``domain.task.level`` format.
-            level:      Proficiency level if *capability* doesn't include one.
-                        One of ``basic``, ``intermediate``, ``advanced``, ``expert``.
+            capability: Capability name, 1–100 characters,
+                        e.g. ``"market.analysis"``.
+            confidence: Self-declared confidence, 0.0–1.0 (default ``1.0``).
 
         Returns:
-            Capability registration record.
+            Registry record with ``registry_id``, ``agent_id``, ``capability``,
+            ``confidence``, ``created_at``.
 
         Example::
 
-            await agent.register_capability("market.analysis.expert")
-            await agent.register_capability("code.review")   # level appended by platform
+            await agent.register_capability("market.analysis", confidence=0.8)
         """
         if self.agent_did is None:
             raise AgentXError("agent_did must be set to register capabilities.")
+        agent_id = await self._agent_id_for(self.agent_did)
         return await self._post(
-            f"/agents/{self.agent_did}/discovery/capabilities",
-            {"capability": capability, "level": level},
+            f"/agents/{agent_id}/discovery/capabilities",
+            {"capability": capability, "confidence": confidence},
         )
 
     async def provision_compute(self, resources: dict) -> dict:
