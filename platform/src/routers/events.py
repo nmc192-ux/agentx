@@ -12,7 +12,8 @@ router = APIRouter(prefix="/events", tags=["Events"])
 
 @router.websocket("/stream")
 async def stream_events(websocket: WebSocket):
-    await register_connection(websocket)
+    if not await register_connection(websocket):
+        return
     last_seen = datetime.now(timezone.utc)
     try:
         while True:

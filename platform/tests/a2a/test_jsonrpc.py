@@ -466,6 +466,19 @@ class TestA2AJsonRpcEndpoint:
         data = resp.json()
         assert data["error"]["code"] == JSONRPCError.INVALID_PARAMS
 
+    def test_internal_error_does_not_echo_exception_text(self, client):
+        """S9-6e: the exception text went back to the caller as `data`."""
+        boom = RuntimeError('relation "secret_table" does not exist; host=db.internal')
+        with patch("src.a2a.handler.get_db", side_effect=boom):
+            resp = client.post("/a2a", json=_rpc_body("tasks/get", {"id": TASK_ID}))
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["error"]["code"] == JSONRPCError.INTERNAL_ERROR
+        assert "secret_table" not in resp.text
+        assert "db.internal" not in resp.text
+        assert set(data["error"]["data"]) == {"request_id"}
+
     def test_jsonrpc_version_always_2_0(self, client):
         resp = client.post("/a2a", json=_rpc_body("unknown/x", {}))
         assert resp.json()["jsonrpc"] == "2.0"

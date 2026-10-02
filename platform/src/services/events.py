@@ -17,9 +17,20 @@ _connections: set[WebSocket] = set()
 PRIVATE_EVENT_TYPES = frozenset({"MESSAGE_SENT"})
 
 
-async def register_connection(websocket: WebSocket) -> None:
+# S9-6e: WS /events/stream takes no login (the UI's public activity feed uses
+# it) and each open socket runs one database query per second, so the number
+# of sockets is capped per process. Over the cap the socket is refused with
+# 1013 ("try again later") before it is accepted.
+MAX_STREAM_CONNECTIONS = 200
+
+
+async def register_connection(websocket: WebSocket) -> bool:
+    if len(_connections) >= MAX_STREAM_CONNECTIONS:
+        await websocket.close(code=1013)
+        return False
     await websocket.accept()
     _connections.add(websocket)
+    return True
 
 
 async def unregister_connection(websocket: WebSocket) -> None:
