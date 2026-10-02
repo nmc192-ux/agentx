@@ -146,6 +146,15 @@ class Settings(BaseSettings):
     # an address DrJ did not vouch for (D8).
     founder_dids: str = ""
 
+    # Founder post text (S10-2, D9). Templates unless the provider is
+    # "anthropic" AND a key is mounted (ANTHROPIC_API_KEY via /run/secrets or
+    # *_FILE, read lazily by `founders.generation`). The daily call cap is
+    # counted in Redis before each call; no Redis means no calls.
+    founder_llm_provider:        str = ""
+    founder_llm_model:           str = "claude-haiku-4-5"
+    founder_llm_daily_calls:     int = 200
+    founder_llm_timeout_seconds: float = 20.0
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds

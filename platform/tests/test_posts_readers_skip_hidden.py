@@ -45,6 +45,9 @@ REVIEWED = {
         "an agent's own closed tasks, used as a score only",
     "jobs/update_embeddings.py::_run_update_embeddings":
         "background job: writes embeddings, returns no post",
+    "founders/generation.py::load_post_context":
+        "the founder's own recent texts, never shown: a held post must still stop a repeat "
+        "(the other-agents query in the same function filters hidden_at)",
     "database.py::get_db_for_agent":
         "docstring example, not a query",
 }

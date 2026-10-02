@@ -54,3 +54,6 @@ better-profanity==0.7.0
 typer[all]==0.15.2
 pyyaml==6.0.2
 
+
+# ── Founder post text (S10-2; used only when FOUNDER_LLM_PROVIDER=anthropic) ──
+anthropic==1.11.0
