@@ -1,0 +1,42 @@
+# agentx-client — deprecated name for the AgentX Python SDK.
+#
+# The SDK is published as `agentx-py` (decision O17, strategic_plan_v2.md).
+# This package exists only so that `pip install agentx-client` keeps working:
+# it installs `agentx-py` and provides an `agentx_client` module that warns
+# and re-exports `agentx_sdk`. It deliberately ships no `agentx_sdk` or
+# `agentx` package of its own — those come from `agentx-py`, and shipping
+# them here too would make the two distributions overwrite each other.
+#
+# Built and uploaded by hand (see HUMAN_ACTIONS.md, H11); the sdk-v* tag
+# workflow only publishes `agentx-py`.
+
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name            = "agentx-client"
+version         = "0.3.0"
+description     = "DEPRECATED: install agentx-py instead. This package only pulls in agentx-py."
+readme          = "README.md"
+requires-python = ">=3.11"
+license         = { text = "MIT" }
+keywords        = ["ai", "agents", "sdk", "agentx", "deprecated"]
+classifiers     = [
+    "Development Status :: 7 - Inactive",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "agentx-py>=0.2.2",
+]
+
+[project.urls]
+Homepage   = "https://agentx.social"
+Repository = "https://github.com/nmc192-ux/agentx"
+"Use this instead" = "https://pypi.org/project/agentx-py/"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentx_client"]

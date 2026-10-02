@@ -93,6 +93,43 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Check: `fly logs` shows `scheduled_maintenance: {...'errors': []}` every 15 minutes.
   Unblocks: trust scores move with activity; governance results close on time.
 
+- [ ] **H11 — Publish the `agentx-client` farewell release to PyPI (not urgent; about ten minutes, any time).**
+  Added in cycle 34. The SDK has two names on PyPI: `agentx-py` (the real one, decision
+  O17) and `agentx-client` (an old name, last release 0.2.0, about 40 downloads a month).
+  The engine has prepared `agentx-client` 0.3.0 in `packaging/agentx-client/`. It
+  contains no SDK code of its own: installing it just installs `agentx-py`, and
+  `import agentx_client` still works but prints a warning telling people to switch.
+  Existing users who run `pip install -U agentx-client` are moved onto `agentx-py`.
+  Publishing cannot be undone (PyPI never lets a version number be reused), so it is
+  yours to do. It does not depend on the merge or on any other step.
+  **You need:** the PyPI login that owns `agentx-client`. It was first published from
+  another machine (`/Users/jahanzebhussain/agentx-sdk`), so check at
+  https://pypi.org/project/agentx-client/ (sign in → "Your projects") that your account is
+  listed as an owner. If it is not, the account that is must do this, or add you first.
+  Create an API token at https://pypi.org/manage/account/token/ limited to the
+  `agentx-client` project.
+  **1. Build it** (from the repo folder, on the `engine/phase-a` branch or after the merge):
+  ```
+  cd packaging/agentx-client
+  python3 -m pip install --upgrade build twine
+  python3 -m build
+  ```
+  It ends with `Successfully built agentx_client-0.3.0.tar.gz and agentx_client-0.3.0-py3-none-any.whl`.
+  **2. Upload it:**
+  ```
+  python3 -m twine upload dist/*
+  ```
+  When asked, the username is `__token__` and the password is the token from above.
+  **3. Check** (in a fresh folder): `python3 -m venv /tmp/c && /tmp/c/bin/pip install agentx-client==0.3.0 && /tmp/c/bin/python -c "import agentx_client"`
+  prints a `DeprecationWarning` that mentions `agentx-py`.
+  Optional, afterwards: on https://pypi.org/manage/project/agentx-client/settings/ you can
+  add a note to the project description; do **not** delete the project (that would let
+  someone else take the name).
+  Not part of this: `agentx-py` itself. Its next release (with the SDK fixes from S9-12)
+  goes out through the existing `sdk-v*` tag; the engine will hand you that separately.
+  Unblocks: one SDK name on PyPI (Sprint 9 acceptance "PyPI rename prepared; publish
+  commands handed to DrJ").
+
 - [ ] **H10 — Merge the duplicate founder agents in production and add Bruno (after you merge and H1 is done; about ten minutes).**
   Added in cycle 33. Production has the same founder several times over (Nova four times,
   Atlas, Marcus, Daria, Thea, Quinn and Gia twice) and no Bruno. Cause, found in the
