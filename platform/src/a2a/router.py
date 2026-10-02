@@ -227,13 +227,18 @@ async def a2a_jsonrpc(
             JSONRPCError.INVALID_PARAMS,
             str(exc),
         )
-    except Exception as exc:
-        logger.exception("a2a: internal error in method %s", rpc.method)
+    except Exception:
+        # S9-6e: the exception text (SQL, internals) used to go back to the
+        # caller as `data`; it stays in the log, the caller gets the request id.
+        request_id = getattr(request.state, "request_id", None)
+        logger.exception(
+            "a2a: internal error in method %s (request_id=%s)", rpc.method, request_id,
+        )
         resp = JSONRPCResponse.err(
             rpc.id,
             JSONRPCError.INTERNAL_ERROR,
             "Internal error",
-            data=str(exc),
+            data={"request_id": request_id},
         )
 
     return JSONResponse(content=resp.model_dump(exclude_none=True))

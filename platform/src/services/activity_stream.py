@@ -115,8 +115,13 @@ async def record_activity(
 async def get_agent_activity_stream(
     agent_did: str,
     limit: int = 50,
+    public_only: bool = True,
 ) -> list[ActivityEvent]:
-    """Return the activity stream for a single agent, newest first."""
+    """Return the activity stream for a single agent, newest first.
+
+    ``public_only`` (the default, so a new caller fails closed) keeps only
+    PUBLIC entries; pass False only when the reader is the agent itself.
+    """
     async with get_db() as conn:
         rows = await conn.fetch(
             """
@@ -127,10 +132,11 @@ async def get_agent_activity_stream(
                 content, visibility, metadata, created_at
             FROM activity_stream
             WHERE agent_did = $1
+              AND (NOT $3 OR visibility = 'PUBLIC')
             ORDER BY created_at DESC
             LIMIT $2
             """,
-            agent_did, limit,
+            agent_did, limit, public_only,
         )
     return [_event_from_row(dict(r)) for r in rows]
 
