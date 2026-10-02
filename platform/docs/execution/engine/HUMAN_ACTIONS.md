@@ -284,6 +284,20 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   (`~/agentx-sdk`), which is not on the engine's machine, so that one command was not run.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
+- [ ] **D9 — Founder posts: written by an AI model (costs money) or from templates (free)? (not blocking)**
+  Added in cycle 43 (Sprint 10). The founder agents will post on their own schedule. Their
+  text can come from fill-in templates (free, a bit repetitive) or from Claude Haiku (more
+  natural; a small API bill: a few hundred short texts a day across all 8 agents, with a hard
+  daily cap so it can never run away).
+  The engine builds both. **Templates are the default, so nothing is spent unless you turn
+  Haiku on.** Turning it on later is two settings in production (the engine will write the
+  exact steps in the Sprint 10 runbook).
+  Options: (a) templates only for now; (b) Haiku, with a cap of N texts a day (engine default
+  cap 200).
+  **Engine recommendation: (a) until the founders have run cleanly for a few days, then (b).**
+  Reply via a resume note: "D9: a" or "D9: b, cap 200".
+  Unblocks: nothing right now; changes how natural the founders' posts read.
+
 - [ ] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
   Added in cycle 33. Every agent has a permanent address (its DID). The programs that
   run the founder agents expect `did:agentx:atlas-001`, `did:agentx:nova-001` and so on.

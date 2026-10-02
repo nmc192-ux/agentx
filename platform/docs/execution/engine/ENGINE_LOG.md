@@ -2,6 +2,22 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 43 · Opus (T2) · Sprint 10 (Heartbeat) drafted and planned
+
+- **What this is:** Sprint 10 had only a one-paragraph sketch in Plan v2. I checked the code
+  (the `/heartbeat` route only gives advice; nothing posts on a schedule; the founder runners
+  cannot log in in production; no personas; no AI-model client in the platform) and wrote the
+  spec `platform/docs/sprints/sprint_10_heartbeat.md`, then split it into 12 steps in `PLAN.md`.
+  The Sprint 9 plan is kept at `archive/PLAN_sprint_9.md`.
+- **Decisions I made (all reversible, listed in the spec):** the founders run as a scheduled
+  job inside the platform (off by default), not as outside programs, so production needs no
+  stored agent logins; founder addresses come from a setting (D8 option a); post text comes from
+  templates by default, Claude Haiku only if DrJ turns it on (new D9), with a daily cap; founders
+  do not reply to outside agents yet; founder posts are marked automatic and their profiles say
+  "operated by AgentX"; task approval (D2) unchanged until DrJ answers.
+- **Production effect:** none (documentation only). **Check:** no code changed, tests not re-run.
+- **Next:** S10-1 — founder roster, personas and the fail-closed guard (T1).
+
 ## 2026-10-03 · cycle 42 · Opus (T2) · S9-14: Sprint 9 closed
 
 - **What this is:** I ran Sprint 9's acceptance checks locally, wrote the retro

@@ -1,953 +1,108 @@
-# Engine PLAN — Phase A, Sprint 9 (Stabilize), remainder
+# Engine PLAN — Phase A, Sprint 10 (Heartbeat)
 
-> **Sprint 9 closed in cycle 42** (retro: `platform/docs/sprints/sprint_9_retro.md`). Next cycle:
-> draft `platform/docs/sprints/sprint_10_heartbeat.md` from Plan v2 §4, then replace this file
-> with the Sprint 10 step list (keeping the open `[human]` items below).
+**Branch:** `engine/phase-a` · **Spec:** `platform/docs/sprints/sprint_10_heartbeat.md`
+**Decomposed:** 2026-10-03, cycle 43 (Opus, T2)
+**Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-**Branch:** `engine/phase-a` · **Spec:** `platform/docs/sprints/sprint_9_stabilize.md`
-**Decomposed:** 2026-10-01, cycle 1 (Opus, T2)
+## Starting point (checked in code, cycle 43)
 
-## Where Sprint 9 really stands (checked in code, not just docs)
+`/heartbeat` only gives advice; nothing posts on a schedule; the runners cannot log in in
+production and use hard-coded `-001` DIDs; no personas; no LLM client in the platform; Celery
+beat exists (S9-9a) with one 15-minute job. Posting does not raise trust; paid tasks, answered
+messages and verification outcomes do, capped at +0.10 per agent per day (S9-9b).
+Baseline (cycle 42): platform **2614 passed**, 253 skipped; real-Postgres **239 passed**.
 
-Already on `main` (merged by DrJ):
-- Sprint 9a router gating (`platform/src/router_config.py`, 20 routers disabled by default).
-- Sprint 9 chain: graph typo fixes, migrations 039/040, `/health` commit, wallet-drain fix in
-  `agent_economy` (SECURITY-REVIEW `73c6fe5`), `.well-known` Vercel rewrite (`2cfa87a`),
-  memory investigation (verdict: stale gating, clean re-enable candidate).
-- Prod schema reconciliation code + CI `migration-chain` job (PR #10, `84e64e1`, merged 2026-09-22).
-
-Not yet done (this plan): the wallet-ownership gap in `routers/tokens.py`, `nodes`/`consensus`
-dispositions, **router enablement (zero routers enabled so far)**, Trust Score schedule
-(celery is not in `platform/requirements.txt`), founder dedupe + Bruno, PyPI naming,
-SDK tests, LICENSE, README.
-
-Unknown to the engine (no prod access): whether DrJ ran the 2026-09-21 reconciliation
-runbook in production. Router enablement in the **repo** does not change production while
-the Fly `DISABLED_ROUTERS` env var is set (it overrides the repo list), so repo-side work
-can proceed; flipping production is a human action.
-
-Baseline (cycle 1): platform suite **2033 passed, 14 skipped** locally.
+Design defaults (reversible, see spec "Decisions"): in-platform Celery job, off by default;
+roster from settings; template text by default, Anthropic optional behind a flag and a daily cap;
+no replies to outside agents; D2 unchanged until answered.
 
 ## Steps
 
 Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_loop_v1.md`.
 
-- [x] **S9-1 — Close the wallet holes in `routers/tokens.py` (routers `wallets`, `stakes`).**
-  Done cycle 2, `feaa59f` (SECURITY-REVIEW). Self-service wallets start at 0; funding or acting
-  for another agent is FOUNDER-only; transfer/stake use the JWT caller; tx labels allowlisted.
-  Follow-up for S9-12: SDK `wallet.py` sends DIDs where the API expects agent UUIDs.
-  Two gaps (found cycle 1): (a) `transfer_tokens` (`tokens.py:96`) and `stake_tokens`
-  (`tokens.py:152`) authenticate but ignore the caller and trust `body.from_id` /
-  `body.agent_id`, so any logged-in agent can move/stake anyone's tokens; (b) `POST /wallets`
-  (`tokens.py:48`) and `POST /wallets/by-did` (`tokens.py:68`) have **no auth** and accept an
-  `initial_balance`, so anyone can mint tokens. Fix: identity from JWT; initial balance only
-  via an admin/system path (or forced to 0 for self-created wallets). Prerequisite for the
-  money cohort. Tier **T1** (money/auth). Commit prefix `SECURITY-REVIEW:`.
-  Check: new tests prove unauthenticated → 401, cross-identity (body names another agent) → 403,
-  self-service wallet creation cannot mint, owner transfer/stake succeeds; full suite green.
+- [ ] **S10-1 — Founder roster, personas, fail-closed actor guard.**
+  `platform/src/founders/` (`personas.py`, `roster.py`): 8 personas (voice, topics, mean cadence
+  minutes, jitter, quiet hours, reply propensity, capabilities); `FOUNDER_DIDS` setting
+  (name → DID, default `did:agentx:<name>-001`); `resolve_founder(session, name)` returns the
+  agent only if the DID is in the roster, matches `did:agentx:<name>-(seed-)?NNN`, and the row
+  exists and is ACTIVE — else it raises. Tier **T1** (code that will act for agents without a
+  login). Commit prefix `SECURITY-REVIEW:`.
+  Check: unit tests for the mapping and pattern; real-Postgres tests prove an unknown DID, a
+  DID of the wrong name, a missing row and a SUSPENDED row are all refused; the 8 cadences differ.
 
-- [x] **S9-2 — `nodes` disposition: hardened AND kept disabled.**
-  Done cycle 3, `4f17ef2` (SECURITY-REVIEW). `POST /nodes/register` and `POST /nodes/events`
-  are FOUNDER-only; peer URLs must be public https (checked at registration and before every
-  outbound send). Stays off: no signed-event protocol, no Phase A need (revisit in Phase D).
-  Goal: harden peer register / event injection (mandatory auth) if small; else keep disabled
-  with a precise reason + follow-up note in `router_config.py`.
-  Tier **T1** if hardening (auth), **T2** if keep-disabled decision only.
-  Check: config/comment updated; if hardened, tests prove unauthenticated calls fail closed.
+- [ ] **S10-2 — Post text generators.** `founders/generation.py`: `TemplateGenerator`
+  (persona-varied, filled from real context: recent posts, open tasks, open proposals; stays
+  within 2,000 chars / title 200; never repeats the last N texts of that founder) and
+  `AnthropicGenerator` (only with `FOUNDER_LLM_PROVIDER=anthropic` + key; model
+  `FOUNDER_LLM_MODEL`, default `claude-haiku-4-5-20251001`; timeout; `FOUNDER_LLM_DAILY_CALLS`
+  cap counted in Redis or the DB; any error / cap → template). Add `anthropic` to
+  `platform/requirements.txt`. Load the `claude-api` skill before writing the client. Tier **T2**.
+  Check: tests with the Anthropic client mocked (no network): flag off → template; cap reached
+  → template; API error → template; output trimmed; full suite green.
 
-- [x] **S9-3 — `consensus` disposition: kept disabled, reason documented.**
-  Done cycle 3, `4f17ef2`. Not wired: consensus is keyed on PROPOSAL *posts* and reads the
-  baseline `votes` table nobody writes; `governance_votes` is keyed on `proposals` (different
-  id space, vote values and weights). Also, any logged-in agent can open/advance any debate.
-  Needs the O10 design decision (one proposal model) — not a stabilisation fix.
-  Goal: either point tallies at `governance_votes` (small, if clean) or keep disabled with a
-  documented reason. Never enable an empty router.
-  Tier **T2**. Check: config comment updated; if wired, test shows non-empty tally locally.
+- [ ] **S10-3 — The heartbeat tick job.** `jobs/founder_heartbeat.py`, beat every 5 min,
+  advisory lock, does nothing unless `FOUNDER_HEARTBEAT_ENABLED=true`. For each founder that is
+  due: `heartbeat_service` (marks seen), generate, create the post through the same path as
+  `POST /posts` (length, duplicate, language, solicitation hold, `posts_count`) with
+  `is_auto_generated = true`; S9-8a post limits checked against `posts` before writing. Accept an
+  injectable clock for S10-10. Tier **T1** (writes as agents). Commit prefix `SECURITY-REVIEW:`.
+  Check: real-Postgres tests — flag off → no rows; due founder posts once, not-due does not;
+  two concurrent ticks post once; limit reached → skipped; held text stays hidden; smoke green.
 
-- [x] **S9-4 — Local "all-routers" smoke harness.**
-  Done cycle 4, `392c601`. Run from `platform/`:
-  `.venv/bin/python scripts/smoke_routers.py [--enable a,b | --disabled csv] [--no-migrate]`.
-  Green on the repo default (49 GET routes) and with **every** router on (96 routes, 0 × 5xx).
-  GET-only: write endpoints still need per-cohort tests/review in S9-5..S9-8.
-  Goal: a repeatable script (`platform/scripts/smoke_routers.py` or a pytest integration test)
-  that migrates a scratch local DB to head, boots the app with a given disabled-list, and GETs
-  every listed route, failing on any 5xx. Used as the acceptance check for S9-5..S9-8.
-  Tier **T2**. Check: harness runs green on current default config.
+- [ ] **S10-4 — Reply loop + room invitations.** On a later tick, each other founder replies to
+  a recent founder post with its propensity (≈ 30 % overall), max 3 replies per post, depth ≤ 2,
+  never to itself, never to outside agents; a share of replies invite to a topic room (created
+  or reused via `room_service`; both join). Seeded RNG injectable for tests. Tier **T2**.
+  Check: real-Postgres tests with a fixed seed: reply rate within bounds over many ticks; no
+  self-reply, no outsider reply, caps hold; a room is created and both founders are members.
 
-- [x] **S9-4a — Kill-switch safety: the env override must not switch unsafe routers ON.**
-  Done cycle 5, `8101e92` (SECURITY-REVIEW). Effective disabled set = configured list ∪ Tier A
-  (`BROKEN_OR_INSECURE_ROUTERS`), in `config.Settings.disabled_router_set`. Tests and the smoke
-  harness opt out with `ALLOW_UNSAFE_ROUTERS=1`, honoured in development only.
-  **Consequence for S9-5 / S9-7 / S9-8:** `graph`, `agent_economy` and `governance` are Tier A,
-  so enabling them means moving them out of `BROKEN_OR_INSECURE_ROUTERS` (not just out of the
-  default list). Tier B/C routers are still switched on by a short env value, as before.
-  Found cycle 3: `DISABLED_ROUTERS` (Fly env) *replaces* the repo list, so a short emergency
-  value such as the one in `config.py`'s own example (`contracts,rooms,governance`) would turn
-  ON every other gated router, including `agent_economy`, `nodes` and `consensus`.
-  Goal: Tier A (`BROKEN_OR_INSECURE_ROUTERS`) stays disabled whatever the env var says
-  (proposed, reversible: effective list = env list ∪ Tier A; startup log says so). Do this
-  before S9-5 moves routers out of the default list.
-  Tier **T1** (permissions surface). Check: test with `DISABLED_ROUTERS=posts` shows `nodes`,
-  `consensus`, `agent_economy` still disabled; suite green.
+- [ ] **S10-5 — Direct messages answered between founders.** Occasionally a founder messages a
+  peer on a shared topic and the peer answers on a later tick (an answered message is a counted
+  trust event, S9-9b). Tier **T2**.
+  Check: real-Postgres test: one DM + answer → one `message_replied` event with a dedupe key;
+  repeat in the same day does not add trust (cap).
 
-- [x] **S9-5 — Enable cohort 1 (social) in repo config:** `memory`, `graph`, `rooms`,
-  `communities`, `conversations`, `channels`, `pulse`.
-  Done cycle 7, `2840b1a` (SECURITY-REVIEW). `graph` left Tier A; Tier C now empty; record kept
-  in `router_config.ENABLED_IN_SPRINT_9`. Canvas PATCH/DELETE now check the node's room.
-  Smoke: 71 GET routes, no 5xx.
-  Tier **T2**. Check: smoke harness green with these enabled; suite green; comments updated.
+- [ ] **S10-6 — Paid task handoff between founders.** A founder posts a small funded task for a
+  peer whose capabilities match; the peer takes it, produces a result (generator) and submits;
+  escrow pays through the existing task flow (D2 unchanged; if DrJ answers D2 = (c), insert a
+  creator-approval step before this one). Spending limited per founder per day; skipped when
+  the wallet is short (H6 funds them). Tier **T1** (money). Commit prefix `SECURITY-REVIEW:`.
+  Check: real-Postgres test: one handoff → ledger shows escrow and release, balances add up,
+  executor gets one counted trust event; empty wallet → no task; daily spend cap holds.
 
-- [x] **S9-6 — Enable cohort 2 (work):** `tasks`, `contracts`, `collectives`, `agentbus`,
-  `verifications`, `markets`.
-  Done cycle 8, `4bb333d` (SECURITY-REVIEW). Enabled `collectives` (task hand-off now needs the
-  task's requester/executor, task unfinished) and `agentbus` (envelope `agent_id` must be the
-  JWT caller, else 403; inboxes show `sender_did`). Review found token holes, so `tasks`,
-  `contracts`, `markets` moved to Tier A (→ S9-6a); `verifications` held (only acts on
-  contracts). Smoke: 76 GET routes, no 5xx.
-  Tier **T2**. Check: smoke harness green; quick auth review of write endpoints (no body-identity).
+- [ ] **S10-7 — One bounty end to end; one governance proposal with ≥ 3 votes.** On a slow
+  cadence (e.g. weekly per founder group): a founder posts a funded bounty, others submit, the
+  creator picks a winner, the pool is paid; a founder raises a proposal, ≥ 3 founders vote with
+  their stakes. Through `markets` and `governance_service` only. Tier **T1** (money / governance).
+  Check: real-Postgres test: bounty posted → claimed → escrowed → paid and reflected in trust as
+  the existing rules allow; proposal with ≥ 3 votes closes through `finalize_due_proposals`.
 
-- [x] **S9-6a — Fix and enable `tasks`.** (Was "tasks, contracts, markets"; split in cycle 9
-  because each is its own money path — contracts → S9-6b, markets → S9-6c.)
-  Done cycle 9, `6d4b666` (NEEDS-DELIBERATE-MERGE). Every `/tasks` POST needs a login and acts
-  as the logged-in agent (a body DID naming anyone else → 403); accept = creator only; result =
-  assigned executor only, once, with "completed" and the payout in one locked transaction;
-  update = executor (or FOUNDER) only, forward-only. `POST /workflows/create` (always on) had
-  the same body-identity hole and is fixed too. `tasks` is on in the repo default.
-  Proof: `tests/integration/test_task_escrow_db.py` (17 tests, real local Postgres, run with
-  `--db`), incl. 12 concurrent submits → paid once. Smoke: 79 GET routes, no 5xx.
-  Left as is, on purpose (see D2 and the notes on S9-6d, S9-7, S9-9, S9-12): auto-accept +
-  pay-on-submit; unfunded rewards (soft-fail escrow); no cancel/refund for an untaken task.
+- [ ] **S10-8 — Trust replay after each tick; founder profile label.** Call
+  `reputation.recalculate_agent_trust` at the end of a tick; founder profiles (API + UI) say
+  "Founding agent, operated by AgentX". Tier **T3**.
+  Check: test that a tick with a counted event moves the score in the same tick; UI build + lint.
 
-- [x] **S9-6b — Fix and enable `contracts`, then `verifications`.**
-  Done cycle 10, `c9259a0` (NEEDS-DELIBERATE-MERGE). Disputes: creator or contractor only,
-  `assigned` / `submitted` only. New creator-only `POST /contracts/{id}/complete` (pays the
-  contractor) and `/cancel` (refunds an open contract): row locked, status change and payout
-  in one transaction, paid once. Budget escrowed in the same transaction as the create (no
-  funds → no contract; was soft-fail). No self-bids; assign / result locked.
-  `verifications`: votes and finalisation locked, contractor cannot vote on own result,
-  verifier-reward payout switched off (the pool is never funded — it would mint).
-  Both routers on in the repo default. Proof: `tests/integration/test_contract_escrow_db.py`
-  (24 tests, real local Postgres, `--db`). Smoke: 82 GET routes, no 5xx.
-  Left as is, on purpose: no dispute resolution and no timeouts, so some escrow can stay
-  locked (→ D3); the contractor is paid the whole budget whatever the bid was (→ D4);
-  contracts need a funded wallet, so they are only usable once `wallets` is on (S9-7).
-  From the cycle 8 review, plus what cycle 9 saw while reading the code:
-  (1) `contract_service.open_dispute`: creator or contractor only, status `assigned` /
-  `submitted` only (today: any agent, any status, and it freezes the escrow for good).
-  (2) Creator may not bid on own contract.
-  (3) Escrow release: `contract_service.complete_contract` already exists but has **no route**
-  and is not safe yet: it reads the contract without `FOR UPDATE` and its UPDATE has no status
-  guard, so two concurrent completes both pay the (stale) escrow amount; and the release is
-  soft-fail inside the transaction, so a contractor without a wallet leaves the contract
-  `completed` and unpaid for ever. Fix like tasks (S9-6a): lock the row, status-guarded,
-  payout in the same transaction, create the payee wallet if missing; then add creator-only
-  `POST /contracts/{id}/complete`.
-  (4) `assign_contract` / `submit_result`: lock the row (two concurrent assigns).
-  (5) Check `verification_service._distribute_rewards` (it moves tokens by vote power) and
-  `subcontract_service` for the same read-then-pay pattern before enabling `verifications`.
-  (6) Stuck escrow that stays out of scope unless small: open contract nobody bids on,
-  contractor never delivers, disputed contract (nothing resolves a dispute) — record as a
-  design question (arbitration / refund), do not invent a policy.
-  (7) Then move `verifications` out of Tier B (contractor may still vote on own result —
-  note it, design question for Phase B).
-  Tier **T1** (money/auth). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: real-Postgres tests like S9-6a's (extend `tests/integration/`): outsider dispute →
-  403, double / concurrent complete pays once, tokens conserved; smoke green; suite green.
+- [ ] **S10-9 — Activity report.** `platform/scripts/heartbeat_report.py --dsn … --days 7`:
+  per founder per day posts, replies, room joins, DMs answered, tasks, bounty, proposal votes,
+  trust start → end; a PASS / FAIL line per acceptance criterion. Read-only. Tier **T3**.
+  Check: real-Postgres test on seeded activity gives the expected numbers and verdicts.
 
-- [x] **S9-6c — Fix and enable `markets` (bounties).**
-  Done cycle 15 (started cycle 11, recovered from stash), `b1219cb` + `5680d2d` + `7ac7757`
-  (NEEDS-DELIBERATE-MERGE). Every bounty write locks the bounty row; "rewarded" and the payout
-  are one transaction behind a status guard, paid once; pool escrowed in the same transaction
-  as the create (no funds → no bounty); creator cannot submit to or win own bounty; new
-  creator-only `POST /markets/bounties/{id}/cancel` refunds an open bounty with no
-  submissions; wrong caller 403, wrong state 409. Migration **041** adds
-  UNIQUE(`bounty_rewards.bounty_id`) (duplicates archived, not deleted). `markets` is on in
-  the repo default. Proof: `tests/integration/test_bounty_escrow_db.py` (19 tests, real local
-  Postgres, `--db`). Smoke: 85 GET routes, no 5xx.
-  Left as is, on purpose: a bounty with submissions cannot be cancelled and nothing makes a
-  creator pick a winner, so that pool can stay locked (→ D5); deadlines are stored but not
-  enforced (→ D5); bounties need a funded wallet, so they are only usable once `wallets` is
-  on (S9-7). `POST /markets/bounties/auto` is `agent_economy` (still Tier A, S9-7).
-  `bounty_service.distribute_rewards`: `SELECT … FOR UPDATE` + status-guarded close before
-  crediting; migration adding UNIQUE(`bounty_rewards.bounty_id`); creator may not submit to
-  own bounty. Review every other write in `routers/markets.py` for body identity.
-  Tier **T1** (money; migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: concurrent distribute pays once (real Postgres); migration upgrade/downgrade clean
-  locally; anonymous → 401, other agent → 403; smoke green; suite green.
+- [ ] **S10-10 — Local 7-day simulation.** Drive the tick with a fake clock over 7 simulated
+  days on local Postgres (template generator), then run the report. Tier **T2**.
+  Check: the report says PASS on every engine-verifiable criterion in the spec; suite,
+  real-Postgres suite and smoke green.
 
-- [x] **S9-6d — Always-on routes that take identity from the request body.**
-  Done cycle 16, `7a2fbe6` + `272077b` + `09f7a3b` + `3eb2c2a` (SECURITY-REVIEW) + `7564d7b`
-  (guard test). Every write route in the app was listed mechanically and each one without a
-  login, or with an identity field in its body, was read. Fixed, all live in production
-  until merged (→ **H5**):
-  (1) `POST /agents` (open sign-up) stored the body's `governance_role` — anyone could sign
-  up as FOUNDER. Now MEMBER / OBSERVER only; any other role needs a FOUNDER token.
-  (2) `POST /agents/{id}/trust-network/interactions`: no login → FOUNDER only.
-  (3) `POST /services/register`: no login, body DID → login, own DID only.
-  (4) `POST /posts/{id}/interact`: stored under the body DID → own DID only.
-  (5) `POST /agents/{id}/discovery/capabilities`: any agent for any agent → own agent only
-  (or FOUNDER).
-  (6) A2A `message/send`: needs a Bearer token, the task belongs to the caller; anonymous
-  A2A tasks are refused (founding documents silent → default refuse; `tasks/get` is public).
-  (7) Not a write, but found on the way and fixed: `GET /messages/{did}` gave any agent's
-  direct messages to anyone, and message text was copied into the public activity feed
-  (`GET /dashboard/activity`, `WS /events/stream`). Own inbox only; no text in events; the
-  public readers skip `MESSAGE_SENT`.
-  Guard: `tests/test_write_routes_need_login.py` fails on any new write route without a
-  login that is not on its reviewed list (10 entries).
-  Proof: 64 new tests (suite 2370 passed); live check on a real local server + database,
-  52 of 52. Left for other steps: see S9-6e, and the notes added to S9-7, S9-8a, S9-9, S9-12.
-  Found cycle 9. These are NOT behind the router gate, so they are live in production today:
-  `POST /a2a` method `message/send` (`a2a/handler.py`) creates a marketplace task whose
-  creator is `metadata.caller_did`, with no login (reward is always 0, so no tokens move, but
-  anyone can list tasks in any agent's name). `POST /workflows/create` had the same hole and
-  was fixed in S9-6a. Goal: (1) A2A: attribute a task to a DID only when the request carries
-  that agent's JWT; otherwise use the anonymous external DID (which is not seeded, so decide
-  and document whether anonymous A2A tasks are accepted at all — if the founding documents do
-  not say, default to refusing and record it); (2) scan every router mounted with plain
-  `app.include_router` in `main.py` (not `_include_if_enabled`) for write endpoints with no
-  `get_current_agent`, or with a `*_did` / `*_id` identity field in the body, and list or fix.
-  Tier **T1** (auth). Commit prefix `SECURITY-REVIEW:`.
-  Check: tests prove unauthenticated / mismatched identity fails closed; suite green.
+- [human] **S10-11 — Production runbook.** Write the HUMAN_ACTIONS item: Fly process for Celery
+  beat (with H9), env vars (`FOUNDER_HEARTBEAT_ENABLED`, `FOUNDER_DIDS` from H10 / D8), funding
+  (H6 adapted to production), optional LLM key (D9), how to watch with `heartbeat_report.py`, how
+  to switch it off. The engine writes it; DrJ runs it. Tier **T2** to write.
 
-- [x] **S9-6e — Direct messages: sending is broken on the baseline schema; finish the read-side check.**
-  Done cycle 17, `92d32cd` (SECURITY-REVIEW — a private-data leak turned up, so T1 work).
-  (a) `POST /messages/send` now matches whichever `messages` shape exists (DID-only
-  baseline, or 006's `*_agent_id` + 007's DID columns; looked up once per process).
-  (b) **Leak:** `GET /agents/{did}/activity-stream` and `GET /agents/{did}/activity` gave
-  PRIVATE / FOLLOWERS / COLLECTIVE entries to anyone → PUBLIC for everyone, all for the
-  agent itself; service defaults to `public_only=True`. `GET /activity` and
-  `/feed/activity` already filtered PUBLIC (now tested). `GET /ws/stats` gives counts and a
-  machine id only, left as is. `GET /workflows/{id}` is readable by anyone who has the
-  random id; its steps are marketplace tasks, already public via `GET /tasks/{id}`, left as
-  is. `WS /events/stream` stays login-free (the UI's public feed uses it) but is capped at
-  200 sockets per process (1013 over the cap). (c) A2A internal errors return the request
-  id, not the exception text. Added to H5's fast fix (cherry-picks cleanly onto `main`).
-  Proof: `tests/integration/test_messages_db.py` (5, `--db`), `tests/test_event_stream_cap.py`,
-  one A2A test; all 8 fail on the old code. Suite 2374 passed; `--db` 65 passed; smoke 85
-  GET routes, no 5xx.
-  Not done, noted: FOLLOWERS / COLLECTIVE entries are owner-only (nothing checks follow or
-  membership yet); the stream cap is per process, not per IP.
-  Found cycle 16. (a) `POST /messages/send` (always on) answers 500 on a database built
-  from `init-db.sql` + migrations: its INSERT names `sender_agent_id` / `receiver_agent_id`,
-  which the DID-based `messages` table does not have (the reconciliation briefing says
-  production's table is DID-based too, so sending is probably broken there as well). Make
-  the INSERT match the table that exists (check both shapes migration 006/007 can leave).
-  (b) Finish the read-side review that cycle 16 only did by path name: confirm the public
-  activity routes (`GET /activity`, `/agents/{did}/activity-stream`, `/feed/activity`)
-  respect an entry's `visibility`; check what `GET /ws/stats` and `GET /workflows/{id}`
-  give an anonymous caller; `WS /events/stream` takes no login and runs one database query
-  per second per open connection (cap or require a login).
-  (c) `POST /a2a` returns the raw exception text to the caller on an internal error
-  (`data=str(exc)`); return a request id instead.
-  Tier **T2** (bug fix + read review; **T1** if a private-data leak turns up).
-  Check: real-Postgres test sends and reads a message; anonymous reads of private-visibility
-  activity return nothing; suite green.
+- [ ] **S10-12 — Sprint close.** Run the acceptance criteria, write `sprint_10_retro.md`,
+  update `state_of_agentx.md`. Tier **T2**.
 
-- [x] **S9-7a — Fix and enable `wallets`, `stakes`, `economy`.** (Was "S9-7, cohort 3"; split
-  in cycle 18 because the review found holes — tasks funding → S9-7b, `agent_economy` → S9-7c.)
-  Done cycle 18, `8001ece` + `34bf912` (NEEDS-DELIBERATE-MERGE). Found: `POST /economy/mint`
-  and `POST /economy/slash` only asked for a login — any agent could create tokens in the
-  treasury (and pick the ledger label) or forfeit any agent's stake; a slash was not locked
-  (two at once credited the treasury twice); nothing could ever release a stake (staking
-  locked tokens for good); a founder grant left no ledger record; the task fee could be
-  credited after the escrow had been paid out; A→B and B→A transfers at the same moment
-  deadlocked (one failed with a 500). Fixed: mint / slash FOUNDER-only, mint always labelled
-  `mint`, slash locked and refused without a treasury; new owner-only
-  `POST /stakes/{id}/release` (not before `locked_until`, paid once); grants written to the
-  ledger (`grant`) and to `total_minted`; fee charged on the real escrow, row locked;
-  transfers lock both wallets in a fixed order, no self-transfer; amounts ≤ 1e12, page size
-  1–200. All three routers on in the repo default; Tier B is empty, the default now disables
-  Tier A only (`agent_economy`, `nodes`, `governance`, `consensus`).
-  Proof: `tests/integration/test_money_db.py` (24 tests, real local Postgres, `--db`; 15 fail
-  on the old code); live check on a real local server, real logins, 38 of 38. Smoke: 90 GET
-  routes, no 5xx. None of it was live in production (all three are off there).
-  Left as is, on purpose: balances and transaction history are public (open ledger); nothing
-  moves tokens out of the treasury; ordinary agents get spendable tokens only from a FOUNDER
-  grant or by earning them (a faucet is Phase C in the plan); a transfer to an agent who has
-  not opened a wallet is refused (400), not auto-created.
+## Open DrJ items carried from Sprint 9 (see HUMAN_ACTIONS)
 
-- [x] **S9-7b — Tasks: fund the reward in the same transaction; let a creator cancel an untaken task.**
-  Done cycle 19, `daf8c64` (NEEDS-DELIBERATE-MERGE). (a) Task row, escrow and fee are one
-  transaction; a non-zero reward the creator's wallet cannot cover (or no wallet) → 400, no
-  task, no token moved; `reward` capped at the INT column's range (422). (b) New
-  creator-only `POST /tasks/{id}/cancel` for an `open` task: row locked, reward refunded
-  (`escrow_refund`) and the fee given back from the treasury (`fee_refund`, guarded so the
-  treasury cannot go below zero), status `cancelled`; other caller (FOUNDER included) 403,
-  not open 409. Migration **042** lets `tasks.status` be `cancelled` (widens a CHECK, no row
-  changed). `fail_task` removed.
-  Proof: `tests/integration/test_task_escrow_db.py` (31 tests, 14 new, real local Postgres,
-  `--db`; 12 of the 14 fail on the old code); live check on a real local server with real
-  logins, 35 of 35. Smoke: 90 GET routes, no 5xx.
-  Left as is, on purpose: a creator can post and cancel tasks at no cost (no rate limit on
-  task creation — fold into S9-8a); bids already made on a cancelled task stay in the table;
-  no event is published for a cancel (contracts and bounties publish none either); an
-  `assigned` task whose executor never delivers still locks its escrow (→ D2, Sprint 10).
-  Consequence: `runners/task_seeder.py` offers a reward from a wallet it can no longer fund
-  itself, so its `POST /tasks` now answers 400 instead of creating an unfunded task → S9-7c (e).
-  From the cycle 9 notes, now reachable because wallets are on. (a) `task_service.create_task`
-  inserts the task, then escrows the reward *soft-fail* in a second transaction and takes the
-  fee in a third: a task can advertise a reward its creator could not fund (the executor is
-  then paid 0). Make create + escrow + fee one transaction and refuse the task when the
-  wallet does not cover a non-zero reward (as contracts and bounties do since S9-6b/c).
-  (b) No cancel/refund route for an open task nobody takes: its escrow is stuck
-  (`task_service.fail_task` is dead code and writes a status the CHECK constraint rejects).
-  Add creator-only `POST /tasks/{id}/cancel` for an `open` task: row locked, refund once.
-  The 2.5 % fee is taken at creation — decide and document whether a cancel refunds it
-  (default: refund it; the task never ran).
-  Tier **T1** (money). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: real-Postgres tests — unfunded reward → no task, tokens unchanged; concurrent
-  cancels refund once; cancel of a taken task → 409; other agent → 403; tokens conserved.
-
-- [x] **S9-7c — Review and enable `agent_economy`; founder-funded seeding for the runners.**
-  Done cycle 20, `8046e48` + `a750199` (NEEDS-DELIBERATE-MERGE). (a) Sub-contract: parent row
-  locked and child created (budget escrowed from the caller's own wallet) in one
-  transaction; not the assigned contractor → 403, parent not in flight → 409; the payload
-  cannot overwrite the parent reference. (b) `bounties/auto` confirmed on real Postgres
-  (creator = login, whatever the body says); docstrings corrected. (c) The two login-free
-  calculators take a typed, bounded body (a malformed one was a 500). (d) `agent_economy`
-  left Tier A: the repo default now disables `nodes`, `governance`, `consensus` only.
-  (e) Runners open their wallet at 0; new `runners/fund_wallets.py` (FOUNDER grant, top-up
-  to a target, dry run unless `--apply`); the seeder backs off 10 min on "Insufficient
-  funds". (f) `/onboard` answers `wallet_balance: 0` + `welcome_points: 100`, names only
-  routes that are on; new public `GET /wallets/by-did`; skill.md says the wallet starts
-  at 0. Also: amounts beyond BIGINT (contract budget, bid, sub-contract, auto-bounty) → 422.
-  Proof: `tests/integration/test_agent_economy_db.py` (17 tests, real local Postgres,
-  `--db`; 6 fail on the old code); `tests/runners` (15); live check on a real local server
-  with real logins, 37 of 37. Smoke: 92 GET routes, no 5xx (97 with everything on).
-  Left as is, on purpose: the welcome bonus is still not spendable (needs a farming guard;
-  faucet is Phase C); a sub-contract is a label only (nothing ties it to the parent, and
-  `POST /contracts` accepts `contract_type: "subcontract"`); `register_all.py` and
-  `sdk_agent_runner.py` were compiled, not run (they need the standalone SDK, not on this
-  machine); the rest of skill.md was not audited (→ S9-13a).
-  (a) `subcontract_service.spawn_subcontract` reads the parent contract without a lock
-  before creating the child (the child's own escrow is safe since S9-6b) — lock or re-check.
-  (b) `POST /markets/bounties/auto` takes the creator from the login since Sprint 9 (chain)
-  and goes through the fixed `bounty_service.create_bounty`; confirm with a real-Postgres
-  test, then update its stale docstrings ("accepts the agent's DID in the request body",
-  "soft-fail"). (c) `POST /economy/strategies/select` and `/economy/market-analysis` take
-  no login and only calculate on the request body (on the guard test's reviewed list) —
-  bound the list sizes. (d) Then move `agent_economy` out of Tier A.
-  (e) `runners/register_all.py`, `sdk_agent_runner._ensure_wallet` and
-  `task_seeder._ensure_seeder_wallet` fund their own wallets, which is FOUNDER-only since
-  S9-1 — give them a founder-funded path (Sprint 10 heartbeat needs it). Since S9-7b the
-  seeder's rewarded `POST /tasks` is refused (400) until its wallet is funded; make the
-  seeder handle that answer cleanly (log once, back off) rather than retrying every loop.
-  (f) `/onboard` tells a new agent it has "a funded wallet (100 AXP)" and to check
-  `GET /wallets/by-did?agent_did=…`. That route does not exist, and the 100 is a row in the
-  legacy `token_balances` table, not in `wallets`: it cannot be spent. Make the message
-  true (point at `GET /wallets/{agent_id}`, say the wallet starts at 0) — do NOT make the
-  bonus spendable without a farming guard (5 sign-ups/hour/IP × 100).
-  Tier **T1** (money/auth). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: smoke green with only `nodes`, `governance`, `consensus` off; real-Postgres tests
-  for (a) and (b); suite green.
-
-  Notes carried over from the old S9-7 (kept for S9-7b / S9-7c):
-  Notes from cycle 9 (tasks): (a) `task_service.create_task` escrows the reward *soft-fail*
-  in a second transaction, so a task can advertise a reward its creator could not fund —
-  make it one transaction and refuse the task (or show the escrowed amount) as part of this
-  step; (b) there is no cancel/refund route for an open task nobody takes, so its escrow is
-  stuck (`task_service.fail_task` is dead code and writes a status the CHECK constraint
-  rejects); (c) `runners/register_all.py`, `sdk_agent_runner._ensure_wallet` and
-  `task_seeder._ensure_seeder_wallet` fund their own wallets, which is FOUNDER-only since
-  S9-1 — the Sprint 10 heartbeat needs a founder-funded seeding path.
-  Note from cycle 10 (contracts): creating a contract now needs a wallet that covers the
-  budget, and with `wallets` off no agent can get one through the API — so `contracts` (on
-  since S9-6b) only becomes usable when this step lands. `agent_economy`'s
-  `subcontract_service` reads the parent contract without a lock before creating the child
-  (the child's own escrow is safe); review it with the rest of `agent_economy` here.
-  Note from cycle 15 (bounties): same for `markets` — creating a bounty needs a funded
-  wallet. `agent_economy`'s `POST /markets/bounties/auto` goes through the fixed
-  `bounty_service.create_bounty`, so its escrow is safe; review its caller identity here.
-
-  Note from cycle 16 (sign-up): `POST /onboard` gives every new agent a 100 AXP welcome
-  bonus, limited only per IP (5/hour, 20/day). Checked cycle 18: the bonus is written to
-  `token_balances`, which no route can spend or transfer, so there is nothing to farm
-  through `wallets` today (see S9-7c (f)). `POST /economy/market-analysis` and `/economy/strategies/select`
-  (`agent_economy`) take no login; they only calculate on the request body (they are on the
-  guard test's reviewed list) — confirm when reviewing `agent_economy`. Staging: the
-  `client_credentials` grant (a token for any DID, no secret) is refused only when
-  `APP_ENV=production`; `fly.staging.toml` sets `staging`, so anyone can get a FOUNDER token
-  on staging. Fine while staging holds nothing of value; do not point staging at real funds.
-
-- [x] **S9-8 — Review and enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
-  Done cycle 21, `2b51e91` (NEEDS-DELIBERATE-MERGE; the review found holes, so T1 work).
-  (a) The stake behind a vote stays put: a vote locks the voter's stake rows while it counts
-  them, and `POST /stakes/{id}/release` answers 409 while the owner has a weighted vote on a
-  proposal still open (it was: vote, release, move the tokens to a second account, vote
-  again). (b) Proposals close: `finalize_due_proposals` closes every proposal whose voting
-  period is over; the two list routes call it first (nothing called `finalize_proposal`, so
-  results were always empty). (c) The outcome follows the rules seeded in
-  `governance_parameters`, which nothing read: total weight (abstentions included) ≥ quorum
-  (100) and yes > 50 % of yes + no, on a recount of the vote rows (it was "yes > no": one
-  vote of weight 0.5 passed a proposal). (d) A vote locks the proposal row and uses the
-  database clock (no vote after the close); a concurrent duplicate vote was a 500, now 409.
-  (e) Wrong state → 409 (was 400); lists page (≤ 200); description / type / payload
-  bounded; at most 3 open proposals per agent; new `GET /governance/parameters`; responses
-  carry `abstain_power` and yes / no / abstain head counts. (f) skill.md's Governance
-  section named a vote route that never existed — corrected. `governance` is on in the repo
-  default: only `nodes` and `consensus` are off. No migration.
-  Proof: `tests/integration/test_governance_db.py` (34 tests, real local Postgres, `--db`;
-  25 fail on the old code); live check on a real local server with real logins, 44 of 44.
-  Smoke: 95 GET routes, no 5xx (98 with everything on).
-  Left as is, on purpose (→ D6): any logged-in agent may propose and vote —
-  `governance_role` (OBSERVER included) is not looked at, weight is stake × trust only; a
-  passed proposal changes nothing by itself (`execute_proposal` has no route and no
-  effect); a FOUNDER slash after a vote does not reduce that vote; all of a voter's stakes
-  are held while they have a weighted vote open, including stakes made after the vote;
-  `min_vote_power` and `default_voting_days` in `governance_parameters` are shown but not
-  read (the seeded values match what the code does).
-  Tier **T2**. Check: propose → vote → tally works locally; smoke green.
-  Note (cycle 20): `/onboard` and skill.md advertise governance only when the router is on
-  (`_build_next_steps`); skill.md's Governance section is static and still tells agents to
-  vote — make it match when this lands (or in S9-13a).
-  Note (cycle 18): vote power = the voter's unreleased stakes × trust score, read when the
-  vote is cast (`governance_service.py:216`). Since S9-7a a stake with no `locked_until`
-  can be released at once, so the same tokens can vote, be released, be transferred to a
-  second account and vote again. Before enabling: count only stakes locked past the
-  proposal's closing time, or refuse to release a stake while its owner has a vote on an
-  open proposal. Review the write routes for body identity like the other cohorts
-  (→ **T1** if anything is found).
-
-- [x] **S9-8d — Governance page (UI): show the real outcome.** (Added cycle 21.)
-  Done cycle 22, `c823dab`. Badge and Passed/Failed filter read `status`; results show the
-  vote weight and the quorum / pass rule from `GET /governance/parameters`; the debate panel
-  is behind `NEXT_PUBLIC_FEATURE_GOVERNANCE_DEBATE` (default off); a refused vote shows its
-  message. `npm run build` passes; eslint clean on the changed files. Repo-wide
-  `npm run lint` was already failing (31 errors in other files, same before and after; lint
-  is not in CI) → S9-8e. Rendered `/governance` against a local API: a 3-yes / 1-no
-  proposal the API failed on weight now says FAILED (said PASSED before).
-  `ui/app/governance/GovernanceClient.tsx` decides PASSED / FAILED itself, as "more yes
-  votes than no votes" by head count (lines ~360 and ~604). The API decides by weight and
-  quorum, so the page can say PASSED for a proposal the API closed as failed. Use the
-  proposal's `status`. The page also calls the debate / consensus routes
-  (`/governance/proposals/{id}/debate` …), which belong to `consensus` and are off (404):
-  hide that panel while they are. The head counts the page reads (`yes_votes`, `no_votes`,
-  `abstain_votes`) exist in the API since S9-8. Needs `npm ci` in `ui/` first (no
-  `node_modules` on the engine machine yet).
-  Tier **T3**. Check: `npm run build` and `npm run lint` in `ui/` pass.
-
-- [x] **S9-8e — UI lint clean.** (Added cycle 22.) Done cycle 23, `2d770a4`: lint 0 problems,
-  build passes, new `ui` job (npm ci, lint, build) in `ci.yml`. Note: a red `ui` job now fails
-  CI, and `deploy.yml` deploys the backend only after CI passes. `npm run lint` in `ui/` reports 31 errors
-  and 22 warnings, all in files outside governance (e.g. `app/graph/page.tsx`,
-  `app/tasks/page.tsx`, `components/DevPanel.tsx`, `components/pulse/*`, `components/rooms/*`):
-  mostly unused imports and React-hooks rules. Fix them, then consider adding a `ui` lint +
-  build job to CI (a CI change is not `deploy.yml`, so it is engine-doable).
-  Tier **T3**. Check: `npm run lint` and `npm run build` pass in `ui/`.
-
-Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent (driftice)
-flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral scheme
-(30% Bitcoin commission on follower purchases) on 22 Sep.
-
-- [x] **S9-8a — Per-agent post rate limits + sane max post length.**
-  Done cycle 24, `d8abc1e` (SECURITY-REVIEW — an auth hole turned up). Posts 2/min, 10/hr,
-  30/day per DID; replies 6/min, 60/hr, 200/day; content ≤ 2,000 chars, title ≤ 200; same
-  author + same case/space-folded text within 24 h in the same place → 409. The limiter keys
-  on the JWT's DID (falls back to IP with no token); `RATE_LIMIT_MODE` defaults to `enforce`
-  and is not set in `fly.toml`. Found and fixed: the legacy `{agent_id, type, topic, ...}`
-  body of `POST /posts` let any logged-in agent post as any other agent (and skipped
-  moderation) — now own agent only (403), live in production until merged (→ H5 note).
-  Decided (reversible): log mode stays a fake-200 and is documented as "local smoke only",
-  not made a pass-through. Found, not fixed: slowapi calls the limit provider without the
-  request, so the trust multiplier never applies in the running app (everyone gets the base).
-  Proof: 16 unit + 3 real-Postgres tests; suite 2511 passed; integration 157 passed; smoke green.
-
-- [x] **S9-8a2 — Rate limits for the other open write routes.** (Split from S9-8a, cycle 24.)
-  Done cycle 25, `f266b3d` (SECURITY-REVIEW). Task creation (`POST /tasks`, `/tasks/create`,
-  `/tasks/route`) shares one per-DID budget, 5/min, 30/hr, 100/day. The two no-login economy
-  calculators share a per-IP budget, 30/min, 300/hr. `POST /agents` + `/agents/register` share
-  a per-IP sign-up budget, 5/hr, 20/day (the `/onboard` limits); a FOUNDER token gets its own
-  bucket (100/hr, 500/day) for seeding. `/agents/register` is kept: the SDK and
-  `workers/worker.py` use it. The body limit is now a pure ASGI middleware counting the bytes it
-  receives: chunked 64 KiB+1 → 413, bad Content-Length → 400 (was 500). Not done: (5) the
-  trust multiplier (optional). slowapi passes the *key* to a limit provider that asks for it,
-  but the DID key carries no trust score, so it needs a lookup; left for later.
-  Proof: 13 tests in `tests/routers/test_open_write_limits.py`; suite 2524 passed; integration
-  157 passed; smoke green.
-
-- [x] **S9-8b — Fix agent profile `posts_count` staying 0.**
-  Done cycle 26, `c734a41` (NEEDS-DELIBERATE-MERGE). Every top-level post (both `POST /posts`
-  body shapes, onboarding first post, `post_service.create_post`) bumps the count in the same
-  transaction; `post_service.delete_post` decrements (no router calls it today). Replies do not
-  count (decided, reversible; matches auto-post). `scripts/backfill_posts_count.py`: dry run by
-  default, `--apply`, idempotent. Production backfill → H7.
-  Proof: 3 real-Postgres tests; suite 2524 passed; integration 160 passed.
-  Cause found cycle 2: only `services/auto_post.py:147` increments `agents.posts_count`; the
-  public `POST /posts` and reply paths in `routers/posts.py` never do. Goal: increment in the
-  same transaction as the insert (top-level posts; decide and document whether replies count),
-  decrement on delete if a delete path exists, plus an idempotent backfill script
-  (`UPDATE agents SET posts_count = (SELECT count(*) …)`, dry-run by default).
-  Tier **T2** (backfill touches data → commit prefix `NEEDS-DELIBERATE-MERGE:`).
-  Check: test creates a post via the API → profile shows 1; backfill dry-run reports correct
-  counts on a seeded local DB. Production backfill → `[human]`.
-
-- [x] **S9-8c — Simple moderation path for commercial / referral solicitations.**
-  Done cycle 27, `4c4bd6d` (NEEDS-DELIBERATE-MERGE). Migration **043** (adds four nullable
-  columns to `posts`, tables `post_flags` and `post_moderation_log`; changes no row).
-  (1) `POST /posts/{id}/flag`: login, own DID, one per agent per post (409), not your own
-  post. (2) `POST /posts/{id}/hide`, `/unhide`, `GET /posts/moderation/queue`: FOUNDER /
-  OPERATOR only; every action logged. (3) A post, reply, sign-up first post or edit whose
-  title, content or tags match the solicitation list (`services/post_moderation.py`) is
-  stored but hidden and not announced; 3 flags from ACTIVE accounts ≥ 24 h old hide a post
-  (never a moderator's post, never one a moderator cleared until its text is edited).
-  A hidden post is left out by every reader of `posts` (guard:
-  `tests/test_posts_readers_skip_hidden.py`) and by the two login-free event feeds; by id
-  only its author and moderators get it. Also fixed: `GET /posts/{id}` gave PRIVATE posts
-  to anyone with the id; `PATCH /posts/{id}` and the sign-up first post skipped the
-  language check (first post is now ≤ 2,000 chars too).
-  Proof: `tests/integration/test_post_moderation_db.py` (16 tests, real local Postgres,
-  `--db`; all fail on the old code), 31 pattern tests; migration up / down / up clean;
-  live check on a real local server with real logins, 51 of 51. Smoke: 96 GET routes, no 5xx.
-  Left as is, on purpose: hidden posts still count in `posts_count` and in a parent's stored
-  `reply_count` column; replies to a hidden post stay visible in lists; the personal feed
-  cache can show a just-hidden post for up to 60 s; the author is told their post is held
-  (`hidden: true`), flaggers are not told the outcome; nothing reviews the queue by itself
-  and DrJ has no easy way to do it yet → S9-8c2.
-  Goal: (1) agents can flag a post (`POST /posts/{id}/flag`, reason enum incl. `solicitation`,
-  one flag per agent per post, authenticated DID only); (2) admin/system-only hide/unhide
-  (`hidden_at`, `hidden_reason` columns via a new migration) — hidden posts drop out of
-  feeds, lists, search and `/activity`; (3) auto-hold: posts matching a small solicitation
-  pattern list (referral / commission / "buy followers" / crypto-payout phrasing) are hidden
-  pending review, or auto-hidden after N distinct flags (default 3, reversible).
-  Tier **T1** (permissions + migration). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: tests prove non-admin hide → 403, unauthenticated flag → 401, hidden post absent from
-  feed/list/search, OrchardsGuide-style text is held; migration upgrade/downgrade clean locally.
-
-- [x] **S9-8c2 — A moderation tool DrJ can run; hold the solicitations already posted.** (Added cycle 27.)
-  Done cycle 28, `4952ab6` (NEEDS-DELIBERATE-MERGE). `platform/scripts/moderate_posts.py`:
-  `queue`, `scan`, `hide`, `unhide`; dry run unless `--apply`; acts through
-  `services/post_moderation.py` so every change is in `post_moderation_log` (`--by`, default
-  `cli:moderate_posts`). `scan` checks title, content and tags of visible posts and skips
-  ones a moderator cleared. Proof: `tests/integration/test_moderate_posts_db.py` (6 tests,
-  incl. the command line end to end). H8 rewritten with the commands. UI "Report" button
-  not done (left for later; the API exists).
-  The API needs a FOUNDER login, which DrJ cannot easily get in production (the
-  `client_credentials` grant is refused there). Goal: `platform/scripts/moderate_posts.py`
-  on the same lines as `backfill_posts_count.py` (`--dsn`, dry run unless `--apply`), using
-  the functions in `services/post_moderation.py` so every action lands in
-  `post_moderation_log`: `queue` (hidden + flagged posts), `hide <post_id>`,
-  `unhide <post_id>`, and `scan` (list existing posts that match the solicitation list;
-  with `--apply` hold them — the migration hides nothing by itself, so OrchardsGuide's post
-  stays up until H4 or this). Then write the HUMAN_ACTIONS item (H8) with the exact commands.
-  Optional, only if small: a "Report" button on posts in the UI.
-  Tier **T2** (data-affecting script → commit prefix `NEEDS-DELIBERATE-MERGE:`).
-  Check: real-Postgres test — dry run changes nothing; `scan --apply` holds the matching
-  posts and only those; `unhide` brings one back; a second run is a no-op.
-
-- [x] **S9-9 — Trust Score on a schedule.** Split in cycle 29 into S9-9a/b/c/d (below the notes); all four done by cycle 32.
-  Goal: verify recalculation inputs are real (not always-null columns), add celery +
-  celery-beat (15-minute recalc), wire the compose `worker`/`beat`. Tier **T2**.
-  Note (cycle 1): two competing recalcs exist — `services/trust_score.py:188`
-  (`agent_trust_breakdown` weighted sum) and `services/reputation.py:86` (replays
-  `trust_events`). Event consumers only record `trust_events`, never recalc. Pick one as the
-  scheduled job (likely `reputation.py`, since it consumes real activity events) and document why.
-  Celery, xgboost, numpy are all missing from `platform/requirements.txt`; the compose `worker`
-  is a stub that prints every 5 s.
-  Correction (cycle 9): the image copies the repo-root `workers/worker.py`, which is a real
-  worker — it pops task ids from Redis, completes them through `POST /tasks/{id}/update` and
-  runs `reputation.recalculate_agent_trust` every 60 s. Since S9-6a that update call needs
-  `WORKER_API_TOKEN` (a FOUNDER token). It is not deployed on Fly.
-  Before scheduling the recalculation (cycle 9): task-completion trust events are easy to
-  farm. Two accounts can hand each other direct tasks (+0.07 per completed task) or
-  0-reward marketplace tasks (+0.05), with no check that any work was done. S9-6a only
-  stopped the single-account versions (self-assigned task, creator bidding on own task,
-  re-opening a finished task). Decide what a completion must satisfy to count (e.g. a
-  funded reward, a distinct requester with history, a per-pair cap) before the scores go live.
-  Same for verifications (cycle 10): every vote publishes `VERIFICATION_SUBMITTED`, which
-  gives the voter a `peer_validation` trust event; any agent can vote, a creator can open
-  any number of verifications on one result, and three fresh accounts decide the outcome.
-  A completed contract also bumps the contractor's `contracts_completed` / influence score,
-  and two accounts can pass one funded budget back and forth for free.
-  Same for bounties (cycle 15): two accounts can pass one funded pool back and forth; check
-  what `BOUNTY_REWARD_DISTRIBUTED` / `BOUNTY_SUBMISSION` events add to trust before scoring.
-  Same for capability endorsements (cycle 16): `POST /agents/{did}/capabilities/{id}/verify`
-  counts every call, so one other account calling it twice makes a capability "verified";
-  it needs one endorsement per endorser (a table, so a migration). The trust graph
-  (`agent_reputation_graph`) has no writer except the now FOUNDER-only manual route, so
-  graph scores are empty until real events feed it.
-  Note (cycle 21): put `governance_service.finalize_due_proposals()` on the same schedule.
-  Today a proposal past its closing time is only closed when somebody reads
-  `GET /governance/proposals` or `/results`. Trust score is also half of every vote's weight
-  (stake × trust), so whatever makes trust farmable makes votes farmable.
-  Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
-  beat schedule registered; suite green.
-
-- [x] **S9-9a — The schedule.** Done cycle 29. Celery task `jobs.scheduled_maintenance`
-  (`src/jobs/scheduled_maintenance.py`), beat every 15 min: replays unapplied `trust_events`
-  (`reputation.recalculate_agent_trust`, now under a transaction advisory lock so parallel
-  runs apply each event once) and runs `governance_service.finalize_due_proposals()`. The ML
-  jobs stay registered but unscheduled. `celery[redis]==5.5.3` added; compose `scheduler`
-  service; the 60 s trust recalc removed from `workers/worker.py`. Production: not started
-  by the merge (no Fly process) — HUMAN_ACTIONS H9, after S9-9b.
-  Chosen scheduled recalc: `reputation.py` (event replay → `agents.trust_score`, which
-  leaderboards, search and vote weight read). `trust_score.py` reads `agent_trust_breakdown`,
-  which nothing writes after sign-up — that is the "always 0.44" (0.5·0.35+0.5·0.25+0+
-  0.5·0.12+1.0·0.08). See S9-9c.
-
-- [x] **S9-9b — Trust inputs that cannot be farmed.** Tier **T1** (trust is half of every
-  vote's weight).
-  Done cycle 30, `d0805c5` (NEEDS-DELIBERATE-MERGE — it carries migration **044**: two nullable
-  columns on `trust_events`, `dedupe_key` and `counterparty_did`, and a partial UNIQUE
-  index; changes no row). All of it is in `services/reputation.py`; callers only report
-  what happened and the rules are checked against the database, not the request or the
-  bus message.
-  (1) Every event names its occurrence (`dedupe_key`, UNIQUE): one finished task, one
-  answered message, one voter per contract is one event, whichever path reports it.
-  (2) A positive event needs a counterparty: another ACTIVE account at least 24 h old.
-  (3) Two agents give each other at most one positive event of a type per 24 h, in
-  either direction; an agent gains at most +0.10 per 24 h from all sources (both checked
-  under a per-agent advisory lock).
-  (4) Task: counts only when escrow really paid the executor a reward (ledger
-  `escrow_release`), so direct tasks and 0-reward tasks earn nothing; `service_used` /
-  `task_success` are no longer recorded (+0.05 per counted task, was up to +0.17).
-  (5) Message: only one that answers a message received in the last 7 days, once per
-  answered message. (6) Verification: nothing when a vote is cast; when final, the
-  winning side gets `peer_validation`, once per contract and voter; the requester gets
-  nothing. (7) Failure: −0.10 only when the executor reports it themselves (a FOUNDER /
-  the system worker marking a task FAILED costs the executor nothing); the bus
-  `TASK_FAILED` changes no trust. (8) The replay skips rows with no `dedupe_key`
-  (recorded under the old rules; kept, never applied).
-  Proof: `tests/integration/test_trust_farming_db.py` (20 tests, real local Postgres,
-  `--db`; each rule taken out in turn makes its test fail); migration up / down / up
-  clean; live check on a real local server with real logins, 29 of 29. Smoke: 96 GET
-  routes, no 5xx.
-  Left as is, on purpose: a patient group of old, funded accounts can still raise each
-  other at the capped rate (→ D7); the reporting functions swallow their own errors (a
-  trust event can be lost, never doubled); `GET /reputation/{did}` shows event metadata
-  publicly (task / message ids, no DIDs — it used to show who an agent messaged);
-  endorsements and the contract counters → S9-9d.
-  Found cycle 29: one task completion records up to four positive events — the router's
-  direct `TASK_COMPLETED` + `SERVICE_USED` (+0.07), the event-bus `reputation_handler`
-  (`task_completed` +0.05) and the service consumer (`task_success` +0.05); `workers/worker.py`
-  also publishes `TASK_COMPLETED` again after its update call. Every direct message sent gives
-  the sender `message_replied` +0.01 (`routers/messages.py:157`, no reply needed): 50
-  messages = +0.5. `reputation_handler`'s docstring claims "unique event keys" in
-  `trust_events`; there are none. Plus the farming routes noted under S9-9 (two-account
-  tasks, verification votes, contracts, bounties, endorsements).
-  Goal: one trust event per real occurrence (a dedupe key, e.g. `(agent_id, event_type,
-  subject_id)` unique — migration); messages earn nothing unless replied to, and capped;
-  completion counts only with a funded reward from a distinct requester, capped per pair
-  per day; verification votes count only on the side of the final outcome, once per
-  verification. Check: real-DB tests for each farming route (score does not move), suite green.
-
-- [x] **S9-9c — One trust number everywhere.** Done cycle 31, `04cd180`. Profile
-  (`GET /agents/{did}/trust`), directory profile and `/agents/search` now show the replayed
-  `agents.trust_score`; the breakdown factors stay as detail and `trust_breakdown.composite`
-  equals the top-level score (what `ui/lib/api.ts` already assumed). Search used to filter and
-  order by `agents.trust_score` but display the 0.44 composite. `trust_score.recalculate_trust_score`
-  (no callers) no longer writes `agents.trust_score`. Proof:
-  `tests/integration/test_one_trust_number_db.py` (3 tests, real Postgres, fail on the old
-  code): after one job run, three agents show 0.59 / 0.44 / 0.34 everywhere.
-  Found: the starting 0.44 comes from the DB trigger `trg_trust_score_update`
-  (`scripts/init-db.sql:132`) — every insert/update of `agent_trust_breakdown` overwrites
-  `agents.trust_score` with the factor composite. Today only sign-up writes that table
-  (`ON CONFLICT DO NOTHING`), so it only sets the starting value; any future writer of the
-  breakdown would reset replayed scores. Dropping or narrowing the trigger is a migration →
-  folded into S9-9d (c).
-
-- [x] **S9-9d — The other countable signals: capability endorsements, contract counters.**
-  (Added cycle 30; not part of the trust score.)
-  Done cycle 32, `94df5e3` (NEEDS-DELIBERATE-MERGE — it carries migration **045**: new table
-  `capability_endorsements`, and the trust trigger narrowed to INSERT; changes no existing row).
-  (a) `POST /agents/{did}/capabilities/{id}/verify`: one endorsement per endorser (a row in
-  the new table; a second call → 409, nothing counted); the endorser is the login (a body
-  `endorser_did` naming someone else → 403; the field is now optional), must be ACTIVE and
-  at least 24 h old (403), not the owner (422, as before, and a CHECK in the table). The
-  capability row is locked; "verified" needs 2 recorded endorsers. Counts already in
-  `agent_capabilities` are kept (the founders' are seeded verified by `init-db.sql`) but an
-  old count does not decide "verified"; removing a capability removes its endorsements.
-  (b) Contract / bounty counters: **nothing writes them today**, so there is nothing to
-  farm. `agents.contracts_completed`, `bounties_won`, `verifications_passed` and
-  `eco_influence_score` (feed ranking) are only written by `activity_consumer`, which is in
-  no dispatch table; `agent_metrics` (discovery ranking) is only written by
-  `discovery_service.update_agent_metrics`, whose caller hangs off
-  `events/service_runner.py` (never started) and whose query names a column `contracts`
-  does not have (`assigned_agent_id`; it is `contractor_id`), so it would fail anyway.
-  Every agent's discovery score is trust × 0.4. Left unwired on purpose; both modules now
-  say so and name the rule to apply first (count from the tables: a different, ACTIVE
-  counterparty at least 24 h old, one per pair per day). Whoever wires them (not planned
-  in Phase A) does that as **T1** work.
-  (c) `trg_trust_score_update` fires on INSERT only: sign-up still starts at 0.44, an
-  update of a breakdown row no longer resets `agents.trust_score`. Narrowed only where the
-  trigger exists (a database without it is left without it).
-  Proof: `tests/integration/test_capability_endorsements_db.py` (15 tests, real local
-  Postgres, `--db`; each rule taken out in turn fails its test, the row lock included);
-  migration up / down / up clean, also without the trigger; live check on a real local
-  server with real logins, 16 of 16. Smoke: 96 GET routes, no 5xx.
-  Left as is, on purpose: two day-old accounts run by one person can still verify a
-  capability (same residual as D7); nothing withdraws an endorsement; "verified" does not
-  change any ranking today (`capability_matcher` reads the flag but does not score on it).
-  Found on the way: the migration chain cannot be re-run from `alembic stamp 001` on a
-  database that is already at head (031 creates `communities` without IF NOT EXISTS).
-  Harmless for the documented use (a fresh `init-db.sql` database, CI), noted only.
-
-- [x] **S9-10 — Founder dedupe + Bruno (local only).**
-  Done cycle 33, `a7409a4` (NEEDS-DELIBERATE-MERGE — a data-affecting script and a change to the
-  seed data of a fresh database; no migration). `platform/scripts/dedupe_founders.py`:
-  dry run unless `--apply`; one transaction, all or nothing (the dry run executes the same
-  statements and rolls back).
-  A founder's rows = DID `did:agentx:<name>-NNN` or `<name>-seed-NNN` AND display name
-  `<name>` (any case, with or without 038's `_xxxx` suffix); one of the two only → listed,
-  never touched. Kept row = `<name>-001` if present, else the oldest; its DID, id, role,
-  tier, status and trust score do not change (a duplicate's role is never inherited).
-  Every cell in the database holding a duplicate's DID or id is rewritten (found from the
-  catalog, so it does not depend on a table list); a row the kept agent already has is
-  dropped only in 16 membership-type tables, any other clash stops the run; point
-  balances and wallets are added together; follower / post counters recounted; 038's
-  suffix taken off the kept name; one `audit_logs` row per merged duplicate. A founder
-  with no row is created as `<name>-001`, MEMBER. Not ACTIVE → left alone unless
-  `--include-inactive`; `--exclude DID`; `--extra-name` for the non-founder seed personas.
-  Refuses a database login that row-level security hides rows from.
-  **Cause of the production duplicates, found in code:** `seed_platform_posts.py`
-  defaulted to the production URL, had no Bruno, and had `--variant` to "create a fresh
-  cohort" (`nova-seed-001`, `nova-002`, `nova-003` …). `--variant` removed, default now
-  localhost, founder personas use `<name>-001`.
-  Canonical set chosen: `did:agentx:<name>-001` (what the runners use; the spec's
-  "lowest-numbered"). `init-db.sql`, `seed_agents.py`, `agents/runner.py`,
-  `agents/platform_bridge.py` and the README table moved to it (were `marcus-002` …
-  `gia-008`); guard: `tests/test_founder_dids_agree.py` (15 tests). `seed_ecosystem.py`
-  opens wallets at 0 with the agent's own login (it posted `initial_balance` with no login).
-  Proof: `tests/integration/test_dedupe_founders_db.py` (14 tests, real local Postgres,
-  `--db`; 14 rules taken out in turn, each fails a test); rehearsal on a scratch database
-  shaped like production (10 personas × 2–4 copies, no Bruno), then the real app on it:
-  29 of 29. Production run → H10. Which DID the founders run under in production → D8.
-  Left as is, on purpose: the kept row's DID is never renamed, so on a database seeded
-  the old way (or production, probably `<name>-seed-001`) the kept DID is not the one the
-  runners use — the script says so per founder (→ D8, Sprint 10); a DID inside JSON or
-  post text is not rewritten; "verified" on a capability is not recounted when a
-  duplicate's endorsement of the kept row is dropped; `src/a2a/skill.py` still shows
-  `did:agentx:daria-004` as an example author (→ S9-13a, it is `.well-known` content).
-  Goal: idempotent script that keeps one canonical row for each of the 8 founders
-  (ATLAS, BRUNO, DARIA, GIA, MARCUS, NOVA, QUINN, THEA), repoints FKs, removes duplicates,
-  creates Bruno if missing. Must coexist with migration 038's suffixed display names.
-  Root cause (cycle 1): three seed sources disagree on DIDs — `platform/scripts/seed_agents.py`
-  uses `atlas-001 … gia-008`; `runners/register_all.py` and `runners/start_all.sh` use
-  `<name>-001`. Pick one canonical DID set and make every seed use it, so re-runs can't duplicate.
-  Note (cycle 20): `runners/fund_wallets.py` funds `did:agentx:<name>-001` (what the runners
-  use); on a database built from `init-db.sql` only `atlas-001` exists under that name.
-  Keep its `RUNNER_DIDS` in step with the canonical set chosen here. The root
-  `scripts/seed_ecosystem.py` still posts `initial_balance: 10_000` to `/wallets/by-did`
-  with no login (401 since S9-1) — fix or retire it with the other seeds.
-  Tier **T1** (data-affecting). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: on a local DB loaded with duplicates, exactly 8 founders, no orphans; dry-run mode default.
-  Production run → `[human]` (HUMAN_ACTIONS).
-
-- [x] **S9-11 — PyPI naming prep.** Done cycle 34, `7edd212`. Canonical source is the in-repo
-  `sdk/` (`agentx-py`; no longer a nested git repo, the dual-repo tangle is gone in this
-  checkout). Shim `packaging/agentx-client/` 0.3.0: depends on `agentx-py>=0.2.2`, ships only
-  `agentx_client` (warns, re-exports `agentx_sdk`). `agentx-py` version not bumped here: bump
-  with the S9-12 SDK fixes. Publish → H11 `[human]`. Note for S9-12: the SDK suite ran
-  274 passed on Python 3.14 locally (the "5 failing" from May did not reproduce); CI uses 3.11.
-  Goal: confirm which SDK source is canonical (in-repo `sdk/` is already `agentx-py` 0.2.2;
-  a standalone `agentx-sdk` repo also exists; `platform/agentx_sdk` is deprecated). Prepare an
-  `agentx-client` shim package that depends on `agentx-py` and warns. Tier **T2**.
-  Check: `python -m build` succeeds for both locally; shim import emits DeprecationWarning.
-  Publishing → `[human]`.
-
-- [x] **S9-12 — SDK tests.** Run `sdk/tests`, fix failures. Tier **T2**. All parts done by cycle 39.
-  Check: SDK suite green locally.
-  Split in cycle 35 (the suite is green; the work is the SDK calling routes that do not exist):
-  - [x] **S9-12a — Task + vote helpers.** Done cycle 35, `308656f`: `act`, `accept_task`,
-    `submit_result` (direct tasks, via `/update`), new `submit_marketplace_result`,
-    `cancel_task` (both clients), async `bid_on_task` (`/bid`, `bid_price`/`confidence`),
-    `complete_task` (`result_payload`), async `vote` (`/governance/vote`). SDK 282 passed.
-  - [x] **S9-12b — Contracts, bounties, posts, endorse.** Done cycle 36, `3563bb1`:
-    `contracts.complete()/cancel()`, `contracts.list` paging (default `"open"`, as the API),
-    bounty list/get/submit/evaluate/distribute/cancel, `create_bounty` datetime fix,
-    `posts.flag()`, `Post.hidden`/`hidden_reason`, `capabilities.endorse()`. SDK 302 passed.
-  - [x] **S9-12c — DIDs vs UUIDs.** Done cycle 37, `cf0dc6d` (SECURITY-REVIEW): `client.wallet.*`,
-    async `get_balance` / `transfer_credits` (were on non-existent `/economy/...` routes) and
-    `register_capability` (Python + TS) resolve the UUID via `GET /wallets/by-did` (cached;
-    own missing wallet opened empty). New `wallet.release_stake()`. SDK 317 passed.
-  - [x] **S9-12d — TypeScript SDK.** Done cycle 38, `0d5c806`: private HTTP helper renamed
-    `httpPost` (the `post` clash, TS2393, sent every internal call to "publish a post");
-    `bidOnTask` (`/bid`, `bid_price`/`confidence`), `completeTask` (`result_payload`), new
-    `cancelTask`, `vote` (`/governance/vote`, no confidence). Route tests in
-    `sdk/ts/AgentXClient.test.ts` (node:test, run from `sdk/tests/test_ts_client.py`).
-    `tsc` clean. SDK 318 passed. Not yet checked in TS: posts/rooms/follow/memory/proposal
-    bodies (the Python async client sends the same shapes; check both together if needed).
-  - [x] **S9-12e — Root e2e test + runner + version bump.** Done cycle 39, `30d6934`: the e2e
-    test now onboards for real tokens and runs the marketplace path (escrowed reward, bid,
-    creator accept, SDK `submit_marketplace_result`, exact balances) — run locally on a
-    scratch DB: 12 passed with a founder token, 9 + 3 skipped without. Runner marks a
-    proposal handled when the (off) debate routes do not answer. `agentx-py` → **0.3.0**
-    (signatures changed; not 0.2.3). Release = HUMAN_ACTIONS H12. SDK 319 passed. Root
-    `tests/integration/test_e2e_flow.py` steps 7–8, `runners/sdk_agent_runner.py`
-    debate/consensus calls (~line 996; those routers are off); bump `agentx-py` to 0.2.3
-    and record the release as a human action. Tier T2.
-  Note: run the SDK suite in its own venv (`python3 -m venv /tmp/sdkvenv && pip install -e
-  'sdk[dev]' respx pytest pytest-asyncio`); the platform venv lacks `respx`.
-  Note (cycle 9): the SDK's task helpers do not match the API — `client.act()` sends
-  `action_type` / `data` (API: `task_type` / `payload`), `accept_task` PATCHes `/tasks/{id}`
-  (API: `POST /tasks/{id}/update`), the async client posts to `/tasks/{id}/bids` (API:
-  `/bid`) and sends `{"result": …}` (API: `result_payload`). Identity is now taken from the
-  token, so the SDK no longer needs to send any DID. Root `tests/integration/test_e2e_flow.py`
-  steps 7–8 are stale in the same way (and name another agent as requester → now 403).
-  Note (cycle 10): `sdk/agentx_sdk/contracts.py` has no `complete()` or `cancel()` (the new
-  creator-only routes), and should surface the new 403 / 409 answers; the deprecated
-  `platform/agentx_sdk` already calls `/contracts/{id}/complete`.
-  Note (cycle 15): check the SDK's bounty helpers (if any) against the bounty routes — new
-  `/cancel`, 403 / 409 answers, and `GET /markets/bounties` now pages (`limit` ≤ 200, default 50).
-  Note (cycle 19): the SDK has no helper for `POST /tasks/{id}/cancel`, and task creation
-  can now answer 400 ("Insufficient funds") — surface both. Task status has a new value,
-  `cancelled`.
-
-  Note (cycle 20): `/onboard` now answers `wallet_balance: 0` and a new `welcome_points`;
-  there is a new `GET /wallets/by-did?agent_did=…` (the SDK's `wallet.py` sends DIDs where
-  the API wants UUIDs — this route is the DID one); `POST /contracts/{id}/subcontract`
-  answers 403 / 409 where it answered 400; contract and bid amounts above 2^63-1 → 422.
-
-  Note (cycle 21): governance. The async client's `vote()` (`sdk/agentx_sdk/client.py:488`)
-  posts to `/governance/proposals/{id}/vote` with `voter_did` / `choice` — that route does
-  not exist; the real one is `POST /governance/vote` with `proposal_id` / `vote` (the sync
-  `client.governance.vote` is right). "Already voted" and "voting closed" answer 409 now
-  (were 400), a 4th open proposal 409; proposals carry `abstain_power`, `yes_votes`,
-  `no_votes`, `abstain_votes`; new `GET /governance/parameters`; `POST /stakes/{id}/release`
-  can answer 409 while the caller has a weighted vote on an open proposal.
-  `runners/sdk_agent_runner.py` (~line 996) calls the debate / consensus routes, which are off.
-
-  Note (cycle 27): posts. No SDK helper for `POST /posts/{id}/flag`; post answers carry
-  `hidden` / `hidden_reason` (a held post is a 201 with `hidden: true` — surface it);
-  `GET /posts/{id}` answers 404 for a hidden or PRIVATE post unless the caller is its
-  author; `/onboard`'s `first_post.content` is now ≤ 2,000 characters (was 5,000) and a
-  profane first post → 400.
-
-  Note (cycle 32): no SDK helper for `POST /agents/{did}/capabilities/{id}/verify`
-  (endorse). If one is added: the body is optional, the endorser is the token's agent; a
-  repeat answers 409, a new (< 24 h) or suspended account 403; the answer carries
-  `endorsers` (recorded endorsers) next to `verified_by_count`.
-
-  Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
-  `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID
-  (422 today). SDK callers of `/services/register`, `/a2a` `message/send` and
-  `GET /messages/{did}` must send the Bearer token (now required). The UI's human sign-up
-  (`ui/app/login/page.tsx`) sends `agent_type: "HUMAN_OPERATOR"`, which the API's enum does
-  not have (422) — fix with the UI work.
-
-- [human] **S9-13 — LICENSE + README.** Marked `[human]` cycle 42: only the root LICENSE is left, and it waits on DrJ's answer to D1. README half done cycle 41 (MIT badge now points at `sdk/LICENSE`; footer says the platform licence is undecided and links the Magna Carta). Root LICENSE still waits on D1. Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
-  the platform repo). README pointing to the magna carta can proceed. Tier **T3**.
-  Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
-  Check: README renders; LICENSE present once D1 answered.
-
-- [x] **S9-13a — skill.md truth audit.** (Added cycle 20.)
-  Done cycle 40, `4d9b446` (SECURITY-REVIEW). Every claim in `/.well-known/skill.md` and the
-  agent cards was checked against the code.
-  skill.md is now assembled per deployment (`a2a/skill.py`, `render_skill_md`): the Paid
-  tasks, Economy, Governance and Rooms sections (and every sentence about them) appear only
-  when that router is on, so with every gated router off (production today) nothing in it
-  answers 404. Removed: the tiers STANDARD / PRO / ENTERPRISE (they do not exist; the real
-  tier is `BOOTSTRAP` and nothing reads it), "posting raises your trust score", "always up
-  to date". New Trust score section whose amounts and caps are read from
-  `services/reputation.py`. Token lifetimes are read from the settings (production: 15
-  minutes and 7 days; the text said 1 hour) and the text now says a refresh returns a new
-  refresh token and that an expired one cannot be recovered. `/agents/discover` takes
-  `capability` (the document said `q`, which is ignored). Heartbeat tasks are TASK posts to
-  reply to, not to bid on. New Paid tasks section with the real bid / result routes.
-  Agent cards: `capabilities` all false (`POST /a2a` has `message/send` and `tasks/get`
-  only; the card offered streaming, push notifications and history); platform card `url`
-  is `<base>/a2a` (was the site root); `documentationUrl` is skill.md (`/docs` is off in
-  production); credentials text no longer mentions API keys; gated skills listed only when
-  on. The base URL comes from the request (`a2a/base_url.py`): the card printed
-  `http://localhost:8000` unless `PLATFORM_BASE_URL` was set, and it is not set in
-  `fly.toml`. Outside development the scheme is always https; a Host header that is not a
-  plain host[:port] → 400; `Vary: Host`.
-  Behaviour changes: A2A `message/send` answers -32601 "not available" while `tasks` is off
-  (it created a task no route could list); `/onboard` `next_steps` no longer names
-  `GET /tasks?capability=…` (no such parameter) and lists the paid-task step only while
-  `tasks` is on.
-  Proof: `tests/a2a/test_skill_md.py` (33 tests): the real app is booted in a fresh process
-  for three router lists (repo default, every gated router off, everything on) and every
-  path in both documents is matched against the mounted routes (method included); a test
-  shows the checker reports a missing route and a wrong method. Live check on a real local
-  server, both router lists, running the document's own `curl` commands verbatim: 95 of
-  95. Suite 2614 passed; integration 239 passed; smoke 96 GET routes, no 5xx.
-  Left as is, on purpose: a per-agent card's `url` is still the profile address
-  (`/agents/<did>`), which is not an A2A endpoint — there is no per-agent A2A endpoint to
-  point at (design question, with the Phase D federation work); FOUNDER / OPERATOR can
-  heartbeat for another agent with `status: active` (admin only, not changed); the SDK's
-  `a2a.send_message` posts to `<url>/a2a` with no Bearer token, so against AgentX itself it
-  gets 401 since S9-6d (→ S9-14 follow-ups).
-  `GET /.well-known/skill.md` is what outside agents act on. S9-7c fixed its wallet claims
-  only. Still unchecked: every `curl` in it names a route that exists and is on in the
-  repo default (the Governance section tells agents to vote while `governance` is off;
-  `/agents/<did>/recommended-tasks`, `/notifications`, `/rooms/<id>/join` not verified);
-  "raises your trust score and unlocks higher tiers (STANDARD → PRO → ENTERPRISE)" against
-  what the code does. Cycle 21 corrected the Governance section (real routes, real rules);
-  still untrue there: "PRO tier — higher API rate limits, weighted governance votes" (a
-  vote's weight is stake × trust, the tier plays no part). The agent card
-  (`a2a/agent_card.py`, `/.well-known/agent.json`) lists the governance, token and contract
-  skills whether or not those routers are on — gate them the same way.
-  Cycle 27 added a "No advertising" paragraph (held posts, `POST /posts/<post_id>/flag`);
-  include that path in the route-existence test.
-  Cycle 30 (S9-9b): the trust claims must match what now earns trust — a paid task for an
-  established account (+0.05, one per pair per day), answering a message (+0.01), voting
-  with the final outcome of a verification (+0.03), at most +0.10 a day. "Post an UPDATE
-  to maintain trust score visibility" and "Consistent participation raises your trust
-  score" are not true (posting earns nothing).
-  Cycle 33 (S9-10): the example post in skill.md is authored by `did:agentx:daria-004`
-  (`a2a/skill.py:235`); the founders are `did:agentx:<name>-001` now — use `daria-001`.
-  Goal: each claim true or removed; sections for gated routers shown
-  only when the router is on; a test that every path in the document is a mounted route
-  (extend `tests/a2a/test_skill_md.py`).
-  Tier **T1** (`.well-known`). Commit prefix `SECURITY-REVIEW:`.
-  Check: the route-existence test passes on the repo default router list; suite green.
-
-- [x] **S9-14 — Sprint close.** Done cycle 42: acceptance criteria all met locally except LICENSE
-  (D1); retro `platform/docs/sprints/sprint_9_retro.md`; `state_of_agentx.md` updated. Platform
-  2614 passed / 253 skipped, integration 239, SDK 319, smoke default 96 + all-on 99 GET routes no
-  5xx, UI lint + build clean. The follow-ups below were carried into the retro.
-  Run the sprint acceptance criteria locally, write
-  `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
-  For the phase briefing's live-test checklist (cycle 40, S9-13a): after the merge, open
-  `https://myagentx.io/.well-known/skill.md` and check that every command starts with
-  `https://` and that no Economy / Governance / Rooms section shows while those routers are
-  still off in production; open `/.well-known/agent.json` and check `url` ends in `/a2a`
-  and nothing says `localhost`. Optional hardening for DrJ: set `PLATFORM_BASE_URL` in
-  `fly.toml` `[env]` to the public API address, so the documents never depend on the Host
-  header (the engine may not edit `fly.toml`).
-  Retro follow-ups (found cycle 40): the SDK's `a2a.send_message` sends no Bearer token
-  (401 against AgentX since S9-6d) and appends `/a2a` to the URL it is given, while the
-  platform card's `url` now already ends in `/a2a`; per-agent cards have no A2A endpoint.
-  Carry into the retro's follow-ups (found cycle 39): a finished marketplace task's status
-  is `COMPLETED` (upper case, `task_service.submit_result`) while the others are lower case
-  (`open`, `assigned`, `cancelled`), and `GET /tasks?status=` matches exactly — so
-  `status=completed` lists nothing. Also: a bid with confidence ≥ 0.3 is auto-accepted,
-  so the creator's `/accept` only matters for low-confidence bids.
-
-- [human] **S9-H1 — Production reconciliation + router flip.** See HUMAN_ACTIONS H1–H3.
-  Status 2026-09-30 (DrJ): H1 **not done**; prod still runs the old build and `/agents/top`,
-  `/activity`, `/search` return 500.
-
-- [human] **S9-H4 — Remove abusive posts in production.** See HUMAN_ACTIONS H4.
-
-- [human] **S9-H5 — Check production for self-made FOUNDERs; get the S9-6d fixes live.**
-  See HUMAN_ACTIONS H5 (urgent).
-
-- [human] **S9-H7 — Recount post totals in production after merge.** See HUMAN_ACTIONS H7.
-
-- [human] **S9-H12 — Publish `agentx-py` 0.3.0 (tag `sdk-v0.3.0` after merge).** See HUMAN_ACTIONS H12.
-
-- [human] **S9-H11 — Publish the `agentx-client` 0.3.0 shim to PyPI.** See HUMAN_ACTIONS H11.
-
-- [human] **S9-H10 — Merge the duplicate founders in production, add Bruno.** See
-  HUMAN_ACTIONS H10 (the tool comes with S9-10). Open question D8.
-
-- [human] **S9-H8 — Review held posts in production after merge.** See HUMAN_ACTIONS H8
-  (the tool comes with S9-8c2).
-
-Note for Sprint 10 (cycle 20): the founder agents get tokens only from
-`runners/fund_wallets.py` (a FOUNDER grant). In production the runners cannot log in the
-way they do locally (the `client_credentials` grant is refused there), so the heartbeat
-needs a real credential path for the founders and a FOUNDER token for the funding step —
-both are decisions for the Sprint 10 spec, and the funding run itself is a human action.
-
-Note for Sprint 10 (cycle 33): in production the founders probably do not have the
-`<name>-001` DIDs the runners use (see S9-10, D8). Until D8 is answered the Sprint 10 spec
-should take the founder DIDs from configuration, not from the constants in `runners/`.
-`platform/scripts/seed_platform_posts.py` registers the founder personas with display
-names "Nova", "Atlas" …; on a fresh database those names are taken (409) and it only adds
-Orion, Vega and Lyra.
-
-After Sprint 9 closes: draft `sprint_10_heartbeat.md` from Plan v2 §4 (open questions on LLM
-provider and daily cost ceiling become DECISION_NEEDED unless a reversible default exists).
+H1–H3 (production reconciliation, router flip), H4 (spam), H5 (urgent: self-made FOUNDERs,
+private messages), H6 (founder funding), H7 (post counts), H8 (held posts), H9 (trust job),
+H10 (founder dedupe + Bruno), H11 / H12 (PyPI), D1 (licence; blocks S9-13 root LICENSE),
+D2–D8, new D9 (LLM for founder posts).
