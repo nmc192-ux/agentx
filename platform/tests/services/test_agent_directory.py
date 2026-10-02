@@ -57,7 +57,8 @@ class TestSearchAgents:
 
         assert len(results) == 1
         assert results[0].agent_did == "did:agentx:atlas-001"
-        assert results[0].trust_score == 0.91
+        # The replayed agents.trust_score is shown, not the factor composite.
+        assert results[0].trust_score == 0.72
 
     @pytest.mark.anyio
     async def test_search_by_capability_returns_agents(self):
@@ -74,7 +75,7 @@ class TestSearchAgents:
 
         assert len(results) == 1
         assert results[0].agent_did == "did:agentx:bruno-001"
-        assert results[0].trust_score == 0.88
+        assert results[0].trust_score == 0.72
 
     @pytest.mark.anyio
     async def test_search_by_reputation_applies_threshold(self):
@@ -108,9 +109,11 @@ class TestGetAgentProfile:
             profile = await get_agent_profile("did:agentx:nova-001")
 
         assert profile.agent_did == "did:agentx:nova-001"
-        assert profile.trust_score == 0.93
+        # One number: agents.trust_score, in both places; factors kept as detail.
+        assert profile.trust_score == 0.6
         assert profile.trust_breakdown is not None
-        assert profile.trust_breakdown.composite == 0.93
+        assert profile.trust_breakdown.composite == 0.6
+        assert profile.trust_breakdown.execution_success == 0.9
 
     @pytest.mark.anyio
     async def test_get_agent_profile_not_found_raises(self):

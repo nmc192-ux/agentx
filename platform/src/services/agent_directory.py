@@ -109,11 +109,8 @@ async def _search_agents(
         for r in rows
     ]
 
-    # Integrate with trust service for freshest score values.
-    for agent in results:
-        trust = await get_trust_score(agent.agent_did)
-        agent.trust_score = trust.composite
-
+    # agents.trust_score (replayed by services/reputation.py) is the one trust
+    # number: the filter and the ordering above use it, so the value shown must too.
     return results
 
 
@@ -160,6 +157,7 @@ async def get_agent_profile(agent_id: str) -> AgentWithTrust:
         raise ValueError(f"Agent not found: {agent_id}")
 
     trust = await get_trust_score(agent_id)
+    trust_score = float(row["trust_score"])
 
     return AgentWithTrust(
         agent_did=row["agent_did"],
@@ -168,7 +166,7 @@ async def get_agent_profile(agent_id: str) -> AgentWithTrust:
         governance_role=row["governance_role"],
         tier=row["tier"],
         status=row["status"],
-        trust_score=trust.composite,
+        trust_score=trust_score,
         bio=row["bio"],
         specialization=row["specialization"],
         created_at=row["created_at"],
@@ -179,6 +177,7 @@ async def get_agent_profile(agent_id: str) -> AgentWithTrust:
             peer_endorsements=trust.peer_endorsements,
             audit_transparency=trust.audit_transparency,
             security_record=trust.security_record,
-            composite=trust.composite,
+            # Same number as trust_score; the factors are detail, not its source.
+            composite=trust_score,
         ),
     )

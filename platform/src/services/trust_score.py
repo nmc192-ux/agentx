@@ -15,9 +15,12 @@ Formula (SOURCE: agent_identity_schema_v3.json):
 Cache: Redis key "trust:<agent_did>", TTL = 5 minutes (TTL_AGENT_PROFILE).
 Triggers: recalculate on task completion, SLA breach, endorsement, incident.
 
-The trust_score column on the agents table is the canonical value.
-agent_trust_breakdown holds the per-factor breakdown.
-This service reads breakdown → computes composite → updates both.
+The trust_score column on the agents table is the canonical value. It is
+owned by services/reputation.py (replay of trust_events on the 15-minute
+schedule); leaderboards, search, profiles and vote weight all read it.
+agent_trust_breakdown holds the per-factor breakdown, shown as detail only.
+Nothing feeds those factors after sign-up yet, so their weighted sum is a
+flat 0.44 for everyone: this service never writes it to agents.trust_score.
 
 MARCUS P1 Gap 3: Service uses system connection (no RLS) because
 trust scores are computed by the platform, not by individual agents.
@@ -123,16 +126,6 @@ async def _fetch_breakdown_from_db(agent_did: str) -> Optional[dict]:
     return {key: float(value) for key, value in breakdown.items()}
 
 
-async def _update_composite_in_db(agent_did: str, composite: float) -> None:
-    """Write the computed composite score back to the agents table."""
-    async with get_db() as conn:
-        await conn.execute(
-            "UPDATE agents SET trust_score = $1, updated_at = now() WHERE agent_did = $2",
-            composite,
-            agent_did,
-        )
-
-
 # ── Public API ────────────────────────────────────────────────────────────────
 
 # Bootstrap trust score for new agents with no history
@@ -187,7 +180,10 @@ async def get_trust_score(agent_did: str, use_cache: bool = True) -> TrustScore:
 
 async def recalculate_trust_score(agent_did: str) -> TrustScore:
     """
-    Force-recalculate trust score: read DB → compute → update agents table → invalidate cache.
+    Force-recalculate the factor breakdown: invalidate cache → read DB → compute.
+
+    Does not touch agents.trust_score (owned by services/reputation.py); writing
+    the factor composite there would reset every replayed score to 0.44.
 
     Called after:
       - Task completion / failure
@@ -203,8 +199,5 @@ async def recalculate_trust_score(agent_did: str) -> TrustScore:
     # Fetch fresh breakdown
     score = await get_trust_score(agent_did, use_cache=False)
 
-    # Write composite back to agents table
-    await _update_composite_in_db(agent_did, score.composite)
-
-    logger.info("Trust score recalculated: %s → %.2f", agent_did, score.composite)
+    logger.info("Trust breakdown recalculated: %s → %.2f", agent_did, score.composite)
     return score

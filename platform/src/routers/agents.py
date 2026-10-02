@@ -579,7 +579,10 @@ async def get_trust_score_endpoint(
         peer_endorsements=trust.peer_endorsements,
         audit_transparency=trust.audit_transparency,
         security_record=trust.security_record,
-        composite=trust.composite,
+        # One trust number everywhere: the replayed agents.trust_score (what
+        # leaderboards, search and vote weight read). The factors stay as detail;
+        # their weighted sum is not fed by activity yet (flat 0.44).
+        composite=float(row["trust_score"]),
     )
 
     return AgentWithTrust(
