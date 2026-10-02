@@ -2,6 +2,24 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 34 · Opus (T2) · S9-11: one SDK name on PyPI, prepared
+
+- **Nothing changes anywhere until you publish** (H11). No server code, no database.
+- **What changed** (`7edd212`): a farewell release of the old package name,
+  `agentx-client` 0.3.0, in `packaging/agentx-client/`. It holds no SDK code: installing
+  it installs `agentx-py`, and `import agentx_client` still works but warns people to
+  switch. It cannot clash with `agentx-py` (it ships none of the same folders), and the
+  existing publish workflow (the `sdk-v*` tag) does not touch it.
+- **Check:** both packages build (`python -m build`); in a clean environment the two
+  wheels install side by side and `import agentx_client` gives a DeprecationWarning that
+  names `agentx-py`. Four new tests pin this (turning the warning into another kind makes
+  one fail). SDK suite 274 passed; ruff clean.
+- **Decisions I made (reversible):** shim version 0.3.0 (above the 0.2.0 on PyPI); the
+  shim needs `agentx-py>=0.2.2` (already on PyPI); `agentx-py` keeps 0.2.2 until the
+  S9-12 fixes give a reason to release; shim licence MIT like the SDK, pending D1.
+- **For DrJ:** **H11** (new, not urgent): build and upload the shim; you need the PyPI
+  account that owns `agentx-client` (first published from another machine).
+
 ## 2026-10-02 · cycle 33 · Fable (T1) · S9-10: one row per founder, Bruno, and the reason there were several
 
 - **Not live in production until merged, and even then nothing runs by itself.** No

@@ -729,7 +729,12 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Check: on a local DB loaded with duplicates, exactly 8 founders, no orphans; dry-run mode default.
   Production run → `[human]` (HUMAN_ACTIONS).
 
-- [ ] **S9-11 — PyPI naming prep.**
+- [x] **S9-11 — PyPI naming prep.** Done cycle 34, `7edd212`. Canonical source is the in-repo
+  `sdk/` (`agentx-py`; no longer a nested git repo, the dual-repo tangle is gone in this
+  checkout). Shim `packaging/agentx-client/` 0.3.0: depends on `agentx-py>=0.2.2`, ships only
+  `agentx_client` (warns, re-exports `agentx_sdk`). `agentx-py` version not bumped here: bump
+  with the S9-12 SDK fixes. Publish → H11 `[human]`. Note for S9-12: the SDK suite ran
+  274 passed on Python 3.14 locally (the "5 failing" from May did not reproduce); CI uses 3.11.
   Goal: confirm which SDK source is canonical (in-repo `sdk/` is already `agentx-py` 0.2.2;
   a standalone `agentx-sdk` repo also exists; `platform/agentx_sdk` is deprecated). Prepare an
   `agentx-client` shim package that depends on `agentx-py` and warns. Tier **T2**.
@@ -829,6 +834,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   See HUMAN_ACTIONS H5 (urgent).
 
 - [human] **S9-H7 — Recount post totals in production after merge.** See HUMAN_ACTIONS H7.
+
+- [human] **S9-H11 — Publish the `agentx-client` 0.3.0 shim to PyPI.** See HUMAN_ACTIONS H11.
 
 - [human] **S9-H10 — Merge the duplicate founders in production, add Bruno.** See
   HUMAN_ACTIONS H10 (the tool comes with S9-10). Open question D8.
