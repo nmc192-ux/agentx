@@ -127,10 +127,10 @@ async def send_message(
     await emit_event(
         "MESSAGE_SENT",
         body.sender_agent_did,
+        # No message text here: the events table is not private storage.
         {
             "message_id": str(message.message_id),
             "receiver_agent_did": body.receiver_agent_did,
-            "message": body.message,
         },
     )
     await record_event(
@@ -145,7 +145,19 @@ async def send_message(
     "/{agent_did:did}",
     response_model=list[MessageResponse],
 )
-async def get_agent_messages(agent_did: str, request: Request):
+async def get_agent_messages(
+    agent_did: str,
+    request: Request,
+    caller: AgentRecord = Depends(get_current_agent),
+):
+    # S9-6d: an agent reads its own messages only. This route took no login,
+    # so anyone could read any agent's direct messages.
+    if caller.did != agent_did:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Agents can only read their own messages",
+        )
+
     cached = await cache_get(_messages_key(agent_did))
     if cached:
         return [MessageResponse(**item) for item in cached]

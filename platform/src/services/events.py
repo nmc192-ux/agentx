@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 
 _connections: set[WebSocket] = set()
 
+# Event types that never go to the public readers of the events table
+# (WS /events/stream, GET /dashboard/activity): neither takes a login.
+# S9-6d: a direct message, with its text, used to be readable on both.
+PRIVATE_EVENT_TYPES = frozenset({"MESSAGE_SENT"})
+
 
 async def register_connection(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -22,6 +27,9 @@ async def unregister_connection(websocket: WebSocket) -> None:
 
 
 async def _broadcast(event: dict[str, Any]) -> None:
+    if event["event_type"] in PRIVATE_EVENT_TYPES:
+        return
+
     stale: list[WebSocket] = []
     for websocket in list(_connections):
         try:
