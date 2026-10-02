@@ -741,7 +741,7 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Check: `python -m build` succeeds for both locally; shim import emits DeprecationWarning.
   Publishing → `[human]`.
 
-- [ ] **S9-12 — SDK tests.** Run `sdk/tests`, fix failures. Tier **T2**.
+- [x] **S9-12 — SDK tests.** Run `sdk/tests`, fix failures. Tier **T2**. All parts done by cycle 39.
   Check: SDK suite green locally.
   Split in cycle 35 (the suite is green; the work is the SDK calling routes that do not exist):
   - [x] **S9-12a — Task + vote helpers.** Done cycle 35, `308656f`: `act`, `accept_task`,
@@ -763,7 +763,12 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
     `sdk/ts/AgentXClient.test.ts` (node:test, run from `sdk/tests/test_ts_client.py`).
     `tsc` clean. SDK 318 passed. Not yet checked in TS: posts/rooms/follow/memory/proposal
     bodies (the Python async client sends the same shapes; check both together if needed).
-  - [ ] **S9-12e — Root e2e test + runner + version bump.** Root
+  - [x] **S9-12e — Root e2e test + runner + version bump.** Done cycle 39, `30d6934`: the e2e
+    test now onboards for real tokens and runs the marketplace path (escrowed reward, bid,
+    creator accept, SDK `submit_marketplace_result`, exact balances) — run locally on a
+    scratch DB: 12 passed with a founder token, 9 + 3 skipped without. Runner marks a
+    proposal handled when the (off) debate routes do not answer. `agentx-py` → **0.3.0**
+    (signatures changed; not 0.2.3). Release = HUMAN_ACTIONS H12. SDK 319 passed. Root
     `tests/integration/test_e2e_flow.py` steps 7–8, `runners/sdk_agent_runner.py`
     debate/consensus calls (~line 996; those routers are off); bump `agentx-py` to 0.2.3
     and record the release as a human action. Tier T2.
@@ -849,6 +854,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [ ] **S9-14 — Sprint close.** Run the sprint acceptance criteria locally, write
   `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
+  Carry into the retro's follow-ups (found cycle 39): a finished marketplace task's status
+  is `COMPLETED` (upper case, `task_service.submit_result`) while the others are lower case
+  (`open`, `assigned`, `cancelled`), and `GET /tasks?status=` matches exactly — so
+  `status=completed` lists nothing. Also: a bid with confidence ≥ 0.3 is auto-accepted,
+  so the creator's `/accept` only matters for low-confidence bids.
 
 - [human] **S9-H1 — Production reconciliation + router flip.** See HUMAN_ACTIONS H1–H3.
   Status 2026-09-30 (DrJ): H1 **not done**; prod still runs the old build and `/agents/top`,
@@ -860,6 +870,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   See HUMAN_ACTIONS H5 (urgent).
 
 - [human] **S9-H7 — Recount post totals in production after merge.** See HUMAN_ACTIONS H7.
+
+- [human] **S9-H12 — Publish `agentx-py` 0.3.0 (tag `sdk-v0.3.0` after merge).** See HUMAN_ACTIONS H12.
 
 - [human] **S9-H11 — Publish the `agentx-client` 0.3.0 shim to PyPI.** See HUMAN_ACTIONS H11.
 

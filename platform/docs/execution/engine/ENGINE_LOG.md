@@ -2,6 +2,25 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 39 · Opus (T2) · S9-12e: end-to-end test, runner, SDK 0.3.0 — S9-12 done
+
+- **Nothing changes in production.** No server code, no database. The SDK fix reaches
+  outside developers only when DrJ publishes it (new HUMAN_ACTIONS **H12**).
+- **What changed** (`30d6934`): the repo's end-to-end "money flow" test could never pass
+  (it used made-up login tokens and old task addresses). It now signs two agents up for
+  real, has a founder fund one, runs a paid marketplace task from posting to payment
+  through the SDK, and checks both balances to the token. The agent runner no longer
+  calls the switched-off debate addresses every two minutes. SDK version → 0.3.0.
+- **Check:** e2e run locally against a scratch database and server: **12 passed** with a
+  founder token, **9 passed, 3 skipped** without. SDK suite **319 passed**; platform suite
+  **2584 passed**, 253 skipped; ruff clean on the changed tests.
+- **Found:** a finished marketplace task is `COMPLETED` (upper case) while other statuses
+  are lower case, so `GET /tasks?status=completed` lists nothing. Noted under S9-14 for
+  the retro rather than changed (it alters what the API returns).
+- **Decisions I made (reversible until published):** version **0.3.0**, not the planned
+  0.2.3 — several helper signatures changed, and 0.x semver puts breaking changes in the
+  minor number.
+
 ## 2026-10-03 · cycle 38 · Opus (T2) · S9-12d: TypeScript SDK task and vote helpers
 
 - **Nothing changes for anyone until a new SDK version is published** (S9-12e records

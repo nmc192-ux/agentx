@@ -4,6 +4,31 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H12 — Publish the Python SDK `agentx-py` 0.3.0 to PyPI (after you merge; about five minutes).**
+  Added in cycle 39. The SDK published today (0.2.2) calls many addresses the server does
+  not have, so most of its task, vote, wallet, contract and bounty helpers fail for anyone
+  who installs it. Version 0.3.0 on the branch fixes them (list in `sdk/CHANGELOG.md`).
+  Publishing cannot be undone (PyPI never reuses a version number), so it is yours to do.
+  It goes out through the existing automatic release: pushing a tag named `sdk-v0.3.0`
+  runs the SDK tests on GitHub and, if they pass, uploads the package.
+  **Do it only after `engine/phase-a` is merged into `main`** (the tag must point at the
+  merged code). Then, in a terminal inside the repo:
+  ```
+  git checkout main
+  git pull
+  grep '^version' sdk/pyproject.toml
+  ```
+  The last line must print `version         = "0.3.0"`. If it does, run:
+  ```
+  git tag sdk-v0.3.0
+  git push origin sdk-v0.3.0
+  ```
+  Watch it on GitHub → **Actions** → "Publish SDK to PyPI"; it may ask you to approve the
+  `pypi` environment. **Check:** https://pypi.org/project/agentx-py/ shows 0.3.0.
+  Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-py`,
+  so the version they land on should be the fixed one).
+  Unblocks: outside developers get an SDK that works against the live API.
+
 - [ ] **H5 — URGENT: production lets anyone sign up as a FOUNDER, and anyone can read private messages. Check for intruders, then get the fix live.**
   Found in cycle 16. Both problems are in the code production runs **today**; they are
   fixed on the `engine/phase-a` branch, and nothing changes in production until that is
