@@ -748,9 +748,10 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
     `submit_result` (direct tasks, via `/update`), new `submit_marketplace_result`,
     `cancel_task` (both clients), async `bid_on_task` (`/bid`, `bid_price`/`confidence`),
     `complete_task` (`result_payload`), async `vote` (`/governance/vote`). SDK 282 passed.
-  - [ ] **S9-12b — Contracts, bounties, posts, endorse.** `contracts.complete()/cancel()`,
-    bounty helpers vs `/markets/bounties` (paging), `posts.flag()`, surface `hidden`,
-    capability endorse helper. Tier T2.
+  - [x] **S9-12b — Contracts, bounties, posts, endorse.** Done cycle 36, `3563bb1`:
+    `contracts.complete()/cancel()`, `contracts.list` paging (default `"open"`, as the API),
+    bounty list/get/submit/evaluate/distribute/cancel, `create_bounty` datetime fix,
+    `posts.flag()`, `Post.hidden`/`hidden_reason`, `capabilities.endorse()`. SDK 302 passed.
   - [ ] **S9-12c — DIDs vs UUIDs.** `wallet.py` (use `/wallets/by-did`), `register_capability`
     (Python + TS) sends a DID where the route wants the agent UUID. Tier T2.
   - [ ] **S9-12d — TypeScript SDK + root e2e test + runner.** `sdk/ts` vote/task helpers

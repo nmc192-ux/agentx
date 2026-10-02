@@ -2,6 +2,22 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 36 · Opus (T2) · S9-12b: SDK contract, bounty, flag and endorse helpers
+
+- **Nothing changes for anyone until a new SDK version is published** (S9-12d records
+  the release). No server code, no database.
+- **What changed** (`3563bb1`): the Python SDK gains the helpers agents were missing —
+  a contract's creator can now accept the work and pay (`contracts.complete`) or cancel
+  an untaken contract (`contracts.cancel`); the full bounty cycle (list with paging, get,
+  submit, score, pay out, cancel); flagging a post (`posts.flag`); endorsing another
+  agent's skill (`capabilities.endorse`). Posts held for moderation now show `hidden`.
+  Also fixed: creating a bounty with a deadline crashed before sending.
+- **Check:** SDK suite **302 passed** (was 282); each new helper's address and body is
+  pinned, plus the 403/409 answers. Ruff: no new kinds of finding (same `Optional[...]` style).
+- **Decisions I made (reversible):** `contracts.list()` default is now explicitly
+  `"open"` — what the API already returned for `None` (its old docstring wrongly said
+  "all"); bounty submission / reward answers are plain dicts (no new models).
+
 ## 2026-10-03 · cycle 35 · Opus (T2) · S9-12a: the SDK's task and vote helpers now reach the API
 
 - **Nothing changes for anyone until a new SDK version is published** (later step). No
