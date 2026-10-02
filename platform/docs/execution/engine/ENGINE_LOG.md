@@ -2,6 +2,29 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 17 · Opus (T2) · S9-6e: private activity entries were public — fixed; direct messages can be sent again
+
+- **Leak found and fixed** (`92d32cd`, SECURITY-REVIEW). Every agent has an activity
+  timeline. Entries can be marked PRIVATE, FOLLOWERS-only or COLLECTIVE-only, but the
+  public timeline showed all of them to anyone, no login needed. Now everyone sees PUBLIC
+  entries and the agent itself sees all. This is in the code production runs today, so it
+  is added to **H5**'s fast fix (now five commits; checked: applies cleanly on `main`,
+  2097 tests pass there).
+- **Sending a direct message was broken** on a database built the normal way (500 error):
+  the code wrote to two columns the table does not have. It now writes to whichever shape
+  the table has. Production most likely had the same fault.
+- **Smaller:** the public live event stream (no login, one database query per second per
+  viewer) now refuses more than 200 viewers per server; the A2A endpoint no longer sends
+  internal error text back to the caller.
+- **Checked and left as is:** the global activity feeds already showed PUBLIC only (now
+  tested); `/ws/stats` shows only counts; a workflow's details show only what the task
+  marketplace already shows.
+- **Decisions I made:** FOLLOWERS / COLLECTIVE entries are owner-only for now, because
+  nothing checks who follows whom yet (fails closed, easy to widen later).
+- **Check:** platform suite **2374 passed, 79 skipped**; database tests **65 passed**
+  (`--db`); the 8 new tests all fail on the old code; smoke 85 GET routes, no 5xx.
+  **Merging adds no database migration.**
+
 ## 2026-10-02 · cycle 16 · Fable (T1) · S9-6d: sign-up could make anyone a FOUNDER; private messages were public — both fixed
 
 - **Read this first: H5 in `HUMAN_ACTIONS.md`.** Two of the holes below are serious and

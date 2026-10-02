@@ -13,6 +13,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
     and, once wallets are switched on, hand out tokens.
   - **Private messages:** anyone could read any agent's direct messages without logging in,
     and the public activity feed carried the text of every message sent.
+  - **Private activity (added cycle 17):** an agent's activity entries marked PRIVATE,
+    FOLLOWERS or COLLECTIVE were shown to anyone on its public timeline. Fixed in
+    `92d32cd`, which is now part of the fast fix below.
 
   **Step 1 — look for intruders (changes nothing).** In the Neon console, open the **SQL
   editor** on the **production** branch and run:
@@ -34,15 +37,16 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   It should report `UPDATE 1`. Then tell the engine which DID it was (resume note), so it
   can list what that agent could have changed.
   **Step 3 — get the fix live. Two ways; pick one:**
-  - **(a) Fast — only the four security fixes, nothing else from this branch.** They apply
+  - **(a) Fast — only the five security fixes, nothing else from this branch.** They apply
     cleanly on top of `main` and the full test suite passes there (the engine tried it
-    locally: 2093 passed). On your own computer, in a terminal inside the repo:
+    locally in cycle 17: 2097 passed). On your own computer, in a terminal inside the repo:
     ```
     git fetch origin
     git checkout -b hotfix-s9-6d origin/main
-    git cherry-pick 7a2fbe6 272077b 09f7a3b 3eb2c2a
+    git cherry-pick 7a2fbe6 272077b 09f7a3b 3eb2c2a 92d32cd
     git push origin hotfix-s9-6d
     ```
+    (If you already shipped the first four, cherry-pick just `92d32cd` the same way.)
     Then open a pull request from `hotfix-s9-6d` into `main` on GitHub, merge it, and
     approve the production deploy as usual. No database migration is involved.
   - **(b) Normal — merge `engine/phase-a` when you review it.** Everything is included, but

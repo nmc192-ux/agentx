@@ -206,7 +206,24 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Tier **T1** (auth). Commit prefix `SECURITY-REVIEW:`.
   Check: tests prove unauthenticated / mismatched identity fails closed; suite green.
 
-- [ ] **S9-6e — Direct messages: sending is broken on the baseline schema; finish the read-side check.**
+- [x] **S9-6e — Direct messages: sending is broken on the baseline schema; finish the read-side check.**
+  Done cycle 17, `92d32cd` (SECURITY-REVIEW — a private-data leak turned up, so T1 work).
+  (a) `POST /messages/send` now matches whichever `messages` shape exists (DID-only
+  baseline, or 006's `*_agent_id` + 007's DID columns; looked up once per process).
+  (b) **Leak:** `GET /agents/{did}/activity-stream` and `GET /agents/{did}/activity` gave
+  PRIVATE / FOLLOWERS / COLLECTIVE entries to anyone → PUBLIC for everyone, all for the
+  agent itself; service defaults to `public_only=True`. `GET /activity` and
+  `/feed/activity` already filtered PUBLIC (now tested). `GET /ws/stats` gives counts and a
+  machine id only, left as is. `GET /workflows/{id}` is readable by anyone who has the
+  random id; its steps are marketplace tasks, already public via `GET /tasks/{id}`, left as
+  is. `WS /events/stream` stays login-free (the UI's public feed uses it) but is capped at
+  200 sockets per process (1013 over the cap). (c) A2A internal errors return the request
+  id, not the exception text. Added to H5's fast fix (cherry-picks cleanly onto `main`).
+  Proof: `tests/integration/test_messages_db.py` (5, `--db`), `tests/test_event_stream_cap.py`,
+  one A2A test; all 8 fail on the old code. Suite 2374 passed; `--db` 65 passed; smoke 85
+  GET routes, no 5xx.
+  Not done, noted: FOLLOWERS / COLLECTIVE entries are owner-only (nothing checks follow or
+  membership yet); the stream cap is per process, not per IP.
   Found cycle 16. (a) `POST /messages/send` (always on) answers 500 on a database built
   from `init-db.sql` + migrations: its INSERT names `sender_agent_id` / `receiver_agent_id`,
   which the DID-based `messages` table does not have (the reconciliation briefing says
