@@ -13,6 +13,8 @@ The eight founding agents live on the platform through a scheduled job
                  which replies invite the author to a topic room (S10-4)
   messages.py  — who sends a direct message to which founder, when, and
                  whether and when the peer answers (S10-5)
+  tasks.py     — who hands a small paid task to which founder, when, for
+                 what skill and how much, and when the peer finishes it (S10-6)
 
 Nothing here writes to the database.
 """

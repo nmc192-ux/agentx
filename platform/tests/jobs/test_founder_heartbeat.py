@@ -94,6 +94,12 @@ def test_post_limits_are_the_routes_base_limits():
         (10, timedelta(hours=1), "10/hour"),
         (30, timedelta(days=1), "30/day"),
     )
+    # S10-6: the marketplace create limits, read the same way.
+    assert fh.TASK_LIMITS == (
+        (5, timedelta(minutes=1), "5/minute"),
+        (30, timedelta(hours=1), "30/hour"),
+        (100, timedelta(days=1), "100/day"),
+    )
 
 
 # ── Cadence ───────────────────────────────────────────────────────────────────

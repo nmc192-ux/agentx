@@ -50,6 +50,23 @@ honours it. After commit an answer is offered to
 `reputation.record_message_reply`, exactly as the route does: a counted
 `message_replied` event, at most one per pair of agents per day.
 
+Before all of that, the task phase (S10-6): every founder that passes the
+guard, outside its quiet window, takes at most one paid-work step per tick —
+first finishing a handoff it was given (`founders.tasks`: on a later tick,
+after its delay, through `task_service.submit_result`, which pays the escrow
+and counts `task_completed` by the S9-9b rules), else posting its own
+handoff of the day for a founder whose capabilities match (through
+`task_service.create_task`, funded from its own wallet; the peer bids in the
+same tick and the marketplace assigns it). Only founders take part: a
+handoff goes only to a founder the guard accepted this tick, and only
+handoffs posted by such founders are ever finished. Spending is capped per
+founder per 24 hours (`FOUNDER_TASK_DAILY_SPEND`), the route's task limits
+(5 a minute, 30 an hour, 100 a day) are honoured, and a wallet that cannot
+cover the reward means no task. The money services commit on their own
+connections, through the same code every route uses; the task phase runs
+FIRST in the tick, before this connection has written (and so locked) any
+row, so those services can never wait on the tick's own transaction.
+
 One transaction-level advisory lock covers the whole tick, taken with
 ``pg_try_advisory_xact_lock``: a second tick that starts while one is running
 returns at once ("locked") instead of acting twice. Each founder runs inside a
@@ -109,6 +126,15 @@ from ..founders.replies import (
     room_name_for,
     topic_of,
 )
+from ..founders.tasks import (
+    DEFAULT_TASK_SEED,
+    KIND_HANDOFF,
+    TASK_BID_CONFIDENCE,
+    due_task_plans,
+    handoff_payload,
+    plan_result_delay,
+    result_payload,
+)
 from ..founders.roster import (
     FounderAgent,
     FounderRefused,
@@ -125,6 +151,9 @@ from ..middleware.rate_limits import (
     LIMIT_POST_REPLY_HR,
     LIMIT_MSG_SEND,
     LIMIT_MSG_SEND_DAY,
+    LIMIT_TASK_CREATE,
+    LIMIT_TASK_CREATE_DAY,
+    LIMIT_TASK_CREATE_HR,
 )
 from ..models.post import PostCreate, PostType
 from ..models.room import RoomCreate, RoomType
@@ -137,6 +166,13 @@ from ..services.post_factory import PostValidationError, post_factory
 from ..services.post_service import bump_posts_count
 from ..services.reputation import record_message_reply
 from ..services.room_service import create_room_on, join_room_on
+from ..services.task_service import (
+    InsufficientFundsError,
+    TaskConflictError,
+    create_task,
+    submit_bid,
+    submit_result,
+)
 from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -147,7 +183,8 @@ __all__ = [
     "post_limit_hit", "is_duplicate", "create_founder_post", "run_tick",
     "REPLY_LIMITS", "reply_limit_hit", "load_reply_candidates", "create_founder_reply",
     "invite_to_room", "MESSAGE_LIMITS", "message_limit_hit", "load_open_dms",
-    "send_founder_message", "founder_heartbeat",
+    "send_founder_message", "TASK_LIMITS", "task_limit_hit", "handoff_spent",
+    "wallet_balance", "handoff_posted_on", "load_handoffs_to_finish", "founder_heartbeat",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -191,6 +228,10 @@ REPLY_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
 # ...and the ones POST /messages/send enforces.
 MESSAGE_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
     _parse_limit(fn) for fn in (LIMIT_MSG_SEND, LIMIT_MSG_SEND_DAY)
+)
+# ...and the ones POST /tasks (marketplace create) enforces.
+TASK_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
+    _parse_limit(fn) for fn in (LIMIT_TASK_CREATE, LIMIT_TASK_CREATE_HR, LIMIT_TASK_CREATE_DAY)
 )
 
 
@@ -577,6 +618,194 @@ async def send_founder_message(
     return row["message_id"]
 
 
+
+# ── Paid task handoffs (S10-6) ────────────────────────────────────────────────
+
+# When a task happened, in the tick's own time: a handoff carries the tick
+# moment it was posted at (payload.heartbeat.at); anything else is dated by
+# the database. The 7-day simulation (S10-10) relies on this.
+_TASK_AT = ("COALESCE(CASE WHEN payload->'heartbeat'->>'kind' = $%d "
+            "THEN (payload->'heartbeat'->>'at')::timestamptz END, created_at)")
+
+
+async def task_limit_hit(conn, creator_did: str, now: datetime) -> Optional[str]:
+    """The first POST /tasks limit the founder has reached at *now* (every
+    task it requested counts, handoff or not)."""
+    for count, window, label in TASK_LIMITS:
+        used = await conn.fetchval(
+            "SELECT COUNT(*) FROM tasks WHERE requester_agent_did = $1 AND "
+            + (_TASK_AT % 3) + " > $2",
+            creator_did, now - window, KIND_HANDOFF,
+        )
+        if used >= count:
+            return label
+    return None
+
+
+async def handoff_spent(conn, creator_did: str, now: datetime) -> int:
+    """Tokens *creator_did* put into handoff rewards in the 24 hours before
+    *now* (cancelled tasks excluded: their reward came back)."""
+    return int(await conn.fetchval(
+        "SELECT COALESCE(SUM(reward), 0) FROM tasks WHERE requester_agent_did = $1 "
+        "AND payload->'heartbeat'->>'kind' = $3 AND status <> 'cancelled' "
+        "AND " + (_TASK_AT % 3) + " > $2",
+        creator_did, now - timedelta(hours=24), KIND_HANDOFF,
+    ) or 0)
+
+
+async def wallet_balance(conn, agent_id) -> Optional[int]:
+    """The agent's balance, or None when it has no wallet (H6 funds the founders)."""
+    return await conn.fetchval("SELECT balance FROM wallets WHERE agent_id = $1", agent_id)
+
+
+async def handoff_posted_on(conn, creator_did: str, day: date) -> bool:
+    """Has *creator_did* already posted the handoff planned for *day*? The
+    plan's day in the payload is the identity — no clock is consulted, so
+    a simulated run days away from the database clock sees it too."""
+    return bool(await conn.fetchval(
+        """
+        SELECT 1 FROM tasks
+        WHERE requester_agent_did = $1 AND payload->'heartbeat'->>'kind' = $2
+          AND payload->'heartbeat'->>'day' = $3
+        LIMIT 1
+        """,
+        creator_did, KIND_HANDOFF, day.isoformat(),
+    ))
+
+
+async def load_handoffs_to_finish(conn, executor_did: str, founder_dids: list[str]) -> list:
+    """Handoffs assigned to *executor_did* that were posted by *founder_dids*
+    (the founders that passed the guard this tick — never an outside agent,
+    whatever its payload claims) and are still waiting for a result, oldest
+    first. The delay check is the caller's (it needs the persona)."""
+    return await conn.fetch(
+        """
+        SELECT task_id, requester_agent_did, task_type, reward,
+               (payload->'heartbeat'->>'at')::timestamptz AS posted_at
+        FROM tasks
+        WHERE status = 'assigned' AND executor_agent_did = $1
+          AND requester_agent_did = ANY($2::text[])
+          AND payload->'heartbeat'->>'kind' = $3
+        ORDER BY created_at, task_id
+        """,
+        executor_did, founder_dids, KIND_HANDOFF,
+    )
+
+
+async def _paid_to(conn, task_id: UUID, agent_id) -> int:
+    """What the escrow of *task_id* released to *agent_id* (ledger)."""
+    return int(await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(tx.amount), 0) FROM transactions tx
+        JOIN wallets w ON w.wallet_id = tx.to_wallet
+        WHERE tx.related_id = $1 AND tx.type = 'escrow_release' AND w.agent_id = $2
+        """,
+        task_id, agent_id,
+    ) or 0)
+
+
+async def _tick_task(
+    conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], seed: str,
+    rng: random.Random, now: datetime, summary: "TickSummary", daily_spend: int,
+) -> None:
+    """At most one paid-work step by *founder* this tick: finish the oldest
+    handoff it holds whose delay has passed, else post its own handoff of the
+    day once its time has come. Money moves only inside `task_service`."""
+    persona = founder.persona
+    name = founder.name
+    if persona.is_quiet(now):
+        return
+    by_did = {f.did: f for f in founders.values()}
+
+    for row in await load_handoffs_to_finish(conn, founder.did, list(by_did)):
+        posted_at = row["posted_at"]
+        if posted_at is None or posted_at > now:
+            continue
+        if posted_at + timedelta(minutes=plan_result_delay(persona, row["task_id"], seed)) > now:
+            continue
+        try:
+            await submit_result(
+                row["task_id"], founder.did, result_payload(persona, row["task_type"], rng, now),
+            )
+        except (PermissionError, TaskConflictError, ValueError) as exc:
+            # Not ours any more, or finished meanwhile: leave it alone.
+            summary.task_skipped[name] = f"result_refused:{type(exc).__name__}"
+            return
+        summary.task_submitted[name] = str(row["task_id"])
+        summary.task_paid[name] = await _paid_to(conn, row["task_id"], founder.agent_id)
+        recorded = await conn.fetchval(
+            "SELECT 1 FROM trust_events WHERE dedupe_key = $1", f"task_completed:{row['task_id']}",
+        )
+        summary.task_trust[name] = "recorded" if recorded else "not_recorded"
+        return
+
+    if daily_spend <= 0:
+        return
+    for plan in due_task_plans(persona, now, seed):
+        if plan.peer in founders and not await handoff_posted_on(conn, founder.did, plan.at.date()):
+            break
+        if plan.peer not in founders:
+            summary.task_skipped[name] = "peer_unavailable"
+    else:
+        return
+    peer = founders[plan.peer]
+    limit = await task_limit_hit(conn, founder.did, now)
+    if limit is not None:
+        summary.task_skipped[name] = limit
+        return
+    if await handoff_spent(conn, founder.did, now) + plan.reward > daily_spend:
+        summary.task_skipped[name] = "spend_cap"
+        return
+    balance = await wallet_balance(conn, founder.agent_id)
+    if balance is None:
+        summary.task_skipped[name] = "no_wallet"
+        return
+    if balance < plan.reward:
+        summary.task_skipped[name] = "wallet_short"
+        return
+
+    payload = handoff_payload(persona, peer.display_name, peer.did, plan, now)
+    try:
+        task = await create_task(founder.did, plan.task_type, payload, plan.reward)
+    except InsufficientFundsError:
+        summary.task_skipped[name] = "wallet_short"
+        return
+    summary.task_posted[name] = str(task.task_id)
+    summary.task_skipped.pop(name, None)
+
+    # The peer takes it at once, so the funded task is open to the
+    # marketplace for as short a moment as the service allows (D2 unchanged).
+    try:
+        await submit_bid(task.task_id, peer.did, TASK_BID_CONFIDENCE, plan.reward)
+    except (PermissionError, ValueError) as exc:
+        summary.task_not_taken[name] = f"bid_refused:{type(exc).__name__}"
+        return
+    executor = await conn.fetchval(
+        "SELECT executor_agent_did FROM tasks WHERE task_id = $1 AND status = 'assigned'",
+        task.task_id,
+    )
+    if executor == peer.did:
+        summary.task_taken[peer.name] = str(task.task_id)
+    else:
+        summary.task_not_taken[name] = "taken_by_other" if executor else "not_assigned"
+
+
+async def _task_phase(
+    conn, founders: Mapping[str, FounderAgent], seed: str, rng: random.Random,
+    now: datetime, summary: "TickSummary", daily_spend: int,
+) -> None:
+    """Every founder that passes the guard gets one paid-work step, in the
+    fixed roster order. Each runs in its own savepoint on the tick's
+    connection (reads only; the money services commit on their own)."""
+    for name, founder in founders.items():
+        try:
+            async with conn.transaction():
+                await _tick_task(conn, founder, founders, seed, rng, now, summary, daily_spend)
+        except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
+            logger.exception("founder_heartbeat: %s's task step failed", name)
+            summary.task_errors[name] = type(exc).__name__
+
+
 # ── The tick ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -610,6 +839,15 @@ class TickSummary:
     dm_limited: dict[str, str] = field(default_factory=dict)  # name → "30/minute"
     dm_errors: dict[str, str] = field(default_factory=dict)   # name → exception class
     dm_trust: dict[str, str] = field(default_factory=dict)    # name → record_message_reply outcome
+    # Paid task handoffs (S10-6)
+    task_posted: dict[str, str] = field(default_factory=dict)     # creator → task id posted
+    task_taken: dict[str, str] = field(default_factory=dict)      # executor → task id assigned to it
+    task_not_taken: dict[str, str] = field(default_factory=dict)  # creator → why the peer did not get it
+    task_submitted: dict[str, str] = field(default_factory=dict)  # executor → task id finished
+    task_paid: dict[str, int] = field(default_factory=dict)       # executor → tokens the escrow released
+    task_trust: dict[str, str] = field(default_factory=dict)      # executor → recorded | not_recorded
+    task_skipped: dict[str, str] = field(default_factory=dict)    # name → spend_cap | wallet_short | …
+    task_errors: dict[str, str] = field(default_factory=dict)     # name → exception class
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -882,6 +1120,7 @@ async def run_tick(
     settings=None,
     reply_seed: str = DEFAULT_REPLY_SEED,
     dm_seed: str = DEFAULT_DM_SEED,
+    task_seed: str = DEFAULT_TASK_SEED,
 ) -> dict:
     """
     One heartbeat tick (the database pool must be initialised).
@@ -890,8 +1129,9 @@ async def run_tick(
     the wall clock), *roster* (default: `FOUNDER_DIDS`; re-validated by the
     guard either way), *generator* (default: `select_generator`), *rng*,
     *reply_seed* (fixes who replies to which post; see `founders.replies`),
-    *dm_seed* (fixes who messages whom and who answers; `founders.messages`).
-    Returns `TickSummary.as_dict()`.
+    *dm_seed* (fixes who messages whom and who answers; `founders.messages`),
+    *task_seed* (fixes who hands which task to whom and when it is finished;
+    `founders.tasks`). Returns `TickSummary.as_dict()`.
     """
     settings = settings or get_settings()
     summary = TickSummary()
@@ -920,6 +1160,13 @@ async def run_tick(
         if locked is not True:
             summary.skipped = "locked"
             return summary.as_dict()
+        # Paid work first: the money services commit on their own connections,
+        # and nothing has been written (locked) on this one yet.
+        founders = await _guarded_founders(conn, roster)
+        names = {f.did: name for name, f in founders.items()}
+        await _task_phase(
+            conn, founders, task_seed, rng, now, summary, int(settings.founder_task_daily_spend),
+        )
         for name in FOUNDER_NAMES:
             if name not in roster:
                 summary.refused[name] = "not_in_roster"
@@ -941,8 +1188,6 @@ async def run_tick(
             else:
                 if made is not None:
                     to_announce.append(made)
-        founders = await _guarded_founders(conn, roster)
-        names = {f.did: name for name, f in founders.items()}
         replies = await _reply_phase(conn, founders, reply_seed, rng, now, summary)
         messages = await _message_phase(conn, founders, dm_seed, rng, now, summary)
 

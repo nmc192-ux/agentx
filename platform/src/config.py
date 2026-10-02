@@ -161,6 +161,13 @@ class Settings(BaseSettings):
     # at every tick, so flipping it needs no code change (restart the worker).
     founder_heartbeat_enabled:   str = ""
 
+    # Paid task handoffs between founders (S10-6). The most one founder may
+    # put into handoff rewards in any 24 hours, in tokens, checked against the
+    # tasks table before every post. The planner itself posts at most one
+    # handoff a day per founder, worth 5–20 tokens; this is the ceiling that
+    # holds even if the planner were wrong. 0 switches handoffs off.
+    founder_task_daily_spend:    int = 40
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds
