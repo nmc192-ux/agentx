@@ -69,7 +69,7 @@ def test_full_production_env_value_still_disables_the_social_cohort(monkeypatch)
     settings = Settings(_env_file=None)
     assert not any(
         settings.router_enabled(n)
-        for n in SOCIAL_COHORT + WORK_COHORT_ENABLED
+        for n in SOCIAL_COHORT + WORK_COHORT_ENABLED + MONEY_COHORT_ENABLED
     )
 
 
@@ -96,6 +96,35 @@ def test_fixed_work_routers_can_still_be_switched_off_by_the_kill_switch(monkeyp
     assert not any(
         settings.router_enabled(n) for n in ["tasks", "contracts", "verifications", "markets"]
     )
+
+
+# ── S9-7a: cohort 3 (money) — the token stack, after its fixes ────────────────
+
+# agent_economy is the fourth router of the cohort; it is still Tier A (S9-7c).
+MONEY_COHORT_ENABLED = ["wallets", "stakes", "economy"]
+
+
+@pytest.mark.parametrize("name", MONEY_COHORT_ENABLED)
+def test_money_cohort_enabled_by_default(name, monkeypatch):
+    assert name in ENABLED_IN_SPRINT_9
+    assert name not in DEFAULT_DISABLED_ROUTERS
+    monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert Settings(_env_file=None).router_enabled(name)
+
+
+def test_money_routers_can_still_be_switched_off_by_the_kill_switch(monkeypatch):
+    monkeypatch.setenv("DISABLED_ROUTERS", "wallets,stakes,economy")
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    settings = Settings(_env_file=None)
+    assert not any(settings.router_enabled(n) for n in MONEY_COHORT_ENABLED)
+
+
+def test_repo_default_now_disables_tier_a_only(monkeypatch):
+    """Tier B and Tier C are empty: everything still off is off for a reason
+    written next to it in router_config.py."""
+    assert set(DEFAULT_DISABLED_ROUTERS) == set(BROKEN_OR_INSECURE_ROUTERS)
+    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"agent_economy", "nodes", "governance", "consensus"}
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])

@@ -46,7 +46,9 @@ Three tiers of "disabled" are recorded separately so the distinctions are not lo
      until the underlying defect is fixed (each fix is a Sprint 9 step).
   B. ``PARITY_HOLD_ROUTERS`` — the 5 May audit found these safe to enable, but
      they are OFF in production today. They are kept off here ONLY to preserve
-     parity (zero behavior change on merge). Sprint 9 enables them.
+     parity (zero behavior change on merge). Sprint 9 enables them. Empty
+     since S9-7a (``wallets``, ``stakes``, ``economy`` — which turned out NOT
+     to be safe as audited; fixed, then enabled — see ``ENABLED_IN_SPRINT_9``).
   C. ``PARITY_UNEXPLAINED_ROUTERS`` — off in production for a reason not yet
      established (was: ``memory``, a core primitive). Held off for parity;
      the "why" is a Sprint 9 investigation, not a 9a assumption. Empty since
@@ -103,11 +105,9 @@ BROKEN_OR_INSECURE_ROUTERS = [
 # enables these deliberately (in cohorts: token stack together, social stack
 # together) after confirming production is at alembic head. Removing an entry
 # from this list is a Sprint 9 action, not a 9a action.
-PARITY_HOLD_ROUTERS = [
-    "wallets",
-    "stakes",
-    "economy",
-]
+# Empty since S9-7a: the token stack (wallets, stakes, economy) was fixed and
+# enabled — see ``ENABLED_IN_SPRINT_9``.
+PARITY_HOLD_ROUTERS: list[str] = []
 
 # ── Tier C — disabled in production for a reason not yet established. ──────────
 # `memory` is disabled in production (confirmed by DrJ reading the live value on
@@ -204,9 +204,51 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   Needs a funded wallet, i.e. is only usable once the money
 #                   cohort (`wallets`, S9-7) is on. `POST /markets/bounties/auto`
 #                   is a different router (`agent_economy`, still Tier A).
+# Cohort 3, money (S9-7a): the token stack. It was Tier B ("audit-cleared"),
+# but the review before enabling found it was not safe as it stood.
+#   wallets       — S9-1: every POST needs a JWT and acts on the caller's own
+#                   wallet; funding a wallet (which creates tokens) or acting
+#                   for another agent is FOUNDER-only; ledger labels on a
+#                   transfer are allowlisted. S9-7a: a founder grant is now
+#                   written to the ledger (type 'grant') and to
+#                   token_supply.total_minted — it used to leave no record;
+#                   a transfer locks both wallets in a fixed order (A→B and
+#                   B→A at once used to deadlock and fail one request);
+#                   no transfer to oneself; amounts and page sizes bounded.
+#                   Balances and transaction history are public (GET, no
+#                   login) — on purpose, an open ledger.
+#   stakes        — staking debits the caller's own wallet (S9-1). S9-7a:
+#                   nothing could ever release a stake (`release_stake` had no
+#                   route), so staked tokens were locked for good. New
+#                   owner-only `POST /stakes/{id}/release`: not before
+#                   `locked_until`, stake row locked, paid back once.
+#   economy       — was: `POST /economy/mint` and `POST /economy/slash` only
+#                   asked for a login, so ANY agent could create tokens in the
+#                   treasury (and choose the ledger label for it) or forfeit
+#                   ANY agent's stake; a slash read the stake without a lock,
+#                   so two concurrent slashes credited the treasury twice.
+#                   Fixed in S9-7a: both FOUNDER-only; a mint is always
+#                   labelled 'mint'; a slash locks the stake row (once only,
+#                   also against a concurrent release) and is refused when
+#                   there is no treasury to receive it. The task fee is taken
+#                   from the escrow that is really there (it could be credited
+#                   to the treasury after the escrow had been paid out).
+#                   Proven against real Postgres in
+#                   tests/integration/test_money_db.py.
+#                   Known and NOT changed: nothing moves tokens out of the
+#                   treasury; ordinary agents get tokens only from a FOUNDER
+#                   grant or by earning them (a faucet is Phase C in
+#                   strategic_plan_v2; the /onboard "welcome bonus" is a
+#                   number in the legacy `token_balances` table, not in
+#                   `wallets`, and cannot be spent); a task's reward is
+#                   still escrowed soft-fail and an untaken task cannot be
+#                   cancelled (S9-7b). `/economy/strategies*` and
+#                   `/markets/bounties/auto` are a different router
+#                   (`agent_economy`, still Tier A, S9-7c).
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
     "collectives", "agentbus", "tasks", "contracts", "verifications", "markets",
+    "wallets", "stakes", "economy",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by
