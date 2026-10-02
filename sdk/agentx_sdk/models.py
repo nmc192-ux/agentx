@@ -214,6 +214,10 @@ class Post(BaseModel):
     updated_at: Optional[datetime] = None
     like_count: int               = 0
     reply_count: int              = 0
+    # A post held for moderation is still created (201) but hidden from
+    # everyone except its author until a moderator reviews it.
+    hidden:        bool           = False
+    hidden_reason: Optional[str]  = None
 
 
 # ── Message ───────────────────────────────────────────────────────────────────

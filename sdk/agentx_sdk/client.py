@@ -908,6 +908,9 @@ class AgentXClient:
     def create_bounty(self, bounty: Any) -> Any:
         """Post a new bounty to the marketplace.
 
+        The reward pool is escrowed from your wallet at once; a wallet that
+        cannot cover it answers 400 and no bounty is created.
+
         Args:
             bounty: :class:`~agentx_sdk.models.BountyCreate` instance.
 
@@ -915,7 +918,90 @@ class AgentXClient:
             :class:`~agentx_sdk.models.Bounty`
         """
         from .models import Bounty
-        return Bounty(**self._post("/markets/bounties", bounty.model_dump()))
+        return Bounty(**self._post(
+            "/markets/bounties", bounty.model_dump(mode="json", exclude_none=True),
+        ))
+
+    def list_bounties(
+        self,
+        status: Optional[str] = None,
+        capability: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[Any]:
+        """List bounties, newest first, one page at a time.
+
+        Args:
+            status:     Filter by status (e.g. ``"open"``), or ``None`` for all.
+            capability: Filter by required capability.
+            limit:      Page size, 1-200 (default 50).
+            offset:     Number of bounties to skip.
+
+        Returns:
+            List of :class:`~agentx_sdk.models.Bounty`.
+        """
+        from .models import Bounty
+        raw = self._get(
+            "/markets/bounties",
+            status=status, capability=capability, limit=limit, offset=offset,
+        )
+        return [Bounty(**b) for b in (raw or [])]
+
+    def get_bounty(self, bounty_id: str) -> Any:
+        """Fetch one bounty. Returns :class:`~agentx_sdk.models.Bounty`."""
+        from .models import Bounty
+        return Bounty(**self._get(f"/markets/bounties/{bounty_id}"))
+
+    def submit_bounty_solution(
+        self,
+        bounty_id: str,
+        solution_data: Optional[dict] = None,
+        summary: Optional[str] = None,
+    ) -> dict:
+        """Submit a solution to an open bounty (not your own: 403).
+
+        Returns:
+            The submission record as a dict.
+        """
+        body: dict = {"solution_data": solution_data or {}}
+        if summary is not None:
+            body["summary"] = summary
+        return self._post(f"/markets/bounties/{bounty_id}/submit", body)
+
+    def list_bounty_submissions(self, bounty_id: str) -> list[dict]:
+        """All submissions to a bounty, newest first."""
+        return self._get(f"/markets/bounties/{bounty_id}/submissions") or []
+
+    def evaluate_bounty_submission(
+        self, bounty_id: str, submission_id: str, score: float,
+    ) -> dict:
+        """Score a submission from 0.0 to 1.0. Bounty creator only (403)."""
+        return self._post(
+            f"/markets/bounties/{bounty_id}/submissions/{submission_id}/evaluate",
+            {"score": score},
+        )
+
+    def distribute_bounty_rewards(self, bounty_id: str) -> dict:
+        """Close the bounty and pay the pool to the best-scored submission.
+
+        Bounty creator only (403). Answers 409 if the bounty was already
+        rewarded or cancelled.
+
+        Returns:
+            The reward record as a dict.
+        """
+        return self._post(f"/markets/bounties/{bounty_id}/distribute")
+
+    def cancel_bounty(self, bounty_id: str) -> Any:
+        """Cancel a bounty nobody has submitted to and get the pool back.
+
+        Bounty creator only (403); a bounty with submissions answers 409.
+
+        Returns:
+            :class:`~agentx_sdk.models.Bounty`
+        """
+        from .models import Bounty
+        return Bounty(**self._post(f"/markets/bounties/{bounty_id}/cancel"))
 
     # ── Governance helpers ────────────────────────────────────────────────────
 

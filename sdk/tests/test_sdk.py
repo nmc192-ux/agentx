@@ -339,6 +339,97 @@ class TestBounties:
         ))
         assert b.title == "Fix bug"
 
+    @respx.mock
+    def test_create_bounty_with_deadline_serialises(self):
+        # A datetime deadline used to break the JSON body.
+        route = respx.post(f"{BASE}/markets/bounties").mock(
+            return_value=httpx.Response(201, json=bounty_payload())
+        )
+        from agentx_sdk import BountyCreate
+        make_client().create_bounty(BountyCreate(
+            title="Fix bug", description="...", capability_required="python",
+            reward_pool=100, deadline=datetime(2026, 12, 1, 12, 0),
+        ))
+        body = json.loads(route.calls[0].request.content)
+        assert body["deadline"].startswith("2026-12-01T12:00")
+
+    @respx.mock
+    def test_list_bounties_pages(self):
+        route = respx.get(f"{BASE}/markets/bounties").mock(
+            return_value=httpx.Response(200, json=[bounty_payload()])
+        )
+        out = make_client().list_bounties(status="open", limit=10, offset=5)
+        assert out[0].title == "Fix bug"
+        params = route.calls[0].request.url.params
+        assert params["status"] == "open"
+        assert params["limit"] == "10"
+        assert params["offset"] == "5"
+        assert "capability" not in params
+
+    @respx.mock
+    def test_get_bounty(self):
+        respx.get(f"{BASE}/markets/bounties/{BOUNTY_ID}").mock(
+            return_value=httpx.Response(200, json=bounty_payload())
+        )
+        assert str(make_client().get_bounty(BOUNTY_ID).bounty_id) == BOUNTY_ID
+
+    @respx.mock
+    def test_submit_solution_body(self):
+        route = respx.post(f"{BASE}/markets/bounties/{BOUNTY_ID}/submit").mock(
+            return_value=httpx.Response(201, json={"submission_id": str(uuid4())})
+        )
+        make_client().submit_bounty_solution(BOUNTY_ID, {"patch": "x"}, summary="fix")
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"solution_data": {"patch": "x"}, "summary": "fix"}
+
+    @respx.mock
+    def test_list_submissions(self):
+        respx.get(f"{BASE}/markets/bounties/{BOUNTY_ID}/submissions").mock(
+            return_value=httpx.Response(200, json=[{"submission_id": "s1"}])
+        )
+        assert make_client().list_bounty_submissions(BOUNTY_ID) == [{"submission_id": "s1"}]
+
+    @respx.mock
+    def test_evaluate_body(self):
+        route = respx.post(
+            f"{BASE}/markets/bounties/{BOUNTY_ID}/submissions/s1/evaluate"
+        ).mock(return_value=httpx.Response(200, json={"score": 0.8}))
+        make_client().evaluate_bounty_submission(BOUNTY_ID, "s1", 0.8)
+        assert json.loads(route.calls[0].request.content) == {"score": 0.8}
+
+    @respx.mock
+    def test_distribute_already_rewarded_raises(self):
+        respx.post(f"{BASE}/markets/bounties/{BOUNTY_ID}/distribute").mock(
+            return_value=httpx.Response(409, json={"detail": "already rewarded"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().distribute_bounty_rewards(BOUNTY_ID)
+
+    @respx.mock
+    def test_cancel_bounty(self):
+        respx.post(f"{BASE}/markets/bounties/{BOUNTY_ID}/cancel").mock(
+            return_value=httpx.Response(200, json=bounty_payload(status="cancelled"))
+        )
+        assert make_client().cancel_bounty(BOUNTY_ID).status == "cancelled"
+
+
+BOUNTY_ID = str(uuid4())
+
+
+def bounty_payload(**overrides) -> dict:
+    return {
+        "bounty_id":            BOUNTY_ID,
+        "creator_did":          "did:agentx:me",
+        "creator_id":           str(uuid4()),
+        "title":                "Fix bug",
+        "description":          "...",
+        "capability_required":  "python",
+        "reward_pool":          100,
+        "status":               "open",
+        "created_at":           "2024-01-01T00:00:00",
+        **overrides,
+    }
+
 
 class TestRequestApproval:
     @respx.mock
