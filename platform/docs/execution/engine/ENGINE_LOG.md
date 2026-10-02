@@ -2,6 +2,63 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 15 · Fable (T1) · S9-6c bounties fixed; markets enabled
+
+- **Recovered cycle 11.** Its unfinished work was in `git stash`. I read all of it, judged
+  it sound, restored it, finished and tested it, and committed in three small pieces as
+  DrJ asked (`b1219cb` service + router, `5680d2d` migration, `7ac7757` tests + switch-on).
+  Cycles 12–14 did nothing; there is nothing else to recover and the stash is now empty.
+- **S9-6c done** (`NEEDS-DELIBERATE-MERGE:`): bounties (prize competitions between agents)
+  are now safe to switch on, and are on in the repo default.
+  - **Before:** paying out a bounty checked "is it still open?", paid the winner, and only
+    then closed it — so two pay-out calls at the same moment both paid, creating tokens
+    from nothing. A creator could also enter their own bounty and award themselves the
+    prize. A winner with no wallet was never paid, yet the bounty was marked as paid.
+  - **Now:** the prize is locked when the bounty is created (no funds → no bounty). It
+    leaves exactly once: to the top-scored entry when the creator pays out, or back to the
+    creator if they cancel before anyone has entered (new "cancel" action). "Paid" and the
+    payment happen together or not at all. The creator cannot enter or win their own
+    bounty. Only the creator scores, pays out and cancels. A finished bounty takes no more
+    entries, scores or payouts. The database itself now refuses a second payout record for
+    the same bounty (migration 041).
+- **Production:** unchanged (Fly override still set). H3 says what now turns on.
+  **Merging adds one database migration (041)**, which runs by itself on deploy: it adds
+  the "one reward per bounty" rule. If production somehow holds duplicate reward records,
+  the extras are moved to a side table (`bounty_rewards_duplicates_041`), not deleted. No
+  wallet or balance is touched.
+- **Check:** full platform suite **2306 passed, 74 skipped** (was 2280 / 55; the 19 new
+  skips are the new database tests, which need `--db`). Database tests: **60 passed**
+  against real local Postgres (`.venv/bin/python -m pytest tests/integration -v --db`):
+  17 tasks, 24 contracts, 19 new for bounties — including 12 simultaneous pay-outs → paid
+  once, 10 simultaneous creates on a wallet that covers 3 → exactly 3, 8 simultaneous
+  cancels → refunded once, cancel racing a new entry → exactly one wins, and the token
+  total unchanged every time. With the row lock removed a test fails; with the lock and
+  the status check both removed, two fail (tried by hand, then restored). Migration 041 on
+  a throwaway local database: upgrade moves duplicates aside and keeps the earliest, a
+  second reward row is then refused, downgrade puts the rows back, re-running is clean.
+  Smoke harness green on the repo default, **85 GET routes** (was 82), and with every
+  router on (96), no 5xx. Lint (`ruff check platform/src`) clean.
+- **Not done this cycle:** the live check with a real server and real login tokens that
+  cycles 9 and 10 ran. The database tests replace only the login check; the "no token →
+  401" rule on the real login code is covered by the mocked router tests.
+- **Not run by CI:** as before, the database tests are skipped without `--db`.
+- **Decisions I made (reversible):**
+  - Added "cancel" for a bounty nobody has entered (same reasoning as contracts: without
+    it an unanswered bounty locks its creator's tokens for ever).
+  - Did **not** invent a rule for a creator who never picks a winner, and did not start
+    enforcing the deadline field → **D5**.
+  - A winner with no wallet gets one created at payout (the tokens come out of the locked
+    prize, so nothing is created from nothing).
+  - A creator with no wallet is answered 400 "Insufficient funds" (the stash had 404),
+    matching contracts. Wrong caller is 403, wrong state 409 (both were 400).
+  - `GET /markets/bounties` returns 50 rows per call by default, 200 at most (was: the
+    whole table).
+  - Entries stay publicly readable while a bounty is open (unchanged; noted in D5's
+    background as a design matter, not a token risk).
+- **Found, not fixed (noted on the steps that own them):** bounties can be farmed for
+  reputation with spare accounts like tasks and contracts (S9-9); SDK bounty helpers need
+  checking against the new routes (S9-12).
+
 ## 2026-10-01 · cycle 10 · Fable (T1) · S9-6b contracts fixed; contracts + verifications enabled
 
 - **S9-6b done** (`c9259a0`, `NEEDS-DELIBERATE-MERGE:`): contracts are now safe to switch

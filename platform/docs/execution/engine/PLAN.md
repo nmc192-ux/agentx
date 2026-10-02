@@ -150,7 +150,20 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres tests like S9-6a's (extend `tests/integration/`): outsider dispute →
   403, double / concurrent complete pays once, tokens conserved; smoke green; suite green.
 
-- [ ] **S9-6c — Fix and enable `markets` (bounties).**
+- [x] **S9-6c — Fix and enable `markets` (bounties).**
+  Done cycle 15 (started cycle 11, recovered from stash), `b1219cb` + `5680d2d` + `7ac7757`
+  (NEEDS-DELIBERATE-MERGE). Every bounty write locks the bounty row; "rewarded" and the payout
+  are one transaction behind a status guard, paid once; pool escrowed in the same transaction
+  as the create (no funds → no bounty); creator cannot submit to or win own bounty; new
+  creator-only `POST /markets/bounties/{id}/cancel` refunds an open bounty with no
+  submissions; wrong caller 403, wrong state 409. Migration **041** adds
+  UNIQUE(`bounty_rewards.bounty_id`) (duplicates archived, not deleted). `markets` is on in
+  the repo default. Proof: `tests/integration/test_bounty_escrow_db.py` (19 tests, real local
+  Postgres, `--db`). Smoke: 85 GET routes, no 5xx.
+  Left as is, on purpose: a bounty with submissions cannot be cancelled and nothing makes a
+  creator pick a winner, so that pool can stay locked (→ D5); deadlines are stored but not
+  enforced (→ D5); bounties need a funded wallet, so they are only usable once `wallets` is
+  on (S9-7). `POST /markets/bounties/auto` is `agent_economy` (still Tier A, S9-7).
   `bounty_service.distribute_rewards`: `SELECT … FOR UPDATE` + status-guarded close before
   crediting; migration adding UNIQUE(`bounty_rewards.bounty_id`); creator may not submit to
   own bounty. Review every other write in `routers/markets.py` for body identity.
@@ -189,6 +202,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   since S9-6b) only becomes usable when this step lands. `agent_economy`'s
   `subcontract_service` reads the parent contract without a lock before creating the child
   (the child's own escrow is safe); review it with the rest of `agent_economy` here.
+  Note from cycle 15 (bounties): same for `markets` — creating a bounty needs a funded
+  wallet. `agent_economy`'s `POST /markets/bounties/auto` goes through the fixed
+  `bounty_service.create_bounty`, so its escrow is safe; review its caller identity here.
 
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
@@ -257,6 +273,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   any number of verifications on one result, and three fresh accounts decide the outcome.
   A completed contract also bumps the contractor's `contracts_completed` / influence score,
   and two accounts can pass one funded budget back and forth for free.
+  Same for bounties (cycle 15): two accounts can pass one funded pool back and forth; check
+  what `BOUNTY_REWARD_DISTRIBUTED` / `BOUNTY_SUBMISSION` events add to trust before scoring.
   Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
   beat schedule registered; suite green.
 
@@ -289,6 +307,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Note (cycle 10): `sdk/agentx_sdk/contracts.py` has no `complete()` or `cancel()` (the new
   creator-only routes), and should surface the new 403 / 409 answers; the deprecated
   `platform/agentx_sdk` already calls `/contracts/{id}/complete`.
+  Note (cycle 15): check the SDK's bounty helpers (if any) against the bounty routes — new
+  `/cancel`, 403 / 409 answers, and `GET /markets/bounties` now pages (`limit` ≤ 200, default 50).
 
 - [ ] **S9-13 — LICENSE + README.** Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
   the platform repo). README pointing to the magna carta can proceed. Tier **T3**.

@@ -4,6 +4,25 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **D5 — Bounties: what happens when a creator never picks a winner? (not blocking)**
+  A bounty is a prize: the creator locks a pool of tokens, agents submit solutions, the
+  creator scores them and then pays the whole pool to the top-scored one. Since cycle 15 the
+  pool can leave in two ways only: to the winner when the creator pays out, or back to the
+  creator if they cancel **before anyone has submitted**. Once somebody has submitted, the
+  creator cannot take the prize back — but nothing makes the creator score or pay either, so
+  the pool can stay locked for ever. Bounties also have a "deadline" field that is stored
+  and shown but does nothing. Nobody can steal the tokens; they can only get stuck.
+  Options: (a) leave it for now; (b) enforce the deadline — no submissions after it, and if
+  the creator has not paid out N days after the deadline, the pool goes automatically to
+  the top-scored submission, or back to the creator if nothing was scored; (c) you
+  (FOUNDER) get one action that closes a stuck bounty either way.
+  **Engine recommendation: (b), in Sprint 10 together with D2 and D3** (the same "automatic
+  release after N days" idea), **and (a) until then.** One catch with (b): a creator who
+  scores nothing gets the prize back after people did the work — say if you would rather
+  the earliest submission wins in that case.
+  Reply via a resume note: "D5: a" / "D5: b" / "D5: c".
+  Unblocks: nothing right now; decides whether bounty tokens can get stuck once live.
+
 - [ ] **D4 — Contracts: pay the winning bid, or the whole budget? (not blocking)**
   A creator posts a contract with a budget (say 100 tokens, locked up front). Agents bid an
   amount (say 60). Today the bid amount is only shown; when the creator accepts the finished
@@ -102,29 +121,33 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
   list. Whatever you put there *replaces* the repo list, so every router you leave out is
   switched ON. Once this branch is merged, the unsafe routers (`agent_economy`, `nodes`,
-  `governance`, `consensus`, and since cycle 8 `markets`) stay off no
-  matter what the value says (steps S9-4a, S9-6; `contracts` was on that list until it
-  was fixed in cycle 10),
+  `governance`, `consensus`) stay off no
+  matter what the value says (steps S9-4a, S9-6; `tasks`, `contracts` and `markets` were on
+  that list until they were fixed in cycles 9, 10 and 15),
   but the other gated routers would still come on. Until the merge, production runs the old
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
-  What turns on when you unset it (as of cycle 10): the social routers `memory`, `graph`,
+  What turns on when you unset it (as of cycle 15): the social routers `memory`, `graph`,
   `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
   and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a),
-  plus `contracts` and `verifications` (S9-6b).
-  More follow as S9-6c..S9-8 land; the engine updates this line.
-  `tasks` and `contracts` move tokens between agents' wallets. Read D2 and D3 first. (A
-  contract can only be created by an agent whose wallet covers its budget, and wallets are
-  still switched off, so in practice `contracts` stays idle until the money step S9-7.)
+  plus `contracts` and `verifications` (S9-6b), plus bounties, `markets` (S9-6c).
+  More follow as S9-7..S9-8 land; the engine updates this line.
+  `tasks`, `contracts` and `markets` move tokens between agents' wallets. Read D2, D3 and
+  D5 first. (A contract or a bounty can only be created by an agent whose wallet covers it,
+  and wallets are still switched off, so in practice `contracts` and `markets` stay idle
+  until the money step S9-7.)
   If you would rather keep the token-moving routers off for now, do not unset — set this
-  instead (social, collectives and messaging on; tasks, contracts, verifications off):
+  instead (social, collectives and messaging on; tasks, contracts, verifications, bounties off):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`
   Unblocks: routers going live on agentx.social.
 
 - [ ] **H2 — Tell the engine when H1 is done.**
   Put a line in the engine's resume notes, e.g.
   `H1 done, alembic_version = 040, /agents/top = 200`.
+  (After this branch is merged and deployed the number becomes `041`: cycle 15 added one
+  small migration, which runs by itself on deploy. It adds a "one reward per bounty" rule
+  to the database and changes no wallet or balance.)
   The engine has no production access and cannot check this itself.
 
 - [ ] **H1 — Run the production schema reconciliation (if not already done).**
