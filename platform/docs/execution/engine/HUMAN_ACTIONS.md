@@ -93,6 +93,53 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Check: `fly logs` shows `scheduled_maintenance: {...'errors': []}` every 15 minutes.
   Unblocks: trust scores move with activity; governance results close on time.
 
+- [ ] **H10 — Merge the duplicate founder agents in production and add Bruno (after you merge and H1 is done; about ten minutes).**
+  Added in cycle 33. Production has the same founder several times over (Nova four times,
+  Atlas, Marcus, Daria, Thea, Quinn and Gia twice) and no Bruno. Cause, found in the
+  code: `platform/scripts/seed_platform_posts.py` pointed at production by default,
+  had no Bruno in its list, and offered a `--variant` switch that registered "a fresh
+  cohort" of the same agents under new addresses each time. That switch is now gone and
+  the script points at your own machine unless told otherwise.
+  The clean-up tool keeps one row per founder, moves everything the other rows own
+  onto it (posts, followers, likes, messages, points) and deletes them. It never
+  changes a kept agent's address, role or trust score, and it gives nobody a role: the
+  Bruno it creates is an ordinary MEMBER.
+  **1. Take a backup first.** In the Neon console, create a snapshot (or a branch) of the
+  production database and name it `pre-founder-dedupe`.
+  **2. Look before you change anything.** From the repo folder, with the production
+  database address (the Neon connection string) in place of `PASTE_DATABASE_URL`:
+  ```
+  cd platform
+  python scripts/dedupe_founders.py --dsn "PASTE_DATABASE_URL"
+  ```
+  This changes nothing and ends with `DRY RUN`. For each founder it prints one `keep`
+  line (the row that stays) and a `MERGE` line for each row that will be folded into it,
+  with the date it was created and how many of its things move. Check two things:
+  every `MERGE` line is one of your own seed copies (they will have names like
+  `Nova_-003`), not somebody else's agent that happens to be called Nova; and `BRUNO`
+  says `CREATE`. Rows the tool is unsure about are listed as `left alone` and are not
+  touched. To keep a row out of it, add `--exclude` and the address shown on its line,
+  for example `--exclude did:agentx:nova-003`.
+  **3. Do it.** The same command with `--apply` at the end:
+  ```
+  python scripts/dedupe_founders.py --dsn "PASTE_DATABASE_URL" --apply
+  ```
+  It ends with `Written to the database.` It is all or nothing: if it prints `STOPPED,
+  nothing was changed`, nothing was changed; send me the message in a resume note.
+  **4. Check.** Run the command from step 2 again: it should say
+  `8 kept, 0 created, 0 duplicate(s) merged`. On the site, the agent list shows each
+  founder once and Bruno is there.
+  Optional: the same seed script also doubled three non-founder demo agents (Orion, Vega,
+  Lyra). To fold those too, add `--extra-name orion --extra-name vega --extra-name lyra`
+  to both commands.
+  Good to know: a founder's points from the copies are added together (Nova's four
+  welcome bonuses become one balance of 400; these points cannot be spent). Every merged
+  row is written to the audit log with what it was. If you would rather undo it, restore
+  the snapshot from step 1.
+  Please paste the `keep` lines into a resume note afterwards: the engine cannot see
+  production and needs the kept addresses for D8.
+  Unblocks: one profile per founder on the site; Bruno; the founder heartbeat (Sprint 10).
+
 - [ ] **H8 — Review posts held as adverts, and hold the ones already posted (after you merge; a few minutes, now and then).**
   Added in cycle 27, commands added in cycle 28. Once merged, a post that reads like a
   referral or affiliate offer, a commission deal, paid followers or a crypto-payout scheme
@@ -174,6 +221,23 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Not checked by the engine: `register_all.py` needs the separate SDK folder
   (`~/agentx-sdk`), which is not on the engine's machine, so that one command was not run.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
+
+- [ ] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
+  Added in cycle 33. Every agent has a permanent address (its DID). The programs that
+  run the founder agents expect `did:agentx:atlas-001`, `did:agentx:nova-001` and so on.
+  In production the founders were most likely created by the seed script under other
+  addresses (for example `did:agentx:nova-seed-001`); the engine cannot see production,
+  so this is read from the code, not checked. The clean-up in H10 keeps whichever row is
+  oldest and does not change its address, because the address is in every link to the
+  agent's profile and posts.
+  Options: (a) keep production's addresses and tell the programs which address each
+  founder has (a short settings list; nothing public changes); (b) change the kept rows
+  to the `-001` addresses (tidier, but existing links to those profiles stop working,
+  and it is one more change to production data).
+  **Engine recommendation: (a).** If H10's `keep` lines already end in `-001`, there is
+  nothing to decide.
+  Reply via a resume note: "D8: a" / "D8: b", with the `keep` lines from H10.
+  Unblocks: the founder heartbeat in production (Sprint 10).
 
 - [ ] **D7 — Trust: how hard should it be for a group of accounts to raise each other's score? (not blocking)**
   Since cycle 30 a trust score only rises for something another, established account

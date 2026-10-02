@@ -678,7 +678,42 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   database that is already at head (031 creates `communities` without IF NOT EXISTS).
   Harmless for the documented use (a fresh `init-db.sql` database, CI), noted only.
 
-- [ ] **S9-10 — Founder dedupe + Bruno (local only).**
+- [x] **S9-10 — Founder dedupe + Bruno (local only).**
+  Done cycle 33, `a7409a4` (NEEDS-DELIBERATE-MERGE — a data-affecting script and a change to the
+  seed data of a fresh database; no migration). `platform/scripts/dedupe_founders.py`:
+  dry run unless `--apply`; one transaction, all or nothing (the dry run executes the same
+  statements and rolls back).
+  A founder's rows = DID `did:agentx:<name>-NNN` or `<name>-seed-NNN` AND display name
+  `<name>` (any case, with or without 038's `_xxxx` suffix); one of the two only → listed,
+  never touched. Kept row = `<name>-001` if present, else the oldest; its DID, id, role,
+  tier, status and trust score do not change (a duplicate's role is never inherited).
+  Every cell in the database holding a duplicate's DID or id is rewritten (found from the
+  catalog, so it does not depend on a table list); a row the kept agent already has is
+  dropped only in 16 membership-type tables, any other clash stops the run; point
+  balances and wallets are added together; follower / post counters recounted; 038's
+  suffix taken off the kept name; one `audit_logs` row per merged duplicate. A founder
+  with no row is created as `<name>-001`, MEMBER. Not ACTIVE → left alone unless
+  `--include-inactive`; `--exclude DID`; `--extra-name` for the non-founder seed personas.
+  Refuses a database login that row-level security hides rows from.
+  **Cause of the production duplicates, found in code:** `seed_platform_posts.py`
+  defaulted to the production URL, had no Bruno, and had `--variant` to "create a fresh
+  cohort" (`nova-seed-001`, `nova-002`, `nova-003` …). `--variant` removed, default now
+  localhost, founder personas use `<name>-001`.
+  Canonical set chosen: `did:agentx:<name>-001` (what the runners use; the spec's
+  "lowest-numbered"). `init-db.sql`, `seed_agents.py`, `agents/runner.py`,
+  `agents/platform_bridge.py` and the README table moved to it (were `marcus-002` …
+  `gia-008`); guard: `tests/test_founder_dids_agree.py` (15 tests). `seed_ecosystem.py`
+  opens wallets at 0 with the agent's own login (it posted `initial_balance` with no login).
+  Proof: `tests/integration/test_dedupe_founders_db.py` (14 tests, real local Postgres,
+  `--db`; 14 rules taken out in turn, each fails a test); rehearsal on a scratch database
+  shaped like production (10 personas × 2–4 copies, no Bruno), then the real app on it:
+  29 of 29. Production run → H10. Which DID the founders run under in production → D8.
+  Left as is, on purpose: the kept row's DID is never renamed, so on a database seeded
+  the old way (or production, probably `<name>-seed-001`) the kept DID is not the one the
+  runners use — the script says so per founder (→ D8, Sprint 10); a DID inside JSON or
+  post text is not rewritten; "verified" on a capability is not recounted when a
+  duplicate's endorsement of the kept row is dropped; `src/a2a/skill.py` still shows
+  `did:agentx:daria-004` as an example author (→ S9-13a, it is `.well-known` content).
   Goal: idempotent script that keeps one canonical row for each of the 8 founders
   (ATLAS, BRUNO, DARIA, GIA, MARCUS, NOVA, QUINN, THEA), repoints FKs, removes duplicates,
   creates Bruno if missing. Must coexist with migration 038's suffixed display names.
@@ -773,6 +808,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   with the final outcome of a verification (+0.03), at most +0.10 a day. "Post an UPDATE
   to maintain trust score visibility" and "Consistent participation raises your trust
   score" are not true (posting earns nothing).
+  Cycle 33 (S9-10): the example post in skill.md is authored by `did:agentx:daria-004`
+  (`a2a/skill.py:235`); the founders are `did:agentx:<name>-001` now — use `daria-001`.
   Goal: each claim true or removed; sections for gated routers shown
   only when the router is on; a test that every path in the document is a mounted route
   (extend `tests/a2a/test_skill_md.py`).
@@ -793,6 +830,9 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [human] **S9-H7 — Recount post totals in production after merge.** See HUMAN_ACTIONS H7.
 
+- [human] **S9-H10 — Merge the duplicate founders in production, add Bruno.** See
+  HUMAN_ACTIONS H10 (the tool comes with S9-10). Open question D8.
+
 - [human] **S9-H8 — Review held posts in production after merge.** See HUMAN_ACTIONS H8
   (the tool comes with S9-8c2).
 
@@ -801,6 +841,13 @@ Note for Sprint 10 (cycle 20): the founder agents get tokens only from
 way they do locally (the `client_credentials` grant is refused there), so the heartbeat
 needs a real credential path for the founders and a FOUNDER token for the funding step —
 both are decisions for the Sprint 10 spec, and the funding run itself is a human action.
+
+Note for Sprint 10 (cycle 33): in production the founders probably do not have the
+`<name>-001` DIDs the runners use (see S9-10, D8). Until D8 is answered the Sprint 10 spec
+should take the founder DIDs from configuration, not from the constants in `runners/`.
+`platform/scripts/seed_platform_posts.py` registers the founder personas with display
+names "Nova", "Atlas" …; on a fresh database those names are taken (409) and it only adds
+Orion, Vega and Lyra.
 
 After Sprint 9 closes: draft `sprint_10_heartbeat.md` from Plan v2 §4 (open questions on LLM
 provider and daily cost ceiling become DECISION_NEEDED unless a reversible default exists).

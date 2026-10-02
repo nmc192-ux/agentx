@@ -2,6 +2,53 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 33 · Fable (T1) · S9-10: one row per founder, Bruno, and the reason there were several
+
+- **Not live in production until merged, and even then nothing runs by itself.** No
+  database migration. The clean-up of production is a command you run (H10).
+- **Why it mattered:** the site lists Nova four times and most other founders twice, and
+  Bruno not at all.
+- **What caused it (found in the code):** the script that seeds demo posts
+  (`seed_platform_posts.py`) pointed at production unless told otherwise, had no Bruno in
+  its list, and had a switch that registered "a fresh cohort" of the same agents under
+  new addresses when the old ones could not log in. Each use made another Nova. That
+  switch is removed, and the script now points at your own machine by default.
+- **What changed** (`a7409a4`, NEEDS-DELIBERATE-MERGE):
+  - **A clean-up tool** (`platform/scripts/dedupe_founders.py`). For each founder it keeps
+    one row, moves everything the copies own onto it (posts, followers, likes, messages,
+    points, wallets) and deletes the copies. A founder with no row (Bruno) is created.
+    It only shows what it would do unless you add `--apply`.
+  - **What it will not do:** change a kept agent's address, role or trust score; give
+    anyone a role (the Bruno it creates is an ordinary member, and a copy that had a
+    higher role does not pass it on); touch a row it is unsure about (same name but a
+    different kind of address, or the other way round — those are listed and left);
+    choose between two conflicting records such as two votes on the same thing (it stops
+    and changes nothing).
+  - **All the seeds now agree** on one address per founder (`did:agentx:<name>-001`).
+    The database starter file and three other places used different numbers
+    (`marcus-002` … `gia-008`); on a fresh local database that made the founder programs
+    fail to find their own agents. A test now fails if any seed drifts again.
+- **Check:** 14 new real-database tests (taking each of 14 rules out in turn makes a test
+  fail), 15 tests on the seeds. A rehearsal on a local database built to look like
+  production (10 demo agents registered 2–4 times each, no Bruno), followed by the real
+  app running on the result: 29 of 29 — eight founders, one row each, Bruno present, no
+  post or point lost, every follower and like counted once, the deleted copies' profile
+  pages gone (404). Full suite 2583 passed; real-database 239 passed; smoke green
+  (96 routes, no 5xx); lint clean.
+- **For DrJ:** **H10** (new): back up, run the tool once to look, once to apply; about ten
+  minutes, after the merge is live. **D8** (new, not blocking): the founders in production
+  probably live at addresses like `nova-seed-001`, not the `nova-001` the founder programs
+  expect. I could not check (no production access). Recommendation: leave the addresses
+  alone and tell the programs which to use. Please paste H10's `keep` lines in a note.
+- **Decisions I made (reversible):** the kept row is `<name>-001` when it exists, else the
+  oldest (the spec's "lowest-numbered"; the same rule migration 038 used for names); a
+  kept address is never renamed; a created founder is a MEMBER; copies that are suspended
+  or deactivated are left alone unless asked; points and wallets of copies are added
+  together; Bruno's name is spelled like the founders already there ("Bruno" beside
+  "Nova", "BRUNO" beside "NOVA").
+- **Not done, noted:** an address written inside a post's text or a JSON blob is not
+  rewritten; skill.md's example post still names `daria-004` (S9-13a, `.well-known`).
+
 ## 2026-10-02 · cycle 32 · Fable (T1) · S9-9d: an endorsement counts once; nothing else can overwrite a trust score
 
 - **Not live in production until merged.** Includes database migration 045 (one new empty
