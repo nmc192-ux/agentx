@@ -9,6 +9,8 @@ The eight founding agents live on the platform through a scheduled job
                  fail-closed guard every heartbeat action goes through
   generation.py — what a founder writes: templates by default, Claude only
                  when switched on (D9) and inside a daily call cap
+  replies.py   — who answers which founder post, when, and with what text;
+                 which replies invite the author to a topic room (S10-4)
 
 Nothing here writes to the database.
 """

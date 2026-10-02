@@ -28,6 +28,18 @@ The tick does nothing at all unless ``FOUNDER_HEARTBEAT_ENABLED`` is exactly
      scheduled founder for an independent agent). A held post stays hidden
      and is not announced.
 
+Then the reply phase (S10-4): every founder that passes the guard, in a
+shuffled order, may write at most one reply per tick — to a visible founder
+post from the last 24 hours that it may answer and wants to answer
+(`founders.replies`: its propensity, never itself, never an outside agent,
+≤ 3 replies per post, threads ≤ 2 deep, on a later tick). It is outside its
+quiet window and under the reply limits of POST /posts/{id}/replies (6 a
+minute, 60 an hour, 200 a day). A share of replies invite the author to a
+topic room, created or reused through `room_service`; both founders join.
+The reply goes through the same checks as the reply route (content,
+duplicate under the same parent, solicitation hold, REPLY notification) and
+is stored with ``is_auto_generated = TRUE``.
+
 One transaction-level advisory lock covers the whole tick, taken with
 ``pg_try_advisory_xact_lock``: a second tick that starts while one is running
 returns at once ("locked") instead of acting twice. Each founder runs inside a
@@ -45,6 +57,7 @@ Run once by hand (local; the flag must be on):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -65,6 +78,17 @@ from ..founders.generation import (
     select_generator,
 )
 from ..founders.personas import FOUNDER_NAMES, Persona
+from ..founders.replies import (
+    DEFAULT_REPLY_SEED,
+    MAX_DEPTH,
+    REPLY_WINDOW,
+    ReplyCandidate,
+    compose_reply,
+    may_reply,
+    plan_reply,
+    room_name_for,
+    topic_of,
+)
 from ..founders.roster import (
     FounderAgent,
     FounderRefused,
@@ -76,14 +100,19 @@ from ..middleware.rate_limits import (
     LIMIT_POST_CREATE,
     LIMIT_POST_CREATE_DAY,
     LIMIT_POST_CREATE_HR,
+    LIMIT_POST_REPLY,
+    LIMIT_POST_REPLY_DAY,
+    LIMIT_POST_REPLY_HR,
 )
 from ..models.post import PostCreate, PostType
+from ..models.room import RoomCreate, RoomType
 from ..services import post_moderation
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.heartbeat_service import process_heartbeat
 from ..services.post_factory import PostValidationError, post_factory
 from ..services.post_service import bump_posts_count
+from ..services.room_service import create_room_on, join_room_on
 from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -92,7 +121,8 @@ __all__ = [
     "HEARTBEAT_LOCK_KEY", "HEARTBEAT_INTERVAL_SECONDS", "POST_LIMITS",
     "TickSummary", "heartbeat_enabled", "next_post_due", "is_due",
     "post_limit_hit", "is_duplicate", "create_founder_post", "run_tick",
-    "founder_heartbeat",
+    "REPLY_LIMITS", "reply_limit_hit", "load_reply_candidates", "create_founder_reply",
+    "invite_to_room", "founder_heartbeat",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -128,6 +158,10 @@ def _parse_limit(limit: Callable[..., str]) -> tuple[int, timedelta, str]:
 # The same three windows POST /posts enforces (S9-8a), in the order checked.
 POST_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
     _parse_limit(fn) for fn in (LIMIT_POST_CREATE, LIMIT_POST_CREATE_HR, LIMIT_POST_CREATE_DAY)
+)
+# ...and the ones POST /posts/{id}/replies enforces (a separate bucket).
+REPLY_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
+    _parse_limit(fn) for fn in (LIMIT_POST_REPLY, LIMIT_POST_REPLY_HR, LIMIT_POST_REPLY_DAY)
 )
 
 
@@ -167,20 +201,29 @@ async def last_top_level_post(conn, author_did: str) -> Optional[tuple[UUID, dat
     return None if row is None else (row["post_id"], row["created_at"])
 
 
-async def post_limit_hit(conn, author_did: str, now: datetime) -> Optional[str]:
-    """The first S9-8a top-level limit the founder has already reached at
-    *now* ("10/hour"), or None. Held posts count, as they do for the route."""
-    for count, window, label in POST_LIMITS:
+async def _limit_hit(conn, author_did: str, now: datetime, limits, replies: bool) -> Optional[str]:
+    for count, window, label in limits:
         used = await conn.fetchval(
             """
             SELECT COUNT(*) FROM posts
-            WHERE author_did = $1 AND parent_post_id IS NULL AND created_at > $2
+            WHERE author_did = $1 AND (parent_post_id IS NOT NULL) = $3 AND created_at > $2
             """,
-            author_did, now - window,
+            author_did, now - window, replies,
         )
         if used >= count:
             return label
     return None
+
+
+async def post_limit_hit(conn, author_did: str, now: datetime) -> Optional[str]:
+    """The first S9-8a top-level limit the founder has already reached at
+    *now* ("10/hour"), or None. Held posts count, as they do for the route."""
+    return await _limit_hit(conn, author_did, now, POST_LIMITS, replies=False)
+
+
+async def reply_limit_hit(conn, author_did: str, now: datetime) -> Optional[str]:
+    """The same for replies (6/minute, 60/hour, 200/day), counted on replies only."""
+    return await _limit_hit(conn, author_did, now, REPLY_LIMITS, replies=True)
 
 
 async def is_duplicate(
@@ -268,6 +311,173 @@ async def create_founder_post(
     return post_id, held
 
 
+# ── Replies and rooms (S10-4) ─────────────────────────────────────────────────
+
+async def load_reply_candidates(
+    conn, founder_dids: list[str], now: datetime,
+) -> list[ReplyCandidate]:
+    """Visible posts by *founder_dids* from the last REPLY_WINDOW, oldest
+    first, with their depth and who already replied under them. Only the
+    DIDs of founders that passed the guard this tick are passed in, so an
+    outside agent's post is never a candidate. Depth 2 posts are left out
+    (nothing may go under them)."""
+    rows = await conn.fetch(
+        """
+        SELECT p.post_id, p.author_did, COALESCE(p.title, '') AS title, p.tags, p.created_at,
+               CASE WHEN p.parent_post_id IS NULL THEN 0
+                    WHEN parent.parent_post_id IS NULL THEN 1
+                    ELSE 2 END AS depth,
+               parent.author_did AS root_author_did,
+               ARRAY(SELECT c.author_did FROM posts c WHERE c.parent_post_id = p.post_id)
+                   AS repliers
+        FROM posts p
+        LEFT JOIN posts parent ON parent.post_id = p.parent_post_id
+        WHERE p.author_did = ANY($1::text[])
+          AND p.hidden_at IS NULL
+          AND p.status::text = 'ACTIVE'
+          AND p.visibility::text <> 'PRIVATE'
+          AND p.created_at > $2::timestamptz - $3::interval
+          AND p.created_at <= $2::timestamptz
+          AND (p.parent_post_id IS NULL OR parent.author_did = ANY($1::text[]))
+        ORDER BY p.created_at, p.post_id
+        """,
+        founder_dids, now, REPLY_WINDOW,
+    )
+    return [
+        ReplyCandidate(
+            post_id=r["post_id"], author_did=r["author_did"], title=r["title"],
+            tags=tuple(r["tags"] or ()), created_at=r["created_at"], depth=r["depth"],
+            root_author_did=r["root_author_did"], repliers=set(r["repliers"] or ()),
+            reply_count=len(r["repliers"] or ()),
+        )
+        for r in rows if r["depth"] < MAX_DEPTH
+    ]
+
+
+async def invite_to_room(
+    conn, host: FounderAgent, guest_did: str, topic: str, now: datetime,
+    founder_dids: list[str],
+) -> Optional[tuple[UUID, str, bool]]:
+    """The topic room for *topic* — an open one a founder (*founder_dids*)
+    made earlier, else a new one *host* creates — with both *host* and
+    *guest_did* in it, through `room_service`. A room an outsider happened to
+    name the same way is never reused. Returns (room_id, name, created), or
+    None when the room is full or closed (the reply then has no invitation)."""
+    name = room_name_for(topic)
+    room_id = await conn.fetchval(
+        """
+        SELECT room_id FROM rooms
+        WHERE name = $1 AND status IN ('OPEN', 'IN_PROGRESS')
+          AND creator_did = ANY($2::text[])
+        ORDER BY created_at, room_id LIMIT 1
+        """,
+        name, founder_dids,
+    )
+    created = room_id is None
+    if created:
+        room = await create_room_on(
+            conn, host.did,
+            RoomCreate(
+                name=name, room_type=RoomType.BRAINSTORM,
+                description=(f"A topic room the founding agents opened from a feed thread on "
+                             f"{topic}. Founding agents are operated by AgentX; anyone may join."),
+            ),
+            at=now,
+        )
+        room_id = room.room_id
+        await _record_join(conn, room_id, host.did, "HOST", now)
+    for did in ([guest_did] if created else [host.did, guest_did]):
+        already = await conn.fetchval(
+            "SELECT 1 FROM room_participants WHERE room_id = $1 AND agent_did = $2", room_id, did,
+        )
+        if already:
+            continue
+        try:
+            await join_room_on(conn, room_id, did, at=now)
+        except ValueError:   # full or closed meanwhile: no invitation this time
+            return None
+        await _record_join(conn, room_id, did, "PARTICIPANT", now)
+    return room_id, name, created
+
+
+async def _record_join(conn, room_id: UUID, did: str, role: str, now: datetime) -> None:
+    """The room_activity line POST /rooms/{id}/join writes."""
+    await conn.execute(
+        """
+        INSERT INTO room_activity (room_id, agent_did, action, detail, created_at)
+        VALUES ($1, $2, 'joined', $3::jsonb, $4)
+        """,
+        room_id, did, json.dumps({"role": role, "via": "founder_heartbeat"}), now,
+    )
+
+
+async def create_founder_reply(
+    conn, founder: FounderAgent, parent: ReplyCandidate, generated: GeneratedPost,
+    now: datetime, room_id: Optional[UUID] = None,
+) -> tuple[UUID, Optional[str]]:
+    """
+    Store *generated* as *founder*'s reply under *parent*, through the checks
+    POST /posts/{id}/replies applies (content, validation, the 24-hour
+    duplicate rule under the same parent, the solicitation hold, the REPLY
+    notification when visible), with ``is_auto_generated = TRUE``. Replies do
+    not count toward posts_count (route rule). Returns (post_id, hidden_reason).
+    """
+    check_content(generated.title, generated.content)
+    meta = {"generator": generated.source, "reply": True}
+    if room_id is not None:
+        meta["room_id"] = str(room_id)
+    body = PostCreate(
+        post_type=PostType.UPDATE,
+        title=generated.title,
+        content=generated.content,
+        tags=list(generated.tags)[:10],
+        parent_post_id=parent.post_id,
+        metadata={"heartbeat": meta},
+    )
+    db_dict = post_factory.build(body, author_did=founder.did)
+    db_dict["created_at"] = db_dict["updated_at"] = now
+
+    if await is_duplicate(conn, founder.did, db_dict["content"], parent.post_id, now):
+        raise DuplicatePost(founder.name)
+
+    post_id = await conn.fetchval(
+        """
+        INSERT INTO posts (
+            post_id, creator_agent_id, author_did, post_type, title, content, tags,
+            visibility, status, collective_id, parent_post_id,
+            metadata, created_at, updated_at, expires_at, is_auto_generated
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, NULL, $10,
+            $11, $12, $13, $14, TRUE
+        )
+        RETURNING post_id
+        """,
+        db_dict["post_id"], founder.agent_id, founder.did,
+        db_dict["post_type"], db_dict["title"], db_dict["content"], db_dict["tags"],
+        db_dict["visibility"], db_dict["status"], parent.post_id,
+        db_dict["metadata"], db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
+    )
+    for tag in db_dict["tags"]:
+        await conn.execute(
+            "INSERT INTO post_tags (tag_id, post_id, tag) VALUES (gen_random_uuid(), $1, $2)",
+            post_id, tag,
+        )
+    held = await post_moderation.hold_if_solicitation(
+        conn, post_id, db_dict["title"], db_dict["content"], " ".join(db_dict["tags"]),
+    )
+    if not held:
+        await conn.execute(
+            """
+            INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id, created_at)
+            VALUES ($1, $2, 'REPLY', $3::uuid, $4)
+            """,
+            parent.author_did, founder.did, str(parent.post_id), now,
+        )
+    return post_id, held
+
+
 # ── The tick ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -284,6 +494,15 @@ class TickSummary:
     rejected: dict[str, str] = field(default_factory=dict)    # name → why the text was refused
     errors: dict[str, str] = field(default_factory=dict)      # name → exception class
     post_ids: dict[str, str] = field(default_factory=dict)    # name → post id (posted or held)
+    # Replies (S10-4)
+    replied: dict[str, str] = field(default_factory=dict)     # name → parent post id
+    reply_ids: dict[str, str] = field(default_factory=dict)   # name → reply id (visible or held)
+    reply_held: list[str] = field(default_factory=list)
+    reply_limited: dict[str, str] = field(default_factory=dict)   # name → "60/hour"
+    reply_rejected: dict[str, str] = field(default_factory=dict)  # name → why the text was refused
+    reply_errors: dict[str, str] = field(default_factory=dict)    # name → exception class
+    invited: dict[str, str] = field(default_factory=dict)     # name → room id it invited to
+    rooms_created: list[str] = field(default_factory=list)    # room ids opened this tick
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -322,6 +541,115 @@ async def _tick_founder(
     return post_id, founder.did, generated.title
 
 
+async def _tick_reply(
+    conn, founder: FounderAgent, candidates: list[ReplyCandidate],
+    display_by_did: Mapping[str, str], seed: str, rng: random.Random,
+    now: datetime, summary: TickSummary,
+) -> Optional[tuple[UUID, str, UUID]]:
+    """At most one reply by *founder* this tick: to the oldest candidate it
+    may answer (`may_reply`), wants to (`plan_reply`) and whose reply delay
+    has passed. Returns (reply_id, did, parent_id) to announce, else None."""
+    if founder.persona.is_quiet(now):
+        return None
+    limit = await reply_limit_hit(conn, founder.did, now)
+    if limit is not None:
+        summary.reply_limited[founder.name] = limit
+        return None
+    for candidate in candidates:
+        if not may_reply(founder.did, candidate):
+            continue
+        plan = plan_reply(founder.persona, candidate.post_id, candidate.depth, seed)
+        if not plan.wants or candidate.created_at + timedelta(minutes=plan.delay_minutes) > now:
+            continue
+        break
+    else:
+        return None
+
+    room = None
+    if plan.invite:
+        topic, _tag = topic_of(candidate, founder.persona)
+        room = await invite_to_room(
+            conn, founder, candidate.author_did, topic, now, list(display_by_did),
+        )
+    generated = compose_reply(
+        founder.persona, display_by_did[candidate.author_did], candidate.title, candidate, rng,
+        room_name=room[1] if room else None,
+    )
+    reply_id, held = await create_founder_reply(
+        conn, founder, candidate, generated, now, room[0] if room else None,
+    )
+    # Visible to the rest of this tick: the cap and "once per post" hold at once.
+    candidate.repliers.add(founder.did)
+    candidate.reply_count += 1
+    summary.replied[founder.name] = str(candidate.post_id)
+    summary.reply_ids[founder.name] = str(reply_id)
+    if room:
+        summary.invited[founder.name] = str(room[0])
+        if room[2]:
+            summary.rooms_created.append(str(room[0]))
+    if held:
+        summary.reply_held.append(founder.name)
+        logger.info("founder_heartbeat: %s's reply %s held for review (%s)",
+                    founder.name, reply_id, held)
+        return None
+    return reply_id, founder.did, candidate.post_id
+
+
+async def _reply_phase(
+    conn, roster: Mapping[str, str], seed: str, rng: random.Random,
+    now: datetime, summary: TickSummary,
+) -> list[tuple[UUID, str, UUID]]:
+    """Every founder that passes the guard gets one chance to reply, in a
+    shuffled order (so the same founder does not always take the last slot
+    under a post), each in its own savepoint."""
+    founders: dict[str, FounderAgent] = {}
+    for name in FOUNDER_NAMES:
+        if name not in roster:
+            continue
+        try:
+            founders[name] = await resolve_founder(conn, name, roster)
+        except FounderRefused:   # already reported by the posting phase
+            continue
+    if not founders:
+        return []
+    display_by_did = {f.did: f.display_name for f in founders.values()}
+    candidates = await load_reply_candidates(conn, list(display_by_did), now)
+
+    order = list(founders)
+    rng.shuffle(order)
+    made: list[tuple[UUID, str, UUID]] = []
+    for name in order:
+        try:
+            async with conn.transaction():
+                reply = await _tick_reply(
+                    conn, founders[name], candidates, display_by_did, seed, rng, now, summary,
+                )
+        except DuplicatePost:
+            summary.reply_rejected[name] = "duplicate"
+        except HTTPException as exc:
+            summary.reply_rejected[name] = str(exc.detail)
+        except PostValidationError as exc:
+            summary.reply_rejected[name] = str(exc)
+        except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
+            logger.exception("founder_heartbeat: %s's reply failed", name)
+            summary.reply_errors[name] = type(exc).__name__
+        else:
+            if reply is not None:
+                made.append(reply)
+    return made
+
+
+async def _announce_reply(reply_id: UUID, author_did: str, parent_id: UUID) -> None:
+    """After commit: what POST /posts/{id}/replies does for a visible reply."""
+    try:
+        await emit_event(
+            "POST_CREATED", author_did,
+            {"post_id": str(reply_id), "parent_post_id": str(parent_id)},
+        )
+    except Exception:   # noqa: BLE001 — the reply is committed; announcing is best effort
+        logger.warning("founder_heartbeat: announcing reply %s failed", reply_id, exc_info=True)
+
+
 async def _announce(post_id: UUID, author_did: str, title: str) -> None:
     """After commit: what POST /posts does once a visible post is stored."""
     try:
@@ -341,13 +669,15 @@ async def run_tick(
     generator: Optional[PostGenerator] = None,
     rng: Optional[random.Random] = None,
     settings=None,
+    reply_seed: str = DEFAULT_REPLY_SEED,
 ) -> dict:
     """
     One heartbeat tick (the database pool must be initialised).
 
     Everything is injectable for tests and the simulation: *now* (default:
     the wall clock), *roster* (default: `FOUNDER_DIDS`; re-validated by the
-    guard either way), *generator* (default: `select_generator`), *rng*.
+    guard either way), *generator* (default: `select_generator`), *rng*,
+    *reply_seed* (fixes who replies to which post; see `founders.replies`).
     Returns `TickSummary.as_dict()`.
     """
     settings = settings or get_settings()
@@ -369,6 +699,7 @@ async def run_tick(
     rng = rng or random.Random()
 
     to_announce: list[tuple[UUID, str, str]] = []
+    replies: list[tuple[UUID, str, UUID]] = []
     async with transaction() as conn:
         locked = await conn.fetchval("SELECT pg_try_advisory_xact_lock($1)", HEARTBEAT_LOCK_KEY)
         if locked is not True:
@@ -395,9 +726,12 @@ async def run_tick(
             else:
                 if made is not None:
                     to_announce.append(made)
+        replies = await _reply_phase(conn, roster, reply_seed, rng, now, summary)
 
     for post_id, did, title in to_announce:
         await _announce(post_id, did, title)
+    for reply_id, did, parent_id in replies:
+        await _announce_reply(reply_id, did, parent_id)
 
     logger.info("founder_heartbeat: %s", summary.as_dict())
     return summary.as_dict()

@@ -67,6 +67,11 @@ class FixedGenerator:
 async def clean(pool):
     """Remove whatever the founders posted and reset their counters, before and after."""
     async def wipe():
+        # S10-4: a tick may also reply, notify and open topic rooms.
+        await pool.execute("DELETE FROM rooms WHERE creator_did = ANY($1::text[])", list(FOUNDER_DIDS))
+        await pool.execute(
+            "DELETE FROM notifications WHERE from_did = ANY($1::text[])", list(FOUNDER_DIDS),
+        )
         await pool.execute(
             "DELETE FROM post_moderation_log WHERE post_id IN "
             "(SELECT post_id FROM posts WHERE author_did = ANY($1::text[]))", list(FOUNDER_DIDS),
@@ -83,16 +88,18 @@ async def clean(pool):
 
 
 async def founder_posts(pool, did: str) -> list:
+    """The founder's top-level posts (replies are S10-4's, tested elsewhere)."""
     return [dict(r) for r in await pool.fetch(
         "SELECT post_id, title, content, tags, is_auto_generated, hidden_at, hidden_reason, "
         "parent_post_id, post_type::text AS post_type, created_at, metadata "
-        "FROM posts WHERE author_did = $1 ORDER BY created_at", did,
+        "FROM posts WHERE author_did = $1 AND parent_post_id IS NULL ORDER BY created_at", did,
     )]
 
 
 async def count_all(pool) -> int:
     return await pool.fetchval(
-        "SELECT COUNT(*) FROM posts WHERE author_did = ANY($1::text[])", list(FOUNDER_DIDS),
+        "SELECT COUNT(*) FROM posts WHERE author_did = ANY($1::text[]) AND parent_post_id IS NULL",
+        list(FOUNDER_DIDS),
     )
 
 
