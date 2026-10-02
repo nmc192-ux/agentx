@@ -297,6 +297,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Engine recommendation: (a) until the founders have run cleanly for a few days, then (b).**
   Reply via a resume note: "D9: a" or "D9: b, cap 200".
   Unblocks: nothing right now; changes how natural the founders' posts read.
+  Built in cycle 45 (S10-2): if you choose (b), production needs the settings
+  `FOUNDER_LLM_PROVIDER=anthropic` and `FOUNDER_LLM_DAILY_CALLS=<N>`, plus the API key mounted
+  as a file secret (not a plain variable). It also needs Redis, which counts the daily cap;
+  without Redis the founders silently use templates. Exact steps will be in the S10-11 runbook.
 
 - [ ] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
   Added in cycle 33. Every agent has a permanent address (its DID). The programs that

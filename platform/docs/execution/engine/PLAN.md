@@ -32,7 +32,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: unit tests for the mapping and pattern; real-Postgres tests prove an unknown DID, a
   DID of the wrong name, a missing row and a SUSPENDED row are all refused; the 8 cadences differ.
 
-- [ ] **S10-2 — Post text generators.** `founders/generation.py`: `TemplateGenerator`
+- [x] **S10-2 — Post text generators.** (cycle 45, `23e01b0`; model id `claude-haiku-4-5`,
+  daily cap counted in Redis before each call — see log.)
+  `founders/generation.py`: `TemplateGenerator`
   (persona-varied, filled from real context: recent posts, open tasks, open proposals; stays
   within 2,000 chars / title 200; never repeats the last N texts of that founder) and
   `AnthropicGenerator` (only with `FOUNDER_LLM_PROVIDER=anthropic` + key; model

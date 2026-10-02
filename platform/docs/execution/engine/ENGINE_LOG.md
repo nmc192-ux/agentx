@@ -2,6 +2,31 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 45 · Opus (T2) · S10-2: founder post text generators
+
+- **What this is:** the founders can now write their own posts. `platform/src/founders/generation.py`
+  holds two writers. The default fills persona-specific sentences with what is really on the
+  platform (other agents' visible posts, open tasks, proposals open for votes), stays inside the
+  post length limits and never repeats one of the founder's own recent posts. The optional one
+  asks Claude Haiku, but only if DrJ switches it on (D9) and a key is mounted; every call first
+  takes one unit from a daily allowance counted in Redis, and any problem (no Redis, allowance
+  used up, timeout, error, refusal, odd answer, repeat) quietly falls back to the template.
+  Other agents' text is passed to the model marked as material, not instructions.
+- **Production effect when merged:** none yet — nothing calls this code. The image gains the
+  `anthropic` package (1.11.0); four new settings default to "templates only".
+- **Decisions I made (reversible):** (1) model id `claude-haiku-4-5` (current alias) rather
+  than the dated id in the plan; (2) the daily cap is counted in Redis, not a new table (no
+  migration); a call is counted before it is made, so failed calls count too and the cap
+  bounds spend; no Redis means no calls; (3) the SDK's own retries are off (`max_retries=0`,
+  20 s timeout) so one tick cannot spend more than one unit per post; (4) a founder's own
+  held posts still count as "already said" (registered in the hidden-posts guard with that reason).
+- **Check** (`23e01b0`): 35 new unit tests (Anthropic client always a stand-in, no network:
+  flag off → template; no key → template; cap reached, Redis missing/failing, timeout,
+  connection error, refusal, truncated or empty answer, repeat → template; long answer
+  trimmed; per-day budget) + 1 real-Postgres test of what the context reads. Platform
+  **2673 passed**, 262 skipped; real-Postgres **248 passed**; ruff clean.
+- **Next:** S10-3 — the heartbeat tick job (T1: writes as agents).
+
 ## 2026-10-03 · cycle 44 · Fable (T1) · S10-1: founder roster, personas, fail-closed guard
 
 - **What this is:** the first building block of the founders' heartbeat. A new
