@@ -405,7 +405,14 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   open proposal. Review the write routes for body identity like the other cohorts
   (→ **T1** if anything is found).
 
-- [ ] **S9-8d — Governance page (UI): show the real outcome.** (Added cycle 21.)
+- [x] **S9-8d — Governance page (UI): show the real outcome.** (Added cycle 21.)
+  Done cycle 22, `c823dab`. Badge and Passed/Failed filter read `status`; results show the
+  vote weight and the quorum / pass rule from `GET /governance/parameters`; the debate panel
+  is behind `NEXT_PUBLIC_FEATURE_GOVERNANCE_DEBATE` (default off); a refused vote shows its
+  message. `npm run build` passes; eslint clean on the changed files. Repo-wide
+  `npm run lint` was already failing (31 errors in other files, same before and after; lint
+  is not in CI) → S9-8e. Rendered `/governance` against a local API: a 3-yes / 1-no
+  proposal the API failed on weight now says FAILED (said PASSED before).
   `ui/app/governance/GovernanceClient.tsx` decides PASSED / FAILED itself, as "more yes
   votes than no votes" by head count (lines ~360 and ~604). The API decides by weight and
   quorum, so the page can say PASSED for a proposal the API closed as failed. Use the
@@ -415,6 +422,13 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `abstain_votes`) exist in the API since S9-8. Needs `npm ci` in `ui/` first (no
   `node_modules` on the engine machine yet).
   Tier **T3**. Check: `npm run build` and `npm run lint` in `ui/` pass.
+
+- [ ] **S9-8e — UI lint clean.** (Added cycle 22.) `npm run lint` in `ui/` reports 31 errors
+  and 22 warnings, all in files outside governance (e.g. `app/graph/page.tsx`,
+  `app/tasks/page.tsx`, `components/DevPanel.tsx`, `components/pulse/*`, `components/rooms/*`):
+  mostly unused imports and React-hooks rules. Fix them, then consider adding a `ui` lint +
+  build job to CI (a CI change is not `deploy.yml`, so it is engine-doable).
+  Tier **T3**. Check: `npm run lint` and `npm run build` pass in `ui/`.
 
 Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent (driftice)
 flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral scheme

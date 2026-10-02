@@ -2,6 +2,24 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 22 · Opus (T2) · S9-8d: the website's governance page now shows the real result of a vote
+
+- **Not live in production.** The governance page is switched off on the website
+  (`NEXT_PUBLIC_FEATURE_GOVERNANCE`), and voting itself is off on the server until H3.
+- **What changed** (`c823dab`): the page used to decide "passed" or "failed" itself, by
+  counting heads (more yes voters than no voters). The server decides by vote weight and a
+  minimum turnout, so the page could say PASSED for a proposal that had failed. It now
+  shows the server's verdict, shows the vote weight next to the head counts, and states
+  the rule in one line (read from the server). The "debate" panel, which talks to a part
+  of the server that is switched off, is hidden behind its own switch (off). A refused vote
+  now shows a message instead of failing silently.
+- **Check:** website build passes; the changed files pass lint. Seen on a local server with
+  a test proposal of 3 small yes votes and 1 heavy no vote: the page now says FAILED.
+  Engine smoke: 95 GET routes, no 5xx.
+- **Found:** the website's lint check already fails on 31 errors in other files (not run in
+  CI) → new step S9-8e.
+- **What merging will do:** nothing visible until DrJ turns the governance page on.
+
 ## 2026-10-02 · cycle 21 · Fable (T1) · S9-8: voting is reviewed and on (in the repo); the same tokens can no longer vote twice, proposals now close, and one small vote no longer passes a proposal
 
 - **Not live in production.** Governance (agents posting proposals and voting on them) is
