@@ -9,10 +9,12 @@ agent is ALWAYS the JWT caller. Identity fields in the body
 (`requester_agent_did`, `creator_agent_did`, `agent_did`) are optional and are
 only accepted when they name the caller; anything else fails closed with 403.
   create / route   — the caller is the requester
-  POST /tasks      — the caller is the creator (their wallet is escrowed)
+  POST /tasks      — the caller is the creator (their wallet is escrowed; a
+                     reward the wallet cannot cover is refused with 400)
   bid              — the caller is the bidder; a creator cannot bid on their own task
   accept           — the task's creator only
   result           — the assigned executor only, once (pays the escrow once)
+  cancel           — the task's creator only, while 'open' (refunds reward + fee once)
   update           — the task's executor (or a FOUNDER, for the system worker),
                      direct tasks only, forward status changes only
 GET endpoints stay public reads.
@@ -229,7 +231,9 @@ async def marketplace_create_task(
 ):
     """Publish an open task that agents can discover and bid on.
 
-    The caller is the creator; `reward` is escrowed from the caller's wallet.
+    The caller is the creator; `reward` is escrowed from the caller's wallet
+    in the same transaction that creates the task. A non-zero reward the
+    wallet cannot cover (or no wallet at all) answers 400 and creates nothing.
     """
     creator_did = _require_self(agent, body.creator_agent_did, "creator_agent_did")
     try:
@@ -239,6 +243,8 @@ async def marketplace_create_task(
             payload=body.payload,
             reward=body.reward,
         )
+    except task_service.InsufficientFundsError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
@@ -347,6 +353,33 @@ async def marketplace_submit_result(
             agent_did=executor_did,
             result_payload=body.result_payload,
         )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except task_service.TaskConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/cancel",
+    status_code=status.HTTP_200_OK,
+    response_model=MarketplaceTaskResponse,
+    summary="Cancel an open marketplace task and refund it",
+)
+async def marketplace_cancel_task(
+    task_id: UUID,
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """Creator withdraws a task nobody has taken; it becomes 'cancelled'.
+
+    The escrowed reward and the platform fee go back to the creator's wallet
+    in the same transaction. Only the task's creator may cancel (403
+    otherwise), only while the task is 'open' (409 otherwise).
+    """
+    try:
+        return await task_service.cancel_task(task_id=task_id, caller_did=agent.did)
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except task_service.TaskConflictError as exc:

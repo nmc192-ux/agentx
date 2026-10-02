@@ -14,6 +14,12 @@ in tests/integration/test_task_escrow_db.py:
   - submit_bid()     refuses the task's creator
   - assign_task()    creator only
   - submit_result()  assigned executor only, task must be 'assigned'
+
+Sprint 9 (S9-7b), mocked here and proven against real Postgres in
+tests/integration/test_task_escrow_db.py:
+  - create_task()    escrow and fee run inside the task's own transaction;
+                     a wallet that cannot cover the reward means no task
+  - cancel_task()    creator only, 'open' only, refunds in the same transaction
 """
 from __future__ import annotations
 
@@ -96,8 +102,14 @@ async def test_create_task_returns_task_response():
         {"agent_id": creator_id},  # agent lookup
         row,                        # insert RETURNING
     ])
+    escrow = AsyncMock(return_value=None)
+    fee = AsyncMock(return_value=2)
 
-    with patch("src.services.task_service.transaction", return_value=_tx_context(conn)):
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.escrow_task_reward", new=escrow),
+        patch("src.services.economy_service.collect_task_fee", new=fee),
+    ):
         result = await task_service.create_task(
             creator_agent_did="did:agentx:atlas-001",
             task_type="marketplace.test",
@@ -109,6 +121,64 @@ async def test_create_task_returns_task_response():
     assert result.reward == 100
     assert result.status == "open"
     assert conn.fetchrow.await_count == 2
+    # Escrow and fee run on the task's own connection: one transaction.
+    escrow.assert_awaited_once_with(creator_id, row["task_id"], 100, conn=conn)
+    fee.assert_awaited_once_with(row["task_id"], 100, conn=conn)
+
+
+@pytest.mark.asyncio
+async def test_create_task_without_reward_moves_no_tokens():
+    creator_id = uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(side_effect=[
+        {"agent_id": creator_id},
+        _task_row(creator_id=creator_id, reward=0),
+    ])
+    escrow = AsyncMock()
+    fee = AsyncMock()
+
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.escrow_task_reward", new=escrow),
+        patch("src.services.economy_service.collect_task_fee", new=fee),
+    ):
+        result = await task_service.create_task(
+            creator_agent_did="did:agentx:atlas-001",
+            task_type="marketplace.test", payload=None, reward=0,
+        )
+
+    assert result.reward == 0
+    escrow.assert_not_awaited()
+    fee.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_task_unfunded_reward_is_not_swallowed():
+    """The escrow used to be soft-fail: an unfunded reward still made a task."""
+    creator_id = uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(side_effect=[
+        {"agent_id": creator_id},
+        _task_row(creator_id=creator_id),
+    ])
+    escrow = AsyncMock(side_effect=task_service.InsufficientFundsError("Insufficient funds"))
+    fee = AsyncMock()
+    publish = AsyncMock()
+
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.escrow_task_reward", new=escrow),
+        patch("src.services.economy_service.collect_task_fee", new=fee),
+        patch("src.services.task_service.publish_event", new=publish),
+        pytest.raises(task_service.InsufficientFundsError),
+    ):
+        await task_service.create_task(
+            creator_agent_did="did:agentx:atlas-001",
+            task_type="marketplace.test", payload=None, reward=100,
+        )
+
+    fee.assert_not_awaited()
+    publish.assert_not_awaited()      # no TASK_CREATED for a task that is not there
 
 
 @pytest.mark.asyncio
@@ -507,3 +577,83 @@ async def test_submit_result_raises_if_agent_not_found():
             agent_did="did:agentx:ghost-001",
             result_payload={},
         )
+
+
+# ── cancel_task (S9-7b) ────────────────────────────────────────────────────────
+
+def _cancel_patches(conn, refund, fee_refund):
+    return (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.refund_task_escrow", new=refund),
+        patch("src.services.economy_service.refund_task_fee", new=fee_refund),
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancel_task_refunds_in_the_same_transaction():
+    task_id, creator_id = uuid4(), uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(side_effect=[
+        {"task_id": task_id, "status": "open", "creator_agent_id": creator_id},
+        _task_row(task_id=task_id, creator_id=creator_id, status="cancelled"),
+    ])
+    conn.fetchval = AsyncMock(return_value=creator_id)
+    refund = AsyncMock(return_value=98)
+    fee_refund = AsyncMock(return_value=2)
+
+    p1, p2, p3 = _cancel_patches(conn, refund, fee_refund)
+    with p1, p2, p3:
+        result = await task_service.cancel_task(task_id, "did:agentx:atlas-001")
+
+    assert result.status == "cancelled"
+    assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
+    refund.assert_awaited_once_with(task_id, creator_id, conn=conn)
+    fee_refund.assert_awaited_once_with(conn, task_id, creator_id)
+
+
+@pytest.mark.asyncio
+async def test_cancel_task_refuses_anyone_but_the_creator():
+    task_id = uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "task_id": task_id, "status": "open", "creator_agent_id": uuid4(),
+    })
+    conn.fetchval = AsyncMock(return_value=uuid4())     # some other agent
+    refund, fee_refund = AsyncMock(), AsyncMock()
+
+    p1, p2, p3 = _cancel_patches(conn, refund, fee_refund)
+    with p1, p2, p3, pytest.raises(PermissionError):
+        await task_service.cancel_task(task_id, "did:agentx:mallory-001")
+
+    refund.assert_not_awaited()
+    fee_refund.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("task_status", ["assigned", "COMPLETED", "cancelled", "PENDING"])
+async def test_cancel_task_refuses_a_task_that_is_not_open(task_status):
+    task_id, creator_id = uuid4(), uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "task_id": task_id, "status": task_status, "creator_agent_id": creator_id,
+    })
+    conn.fetchval = AsyncMock(return_value=creator_id)
+    refund, fee_refund = AsyncMock(), AsyncMock()
+
+    p1, p2, p3 = _cancel_patches(conn, refund, fee_refund)
+    with p1, p2, p3, pytest.raises(task_service.TaskConflictError):
+        await task_service.cancel_task(task_id, "did:agentx:atlas-001")
+
+    refund.assert_not_awaited()
+    fee_refund.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_task_not_found():
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value=None)
+    refund, fee_refund = AsyncMock(), AsyncMock()
+
+    p1, p2, p3 = _cancel_patches(conn, refund, fee_refund)
+    with p1, p2, p3, pytest.raises(ValueError, match="Task not found"):
+        await task_service.cancel_task(uuid4(), "did:agentx:atlas-001")

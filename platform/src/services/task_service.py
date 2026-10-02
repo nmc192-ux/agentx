@@ -10,6 +10,7 @@ Business logic for the open marketplace:
   submit_bid()              — agent bids on a task
   assign_task()             — creator accepts a bid
   submit_result()           — executor submits task result
+  cancel_task()             — creator withdraws a task nobody took (refund)
   suggest_agents_for_task() — rank agents by capability fit (Phase 5)
 
 All DB access uses asyncpg via get_db() / transaction() context managers.
@@ -22,8 +23,16 @@ caller, resolved by the router from the JWT, never from the request body:
   submit_result() — the assigned executor only, once: the task must be
                     'assigned'; completing it and paying the escrow commit in
                     one transaction, so a reward can never be paid twice.
-Errors: PermissionError → 403, TaskConflictError → 409, other ValueError →
-404 / 422 (see routers/tasks.py).
+  cancel_task()   — the task's creator only, 'open' tasks only, refunded once.
+Errors: PermissionError → 403, TaskConflictError → 409, InsufficientFundsError
+→ 400, other ValueError → 404 / 422 (see routers/tasks.py).
+
+Money (Sprint 9, S9-7b): a reward is always funded. create_task() inserts the
+task, escrows the reward from the creator's wallet and takes the platform fee
+in ONE transaction; a wallet that cannot cover a non-zero reward means no task
+(it used to be created anyway, advertising a reward nobody would be paid).
+cancel_task() gives the escrow and the fee back in the transaction that marks
+the task 'cancelled'.
 """
 from __future__ import annotations
 
@@ -45,6 +54,7 @@ from ..models.task import (  # noqa: E402
 )
 from ..models.capability import EligibleAgentResponse  # noqa: E402
 from ..services.reputation import record_event  # noqa: E402
+from .token_service import InsufficientFundsError  # noqa: E402,F401  (re-exported for the router)
 
 
 class TaskConflictError(ValueError):
@@ -114,7 +124,21 @@ async def create_task(
     payload: dict | None,
     reward: int,
 ) -> TaskResponse:
-    """Publish a new open marketplace task."""
+    """
+    Publish a new open marketplace task.
+
+    The task row, the escrow of *reward* from the creator's wallet and the
+    platform fee are ONE transaction: if the wallet cannot cover a non-zero
+    reward, nothing is created and no token moves.
+
+    Raises:
+        ValueError: creator agent not found.
+        InsufficientFundsError: reward > 0 and the creator has no wallet, or
+            the wallet does not hold the reward.
+    """
+    escrowed_amount = 0
+    fee_collected = 0
+
     async with transaction() as conn:
         agent_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
@@ -161,6 +185,21 @@ async def create_task(
             reward,
         )
 
+        if reward > 0:
+            # Phase 8: escrow the reward from the creator's wallet. Raises on
+            # a missing or short wallet → the INSERT above rolls back too.
+            from .token_service import escrow_task_reward
+            await escrow_task_reward(
+                agent_row["agent_id"], row["task_id"], reward, conn=conn
+            )
+            escrowed_amount = reward
+
+            # Phase 8.5: platform fee, out of the escrow, same transaction.
+            from .economy_service import collect_task_fee
+            fee_collected = await collect_task_fee(
+                row["task_id"], escrowed_amount, conn=conn
+            )
+
     task = _row_to_task(dict(row))
 
     # Phase 7: Publish alongside existing direct calls (backward compatible)
@@ -169,29 +208,6 @@ async def create_task(
         {"task_id": str(task.task_id), "task_type": task_type, "reward": reward},
         creator_agent_did,
     )
-
-    # Phase 8: Escrow task reward from creator's wallet (soft-fail)
-    escrowed_amount = 0
-    if reward > 0:
-        try:
-            from .token_service import escrow_task_reward
-            await escrow_task_reward(agent_row["agent_id"], task.task_id, reward)
-            escrowed_amount = reward
-        except Exception as exc:
-            logger.warning(
-                "Token escrow skipped for task %s: %s", task.task_id, exc
-            )
-
-    # Phase 8.5: Collect platform fee from escrow (soft-fail)
-    fee_collected = 0
-    if escrowed_amount > 0:
-        try:
-            from .economy_service import collect_task_fee
-            fee_collected = await collect_task_fee(task.task_id, escrowed_amount)
-        except Exception as exc:
-            logger.warning(
-                "Task fee collection skipped for task %s: %s", task.task_id, exc
-            )
 
     # Phase 8.5: Publish TASK_ESCROWED (fire-and-forget, never breaks caller)
     await publish_event(
@@ -551,36 +567,63 @@ async def submit_result(
     return _row_to_result(dict(result_row))
 
 
-async def fail_task(task_id: UUID, reason: str = "") -> TaskResponse:
+async def cancel_task(task_id: UUID, caller_did: str) -> TaskResponse:
     """
-    Phase 8.5 — Mark a task as failed:
-      1. Updates task status to 'failed'.
-      2. Publishes TASK_FAILED event.
-      3. Refunds escrowed reward to the creator (soft-fail).
-      4. Publishes STAKE_SLASHED event if executor stake was slashed (soft-fail).
+    Creator withdraws a marketplace task that nobody has taken.
+
+    In ONE transaction, with the task row locked: marks the task 'cancelled',
+    refunds the escrowed reward to the creator and gives the platform fee
+    back (the task never ran, so the platform keeps nothing). Only an 'open'
+    task can be cancelled: once an executor is assigned, the escrow is theirs
+    to earn and the creator cannot pull it back.
+
+    Because the status check, the status change and the refunds share one
+    locked transaction, a task is refunded once however many cancels race —
+    and a cancel racing a bid either wins (the bid finds the task closed) or
+    loses (409, the task is assigned).
 
     Raises:
-        ValueError: if task not found.
+        ValueError: task not found.
+        PermissionError: *caller_did* is not the task's creator (a direct
+            task has no marketplace creator, so nobody can cancel it here).
+        TaskConflictError: the task is not 'open' (assigned, finished or
+            already cancelled).
     """
     async with transaction() as conn:
         task_row = await conn.fetchrow(
             """
-            SELECT task_id, creator_agent_id, task_type, payload,
-                   reward, status, created_at, escrowed_reward
-            FROM   tasks
-            WHERE  task_id = $1
+            SELECT task_id, status, creator_agent_id
+            FROM tasks WHERE task_id = $1
+            FOR UPDATE
             """,
             task_id,
         )
         if task_row is None:
             raise ValueError(f"Task not found: {task_id}")
 
+        caller_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            caller_did,
+        )
+        if caller_id is None or caller_id != task_row["creator_agent_id"]:
+            raise PermissionError("Only the task creator can cancel it")
+        if task_row["status"] != "open":
+            raise TaskConflictError(
+                f"Only an open task can be cancelled (status={task_row['status']})"
+            )
+
+        from .economy_service import refund_task_fee
+        from .token_service import refund_task_escrow
+        refunded = await refund_task_escrow(task_id, caller_id, conn=conn)
+        fee_refunded = await refund_task_fee(conn, task_id, caller_id)
+
         updated = await conn.fetchrow(
             """
             UPDATE tasks
-               SET status     = 'failed',
+               SET status     = 'cancelled',
                    updated_at = CURRENT_TIMESTAMP
              WHERE task_id = $1
+               AND status  = 'open'
             RETURNING
                 task_id, creator_agent_id, task_type, payload,
                 reward, status, created_at
@@ -588,25 +631,11 @@ async def fail_task(task_id: UUID, reason: str = "") -> TaskResponse:
             task_id,
         )
 
-    task = _row_to_task(dict(updated))
-
-    # Publish TASK_FAILED (existing event type — reputation handler picks it up)
-    await publish_event(
-        EventType.TASK_FAILED,
-        {"task_id": str(task_id), "reason": reason},
+    logger.info(
+        "task_service: task %s cancelled by %s (refunded %d + fee %d)",
+        task_id, caller_did, refunded, fee_refunded,
     )
-
-    # Refund escrow to creator (soft-fail)
-    if task_row["escrowed_reward"]:
-        try:
-            from .token_service import refund_task_escrow
-            await refund_task_escrow(task_id, task_row["creator_agent_id"])
-        except Exception as exc:
-            logger.warning(
-                "Escrow refund skipped for failed task %s: %s", task_id, exc
-            )
-
-    return task
+    return _row_to_task(dict(updated))
 
 
 async def suggest_agents_for_task(

@@ -13,6 +13,10 @@ What is proven:
     submitted, and to the assigned executor only
   • concurrent bids assign a task to exactly one agent
   • tokens are conserved: wallets + escrow never change in total
+  • (S9-7b) a reward is always funded: a wallet that cannot cover it means no
+    task, and task + escrow + fee are one transaction
+  • (S9-7b) only the creator can cancel, only an open task, and the reward
+    and the fee are refunded once, however many cancels (or bids) race
 
 Run (needs local Postgres with trust auth for the current OS user):
     cd platform && .venv/bin/python -m pytest tests/integration -v --db
@@ -27,10 +31,19 @@ import asyncio
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 
 from .support import START_BALANCE, Agent, balance, total_tokens
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def treasury(pool):
+    """The app creates the treasury at startup; the test client does not run
+    the startup hooks, so make sure it is there (idempotent)."""
+    from src.services import economy_service
+    await economy_service.initialize_treasury()
 
 
 # ── DB probes ─────────────────────────────────────────────────────────────────
@@ -46,6 +59,23 @@ async def releases(pool, task_id: str) -> int:
     return await pool.fetchval(
         "SELECT COUNT(*) FROM transactions WHERE related_id = $1 AND type = 'escrow_release'",
         UUID(task_id),
+    )
+
+
+async def ledger(pool, task_id: str, tx_type: str) -> int:
+    return await pool.fetchval(
+        "SELECT COUNT(*) FROM transactions WHERE related_id = $1 AND type = $2",
+        UUID(task_id), tx_type,
+    )
+
+
+async def treasury_balance(pool) -> int:
+    return await pool.fetchval("SELECT balance FROM wallets WHERE wallet_type = 'treasury'")
+
+
+async def tasks_by(pool, creator: Agent) -> int:
+    return await pool.fetchval(
+        "SELECT COUNT(*) FROM tasks WHERE creator_agent_id = $1", creator.agent_id,
     )
 
 
@@ -442,3 +472,312 @@ async def test_self_assigned_task_earns_no_reputation(client, pool, agents):
         f"/tasks/{task_id}/update", json={"status": "COMPLETED"}, headers=loner.headers)
     assert done.status_code == 200
     assert await trust_events(pool, loner) == 0
+
+
+# ── S9-7b: a reward is always funded ──────────────────────────────────────────
+
+async def test_reward_the_wallet_cannot_cover_creates_no_task(client, pool, agents):
+    """Was soft-fail: the task was created anyway, advertising a reward that
+    nobody would ever be paid."""
+    poor = await agents("poor", 40)
+    walletless = await agents("walletless")            # no wallet at all
+    before = await total_tokens(pool)
+
+    for creator in (poor, walletless):
+        resp = await client.post(
+            "/tasks", json={"task_type": "unfunded.test", "reward": 100},
+            headers=creator.headers,
+        )
+        assert resp.status_code == 400, resp.text
+        assert "Insufficient funds" in resp.json()["detail"]
+        assert await tasks_by(pool, creator) == 0
+
+    assert await balance(pool, poor) == 40
+    assert await balance(pool, walletless) is None      # no wallet conjured up
+    assert await total_tokens(pool) == before
+
+
+async def test_task_without_a_reward_needs_no_wallet(client, pool, agents):
+    creator = await agents("creator")
+    task_id = await open_task(client, creator, reward=0)
+    row = await task_row(pool, task_id)
+    assert (row["status"], row["escrowed_reward"], row["task_fee"]) == ("open", 0, 0)
+    assert await ledger(pool, task_id, "escrow") == 0
+
+
+async def test_reward_larger_than_the_column_is_refused_cleanly(client, pool, agents):
+    creator = await agents("creator", START_BALANCE)
+    resp = await client.post(
+        "/tasks", json={"task_type": "huge.test", "reward": 2**31}, headers=creator.headers,
+    )
+    assert resp.status_code == 422
+    assert await balance(pool, creator) == START_BALANCE
+
+
+async def test_task_escrow_and_fee_are_one_transaction(client, pool, agents, monkeypatch):
+    """If the fee step blows up, the task and the escrow are rolled back with
+    it (they used to be three separate transactions)."""
+    from src.services import economy_service
+
+    creator = await agents("creator", START_BALANCE)
+    before = await total_tokens(pool)
+
+    async def boom(conn, task_id, escrow_amount):
+        raise RuntimeError("fee step failed")
+    monkeypatch.setattr(economy_service, "_collect_task_fee", boom)
+
+    with pytest.raises(RuntimeError):
+        await client.post(
+            "/tasks", json={"task_type": "atomic.test", "reward": 100}, headers=creator.headers,
+        )
+
+    assert await tasks_by(pool, creator) == 0
+    assert await balance(pool, creator) == START_BALANCE
+    assert await total_tokens(pool) == before
+
+
+async def test_concurrent_creates_cannot_overspend_the_wallet(client, pool, agents):
+    creator = await agents("creator", 150)
+    before = await total_tokens(pool)
+
+    responses = await asyncio.gather(*[
+        client.post(
+            "/tasks", json={"task_type": "race.test", "reward": 100}, headers=creator.headers)
+        for _ in range(6)
+    ])
+    assert sorted(r.status_code for r in responses) == [201] + [400] * 5
+
+    assert await tasks_by(pool, creator) == 1
+    assert await balance(pool, creator) == 50
+    assert await total_tokens(pool) == before
+
+
+# ── S9-7b: cancelling a task nobody took ──────────────────────────────────────
+
+async def test_cancel_refunds_the_reward_and_the_fee(client, pool, agents):
+    creator = await agents("creator", START_BALANCE)
+    treasury_before, before = await treasury_balance(pool), await total_tokens(pool)
+
+    task_id = await open_task(client, creator, reward=1000)
+    row = await task_row(pool, task_id)
+    assert (row["escrowed_reward"], row["task_fee"]) == (975, 25)
+    assert await balance(pool, creator) == 0
+    assert await treasury_balance(pool) == treasury_before + 25
+
+    resp = await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "cancelled"
+
+    row = await task_row(pool, task_id)
+    assert (row["status"], row["escrowed_reward"], row["task_fee"]) == ("cancelled", 0, 0)
+    assert await balance(pool, creator) == START_BALANCE          # made whole
+    assert await treasury_balance(pool) == treasury_before        # the platform keeps nothing
+    assert await ledger(pool, task_id, "escrow_refund") == 1
+    assert await ledger(pool, task_id, "fee_refund") == 1
+    assert await total_tokens(pool) == before
+
+    # It left the open list and can be found under its own status.
+    open_ids = [t["task_id"] for t in (await client.get("/tasks", params={"limit": 200})).json()]
+    assert task_id not in open_ids
+    cancelled = (await client.get("/tasks", params={"status": "cancelled", "limit": 200})).json()
+    assert task_id in [t["task_id"] for t in cancelled]
+    assert (await client.get(f"/tasks/{task_id}")).json()["status"] == "cancelled"
+
+
+async def test_only_the_creator_can_cancel(client, pool, agents):
+    creator = await agents("creator", START_BALANCE)
+    attacker = await agents("attacker", 0)
+    founder = await agents("founder", 0, role="FOUNDER")
+    task_id = await open_task(client, creator, reward=100)
+    creator_after_escrow = await balance(pool, creator)
+    escrowed = (await task_row(pool, task_id))["escrowed_reward"]
+
+    for intruder in (attacker, founder):                 # not even a FOUNDER
+        resp = await client.post(f"/tasks/{task_id}/cancel", headers=intruder.headers)
+        assert resp.status_code == 403, resp.text
+    assert (await client.post(f"/tasks/{task_id}/cancel")).status_code == 401
+
+    row = await task_row(pool, task_id)
+    assert (row["status"], row["escrowed_reward"]) == ("open", escrowed)
+    assert await balance(pool, creator) == creator_after_escrow
+    assert await balance(pool, attacker) == 0
+    assert await ledger(pool, task_id, "escrow_refund") == 0
+
+
+async def test_a_taken_or_finished_task_cannot_be_cancelled(client, pool, agents):
+    """Once an executor is assigned the escrow is theirs to earn."""
+    creator = await agents("creator", START_BALANCE)
+    executor = await agents("executor", 0)
+    before = await total_tokens(pool)
+    task_id = await assigned_task(client, creator, executor)
+    escrowed = (await task_row(pool, task_id))["escrowed_reward"]
+    creator_after_escrow = await balance(pool, creator)
+
+    resp = await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
+    assert resp.status_code == 409, resp.text
+    row = await task_row(pool, task_id)
+    assert (row["status"], row["escrowed_reward"]) == ("assigned", escrowed)
+
+    done = await client.post(
+        f"/tasks/{task_id}/result", json={"result_payload": {}}, headers=executor.headers)
+    assert done.status_code == 201
+    resp = await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
+    assert resp.status_code == 409                       # paid work is not clawed back
+
+    assert await balance(pool, executor) == escrowed
+    assert await balance(pool, creator) == creator_after_escrow
+    assert await ledger(pool, task_id, "escrow_refund") == 0
+    assert await ledger(pool, task_id, "fee_refund") == 0
+    assert await total_tokens(pool) == before
+
+
+async def test_cancel_unknown_task_and_direct_task(client, pool, agents):
+    requester = await agents("requester", START_BALANCE)
+    executor = await agents("executor")
+    missing = await client.post(
+        "/tasks/00000000-0000-4000-8000-000000000000/cancel", headers=requester.headers)
+    assert missing.status_code == 404
+
+    created = await client.post(
+        "/tasks/create",
+        json={"executor_agent_did": executor.did, "task_type": "direct.test"},
+        headers=requester.headers,
+    )
+    direct_id = created.json()["task_id"]
+    for caller in (requester, executor):
+        resp = await client.post(f"/tasks/{direct_id}/cancel", headers=caller.headers)
+        assert resp.status_code in (403, 409)
+    assert (await task_row(pool, direct_id))["status"] == "PENDING"
+
+
+async def test_concurrent_cancels_refund_once(client, pool, agents):
+    creator = await agents("creator", START_BALANCE)
+    treasury_before, before = await treasury_balance(pool), await total_tokens(pool)
+    task_id = await open_task(client, creator, reward=1000)
+
+    responses = await asyncio.gather(*[
+        client.post(f"/tasks/{task_id}/cancel", headers=creator.headers) for _ in range(12)
+    ])
+    assert sorted(r.status_code for r in responses) == [200] + [409] * 11
+
+    assert await balance(pool, creator) == START_BALANCE          # not 12 refunds
+    assert await treasury_balance(pool) == treasury_before
+    assert await ledger(pool, task_id, "escrow_refund") == 1
+    assert await ledger(pool, task_id, "fee_refund") == 1
+    assert await total_tokens(pool) == before
+
+
+async def test_cancel_racing_bids_ends_in_exactly_one_outcome(client, pool, agents):
+    """Cancel and auto-accepting bids at the same moment: either the task is
+    cancelled and fully refunded, or it is assigned and the escrow stays for
+    the executor — never both, never neither."""
+    outcomes = set()
+    for round_no in range(6):
+        creator = await agents(f"creator{round_no}", START_BALANCE)
+        bidders = [await agents(f"bidder{round_no}-{i}") for i in range(4)]
+        before = await total_tokens(pool)
+        task_id = await open_task(client, creator, reward=1000)
+
+        async def cancel_after(delay: float):
+            await asyncio.sleep(delay)
+            return await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
+
+        # Stagger the cancel by 0–50 ms so that both outcomes really happen
+        # (first rounds: the cancel wins; last rounds: a bid is in first).
+        cancel, *bids = await asyncio.gather(
+            cancel_after(round_no * 0.01),
+            *[client.post(f"/tasks/{task_id}/bid", json={"confidence": 0.9}, headers=b.headers)
+              for b in bidders],
+        )
+        outcomes.add(cancel.status_code)
+        assert cancel.status_code in (200, 409), cancel.text
+        assert all(b.status_code in (201, 422) for b in bids), [b.text for b in bids]
+
+        row = await task_row(pool, task_id)
+        assignments = await pool.fetchval(
+            "SELECT COUNT(*) FROM task_assignments WHERE task_id = $1", UUID(task_id))
+        if cancel.status_code == 200:
+            assert (row["status"], row["escrowed_reward"], assignments) == ("cancelled", 0, 0)
+            assert row["executor_agent_id"] is None
+            assert await balance(pool, creator) == START_BALANCE
+        else:
+            assert (row["status"], row["escrowed_reward"], assignments) == ("assigned", 975, 1)
+            assert await balance(pool, creator) == 0
+            assert await ledger(pool, task_id, "escrow_refund") == 0
+        assert await total_tokens(pool) == before
+    assert outcomes == {200, 409}, "the race only ever went one way; adjust the stagger"
+
+
+async def test_cancelled_task_takes_no_more_bids_or_accepts(client, pool, agents):
+    creator = await agents("creator", START_BALANCE)
+    bidder = await agents("bidder")
+    task_id = await open_task(client, creator, reward=100)
+    low = await client.post(
+        f"/tasks/{task_id}/bid", json={"confidence": 0.1}, headers=bidder.headers)
+    bid_id = low.json()["bid_id"]
+
+    assert (await client.post(
+        f"/tasks/{task_id}/cancel", headers=creator.headers)).status_code == 200
+
+    late_bid = await client.post(
+        f"/tasks/{task_id}/bid", json={"confidence": 0.9}, headers=bidder.headers)
+    assert late_bid.status_code == 422
+    accept = await client.post(
+        f"/tasks/{task_id}/accept", params={"bid_id": bid_id}, headers=creator.headers)
+    assert accept.status_code == 422
+    result = await client.post(
+        f"/tasks/{task_id}/result", json={"result_payload": {}}, headers=bidder.headers)
+    assert result.status_code == 403
+    row = await task_row(pool, task_id)
+    assert (row["status"], row["executor_agent_id"]) == ("cancelled", None)
+    assert await balance(pool, creator) == START_BALANCE
+
+
+async def test_fee_refund_never_overdraws_the_treasury(client, pool, agents):
+    """Nothing takes tokens out of the treasury today, so it always holds the
+    fee. If that ever changes: the cancel still refunds the reward, the fee
+    stays where it is, and the treasury never goes below zero."""
+    creator = await agents("creator", START_BALANCE)
+    task_id = await open_task(client, creator, reward=1000)
+    before = await total_tokens(pool)
+    held = await treasury_balance(pool)
+    # Simulate an emptied treasury by moving its balance into a stake-free
+    # holding wallet (tokens conserved, so the totals still add up).
+    sink = await agents("sink", 0)
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("UPDATE wallets SET balance = 0 WHERE wallet_type = 'treasury'")
+        await conn.execute(
+            "UPDATE wallets SET balance = balance + $1 WHERE agent_id = $2", held, sink.agent_id)
+    try:
+        resp = await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
+        assert resp.status_code == 200, resp.text
+
+        row = await task_row(pool, task_id)
+        assert (row["status"], row["escrowed_reward"], row["task_fee"]) == ("cancelled", 0, 25)
+        assert await balance(pool, creator) == START_BALANCE - 25
+        assert await treasury_balance(pool) == 0
+        assert await ledger(pool, task_id, "fee_refund") == 0
+        assert await total_tokens(pool) == before
+    finally:
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "UPDATE wallets SET balance = balance - $1 WHERE agent_id = $2",
+                held, sink.agent_id)
+            await conn.execute(
+                "UPDATE wallets SET balance = balance + $1 WHERE wallet_type = 'treasury'", held)
+
+
+async def test_database_accepts_cancelled_and_still_refuses_junk(pool, agents):
+    """Migration 042 widened the status CHECK by one word, not removed it."""
+    import asyncpg
+
+    creator = await agents("creator")
+    insert = """
+        INSERT INTO tasks (task_id, creator_agent_id, requester_agent_id,
+                           requester_agent_did, task_type, payload, status)
+        VALUES (gen_random_uuid(), $1, $1, $2, 'constraint.test', '{}'::jsonb, $3)
+    """
+    await pool.execute(insert, creator.agent_id, creator.did, "cancelled")
+    for junk in ("failed", "CANCELLED", "anything"):
+        with pytest.raises(asyncpg.CheckViolationError):
+            await pool.execute(insert, creator.agent_id, creator.did, junk)

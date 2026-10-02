@@ -18,6 +18,9 @@ Internal helpers (used by task_service)
 ────────────────────────────────────────
   escrow_task_reward(agent_id, task_id, amount)   → None
   release_task_escrow(task_id, executor_agent_id) → int  (amount released)
+  refund_task_escrow(task_id, creator_agent_id)   → int  (amount refunded)
+  Each takes ``conn=`` to run inside the caller's transaction, which is how
+  task_service uses them: a task and its money commit or roll back together.
 
 All DB access uses asyncpg via get_db() / transaction() context managers.
 Atomic debit is performed with ``WHERE balance >= $amount RETURNING wallet_id``
@@ -54,6 +57,10 @@ logger = logging.getLogger(__name__)
 
 class StakeConflictError(ValueError):
     """The stake is not in a state that allows the action (HTTP 409)."""
+
+
+class InsufficientFundsError(ValueError):
+    """The paying wallet is missing or does not hold the amount (HTTP 400)."""
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -469,6 +476,7 @@ async def escrow_task_reward(
     creator_agent_id: UUID,
     task_id: UUID,
     amount: int,
+    conn=None,
 ) -> None:
     """
     Lock *amount* tokens from the creator's wallet into task escrow.
@@ -476,62 +484,78 @@ async def escrow_task_reward(
     Debits the creator's wallet and increments tasks.escrowed_reward.
     Records a ledger entry with type="escrow" and related_id=task_id.
 
+    Pass *conn* to run inside the caller's transaction, so that creating the
+    task and funding it commit (or roll back) together.
+
     Raises:
-        ValueError: if wallet not found or insufficient funds.
+        InsufficientFundsError: no wallet, or the wallet does not hold *amount*.
     """
     if amount <= 0:
         return
 
-    async with transaction() as conn:
-        # Debit creator wallet
-        debit_row = await conn.fetchrow(
-            """
-            UPDATE wallets
-               SET balance    = balance - $1,
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE agent_id = $2
-               AND balance  >= $1
-            RETURNING wallet_id
-            """,
-            amount,
-            creator_agent_id,
-        )
-        if debit_row is None:
-            exists = await conn.fetchval(
-                "SELECT 1 FROM wallets WHERE agent_id = $1", creator_agent_id
-            )
-            if not exists:
-                raise ValueError(
-                    f"Creator wallet not found for agent: {creator_agent_id}"
-                )
-            raise ValueError(
-                f"Insufficient funds: agent {creator_agent_id} cannot escrow {amount} tokens"
-            )
-
-        # Track escrowed amount on the task
-        await conn.execute(
-            """
-            UPDATE tasks
-               SET escrowed_reward = escrowed_reward + $1
-             WHERE task_id = $2
-            """,
-            amount,
-            task_id,
-        )
-
-        # Ledger entry: creator wallet → NULL (held in escrow)
-        await _record_transaction(
-            conn,
-            from_wallet=debit_row["wallet_id"],
-            to_wallet=None,
-            amount=amount,
-            tx_type="escrow",
-            related_id=task_id,
-        )
+    if conn is not None:
+        await _escrow_task_reward(conn, creator_agent_id, task_id, amount)
+    else:
+        async with transaction() as own_conn:
+            await _escrow_task_reward(own_conn, creator_agent_id, task_id, amount)
 
     logger.debug(
         "token_service: escrowed %d tokens for task %s from agent %s",
         amount, task_id, creator_agent_id,
+    )
+
+
+async def _escrow_task_reward(
+    conn,
+    creator_agent_id: UUID,
+    task_id: UUID,
+    amount: int,
+) -> None:
+    # Debit creator wallet
+    debit_row = await conn.fetchrow(
+        """
+        UPDATE wallets
+           SET balance    = balance - $1,
+               updated_at = CURRENT_TIMESTAMP
+         WHERE agent_id = $2
+           AND balance  >= $1
+        RETURNING wallet_id
+        """,
+        amount,
+        creator_agent_id,
+    )
+    if debit_row is None:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM wallets WHERE agent_id = $1", creator_agent_id
+        )
+        if not exists:
+            raise InsufficientFundsError(
+                f"Insufficient funds: agent {creator_agent_id} has no wallet "
+                f"to escrow {amount} tokens from"
+            )
+        raise InsufficientFundsError(
+            f"Insufficient funds: agent {creator_agent_id} cannot escrow {amount} tokens"
+        )
+
+    # Track escrowed amount on the task
+    await conn.execute(
+        """
+        UPDATE tasks
+           SET escrowed_reward = escrowed_reward + $1
+         WHERE task_id = $2
+        """,
+        amount,
+        task_id,
+    )
+
+    # Ledger entry: creator wallet → NULL (held in escrow)
+    await _record_transaction(
+        conn,
+        from_wallet=debit_row["wallet_id"],
+        to_wallet=None,
+        amount=amount,
+        tx_type="escrow",
+        related_id=task_id,
     )
 
 
@@ -629,17 +653,27 @@ async def release_task_escrow(
 async def refund_task_escrow(
     task_id: UUID,
     creator_agent_id: UUID,
+    conn=None,
 ) -> int:
     """
-    Refund escrowed task reward back to the creator (used when task fails).
+    Refund escrowed task reward back to the creator (used when the creator
+    cancels a task nobody took).
 
     Same locking as release_task_escrow; the ledger entry has
     type='escrow_refund'. Returns the amount refunded (0 if nothing escrowed).
+
+    Pass *conn* to run inside the caller's transaction, so that cancelling the
+    task and refunding it commit (or roll back) together.
     """
-    async with transaction() as conn:
+    if conn is not None:
         refunded = await _settle_task_escrow(
             conn, task_id, creator_agent_id, "escrow_refund"
         )
+    else:
+        async with transaction() as own_conn:
+            refunded = await _settle_task_escrow(
+                own_conn, task_id, creator_agent_id, "escrow_refund"
+            )
 
     if refunded:
         logger.debug(

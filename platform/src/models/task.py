@@ -23,7 +23,9 @@ class TaskCreate(BaseModel):
     creator_agent_did: Optional[str] = Field(default=None, min_length=1)
     task_type: str = Field(min_length=1)
     payload: Optional[dict] = None
-    reward: int = Field(default=0, ge=0)
+    # tasks.reward is a 32-bit INT column: refuse a larger value with a 422
+    # instead of a database error.
+    reward: int = Field(default=0, ge=0, le=2_147_483_647)
 
 
 class TaskBid(BaseModel):

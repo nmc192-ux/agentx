@@ -185,6 +185,9 @@ class TestEveryWriteRequiresLogin:
         (f"/tasks/{uuid4()}/result",
          {"agent_did": OTHER_DID, "result_payload": {}},
          "src.routers.tasks.task_service.submit_result"),
+        (f"/tasks/{uuid4()}/cancel",
+         None,
+         "src.routers.tasks.task_service.cancel_task"),
         ("/tasks/route",
          {"requester_agent_did": OTHER_DID, "task_type": "x"},
          "src.routers.tasks.create_routed_task"),
@@ -356,6 +359,27 @@ class TestMarketplaceCreateTask:
                 json={"task_type": "marketplace.test", "payload": None, "reward": 0},
             )
         assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_post_tasks_400_reward_the_wallet_cannot_cover(self, client, authed):
+        """S9-7b: an unfunded reward is refused, not created with nothing behind it."""
+        from src.services.task_service import InsufficientFundsError
+        with patch(
+            "src.routers.tasks.task_service.create_task",
+            new=AsyncMock(side_effect=InsufficientFundsError(
+                "Insufficient funds: agent x cannot escrow 100 tokens")),
+        ):
+            resp = await client.post("/tasks", json={"task_type": "x", "reward": 100})
+        assert resp.status_code == 400
+        assert "Insufficient funds" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_post_tasks_422_reward_beyond_the_column(self, client, authed):
+        create = AsyncMock()
+        with patch("src.routers.tasks.task_service.create_task", new=create):
+            resp = await client.post("/tasks", json={"task_type": "x", "reward": 2**31})
+        assert resp.status_code == 422
+        create.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_post_tasks_422_missing_required_field(self, client, authed):
@@ -621,6 +645,57 @@ class TestMarketplaceSubmitResult:
                 f"/tasks/{task_id}/result",
                 json={"agent_did": CALLER_DID, "result_payload": {}},
             )
+        assert resp.status_code == 404
+
+
+# ── POST /tasks/{task_id}/cancel (S9-7b) ───────────────────────────────────────
+
+class TestMarketplaceCancelTask:
+
+    @pytest.mark.asyncio
+    async def test_cancel_returns_200_and_passes_the_caller(self, client, authed):
+        task_id = uuid4()
+        from src.models.task import TaskResponse as MarketplaceTaskResponse
+        cancelled = MarketplaceTaskResponse(
+            task_id=task_id, creator_agent_id=uuid4(), task_type="marketplace.test",
+            payload={}, reward=100, status="cancelled",
+            created_at=datetime.now(timezone.utc),
+        )
+        mock_cancel = AsyncMock(return_value=cancelled)
+        with patch("src.routers.tasks.task_service.cancel_task", new=mock_cancel):
+            resp = await client.post(f"/tasks/{task_id}/cancel")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+        # The caller comes from the token; the route takes no body at all.
+        mock_cancel.assert_awaited_once_with(task_id=task_id, caller_did=CALLER_DID)
+
+    @pytest.mark.asyncio
+    async def test_cancel_by_non_creator_403(self, client, authed):
+        with patch(
+            "src.routers.tasks.task_service.cancel_task",
+            new=AsyncMock(side_effect=PermissionError("Only the task creator can cancel it")),
+        ):
+            resp = await client.post(f"/tasks/{uuid4()}/cancel")
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_cancel_a_task_that_is_not_open_409(self, client, authed):
+        from src.services.task_service import TaskConflictError
+        with patch(
+            "src.routers.tasks.task_service.cancel_task",
+            new=AsyncMock(side_effect=TaskConflictError(
+                "Only an open task can be cancelled (status=assigned)")),
+        ):
+            resp = await client.post(f"/tasks/{uuid4()}/cancel")
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_cancel_404_unknown_task(self, client, authed):
+        with patch(
+            "src.routers.tasks.task_service.cancel_task",
+            new=AsyncMock(side_effect=ValueError("Task not found")),
+        ):
+            resp = await client.post(f"/tasks/{uuid4()}/cancel")
         assert resp.status_code == 404
 
 

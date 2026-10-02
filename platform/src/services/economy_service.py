@@ -9,6 +9,7 @@ Public API
   initialize_treasury()                         → WalletResponse
   mint_tokens(amount, reason)                   → TokenSupplyResponse
   collect_task_fee(task_id, escrow_amount)      → int   (fee deducted)
+  refund_task_fee(conn, task_id, creator_id)    → int   (fee given back on cancel)
   slash_stake(stake_id, reason)                 → StakeSlashResponse
   record_metrics()                              → EconomicMetricsResponse
   get_latest_metrics()                          → EconomicMetricsResponse | None
@@ -26,6 +27,9 @@ Design notes
   is logged, never used as the ledger label). A slash locks the stake row,
   so a stake is forfeited once, and is refused if there is no treasury to
   receive it. The task fee is taken from the escrow that is really there.
+• Sprint 9 (S9-7b): the task fee is collected in the transaction that
+  creates and funds the task, and given back (treasury → creator) in the
+  transaction that cancels a task nobody took.
 """
 from __future__ import annotations
 
@@ -195,7 +199,7 @@ async def mint_tokens(amount: int, reason: str = "mint") -> TokenSupplyResponse:
 
 # ── Fee collection ────────────────────────────────────────────────────────────
 
-async def collect_task_fee(task_id: UUID, escrow_amount: int) -> int:
+async def collect_task_fee(task_id: UUID, escrow_amount: int, conn=None) -> int:
     """
     Calculate and collect the platform fee for a task.
 
@@ -203,70 +207,147 @@ async def collect_task_fee(task_id: UUID, escrow_amount: int) -> int:
     credits the treasury wallet, reduces tasks.escrowed_reward by the fee,
     and updates tasks.task_fee.
 
+    Pass *conn* to run inside the caller's transaction (task_service.create_task
+    does: the task, its escrow and its fee are one transaction).
+
     Returns the fee actually collected (0 if no treasury / no policy / zero rate).
     """
     if escrow_amount <= 0:
         return 0
 
-    async with transaction() as conn:
-        policy = await conn.fetchrow(
-            "SELECT rate_bps FROM fee_policies WHERE active = TRUE LIMIT 1"
+    if conn is not None:
+        fee = await _collect_task_fee(conn, task_id, escrow_amount)
+    else:
+        async with transaction() as own_conn:
+            fee = await _collect_task_fee(own_conn, task_id, escrow_amount)
+
+    if fee:
+        logger.debug(
+            "economy_service: collected fee %d for task %s", fee, task_id
         )
-        if policy is None or policy["rate_bps"] == 0:
-            return 0
+    return fee
 
-        # The fee comes out of the task's escrow, so charge it on what is in
-        # escrow now, with the row locked — not on the amount the caller
-        # remembers. If the escrow has already been paid out, there is nothing
-        # to take, and crediting the treasury anyway would create tokens.
-        in_escrow = await conn.fetchval(
-            "SELECT escrowed_reward FROM tasks WHERE task_id = $1 FOR UPDATE",
-            task_id,
+
+async def _collect_task_fee(conn, task_id: UUID, escrow_amount: int) -> int:
+    policy = await conn.fetchrow(
+        "SELECT rate_bps FROM fee_policies WHERE active = TRUE LIMIT 1"
+    )
+    if policy is None or policy["rate_bps"] == 0:
+        return 0
+
+    # The fee comes out of the task's escrow, so charge it on what is in
+    # escrow now, with the row locked — not on the amount the caller
+    # remembers. If the escrow has already been paid out, there is nothing
+    # to take, and crediting the treasury anyway would create tokens.
+    in_escrow = await conn.fetchval(
+        "SELECT escrowed_reward FROM tasks WHERE task_id = $1 FOR UPDATE",
+        task_id,
+    )
+    fee = min(escrow_amount, in_escrow or 0) * policy["rate_bps"] // 10_000
+    if fee <= 0:
+        return 0
+
+    treasury_id = await _get_treasury_wallet_id(conn)
+    if treasury_id is None:
+        return 0
+
+    # Credit treasury
+    await conn.execute(
+        """
+        UPDATE wallets
+           SET balance    = balance + $1,
+               updated_at = CURRENT_TIMESTAMP
+         WHERE wallet_id = $2
+        """,
+        fee,
+        treasury_id,
+    )
+
+    # Reduce task escrow and track fee
+    await conn.execute(
+        """
+        UPDATE tasks
+           SET escrowed_reward = escrowed_reward - $1,
+               task_fee        = task_fee + $1
+         WHERE task_id = $2
+        """,
+        fee,
+        task_id,
+    )
+
+    # Ledger entry: NULL (escrow) → treasury
+    await _record_transaction(
+        conn,
+        from_wallet=None,
+        to_wallet=treasury_id,
+        amount=fee,
+        tx_type="fee",
+        related_id=task_id,
+    )
+    return fee
+
+
+async def refund_task_fee(conn, task_id: UUID, creator_agent_id: UUID) -> int:
+    """
+    Give a cancelled task's platform fee back to its creator, inside the
+    caller's transaction. Returns the amount refunded.
+
+    The caller must already hold the task's row lock (task_service.cancel_task
+    does), so ``task_fee`` is read and zeroed once however many cancels race.
+    The fee moves treasury → creator wallet (ledger type='fee_refund'); the
+    treasury debit is guarded (``balance >= fee``), so a refund can never take
+    the treasury below zero or create tokens. If the treasury cannot cover it,
+    nothing is refunded and ``task_fee`` is left as it is — the cancel itself
+    still goes through.
+    """
+    fee = await conn.fetchval(
+        "SELECT task_fee FROM tasks WHERE task_id = $1", task_id
+    )
+    if not fee or fee <= 0:
+        return 0
+
+    treasury_id = await conn.fetchval(
+        """
+        UPDATE wallets
+           SET balance    = balance - $1,
+               updated_at = CURRENT_TIMESTAMP
+         WHERE wallet_type = 'treasury'
+           AND balance    >= $1
+        RETURNING wallet_id
+        """,
+        fee,
+    )
+    if treasury_id is None:
+        logger.warning(
+            "economy_service: treasury cannot refund fee %d for task %s; fee kept",
+            fee, task_id,
         )
-        fee = min(escrow_amount, in_escrow or 0) * policy["rate_bps"] // 10_000
-        if fee <= 0:
-            return 0
+        return 0
 
-        treasury_id = await _get_treasury_wallet_id(conn)
-        if treasury_id is None:
-            return 0
+    creator_wallet_id = await conn.fetchval(
+        """
+        INSERT INTO wallets (agent_id, balance)
+        VALUES ($2, $1)
+        ON CONFLICT (agent_id) DO UPDATE
+            SET balance    = wallets.balance + EXCLUDED.balance,
+                updated_at = CURRENT_TIMESTAMP
+        RETURNING wallet_id
+        """,
+        fee,
+        creator_agent_id,
+    )
 
-        # Credit treasury
-        await conn.execute(
-            """
-            UPDATE wallets
-               SET balance    = balance + $1,
-                   updated_at = CURRENT_TIMESTAMP
-             WHERE wallet_id = $2
-            """,
-            fee,
-            treasury_id,
-        )
+    await conn.execute(
+        "UPDATE tasks SET task_fee = 0 WHERE task_id = $1", task_id
+    )
 
-        # Reduce task escrow and track fee
-        await conn.execute(
-            """
-            UPDATE tasks
-               SET escrowed_reward = escrowed_reward - $1,
-                   task_fee        = task_fee + $1
-             WHERE task_id = $2
-            """,
-            fee,
-            task_id,
-        )
-
-        # Ledger entry: NULL (escrow) → treasury
-        await _record_transaction(
-            conn,
-            from_wallet=None,
-            to_wallet=treasury_id,
-            amount=fee,
-            tx_type="fee",
-            related_id=task_id,
-        )
-
-    logger.debug(
-        "economy_service: collected fee %d for task %s", fee, task_id
+    await _record_transaction(
+        conn,
+        from_wallet=treasury_id,
+        to_wallet=creator_wallet_id,
+        amount=fee,
+        tx_type="fee_refund",
+        related_id=task_id,
     )
     return fee
 

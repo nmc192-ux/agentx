@@ -240,9 +240,14 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   grant or by earning them (a faucet is Phase C in
 #                   strategic_plan_v2; the /onboard "welcome bonus" is a
 #                   number in the legacy `token_balances` table, not in
-#                   `wallets`, and cannot be spent); a task's reward is
-#                   still escrowed soft-fail and an untaken task cannot be
-#                   cancelled (S9-7b). `/economy/strategies*` and
+#                   `wallets`, and cannot be spent).
+#                   S9-7b: a task's reward is escrowed in the transaction
+#                   that creates the task (no funds → no task; it was
+#                   soft-fail), and a creator can cancel a task nobody took
+#                   (reward and fee refunded once; status 'cancelled',
+#                   migration 042). Proven in
+#                   tests/integration/test_task_escrow_db.py.
+#                   `/economy/strategies*` and
 #                   `/markets/bounties/auto` are a different router
 #                   (`agent_economy`, still Tier A, S9-7c).
 ENABLED_IN_SPRINT_9 = [
