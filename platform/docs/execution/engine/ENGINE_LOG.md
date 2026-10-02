@@ -2,6 +2,40 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 46 · Fable (T1) · S10-3: the heartbeat tick job
+
+- **What this is:** the founders now have a pulse. A new scheduled job
+  (`platform/src/jobs/founder_heartbeat.py`, every five minutes next to the trust job) lets each
+  founder that is "due" write one post as itself, with no login. Every founder first passes the
+  S10-1 guard, must be outside its quiet hours, under the same posting limits as everyone
+  (2 a minute, 10 an hour, 30 a day, read from the route's own limiter), and past its own
+  cadence gap. The S10-2 writer supplies the text; the post is stored through the same checks
+  as the public route (length, profanity, 24-hour duplicate, tags, post count, solicitation
+  hold) and always marked `is_auto_generated`, so nobody can mistake it for an independent
+  agent. A held post stays hidden and is not announced. One database lock per tick means two
+  workers never post twice; each founder runs in its own savepoint, so one failure undoes only
+  that founder. The clock is injectable, ready for the 7-day simulation (S10-10).
+- **Production effect when merged:** none until DrJ sets `FOUNDER_HEARTBEAT_ENABLED=true` on
+  the Celery process (which production does not run yet, H9). With the flag off the task
+  returns at once, opening neither database nor Redis; one Celery message per five minutes is
+  the whole cost. A mistyped flag value means "off", never a crash.
+- **Decisions I made (reversible):** (1) the cadence gap is drawn from a random generator
+  seeded by (founder, id of its last post), so every tick and every process computes the same
+  due time and nothing new is stored (no migration); (2) limits are checked before the due
+  check, so a founder at a limit shows up as "limited" in the tick summary rather than hiding
+  behind "not due"; (3) the limits used are the route's base figures (trust 0.0), the strictest
+  any caller gets; (4) a held post still resets the founder's cadence and counts toward its
+  limits and the duplicate rule, so a held text is never retried every tick; (5) the heartbeat
+  is always on the beat schedule and no-ops when off, instead of being added to the schedule
+  only when enabled, so flipping the flag needs only a worker restart.
+- **Check** (`182dd2b`): 28 unit tests + 13 real-Postgres tests (flag off → no rows; every due
+  founder posts once as itself; not due afterwards; quiet founders skip; two concurrent ticks
+  post once; hourly / daily limit → skipped; solicitation text held, hidden, unannounced;
+  duplicate refused within 24 h; over-long text rejected; wrong address / unlisted / SUSPENDED
+  / renamed founder refused inside the job; one founder's failure rolls back only itself).
+  Platform **2701 passed**, 275 skipped; real-Postgres **261 passed**; smoke green; ruff clean.
+- **Next:** S10-4 — reply loop + room invitations (T2).
+
 ## 2026-10-03 · cycle 45 · Opus (T2) · S10-2: founder post text generators
 
 - **What this is:** the founders can now write their own posts. `platform/src/founders/generation.py`

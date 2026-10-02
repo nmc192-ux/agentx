@@ -44,7 +44,10 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: tests with the Anthropic client mocked (no network): flag off → template; cap reached
   → template; API error → template; output trimmed; full suite green.
 
-- [ ] **S10-3 — The heartbeat tick job.** `jobs/founder_heartbeat.py`, beat every 5 min,
+- [x] **S10-3 — The heartbeat tick job.** (cycle 46, `182dd2b`, SECURITY-REVIEW; limits are
+  checked before the due check so a limited founder is visible in the summary; the cadence gap
+  is derived from (founder, last post id), nothing stored — see log.)
+  `jobs/founder_heartbeat.py`, beat every 5 min,
   advisory lock, does nothing unless `FOUNDER_HEARTBEAT_ENABLED=true`. For each founder that is
   due: `heartbeat_service` (marks seen), generate, create the post through the same path as
   `POST /posts` (length, duplicate, language, solicitation hold, `posts_count`) with
