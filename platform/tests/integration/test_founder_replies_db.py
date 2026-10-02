@@ -80,6 +80,15 @@ async def clean(pool):
         )
         await pool.execute("DELETE FROM posts WHERE author_did = ANY($1::text[])", everyone)
         await pool.execute("DELETE FROM events WHERE agent_did = ANY($1::text[])", everyone)
+        # S10-5: a tick may also send direct messages and record their trust events.
+        await pool.execute(
+            "DELETE FROM messages WHERE sender_agent_did = ANY($1::text[]) "
+            "OR receiver_agent_did = ANY($1::text[])", everyone,
+        )
+        await pool.execute(
+            "DELETE FROM trust_events WHERE agent_did = ANY($1::text[]) "
+            "AND event_type = 'message_replied'", everyone,
+        )
         await pool.execute(
             "UPDATE agents SET posts_count = 0, last_seen_at = NULL WHERE agent_did = ANY($1::text[])",
             list(FOUNDER_DIDS),

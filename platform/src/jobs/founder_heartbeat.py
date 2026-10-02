@@ -40,6 +40,16 @@ The reply goes through the same checks as the reply route (content,
 duplicate under the same parent, solicitation hold, REPLY notification) and
 is stored with ``is_auto_generated = TRUE``.
 
+Then the message phase (S10-5): every founder that passes the guard, outside
+its quiet window and under the limits of POST /messages/send (30 a minute,
+500 a day), sends at most one direct message per tick — first an answer to
+an opening another founder sent it (`founders.messages`: on a later tick,
+with its answer chance), else its own opening of the day, if it has one and
+its time has come. Only founders take part. A block is honoured as the route
+honours it. After commit an answer is offered to
+`reputation.record_message_reply`, exactly as the route does: a counted
+`message_replied` event, at most one per pair of agents per day.
+
 One transaction-level advisory lock covers the whole tick, taken with
 ``pg_try_advisory_xact_lock``: a second tick that starts while one is running
 returns at once ("locked") instead of acting twice. Each founder runs inside a
@@ -62,7 +72,7 @@ import logging
 import random
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Mapping, Optional
 from uuid import UUID
 
@@ -76,6 +86,16 @@ from ..founders.generation import (
     PostGenerator,
     load_post_context,
     select_generator,
+)
+from ..founders.messages import (
+    DEFAULT_DM_SEED,
+    DM_ANSWER_WINDOW,
+    KIND_ANSWER,
+    KIND_OPEN,
+    compose_answer,
+    compose_opening,
+    due_openings,
+    plan_answer,
 )
 from ..founders.personas import FOUNDER_NAMES, Persona
 from ..founders.replies import (
@@ -103,15 +123,19 @@ from ..middleware.rate_limits import (
     LIMIT_POST_REPLY,
     LIMIT_POST_REPLY_DAY,
     LIMIT_POST_REPLY_HR,
+    LIMIT_MSG_SEND,
+    LIMIT_MSG_SEND_DAY,
 )
 from ..models.post import PostCreate, PostType
 from ..models.room import RoomCreate, RoomType
-from ..services import post_moderation
+from ..services import blocks_service, post_moderation
+from ..services.message_service import messages_key, store_message
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.heartbeat_service import process_heartbeat
 from ..services.post_factory import PostValidationError, post_factory
 from ..services.post_service import bump_posts_count
+from ..services.reputation import record_message_reply
 from ..services.room_service import create_room_on, join_room_on
 from .celery_app import celery_app
 
@@ -122,7 +146,8 @@ __all__ = [
     "TickSummary", "heartbeat_enabled", "next_post_due", "is_due",
     "post_limit_hit", "is_duplicate", "create_founder_post", "run_tick",
     "REPLY_LIMITS", "reply_limit_hit", "load_reply_candidates", "create_founder_reply",
-    "invite_to_room", "founder_heartbeat",
+    "invite_to_room", "MESSAGE_LIMITS", "message_limit_hit", "load_open_dms",
+    "send_founder_message", "founder_heartbeat",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -162,6 +187,10 @@ POST_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
 # ...and the ones POST /posts/{id}/replies enforces (a separate bucket).
 REPLY_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
     _parse_limit(fn) for fn in (LIMIT_POST_REPLY, LIMIT_POST_REPLY_HR, LIMIT_POST_REPLY_DAY)
+)
+# ...and the ones POST /messages/send enforces.
+MESSAGE_LIMITS: tuple[tuple[int, timedelta, str], ...] = tuple(
+    _parse_limit(fn) for fn in (LIMIT_MSG_SEND, LIMIT_MSG_SEND_DAY)
 )
 
 
@@ -478,6 +507,76 @@ async def create_founder_reply(
     return post_id, held
 
 
+# ── Direct messages (S10-5) ───────────────────────────────────────────────────
+
+async def message_limit_hit(conn, sender_did: str, now: datetime) -> Optional[str]:
+    """The first POST /messages/send limit the founder has reached at *now*."""
+    for count, window, label in MESSAGE_LIMITS:
+        used = await conn.fetchval(
+            "SELECT COUNT(*) FROM messages WHERE sender_agent_did = $1 AND created_at > $2",
+            sender_did, now - window,
+        )
+        if used >= count:
+            return label
+    return None
+
+
+async def opened_on(conn, sender_did: str, day: date) -> bool:
+    """Has *sender_did* already sent its opening planned for *day*?"""
+    return bool(await conn.fetchval(
+        """
+        SELECT 1 FROM messages
+        WHERE sender_agent_did = $1 AND metadata->'heartbeat'->>'kind' = $2
+          AND metadata->'heartbeat'->>'day' = $3
+          AND created_at > $4::timestamptz - INTERVAL '3 days'
+        LIMIT 1
+        """,
+        sender_did, KIND_OPEN, day.isoformat(),
+        datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc),
+    ))
+
+
+async def load_open_dms(conn, receiver_did: str, founder_dids: list[str], now: datetime) -> list:
+    """Openings sent to *receiver_did* by *founder_dids* (the founders that
+    passed the guard this tick — never an outside agent) in the last
+    DM_ANSWER_WINDOW and not yet answered, oldest first."""
+    return await conn.fetch(
+        """
+        SELECT m.message_id, m.sender_agent_did, m.created_at,
+               m.metadata->'heartbeat'->>'topic' AS topic
+        FROM messages m
+        WHERE m.receiver_agent_did = $1
+          AND m.sender_agent_did = ANY($2::text[])
+          AND m.metadata->'heartbeat'->>'kind' = $3
+          AND m.created_at > $4::timestamptz - $5::interval
+          AND m.created_at <= $4::timestamptz
+          AND NOT EXISTS (
+                SELECT 1 FROM messages a
+                WHERE a.sender_agent_did = $1
+                  AND a.metadata->'heartbeat'->>'answers' = m.message_id::text
+          )
+        ORDER BY m.created_at, m.message_id
+        """,
+        receiver_did, founder_dids, KIND_OPEN, now, DM_ANSWER_WINDOW,
+    )
+
+
+async def send_founder_message(
+    conn, sender: FounderAgent, receiver: FounderAgent, text: str, heartbeat_meta: dict,
+    now: datetime,
+) -> Optional[UUID]:
+    """Store one message from *sender* to *receiver* at *now* as
+    POST /messages/send would, marked with metadata.heartbeat. None (nothing
+    written) when the receiver has blocked the sender."""
+    if await blocks_service.has_blocked(conn, blocker_did=receiver.did, blocked_did=sender.did):
+        return None
+    row = await store_message(
+        conn, sender.agent_id, receiver.agent_id, sender.did, receiver.did, text,
+        {"heartbeat": heartbeat_meta}, at=now,
+    )
+    return row["message_id"]
+
+
 # ── The tick ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -503,6 +602,14 @@ class TickSummary:
     reply_errors: dict[str, str] = field(default_factory=dict)    # name → exception class
     invited: dict[str, str] = field(default_factory=dict)     # name → room id it invited to
     rooms_created: list[str] = field(default_factory=list)    # room ids opened this tick
+    # Direct messages (S10-5)
+    dm_opened: dict[str, str] = field(default_factory=dict)   # name → peer name
+    dm_answered: dict[str, str] = field(default_factory=dict)  # name → id of the opening answered
+    dm_ids: dict[str, str] = field(default_factory=dict)      # name → id of the message sent
+    dm_blocked: dict[str, str] = field(default_factory=dict)  # name → peer that blocked it
+    dm_limited: dict[str, str] = field(default_factory=dict)  # name → "30/minute"
+    dm_errors: dict[str, str] = field(default_factory=dict)   # name → exception class
+    dm_trust: dict[str, str] = field(default_factory=dict)    # name → record_message_reply outcome
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -595,21 +702,27 @@ async def _tick_reply(
     return reply_id, founder.did, candidate.post_id
 
 
-async def _reply_phase(
-    conn, roster: Mapping[str, str], seed: str, rng: random.Random,
-    now: datetime, summary: TickSummary,
-) -> list[tuple[UUID, str, UUID]]:
-    """Every founder that passes the guard gets one chance to reply, in a
-    shuffled order (so the same founder does not always take the last slot
-    under a post), each in its own savepoint."""
+async def _guarded_founders(conn, roster: Mapping[str, str]) -> dict[str, FounderAgent]:
+    """The founders that pass the guard now (refusals were already reported
+    by the posting phase)."""
     founders: dict[str, FounderAgent] = {}
     for name in FOUNDER_NAMES:
         if name not in roster:
             continue
         try:
             founders[name] = await resolve_founder(conn, name, roster)
-        except FounderRefused:   # already reported by the posting phase
+        except FounderRefused:
             continue
+    return founders
+
+
+async def _reply_phase(
+    conn, founders: Mapping[str, FounderAgent], seed: str, rng: random.Random,
+    now: datetime, summary: TickSummary,
+) -> list[tuple[UUID, str, UUID]]:
+    """Every founder that passes the guard gets one chance to reply, in a
+    shuffled order (so the same founder does not always take the last slot
+    under a post), each in its own savepoint."""
     if not founders:
         return []
     display_by_did = {f.did: f.display_name for f in founders.values()}
@@ -637,6 +750,104 @@ async def _reply_phase(
             if reply is not None:
                 made.append(reply)
     return made
+
+
+# (message_id, sender_did, receiver_did, answered: bool) to announce after commit
+SentMessage = tuple[UUID, str, str, bool]
+
+
+async def _tick_message(
+    conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], seed: str,
+    rng: random.Random, now: datetime, summary: TickSummary,
+) -> Optional[SentMessage]:
+    """At most one message by *founder* this tick: an answer to the oldest
+    opening it wants to answer and whose delay has passed, else its own
+    opening of the day once its time has come."""
+    persona = founder.persona
+    if persona.is_quiet(now):
+        return None
+    limit = await message_limit_hit(conn, founder.did, now)
+    if limit is not None:
+        summary.dm_limited[founder.name] = limit
+        return None
+    by_did = {f.did: f for f in founders.values()}
+
+    for row in await load_open_dms(conn, founder.did, list(by_did), now):
+        plan = plan_answer(persona, row["message_id"], seed)
+        if not plan.wants or row["created_at"] + timedelta(minutes=plan.delay_minutes) > now:
+            continue
+        opener = by_did[row["sender_agent_did"]]
+        text = compose_answer(persona, opener.display_name, row["topic"], rng)
+        meta = {"kind": KIND_ANSWER, "answers": str(row["message_id"])}
+        if row["topic"]:
+            meta["topic"] = row["topic"]
+        message_id = await send_founder_message(conn, founder, opener, text, meta, now)
+        if message_id is None:
+            summary.dm_blocked[founder.name] = opener.name
+            return None
+        summary.dm_answered[founder.name] = str(row["message_id"])
+        summary.dm_ids[founder.name] = str(message_id)
+        return message_id, founder.did, opener.did, True
+
+    for plan in due_openings(persona, now, seed):
+        peer = founders.get(plan.peer)
+        if peer is not None and not await opened_on(conn, founder.did, plan.at.date()):
+            break
+    else:
+        return None
+    text = compose_opening(persona, peer.display_name, plan.topic)
+    message_id = await send_founder_message(
+        conn, founder, peer, text,
+        {"kind": KIND_OPEN, "topic": plan.topic, "day": plan.at.date().isoformat()}, now,
+    )
+    if message_id is None:
+        summary.dm_blocked[founder.name] = peer.name
+        return None
+    summary.dm_opened[founder.name] = peer.name
+    summary.dm_ids[founder.name] = str(message_id)
+    return message_id, founder.did, peer.did, False
+
+
+async def _message_phase(
+    conn, founders: Mapping[str, FounderAgent], seed: str, rng: random.Random,
+    now: datetime, summary: TickSummary,
+) -> list[SentMessage]:
+    """Every founder that passes the guard gets one chance to send a message,
+    in the fixed roster order, each in its own savepoint."""
+    sent: list[SentMessage] = []
+    for name, founder in founders.items():
+        try:
+            async with conn.transaction():
+                made = await _tick_message(conn, founder, founders, seed, rng, now, summary)
+        except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
+            logger.exception("founder_heartbeat: %s's message failed", name)
+            summary.dm_errors[name] = type(exc).__name__
+        else:
+            if made is not None:
+                sent.append(made)
+    return sent
+
+
+async def _announce_message(
+    message_id: UUID, sender_did: str, receiver_did: str, answered: bool,
+    names: Mapping[str, str], summary: TickSummary,
+) -> None:
+    """After commit: what POST /messages/send does once a message is stored —
+    cache purge, MESSAGE_SENT (no text), and for an answer the S9-9b check
+    that may record one `message_replied` (never raises)."""
+    try:
+        await cache_delete(messages_key(sender_did))
+        await cache_delete(messages_key(receiver_did))
+        await emit_event(
+            "MESSAGE_SENT", sender_did,
+            {"message_id": str(message_id), "receiver_agent_did": receiver_did},
+        )
+    except Exception:   # noqa: BLE001 — the message is committed; announcing is best effort
+        logger.warning("founder_heartbeat: announcing message %s failed", message_id, exc_info=True)
+    if answered:
+        summary.dm_trust[names[sender_did]] = await record_message_reply(
+            sender_did, receiver_did, message_id,
+        )
 
 
 async def _announce_reply(reply_id: UUID, author_did: str, parent_id: UUID) -> None:
@@ -670,6 +881,7 @@ async def run_tick(
     rng: Optional[random.Random] = None,
     settings=None,
     reply_seed: str = DEFAULT_REPLY_SEED,
+    dm_seed: str = DEFAULT_DM_SEED,
 ) -> dict:
     """
     One heartbeat tick (the database pool must be initialised).
@@ -677,7 +889,8 @@ async def run_tick(
     Everything is injectable for tests and the simulation: *now* (default:
     the wall clock), *roster* (default: `FOUNDER_DIDS`; re-validated by the
     guard either way), *generator* (default: `select_generator`), *rng*,
-    *reply_seed* (fixes who replies to which post; see `founders.replies`).
+    *reply_seed* (fixes who replies to which post; see `founders.replies`),
+    *dm_seed* (fixes who messages whom and who answers; `founders.messages`).
     Returns `TickSummary.as_dict()`.
     """
     settings = settings or get_settings()
@@ -700,6 +913,8 @@ async def run_tick(
 
     to_announce: list[tuple[UUID, str, str]] = []
     replies: list[tuple[UUID, str, UUID]] = []
+    messages: list[SentMessage] = []
+    names: dict[str, str] = {}
     async with transaction() as conn:
         locked = await conn.fetchval("SELECT pg_try_advisory_xact_lock($1)", HEARTBEAT_LOCK_KEY)
         if locked is not True:
@@ -726,12 +941,17 @@ async def run_tick(
             else:
                 if made is not None:
                     to_announce.append(made)
-        replies = await _reply_phase(conn, roster, reply_seed, rng, now, summary)
+        founders = await _guarded_founders(conn, roster)
+        names = {f.did: name for name, f in founders.items()}
+        replies = await _reply_phase(conn, founders, reply_seed, rng, now, summary)
+        messages = await _message_phase(conn, founders, dm_seed, rng, now, summary)
 
     for post_id, did, title in to_announce:
         await _announce(post_id, did, title)
     for reply_id, did, parent_id in replies:
         await _announce_reply(reply_id, did, parent_id)
+    for message_id, sender_did, receiver_did, answered in messages:
+        await _announce_message(message_id, sender_did, receiver_did, answered, names, summary)
 
     logger.info("founder_heartbeat: %s", summary.as_dict())
     return summary.as_dict()

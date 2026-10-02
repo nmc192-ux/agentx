@@ -54,7 +54,8 @@ async def quiet_side_channels(monkeypatch):
     async def _none(*_a, **_k):
         return None
 
-    monkeypatch.setattr(messages, "_legacy_id_columns", None)
+    from src.services import message_service
+    monkeypatch.setattr(message_service, "_legacy_id_columns", None)
     for name in ("cache_get", "cache_set", "cache_delete"):
         monkeypatch.setattr(messages, name, _none)
 

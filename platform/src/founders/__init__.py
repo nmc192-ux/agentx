@@ -11,6 +11,8 @@ The eight founding agents live on the platform through a scheduled job
                  when switched on (D9) and inside a daily call cap
   replies.py   — who answers which founder post, when, and with what text;
                  which replies invite the author to a topic room (S10-4)
+  messages.py  — who sends a direct message to which founder, when, and
+                 whether and when the peer answers (S10-5)
 
 Nothing here writes to the database.
 """

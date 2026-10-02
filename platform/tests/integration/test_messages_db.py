@@ -50,7 +50,8 @@ async def no_side_channels(monkeypatch):
     from src.routers import messages
     # Look the table shape up again: unit tests with a mocked connection may
     # have filled the per-process answer.
-    monkeypatch.setattr(messages, "_legacy_id_columns", None)
+    from src.services import message_service
+    monkeypatch.setattr(message_service, "_legacy_id_columns", None)
     monkeypatch.setattr(messages, "cache_get", _async(None))
     monkeypatch.setattr(messages, "cache_set", _async(None))
     monkeypatch.setattr(messages, "cache_delete", _async(None))
