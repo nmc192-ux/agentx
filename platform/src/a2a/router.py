@@ -11,6 +11,7 @@ Endpoints:
   POST /a2a
        → JSON-RPC 2.0 endpoint for A2A method calls:
            message/send  — submit a task from an external A2A agent
+                           (only while the `tasks` router is on)
            tasks/get     — retrieve a task by ID
 
 Both Agent Card endpoints are publicly accessible (no auth required).
@@ -33,8 +34,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from ..auth.middleware import AgentRecord, get_current_agent_optional
+from ..config import get_settings
 from ..database import get_db
 from .agent_card import AgentCard, generate_agent_card, generate_platform_card
+from .base_url import public_base_url
 from .handler import handle_message_send, handle_tasks_get
 from .jsonrpc import JSONRPCError, JSONRPCRequest, JSONRPCResponse
 
@@ -55,13 +58,18 @@ a2a_router = APIRouter(tags=["A2A"])
         "Compliant with the Google A2A protocol specification v0.3."
     ),
 )
-async def platform_agent_card() -> JSONResponse:
+async def platform_agent_card(request: Request) -> JSONResponse:
     """Serve the platform-level A2A Agent Card."""
-    card = generate_platform_card()
+    card = generate_platform_card(
+        base_url=public_base_url(request),
+        router_enabled=get_settings().router_enabled,
+        a2a_methods=available_methods(),
+    )
     return JSONResponse(
         content=card.model_dump(exclude_none=True),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=300"},
+        # The card prints the host it was asked on.
+        headers={"Cache-Control": "public, max-age=300", "Vary": "Host"},
     )
 
 
@@ -77,7 +85,7 @@ async def platform_agent_card() -> JSONResponse:
         "by their DID. Compliant with the Google A2A protocol specification v0.3."
     ),
 )
-async def agent_agent_card(agent_did: str) -> JSONResponse:
+async def agent_agent_card(agent_did: str, request: Request) -> JSONResponse:
     """Serve an individual agent's A2A Agent Card.
 
     Fetches the agent's record from the database and builds the Agent Card
@@ -120,6 +128,7 @@ async def agent_agent_card(agent_did: str) -> JSONResponse:
         specialization=row.get("specialization"),
         capabilities_list=caps,
         bio=row.get("bio"),
+        base_url=public_base_url(request),
     )
 
     logger.debug("a2a: served card for %s", agent_did)
@@ -127,7 +136,7 @@ async def agent_agent_card(agent_did: str) -> JSONResponse:
     return JSONResponse(
         content=card.model_dump(exclude_none=True),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=60"},
+        headers={"Cache-Control": "public, max-age=60", "Vary": "Host"},
     )
 
 
@@ -140,6 +149,23 @@ _METHODS = {
     "message/send": (handle_message_send, True),
     "tasks/get":    (handle_tasks_get, False),
 }
+
+# A method that only makes sense while a gated router is on. `message/send`
+# publishes a marketplace task: with the `tasks` router off no route lists it
+# or lets anyone bid, so the task would sit in the table unseen (S9-13a).
+_METHOD_NEEDS_ROUTER = {
+    "message/send": "tasks",
+}
+
+
+def available_methods() -> list[str]:
+    """The A2A methods this deployment answers (router gating applied)."""
+    settings = get_settings()
+    return [
+        name for name in _METHODS
+        if name not in _METHOD_NEEDS_ROUTER
+        or settings.router_enabled(_METHOD_NEEDS_ROUTER[name])
+    ]
 
 
 @a2a_router.post(
@@ -188,12 +214,17 @@ async def a2a_jsonrpc(
 
     # ── Dispatch to handler ───────────────────────────────────────────────────
     handler, needs_login = _METHODS.get(rpc.method, (None, False))
-    if handler is None:
+    methods = available_methods()
+    if handler is None or rpc.method not in methods:
+        # Checked before the login: a switched-off method is refused for
+        # everyone, and nothing is created.
         resp = JSONRPCResponse.err(
             rpc.id,
             JSONRPCError.METHOD_NOT_FOUND,
-            f"Method not found: '{rpc.method}'",
-            data={"available_methods": list(_METHODS.keys())},
+            f"Method not found: '{rpc.method}'"
+            if handler is None
+            else f"Method not available on this deployment: '{rpc.method}'",
+            data={"available_methods": methods},
         )
         return JSONResponse(content=resp.model_dump(exclude_none=True))
 

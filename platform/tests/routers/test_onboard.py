@@ -138,6 +138,10 @@ class TestOnboardHappyPath:
         # At least one next_step should mention the capability
         task_steps = [s for s in body["next_steps"] if "research" in s]
         assert len(task_steps) >= 1
+        # S9-13a: it named `GET /tasks?capability=…`, a parameter that route
+        # never had. The step names the recommended-tasks route instead.
+        assert not any("capability=" in s for s in body["next_steps"])
+        assert f"GET /agents/{body['agent_did']}/recommended-tasks" in task_steps[0]
 
     @pytest.mark.asyncio
     async def test_no_first_post_returns_null_post_id(self, client):
@@ -370,6 +374,27 @@ class TestOnboardServiceUnit:
         # Falls back to generic tasks step
         assert any("task" in s.lower() for s in steps)
         assert len(steps) >= 3
+
+    def test_build_next_steps_paid_tasks_only_when_router_on(self, monkeypatch):
+        """S9-13a: the `GET /tasks` step is listed only while `tasks` is on."""
+        from src.routers import onboard
+
+        class _Settings:
+            def __init__(self, off):
+                self._off = off
+
+            def router_enabled(self, name):
+                return name not in self._off
+
+        monkeypatch.setattr(onboard, "get_settings", lambda: _Settings({"tasks"}))
+        steps = onboard._build_next_steps("did:agentx:test-001", ["coding"])
+        assert not any("GET /tasks" in s for s in steps)
+        assert any("recommended-tasks" in s for s in steps)
+        assert len(steps) >= 3
+
+        monkeypatch.setattr(onboard, "get_settings", lambda: _Settings(set()))
+        steps = onboard._build_next_steps("did:agentx:test-001", ["coding"])
+        assert any("GET /tasks and bid with POST /tasks/<task_id>/bid" in s for s in steps)
 
     def test_build_next_steps_contains_heartbeat(self):
         from src.routers.onboard import _build_next_steps

@@ -76,9 +76,11 @@ class TestAgentCardModel:
         assert card.defaultOutputModes == ["text"]
 
     def test_capabilities_defaults(self):
+        # S9-13a: POST /a2a has no streaming or push-notification methods, so
+        # a card must not offer them unless told to.
         caps = A2ACapabilities()
-        assert caps.streaming is True
-        assert caps.pushNotifications is True
+        assert caps.streaming is False
+        assert caps.pushNotifications is False
         assert caps.stateTransitionHistory is False
 
     def test_skill_defaults(self):
@@ -201,7 +203,9 @@ class TestGeneratePlatformCard:
         card = generate_platform_card(base_url=BASE_URL)
         assert card.name == "AgentX Platform"
         assert card.version == "0.3"
-        assert card.url == BASE_URL
+        # The A2A service endpoint is the JSON-RPC route, not the site root.
+        assert card.url == f"{BASE_URL}/a2a"
+        assert card.provider.url == BASE_URL
 
     def test_platform_card_has_skills(self):
         card = generate_platform_card(base_url=BASE_URL)
@@ -212,13 +216,14 @@ class TestGeneratePlatformCard:
         assert "trust_scoring" in skill_ids
 
     def test_platform_card_state_transition_history(self):
+        # No task history is stored server-side (handler.handle_tasks_get).
         card = generate_platform_card(base_url=BASE_URL)
-        assert card.capabilities.stateTransitionHistory is True
+        assert card.capabilities.stateTransitionHistory is False
 
     def test_platform_card_documentation_url(self):
+        # /docs is switched off in production; skill.md is served everywhere.
         card = generate_platform_card(base_url=BASE_URL)
-        assert card.documentationUrl is not None
-        assert "/docs" in card.documentationUrl
+        assert card.documentationUrl == f"{BASE_URL}/.well-known/skill.md"
 
 
 # ── Router endpoints ──────────────────────────────────────────────────────────

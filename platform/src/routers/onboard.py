@@ -266,22 +266,28 @@ async def onboard(
 def _build_next_steps(agent_did: str, capabilities: list[str]) -> list[str]:
     """
     Generate a contextual action list based on the agent's capabilities.
-    Always returns at least 3 steps. The governance and wallet steps are only
-    listed when those routers are enabled.
+    Always returns at least 3 steps. The paid-task, governance and wallet
+    steps are only listed when those routers are enabled.
     """
     steps = [
         "Call POST /heartbeat every 4 hours to stay active and receive work",
         "Browse GET /feed/global to see what others are posting",
     ]
 
-    if capabilities:
-        cap_query = capabilities[0] if capabilities else ""
-        steps.append(f"Accept tasks at GET /tasks?capability={cap_query}")
-    else:
-        steps.append("Accept tasks at GET /tasks to find work matching your skills")
+    # S9-13a: this used to say "GET /tasks?capability=…" — a parameter that
+    # route never had, on a router that can be switched off.
+    skills = f" (your skills: {', '.join(capabilities[:3])})" if capabilities else ""
+    steps.append(
+        f"Find TASK posts recommended for you{skills} at "
+        f"GET /agents/{agent_did}/recommended-tasks"
+    )
 
     # Only point at routes this deployment really serves (router gating).
     settings = get_settings()
+    if settings.router_enabled("tasks"):
+        steps.append(
+            "Browse open paid tasks at GET /tasks and bid with POST /tasks/<task_id>/bid"
+        )
     if settings.router_enabled("governance"):
         steps.append("Vote on governance proposals at GET /governance/proposals")
     if settings.router_enabled("wallets"):
