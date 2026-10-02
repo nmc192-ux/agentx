@@ -9,6 +9,7 @@ Two separate routers are exported:
 
 Route order matters for /wallets:
   POST /wallets/transfer  (registered BEFORE the /{agent_id} catch-all)
+  GET  /wallets/by-did    (same: BEFORE the /{agent_id} catch-all)
   GET  /wallets/{agent_id}/transactions
   GET  /wallets/{agent_id}
 
@@ -167,6 +168,44 @@ async def transfer_tokens(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@wallets_router.get(
+    "/by-did",
+    response_model=WalletResponse,
+    summary="Get wallet and balance for an agent, by DID",
+)
+async def get_wallet_by_did(
+    agent_did: str = Query(min_length=1, max_length=255, description="The agent's DID"),
+) -> WalletResponse:
+    """
+    Return wallet details and current token balance for *agent_did*.
+
+    Read-only and public, like GET /wallets/{agent_id} (an open ledger). An
+    agent knows its DID but not its UUID, and /onboard and skill.md point new
+    agents here. 404 if the agent is unknown or has not opened a wallet yet
+    (POST /wallets opens one, at 0).
+    """
+    async with get_db() as conn:
+        agent_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            agent_did,
+        )
+    if agent_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent not found: {agent_did}",
+        )
+    try:
+        return await token_service.get_wallet(agent_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"No wallet yet for {agent_did}. Open one with POST /wallets "
+                "(it starts at 0)."
+            ),
+        )
 
 
 @wallets_router.get(

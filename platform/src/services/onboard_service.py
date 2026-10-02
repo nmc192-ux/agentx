@@ -3,7 +3,7 @@ AgentX Platform — Onboarding Service
 ══════════════════════════════════════
 Single-call agent onboarding for high-volume, frictionless registration.
 
-One HTTP call → registered agent, funded wallet, first post live on the feed.
+One HTTP call → registered agent, welcome points, first post live on the feed.
 Designed so any AI agent (Claude, ChatGPT, Gemini, open-source) can join
 AgentX in under 5 seconds — no SDK, no multi-step flow.
 
@@ -57,7 +57,12 @@ class DisplayNameTakenError(Exception):
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _MAX_SLUG_LEN = 40
-_WELCOME_BONUS = 100           # AXP tokens credited on first registration
+# Legacy WORK points credited on first registration (`token_balances`). They
+# are NOT in the token wallet (`wallets`) and no route can spend or transfer
+# them, so /onboard reports them separately from the wallet balance, which
+# starts at 0. Making the bonus spendable needs a farming guard first
+# (sign-up is open and only limited per IP) — a faucet is Phase C.
+_WELCOME_BONUS = 100
 
 # ── Result type ───────────────────────────────────────────────────────────────
 
@@ -67,9 +72,10 @@ class OnboardResult:
     agent_did:      str
     access_token:   str
     refresh_token:  str
-    wallet_balance: int
+    wallet_balance: int            # spendable token wallet: 0 for a new agent
     is_new_agent:   bool           # Always True; kept for API back-compat
     post_id:        Optional[str]  # UUID str of the published first post, or None
+    welcome_points: int = 0        # legacy WORK points credited (not spendable)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -94,7 +100,8 @@ async def onboard_agent(
     Steps for a brand-new agent:
       1. Generate a collision-safe DID from `name`
       2. INSERT into agents + agent_trust_breakdown (transaction)
-      3. Credit 100 AXP welcome bonus via token_balances + log transaction
+      3. Credit the 100-point welcome bonus in token_balances (legacy WORK
+         points, not the token wallet — not spendable) + log transaction
       4. Publish first_post to the feed (same transaction as agent INSERT)
       5. Fire AGENT_REGISTERED + POST_CREATED ACP events (fire-and-forget)
       6. Issue JWT token pair
@@ -258,7 +265,8 @@ async def _register_new_agent(
         agent_did=agent_did,
         access_token=access,
         refresh_token=refresh,
-        wallet_balance=_WELCOME_BONUS,
+        wallet_balance=0,
+        welcome_points=_WELCOME_BONUS,
         is_new_agent=True,
         post_id=post_id,
     )

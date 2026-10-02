@@ -49,6 +49,7 @@ Three tiers of "disabled" are recorded separately so the distinctions are not lo
      parity (zero behavior change on merge). Sprint 9 enables them. Empty
      since S9-7a (``wallets``, ``stakes``, ``economy`` — which turned out NOT
      to be safe as audited; fixed, then enabled — see ``ENABLED_IN_SPRINT_9``).
+     Tier A itself lost ``agent_economy`` in S9-7c (reviewed, fixed, enabled).
   C. ``PARITY_UNEXPLAINED_ROUTERS`` — off in production for a reason not yet
      established (was: ``memory``, a core primitive). Held off for parity;
      the "why" is a Sprint 9 investigation, not a 9a assumption. Empty since
@@ -60,12 +61,6 @@ accountability; every decision leaves a record.
 
 # ── Tier A — broken or insecure. Keep OFF until fixed (Sprint 9). ──────────────
 BROKEN_OR_INSECURE_ROUTERS = [
-    # SECURITY: `POST /markets/bounties/auto` takes agent_did from the request
-    # body with no JWT, then escrows tokens from that agent's wallet — any
-    # anonymous caller can drain any agent's wallet. Re-enable ONLY after the
-    # wallet-auth fix lands and is reviewed by DrJ as security code. (Sprint 9)
-    "agent_economy",
-
     # HARDENED (Sprint 9, S9-2), KEPT OFF ON PURPOSE: `POST /nodes/register` and
     # `POST /nodes/events` are now FOUNDER-only and peer URLs must be public
     # https (SSRF guard, re-checked before every outbound broadcast). Before
@@ -203,7 +198,7 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   locked; submissions are public while the bounty is open.
 #                   Needs a funded wallet, i.e. is only usable once the money
 #                   cohort (`wallets`, S9-7) is on. `POST /markets/bounties/auto`
-#                   is a different router (`agent_economy`, still Tier A).
+#                   is a different router (`agent_economy`, enabled in S9-7c).
 # Cohort 3, money (S9-7a): the token stack. It was Tier B ("audit-cleared"),
 # but the review before enabling found it was not safe as it stood.
 #   wallets       — S9-1: every POST needs a JWT and acts on the caller's own
@@ -249,11 +244,41 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   tests/integration/test_task_escrow_db.py.
 #                   `/economy/strategies*` and
 #                   `/markets/bounties/auto` are a different router
-#                   (`agent_economy`, still Tier A, S9-7c).
+#                   (`agent_economy`, below).
+#   agent_economy — was Tier A: `POST /markets/bounties/auto` took the paying
+#                   agent's DID from the request body with no JWT and escrowed
+#                   from that agent's wallet, so an anonymous caller could
+#                   drain any wallet. Fixed earlier in Sprint 9 (73c6fe5): the
+#                   creator is the JWT caller, the body has no identity field.
+#                   Reviewed and enabled in S9-7c:
+#                   · bounties/auto goes through the S9-6c
+#                     `bounty_service.create_bounty` (pool escrowed in the
+#                     create's transaction; no funds → no bounty);
+#                   · `POST /contracts/{id}/subcontract` read the parent
+#                     contract without a lock, then created the child in a
+#                     second transaction — a parent completed or disputed in
+#                     between still got a child. Now the parent row is locked
+#                     and the child is created (and its budget escrowed from
+#                     the caller's own wallet) in ONE transaction; not the
+#                     assigned contractor → 403, parent not in flight → 409;
+#                     the caller's payload cannot overwrite the parent
+#                     reference;
+#                   · `POST /economy/strategies/select` and
+#                     `/economy/market-analysis` take no login: they only
+#                     calculate on the request body and touch no data. Their
+#                     lists and strings are now typed and bounded (a
+#                     malformed body used to be a 500).
+#                   Proven against real Postgres in
+#                   tests/integration/test_agent_economy_db.py.
+#                   Known and NOT changed: a sub-contract is only a label —
+#                   nothing ties its budget or its outcome to the parent, and
+#                   `POST /contracts` accepts contract_type='subcontract' with
+#                   any payload, so the parent link is informational and
+#                   must not be trusted by future code (nothing reads it).
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
     "collectives", "agentbus", "tasks", "contracts", "verifications", "markets",
-    "wallets", "stakes", "economy",
+    "wallets", "stakes", "economy", "agent_economy",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

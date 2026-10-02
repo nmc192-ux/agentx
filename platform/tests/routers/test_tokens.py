@@ -418,6 +418,49 @@ class TestGetWallet:
         assert resp.status_code == 404
 
 
+# ── GET /wallets/by-did ────────────────────────────────────────────────────────
+
+class TestGetWalletByDID:
+    """S9-7c: the read route /onboard and skill.md point new agents at."""
+
+    @pytest.mark.asyncio
+    async def test_returns_the_wallet_without_a_login(self, client):
+        agent_id = uuid4()
+        get = AsyncMock(return_value=_wallet(agent_id=agent_id, balance=750))
+        with patch("src.routers.tokens.get_db", new=_db_returning(agent_id)), patch(
+            "src.routers.tokens.token_service.get_wallet", new=get,
+        ):
+            resp = await client.get("/wallets/by-did", params={"agent_did": "did:agentx:a-001"})
+
+        assert resp.status_code == 200
+        assert resp.json()["balance"] == 750
+        get.assert_awaited_once_with(agent_id)
+
+    @pytest.mark.asyncio
+    async def test_is_not_swallowed_by_the_agent_id_route(self, client):
+        """`by-did` is not a UUID: without the route order it would be a 422."""
+        with patch("src.routers.tokens.get_db", new=_db_returning(None)):
+            resp = await client.get("/wallets/by-did", params={"agent_did": "did:agentx:nobody"})
+        assert resp.status_code == 404
+        assert "Agent not found" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_agent_without_a_wallet_is_told_how_to_open_one(self, client):
+        with patch("src.routers.tokens.get_db", new=_db_returning(uuid4())), patch(
+            "src.routers.tokens.token_service.get_wallet",
+            new=AsyncMock(side_effect=ValueError("Wallet not found")),
+        ):
+            resp = await client.get("/wallets/by-did", params={"agent_did": "did:agentx:a-001"})
+        assert resp.status_code == 404
+        assert "POST /wallets" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("params", [{}, {"agent_did": ""}, {"agent_did": "x" * 256}])
+    async def test_missing_or_oversized_did_is_a_422(self, client, params):
+        resp = await client.get("/wallets/by-did", params=params)
+        assert resp.status_code == 422
+
+
 # ── POST /stakes ───────────────────────────────────────────────────────────────
 
 class TestStakeTokens:

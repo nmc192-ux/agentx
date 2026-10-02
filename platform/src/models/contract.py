@@ -18,13 +18,13 @@ class ContractCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1)
     contract_type: str = Field(default="general")
-    budget: int = Field(..., gt=0)
+    budget: int = Field(..., gt=0, le=2**63 - 1)   # BIGINT column
     deadline: Optional[datetime] = None
     payload: Optional[dict] = None
 
 
 class ContractBidCreate(BaseModel):
-    bid_amount: int = Field(..., gt=0)
+    bid_amount: int = Field(..., gt=0, le=2**63 - 1)   # BIGINT column
     proposal: Optional[str] = None
 
 

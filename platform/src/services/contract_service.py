@@ -267,6 +267,75 @@ async def _publish(event_type: EventType, payload: dict, caller_did: str) -> Non
         )
 
 
+async def create_contract_in_transaction(
+    conn,
+    caller_did: str,
+    data: ContractCreate,
+) -> ContractResponse:
+    """
+    Insert a contract and escrow its budget on *conn*, inside the caller's
+    transaction. Raises ValueError (creator not found, or insufficient funds /
+    no wallet), which must roll that transaction back.
+
+    The caller announces the contract with ``announce_contract_created`` once
+    its transaction has committed.
+    """
+    agent_row = await conn.fetchrow(
+        "SELECT agent_id FROM agents WHERE agent_did = $1",
+        caller_did,
+    )
+    if agent_row is None:
+        raise ValueError(f"Creator agent not found: {caller_did}")
+    creator_id = agent_row["agent_id"]
+
+    row = await conn.fetchrow(
+        f"""
+        INSERT INTO contracts
+            (creator_did, creator_id, title, description, contract_type,
+             budget, deadline, payload)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        RETURNING {_CONTRACT_COLS}
+        """,
+        caller_did,
+        creator_id,
+        data.title,
+        data.description,
+        data.contract_type,
+        data.budget,
+        data.deadline,
+        json.dumps(data.payload) if data.payload else None,
+    )
+    contract_id = row["contract_id"]
+
+    # Escrow the budget. Raises on insufficient funds → the whole
+    # transaction (the INSERT above included) rolls back.
+    await _escrow_contract_budget(conn, creator_id, contract_id, data.budget)
+    row = await conn.fetchrow(
+        f"SELECT {_CONTRACT_COLS} FROM contracts WHERE contract_id = $1",
+        contract_id,
+    )
+    return _row_to_contract(row)
+
+
+async def announce_contract_created(contract: ContractResponse) -> None:
+    """Publish CONTRACT_CREATED and log it. Call after the create has committed."""
+    await _publish(
+        EventType.CONTRACT_CREATED,
+        {
+            "contract_id": str(contract.contract_id),
+            "creator_did": contract.creator_did,
+            "title": contract.title,
+            "budget": contract.budget,
+        },
+        contract.creator_did,
+    )
+
+    logger.info(
+        "contract_service: created contract %s ('%s') by %s (budget=%d)",
+        contract.contract_id, contract.title, contract.creator_did, contract.budget,
+    )
+
+
 async def create_contract(caller_did: str, data: ContractCreate) -> ContractResponse:
     """
     Create a new contract and escrow its budget from the creator's wallet.
@@ -286,58 +355,9 @@ async def create_contract(caller_did: str, data: ContractCreate) -> ContractResp
         ValueError: creator agent not found, or insufficient funds / no wallet.
     """
     async with transaction() as conn:
-        agent_row = await conn.fetchrow(
-            "SELECT agent_id FROM agents WHERE agent_did = $1",
-            caller_did,
-        )
-        if agent_row is None:
-            raise ValueError(f"Creator agent not found: {caller_did}")
-        creator_id = agent_row["agent_id"]
+        contract = await create_contract_in_transaction(conn, caller_did, data)
 
-        row = await conn.fetchrow(
-            f"""
-            INSERT INTO contracts
-                (creator_did, creator_id, title, description, contract_type,
-                 budget, deadline, payload)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-            RETURNING {_CONTRACT_COLS}
-            """,
-            caller_did,
-            creator_id,
-            data.title,
-            data.description,
-            data.contract_type,
-            data.budget,
-            data.deadline,
-            json.dumps(data.payload) if data.payload else None,
-        )
-        contract_id = row["contract_id"]
-
-        # Escrow the budget. Raises on insufficient funds → the whole
-        # transaction (the INSERT above included) rolls back.
-        await _escrow_contract_budget(conn, creator_id, contract_id, data.budget)
-        row = await conn.fetchrow(
-            f"SELECT {_CONTRACT_COLS} FROM contracts WHERE contract_id = $1",
-            contract_id,
-        )
-
-    contract = _row_to_contract(row)
-
-    await _publish(
-        EventType.CONTRACT_CREATED,
-        {
-            "contract_id": str(contract.contract_id),
-            "creator_did": caller_did,
-            "title": data.title,
-            "budget": data.budget,
-        },
-        caller_did,
-    )
-
-    logger.info(
-        "contract_service: created contract %s ('%s') by %s (budget=%d)",
-        contract.contract_id, data.title, caller_did, data.budget,
-    )
+    await announce_contract_created(contract)
     return contract
 
 

@@ -33,9 +33,10 @@ def _make_onboard_result(is_new: bool = True, post_id: str = "post-001") -> obje
         agent_did=AGENT_DID,
         access_token="access-jwt-token",
         refresh_token="refresh-jwt-token",
-        wallet_balance=100,
+        wallet_balance=0,
         is_new_agent=is_new,
         post_id=post_id if is_new else None,
+        welcome_points=100,
     )
 
 
@@ -98,7 +99,16 @@ class TestOnboardHappyPath:
         assert body["agent_did"] == AGENT_DID
         assert body["token"] == "access-jwt-token"
         assert body["refresh_token"] == "refresh-jwt-token"
-        assert body["wallet_balance"] == 100
+        # S9-7c: the spendable wallet starts at 0; the welcome bonus is a
+        # separate, non-spendable figure.
+        assert body["wallet_balance"] == 0
+        assert body["welcome_points"] == 100
+        assert not any("funded" in step.lower() for step in body["next_steps"])
+        wallet_steps = [s for s in body["next_steps"] if "wallet" in s.lower()]
+        assert wallet_steps == [
+            "Your token wallet starts at 0: open it with POST /wallets, then check it "
+            f"at GET /wallets/by-did?agent_did={AGENT_DID}"
+        ]
         assert body["post_id"] == "post-001"
         assert body["is_new_agent"] is True
         assert body["profile_url"] == f"/agents/{AGENT_DID}"
@@ -139,7 +149,7 @@ class TestOnboardHappyPath:
             agent_did=AGENT_DID,
             access_token="token",
             refresh_token="refresh",
-            wallet_balance=100,
+            wallet_balance=0,
             is_new_agent=True,
             post_id=None,
         )
@@ -407,3 +417,31 @@ class TestOnboardServiceUnit:
             "content": "World",
             "tags": ["intro"],
         }
+
+
+class TestNextStepsOnlyNameRoutesThatExist:
+    """S9-7c: /onboard used to send every new agent to a wallet route that did
+    not exist, and to governance and wallet routes that are switched off."""
+
+    def _steps(self, monkeypatch, disabled: set[str]) -> list[str]:
+        from types import SimpleNamespace
+
+        from src.routers import onboard
+        monkeypatch.setattr(
+            onboard, "get_settings",
+            lambda: SimpleNamespace(router_enabled=lambda name: name not in disabled),
+        )
+        return onboard._build_next_steps(AGENT_DID, ["research"])
+
+    def test_wallet_step_names_a_real_route(self, monkeypatch):
+        from src.main import app
+        steps = self._steps(monkeypatch, disabled=set())
+        assert any("/wallets/by-did?agent_did=" + AGENT_DID in s for s in steps)
+        routes = {(m, r.path) for r in app.routes for m in (getattr(r, "methods", None) or [])}
+        assert ("GET", "/wallets/by-did") in routes
+        assert ("POST", "/wallets") in routes
+
+    def test_switched_off_routers_are_not_advertised(self, monkeypatch):
+        steps = self._steps(monkeypatch, disabled={"wallets", "governance"})
+        assert not any("wallet" in s.lower() or "governance" in s.lower() for s in steps)
+        assert len(steps) >= 3

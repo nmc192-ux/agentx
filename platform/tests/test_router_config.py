@@ -100,8 +100,8 @@ def test_fixed_work_routers_can_still_be_switched_off_by_the_kill_switch(monkeyp
 
 # ── S9-7a: cohort 3 (money) — the token stack, after its fixes ────────────────
 
-# agent_economy is the fourth router of the cohort; it is still Tier A (S9-7c).
-MONEY_COHORT_ENABLED = ["wallets", "stakes", "economy"]
+# wallets, stakes, economy: S9-7a; agent_economy (was Tier A): S9-7c
+MONEY_COHORT_ENABLED = ["wallets", "stakes", "economy", "agent_economy"]
 
 
 @pytest.mark.parametrize("name", MONEY_COHORT_ENABLED)
@@ -114,7 +114,7 @@ def test_money_cohort_enabled_by_default(name, monkeypatch):
 
 
 def test_money_routers_can_still_be_switched_off_by_the_kill_switch(monkeypatch):
-    monkeypatch.setenv("DISABLED_ROUTERS", "wallets,stakes,economy")
+    monkeypatch.setenv("DISABLED_ROUTERS", "wallets,stakes,economy,agent_economy")
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
     settings = Settings(_env_file=None)
     assert not any(settings.router_enabled(n) for n in MONEY_COHORT_ENABLED)
@@ -124,7 +124,7 @@ def test_repo_default_now_disables_tier_a_only(monkeypatch):
     """Tier B and Tier C are empty: everything still off is off for a reason
     written next to it in router_config.py."""
     assert set(DEFAULT_DISABLED_ROUTERS) == set(BROKEN_OR_INSECURE_ROUTERS)
-    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"agent_economy", "nodes", "governance", "consensus"}
+    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"nodes", "governance", "consensus"}
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])
@@ -158,14 +158,15 @@ def _settings(monkeypatch, disabled, allow_unsafe=None, **kwargs):
 
 
 def test_tier_a_is_what_the_plan_says_it_protects():
-    assert {"agent_economy", "nodes", "consensus"} <= set(BROKEN_OR_INSECURE_ROUTERS)
+    assert {"nodes", "consensus"} <= set(BROKEN_OR_INSECURE_ROUTERS)
     # S9-6: token holes found in review. tasks left in S9-6a, contracts in
     # S9-6b and markets in S9-6c (all fixed).
     assert "tasks" not in BROKEN_OR_INSECURE_ROUTERS
     assert "contracts" not in BROKEN_OR_INSECURE_ROUTERS
     assert "markets" not in BROKEN_OR_INSECURE_ROUTERS
-    # /markets/bounties/auto lives in agent_economy, which is NOT cleared.
-    assert "agent_economy" in BROKEN_OR_INSECURE_ROUTERS
+    # /markets/bounties/auto lives in agent_economy: reviewed and cleared in
+    # S9-7c (tests/integration/test_agent_economy_db.py).
+    assert "agent_economy" not in BROKEN_OR_INSECURE_ROUTERS
 
 
 @pytest.mark.parametrize("env_value", ["posts", "contracts,rooms,governance", "", " , "])
@@ -285,3 +286,5 @@ def test_app_does_not_mount_tier_a_under_a_short_env_override():
         assert own, name
         assert not (own & mounted), f"Tier A router {name!r} is mounted: {sorted(own & mounted)}"
     assert _own_routes(wallets_router) <= mounted
+    # Left Tier A in S9-7c: mounted like any other unlocked router.
+    assert _own_routes(agent_economy_router) <= mounted
