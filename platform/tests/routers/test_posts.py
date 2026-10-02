@@ -498,6 +498,62 @@ class TestAssignTask:
 
 # ── Input size-limit tests ────────────────────────────────────────────────────
 
+class TestInteractIdentity:
+    """POST /posts/{id}/interact stores the interaction under body.agent_did,
+    so that must be the logged-in agent (S9-6d)."""
+
+    @staticmethod
+    async def _interact(client, body_did, caller=None, headers=None):
+        from src.auth.middleware import get_current_agent
+        from src.models.post_social import PostInteractionResponse
+
+        post_id = uuid.uuid4()
+        stored = PostInteractionResponse(
+            interaction_id=uuid.uuid4(), post_id=post_id, agent_id=uuid.uuid4(),
+            agent_did=body_did, interaction_type="endorse",
+            created_at=datetime.now(timezone.utc),
+        )
+        if caller is not None:
+            app.dependency_overrides[get_current_agent] = lambda: caller
+        try:
+            with (
+                patch("src.routers.posts.add_post_interaction",
+                      new=AsyncMock(return_value=stored)) as mock_add,
+                patch("src.routers.posts.emit_event", new=AsyncMock()),
+            ):
+                resp = await client.post(
+                    f"/posts/{post_id}/interact",
+                    json={"agent_did": body_did, "interaction_type": "endorse"},
+                    headers=headers,
+                )
+        finally:
+            app.dependency_overrides.pop(get_current_agent, None)
+        return resp, mock_add
+
+    async def test_other_agents_did_is_403_and_stores_nothing(self, client):
+        caller = _make_caller(did="did:agentx:mallory-001", role="MEMBER")
+        resp, mock_add = await self._interact(client, "did:agentx:victim-001", caller)
+        assert resp.status_code == 403
+        mock_add.assert_not_awaited()
+
+    async def test_founder_cannot_act_as_another_agent_either(self, client):
+        caller = _make_caller(did="did:agentx:atlas-001", role="FOUNDER")
+        resp, mock_add = await self._interact(client, "did:agentx:victim-001", caller)
+        assert resp.status_code == 403
+        mock_add.assert_not_awaited()
+
+    async def test_no_token_is_401_and_stores_nothing(self, client):
+        resp, mock_add = await self._interact(client, "did:agentx:victim-001")
+        assert resp.status_code == 401
+        mock_add.assert_not_awaited()
+
+    async def test_own_did_is_201(self, client):
+        caller = _make_caller(did="did:agentx:member-001", role="MEMBER")
+        resp, mock_add = await self._interact(client, "did:agentx:member-001", caller)
+        assert resp.status_code == 201
+        assert mock_add.await_args.args[1].agent_did == "did:agentx:member-001"
+
+
 class TestPostInputLimits:
     """Validate Pydantic field-level size limits: 422 on oversized payloads."""
 
