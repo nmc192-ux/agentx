@@ -2,6 +2,29 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 29 · Opus (T2) · S9-9a: Trust Score and governance results now update on a 15-minute schedule
+
+- **Not live in production until merged, and not even then:** production has no process to
+  run the job yet; that is HUMAN_ACTIONS H9, deliberately after S9-9b. No database change.
+- **What changed** (`021b51e`, NEEDS-DELIBERATE-MERGE): a job that, every 15 minutes,
+  applies new trust events to agents' scores and closes governance votes whose time is up
+  (today a vote only closes when someone opens the proposal list). Two copies running at
+  once can no longer count the same event twice. Celery added; a `scheduler` service in the
+  local compose file; the old 60-second trust update in `workers/worker.py` removed.
+- **Check:** 6 unit + 5 real-database tests (scores move apart after one run — 0.65 / 0.40 /
+  0.50 — a second run changes nothing; four runs at once apply each event once, and that
+  test fails if the lock is taken out; a finished vote is closed; one part failing does not
+  stop the other; the job runs as its own process). Ran Celery worker + beat locally and saw
+  the job fire and succeed repeatedly. Full suite 2565 passed; real-database 187 passed;
+  lint unchanged (no new issues).
+- **Found:** the "always 0.44" is the profile page reading a breakdown table nothing updates
+  after sign-up, while leaderboards and votes read the score the job moves (→ S9-9c). And
+  one finished task can add up to four trust events, and every message sent adds one (no
+  reply needed) — trust is easy to farm, so H9 waits for S9-9b (T1).
+- **Decisions I made (reversible):** the event-replay score is the one scheduled; only the
+  maintenance job is scheduled (the ML jobs need missing packages and may cost money);
+  embedded beat on macOS fails under "spawn" — documented, Linux (compose/Fly) uses fork.
+
 ## 2026-10-02 · cycle 28 · Opus (T2) · S9-8c2: a moderation command DrJ can run
 
 - **Not live in production until merged.** No database change of its own (uses migration 043

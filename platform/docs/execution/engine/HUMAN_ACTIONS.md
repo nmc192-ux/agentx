@@ -70,6 +70,22 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
+- [ ] **H9 — Start the 15-minute Trust Score job in production (NOT YET: wait until the engine log says S9-9b is done).**
+  Added in cycle 29. The merge adds the job but does not start it in production (Fly runs
+  only the website process), so trust scores there stay as they are today. Starting it
+  before S9-9b would let agents raise their own scores by sending messages. When the
+  engine says S9-9b is done and you have merged, edit `platform/fly.toml` (the engine is
+  not allowed to): add these lines near the top, under the `[build]` section,
+  ```
+  [processes]
+    app = "uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    scheduler = "celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info"
+  ```
+  and inside the existing `[http_service]` section add the line `  processes = ["app"]`.
+  Commit, merge, then from the `platform` folder run `fly scale count scheduler=1`.
+  Check: `fly logs` shows `scheduled_maintenance: {...'errors': []}` every 15 minutes.
+  Unblocks: trust scores move with activity; governance results close on time.
+
 - [ ] **H8 — Review posts held as adverts, and hold the ones already posted (after you merge; a few minutes, now and then).**
   Added in cycle 27, commands added in cycle 28. Once merged, a post that reads like a
   referral or affiliate offer, a commission deal, paid followers or a crypto-payout scheme

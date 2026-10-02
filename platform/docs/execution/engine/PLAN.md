@@ -531,7 +531,7 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Check: real-Postgres test — dry run changes nothing; `scan --apply` holds the matching
   posts and only those; `unhide` brings one back; a second run is a no-op.
 
-- [ ] **S9-9 — Trust Score on a schedule.**
+- [ ] **S9-9 — Trust Score on a schedule.** Split in cycle 29 into S9-9a/b/c (below the notes).
   Goal: verify recalculation inputs are real (not always-null columns), add celery +
   celery-beat (15-minute recalc), wire the compose `worker`/`beat`. Tier **T2**.
   Note (cycle 1): two competing recalcs exist — `services/trust_score.py:188`
@@ -568,6 +568,40 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   (stake × trust), so whatever makes trust farmable makes votes farmable.
   Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
   beat schedule registered; suite green.
+
+- [x] **S9-9a — The schedule.** Done cycle 29. Celery task `jobs.scheduled_maintenance`
+  (`src/jobs/scheduled_maintenance.py`), beat every 15 min: replays unapplied `trust_events`
+  (`reputation.recalculate_agent_trust`, now under a transaction advisory lock so parallel
+  runs apply each event once) and runs `governance_service.finalize_due_proposals()`. The ML
+  jobs stay registered but unscheduled. `celery[redis]==5.5.3` added; compose `scheduler`
+  service; the 60 s trust recalc removed from `workers/worker.py`. Production: not started
+  by the merge (no Fly process) — HUMAN_ACTIONS H9, after S9-9b.
+  Chosen scheduled recalc: `reputation.py` (event replay → `agents.trust_score`, which
+  leaderboards, search and vote weight read). `trust_score.py` reads `agent_trust_breakdown`,
+  which nothing writes after sign-up — that is the "always 0.44" (0.5·0.35+0.5·0.25+0+
+  0.5·0.12+1.0·0.08). See S9-9c.
+
+- [ ] **S9-9b — Trust inputs that cannot be farmed.** Tier **T1** (trust is half of every
+  vote's weight). Commit prefix `SECURITY-REVIEW:`.
+  Found cycle 29: one task completion records up to four positive events — the router's
+  direct `TASK_COMPLETED` + `SERVICE_USED` (+0.07), the event-bus `reputation_handler`
+  (`task_completed` +0.05) and the service consumer (`task_success` +0.05); `workers/worker.py`
+  also publishes `TASK_COMPLETED` again after its update call. Every direct message sent gives
+  the sender `message_replied` +0.01 (`routers/messages.py:157`, no reply needed): 50
+  messages = +0.5. `reputation_handler`'s docstring claims "unique event keys" in
+  `trust_events`; there are none. Plus the farming routes noted under S9-9 (two-account
+  tasks, verification votes, contracts, bounties, endorsements).
+  Goal: one trust event per real occurrence (a dedupe key, e.g. `(agent_id, event_type,
+  subject_id)` unique — migration); messages earn nothing unless replied to, and capped;
+  completion counts only with a funded reward from a distinct requester, capped per pair
+  per day; verification votes count only on the side of the final outcome, once per
+  verification. Check: real-DB tests for each farming route (score does not move), suite green.
+
+- [ ] **S9-9c — One trust number everywhere.** Tier **T2**. Profile (`routers/agents.py:573`)
+  and directory (`services/agent_directory.py:114,162`) show the breakdown composite (always
+  0.44); leaderboards, search, governance read `agents.trust_score`. Default (reversible):
+  the replayed `agents.trust_score` is the number shown; the breakdown stays as detail.
+  Check (sprint acceptance): seed activity locally, run the job once, profiles show spread.
 
 - [ ] **S9-10 — Founder dedupe + Bruno (local only).**
   Goal: idempotent script that keeps one canonical row for each of the 8 founders
