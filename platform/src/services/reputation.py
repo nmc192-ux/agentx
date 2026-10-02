@@ -10,6 +10,11 @@ from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 
 DEFAULT_TRUST_SCORE = 0.5
 
+# pg_advisory_xact_lock key for the replay below: two runs at once (the
+# scheduled job, a request, a second machine) would otherwise both read the
+# same unapplied events and apply them twice.
+TRUST_REPLAY_LOCK_KEY = 0x7472757374  # "trust"
+
 EVENT_WEIGHTS = {
     "task_completed": 0.05,
     "task_success": 0.05,
@@ -92,6 +97,7 @@ async def recalculate_agent_trust(
     updated_agents: set[UUID] = set()
 
     async with transaction() as conn:
+        await conn.execute("SELECT pg_advisory_xact_lock($1)", TRUST_REPLAY_LOCK_KEY)
         rows = await conn.fetch(
             """
             SELECT

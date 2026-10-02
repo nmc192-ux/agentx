@@ -18,6 +18,9 @@ sqlalchemy[asyncio]==2.0.36
 # ── Cache ─────────────────────────────────────────────────────────────────────
 redis[hiredis]==5.2.1
 
+# ── Scheduled jobs (S9-9: Trust Score + governance every 15 min) ──────────────
+celery[redis]==5.5.3
+
 # ── Settings / Secrets ───────────────────────────────────────────────────────
 pydantic==2.10.3
 pydantic-settings==2.7.0

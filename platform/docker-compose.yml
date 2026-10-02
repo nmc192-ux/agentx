@@ -229,6 +229,50 @@ services:
       retries: 3
       start_period: 20s
 
+  # ── Scheduler (S9-9) ─────────────────────────────────────────────────────────
+  # Celery worker with embedded beat: runs src/jobs/scheduled_maintenance.py
+  # every 15 minutes (Trust Score replay + closing finished proposals).
+  scheduler:
+    build:
+      context: ..
+      dockerfile: platform/Dockerfile
+    command: celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info
+    restart: unless-stopped
+    networks:
+      - backend
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    secrets:
+      - db_password
+      - redis_password
+      - jwt_secret
+    environment:
+      <<: *otel-env
+      PYTHONPATH: /app
+      APP_ENV: development
+      LOG_LEVEL: info
+      OTEL_SERVICE_NAME: agentx-scheduler
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: agentx
+      POSTGRES_DB: agentx
+      POSTGRES_SSL_MODE: require
+      POSTGRES_SSL_CA: /certs/ca.crt
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_URL: redis://:devredis@redis:6379/0
+      REDIS_TLS: "false"
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
   # ── Next.js UI ───────────────────────────────────────────────────────────────
   # Builds the Next.js app and serves it with `next start`.
   # Uses the standalone output mode (set in ui/next.config.ts) for a lean image.

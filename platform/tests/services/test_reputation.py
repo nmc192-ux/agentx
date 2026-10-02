@@ -76,5 +76,6 @@ async def test_recalculate_agent_trust_updates_scores_and_history():
         result = await recalculate_agent_trust()
 
     assert result == {"processed_events": 2, "updated_agents": 1}
-    assert conn.execute.await_count == 6
+    # 1 advisory lock + 3 writes per event
+    assert conn.execute.await_count == 7
     mock_cache_delete.assert_awaited_once()

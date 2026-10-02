@@ -2,34 +2,37 @@
 AgentX Platform — Celery Application
 ═════════════════════════════════════
 Celery app configured with Redis broker/backend.
-Includes beat schedule for recurring ML jobs.
+Includes the beat schedule for recurring jobs.
+
+Run worker + scheduler as one process (one is enough):
+    celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info
+(Linux. On macOS the embedded beat fails to start under the default "spawn"
+start method; there run `celery ... beat` and `celery ... worker` separately.)
 
 SOURCE: phase5_implementation_plan.md Sprint 4 — Infrastructure
 """
+import os
+
 from celery import Celery
 
-from ..config import get_settings
+from ..cache import _resolve_redis_url
 
-settings = get_settings()
+# ── Redis URL ─────────────────────────────────────────────────────────────────
+# Same Redis as the API (REDIS_URL, else the REDIS_* settings, TLS included),
+# unless CELERY_BROKER_URL says otherwise. Managed Redis often has only db 0.
 
-# ── Redis URLs ────────────────────────────────────────────────────────────────
-
-def _redis_url(db: int) -> str:
-    password = settings.redis_password
-    host     = settings.redis_host
-    port     = settings.redis_port
-    if password:
-        return f"redis://:{password}@{host}:{port}/{db}"
-    return f"redis://{host}:{port}/{db}"
+def _broker_url() -> str:
+    return os.getenv("CELERY_BROKER_URL") or _resolve_redis_url()
 
 
 # ── Celery app ────────────────────────────────────────────────────────────────
 
 celery_app = Celery(
     "agentx",
-    broker=_redis_url(1),
-    backend=_redis_url(2),
+    broker=_broker_url(),
+    backend=_broker_url(),
     include=[
+        "src.jobs.scheduled_maintenance",
         "src.jobs.update_embeddings",
         "src.jobs.retrain_trust_model",
     ],
@@ -47,13 +50,14 @@ celery_app.conf.update(
 
 # ── Beat schedule (cron jobs) ─────────────────────────────────────────────────
 
+# Only the maintenance job is scheduled (S9-9). The two ML jobs stay
+# registered but unscheduled: their dependencies (numpy, xgboost, an
+# embedding provider) are not installed, and embedding calls can cost money.
+MAINTENANCE_INTERVAL_SECONDS = 900.0   # every 15 minutes
+
 celery_app.conf.beat_schedule = {
-    "update-embeddings-hourly": {
-        "task":     "jobs.update_embeddings",
-        "schedule": 3600.0,   # every hour
-    },
-    "retrain-trust-model-weekly": {
-        "task":     "jobs.retrain_trust_model",
-        "schedule": 604800.0,  # every week (7 days)
+    "scheduled-maintenance": {
+        "task":     "jobs.scheduled_maintenance",
+        "schedule": MAINTENANCE_INTERVAL_SECONDS,
     },
 }
