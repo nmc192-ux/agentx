@@ -235,6 +235,102 @@ class TestCreateAgent:
         assert response.status_code == 409
 
 
+# ── POST /agents — who may hand out which role (S9-6d) ───────────────────────
+
+class TestCreateAgentRoleGate:
+    """Open sign-up is MEMBER / OBSERVER only; any other role needs a FOUNDER.
+
+    Before S9-6d the body's ``governance_role`` went straight into the INSERT
+    and into the returned JWT, with no login: anyone could sign up as FOUNDER.
+    """
+
+    @staticmethod
+    async def _post(client, role, caller=None, headers=None, did="did:agentx:newbot-010"):
+        from src.auth.middleware import get_current_agent_optional
+
+        body = {"agent_did": did, "display_name": "Bot"}
+        if role is not None:
+            body["governance_role"] = role
+
+        with (
+            patch("src.routers.agents.transaction") as mock_tx,
+            patch("src.routers.agents.get_db") as mock_db,
+        ):
+            mock_conn = AsyncMock()
+            mock_conn.fetchval.return_value = None
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            mock_db_conn = AsyncMock()
+            mock_db_conn.fetchrow.return_value = {
+                "tier": "BOOTSTRAP", "governance_role": role or "MEMBER",
+            }
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_db_conn)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            if caller is not None:
+                app.dependency_overrides[get_current_agent_optional] = lambda: caller
+            try:
+                response = await client.post("/agents", json=body, headers=headers)
+            finally:
+                app.dependency_overrides.pop(get_current_agent_optional, None)
+
+        return response, mock_tx, mock_conn
+
+    @staticmethod
+    def _inserted_role(mock_conn):
+        """The governance_role bound into the INSERT INTO agents statement."""
+        for call in mock_conn.execute.await_args_list:
+            if "INSERT INTO agents" in call.args[0]:
+                return call.args[4]
+        raise AssertionError("no INSERT INTO agents was executed")
+
+    @pytest.mark.parametrize("role", ["FOUNDER", "OPERATOR", "DELEGATE"])
+    async def test_anonymous_elevated_role_is_401_and_writes_nothing(self, client, role):
+        response, mock_tx, mock_conn = await self._post(client, role)
+        assert response.status_code == 401
+        assert "access_token" not in response.json()
+        mock_tx.assert_not_called()
+        mock_conn.execute.assert_not_awaited()
+
+    @pytest.mark.parametrize("role", ["FOUNDER", "OPERATOR", "DELEGATE"])
+    @pytest.mark.parametrize("caller_role", ["MEMBER", "OBSERVER", "DELEGATE", "OPERATOR"])
+    async def test_non_founder_elevated_role_is_403_and_writes_nothing(
+        self, client, role, caller_role,
+    ):
+        caller = _make_mock_agent_record(did="did:agentx:member-001", role=caller_role)
+        response, mock_tx, mock_conn = await self._post(client, role, caller=caller)
+        assert response.status_code == 403
+        assert "access_token" not in response.json()
+        mock_tx.assert_not_called()
+        mock_conn.execute.assert_not_awaited()
+
+    async def test_bad_token_elevated_role_is_401(self, client):
+        """A token that does not verify counts as no login (real auth code, no override)."""
+        response, mock_tx, _ = await self._post(
+            client, "FOUNDER", headers={"Authorization": "Bearer not-a-real-token"},
+        )
+        assert response.status_code == 401
+        mock_tx.assert_not_called()
+
+    @pytest.mark.parametrize("role", ["FOUNDER", "OPERATOR", "DELEGATE"])
+    async def test_founder_can_grant_elevated_role(self, client, atlas_record, role):
+        response, _, mock_conn = await self._post(client, role, caller=atlas_record)
+        assert response.status_code == 201
+        assert self._inserted_role(mock_conn) == role
+
+    @pytest.mark.parametrize("role,stored", [(None, "MEMBER"), ("MEMBER", "MEMBER"), ("OBSERVER", "OBSERVER")])
+    async def test_anonymous_self_service_roles_still_work(self, client, role, stored):
+        response, _, mock_conn = await self._post(client, role)
+        assert response.status_code == 201
+        assert self._inserted_role(mock_conn) == stored
+
+    async def test_unknown_role_is_422(self, client):
+        response, mock_tx, _ = await self._post(client, "ROOT")
+        assert response.status_code == 422
+        mock_tx.assert_not_called()
+
+
 # ── GET /agents ───────────────────────────────────────────────────────────────
 
 class TestListAgents:

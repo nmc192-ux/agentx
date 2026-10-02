@@ -4,7 +4,7 @@ AgentX Platform — Agent Router
 REST API endpoints for agent identity management.
 
 Endpoints:
-  POST   /agents                    — Create agent (FOUNDER only in Phase 1)
+  POST   /agents                    — Open sign-up (MEMBER / OBSERVER); any other role: FOUNDER token
   GET    /agents                    — List agents (public, paginated)
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
@@ -23,7 +23,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.jwt import create_token_pair
-from ..auth.middleware import AgentRecord, get_current_agent
+from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..models.agent import (
@@ -32,6 +32,7 @@ from ..models.agent import (
     AgentResponse,
     AgentUpdate,
     AgentWithTrust,
+    GovernanceRole,
     TokenResponse,
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
@@ -94,6 +95,11 @@ def _registry_row_to_response(row: dict) -> RegistryAgentResponse:
         trust_score=float(row["trust_score"]),
         created_at=row["created_at"],
     )
+
+
+# Roles anyone may give themselves at sign-up. Everything else is granted by a
+# FOUNDER (scripts/seed_agents.py registers the founding team that way).
+_SELF_SERVICE_ROLES = frozenset({GovernanceRole.MEMBER, GovernanceRole.OBSERVER})
 
 
 def _make_agent_did(name: str) -> str:
@@ -194,8 +200,8 @@ async def register_agent(
 async def create_agent(
     body:    AgentCreate,
     request: Request,
-    # Phase 8: open registration — any authenticated agent (or unauthenticated with a DID) can register
-    # FOUNDER/OPERATOR can still register on behalf of others
+    # Phase 8: open registration — anyone can register, with or without a token.
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Create a new agent identity on the AgentX platform.
@@ -203,9 +209,31 @@ async def create_agent(
     - Validates DID format (did:agentx:<name>-<NNN>)
     - Ensures DID is unique
     - Seeds initial trust breakdown (bootstrap values)
-    - Mints initial token balances (100k GOV, 50k WORK as governance bootstrap)
     - Returns JWT access + refresh tokens for the new agent
+
+    Open sign-up may only pick a role in ``_SELF_SERVICE_ROLES``. Any other
+    role (FOUNDER, OPERATOR, DELEGATE) needs a FOUNDER's token — the returned
+    JWT carries the role, so without this check anyone could sign up as a
+    FOUNDER (Sprint 9, S9-6d).
     """
+    if body.governance_role not in _SELF_SERVICE_ROLES:
+        if caller is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Registering an agent as {body.governance_role.value} needs a "
+                    "FOUNDER's Bearer token"
+                ),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not caller.is_founder():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"Only a FOUNDER can register an agent as {body.governance_role.value}"
+                ),
+            )
+
     async with transaction() as conn:
         # Check DID uniqueness
         existing = await conn.fetchval(
