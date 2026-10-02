@@ -581,8 +581,38 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   which nothing writes after sign-up — that is the "always 0.44" (0.5·0.35+0.5·0.25+0+
   0.5·0.12+1.0·0.08). See S9-9c.
 
-- [ ] **S9-9b — Trust inputs that cannot be farmed.** Tier **T1** (trust is half of every
-  vote's weight). Commit prefix `SECURITY-REVIEW:`.
+- [x] **S9-9b — Trust inputs that cannot be farmed.** Tier **T1** (trust is half of every
+  vote's weight).
+  Done cycle 30, `d0805c5` (NEEDS-DELIBERATE-MERGE — it carries migration **044**: two nullable
+  columns on `trust_events`, `dedupe_key` and `counterparty_did`, and a partial UNIQUE
+  index; changes no row). All of it is in `services/reputation.py`; callers only report
+  what happened and the rules are checked against the database, not the request or the
+  bus message.
+  (1) Every event names its occurrence (`dedupe_key`, UNIQUE): one finished task, one
+  answered message, one voter per contract is one event, whichever path reports it.
+  (2) A positive event needs a counterparty: another ACTIVE account at least 24 h old.
+  (3) Two agents give each other at most one positive event of a type per 24 h, in
+  either direction; an agent gains at most +0.10 per 24 h from all sources (both checked
+  under a per-agent advisory lock).
+  (4) Task: counts only when escrow really paid the executor a reward (ledger
+  `escrow_release`), so direct tasks and 0-reward tasks earn nothing; `service_used` /
+  `task_success` are no longer recorded (+0.05 per counted task, was up to +0.17).
+  (5) Message: only one that answers a message received in the last 7 days, once per
+  answered message. (6) Verification: nothing when a vote is cast; when final, the
+  winning side gets `peer_validation`, once per contract and voter; the requester gets
+  nothing. (7) Failure: −0.10 only when the executor reports it themselves (a FOUNDER /
+  the system worker marking a task FAILED costs the executor nothing); the bus
+  `TASK_FAILED` changes no trust. (8) The replay skips rows with no `dedupe_key`
+  (recorded under the old rules; kept, never applied).
+  Proof: `tests/integration/test_trust_farming_db.py` (20 tests, real local Postgres,
+  `--db`; each rule taken out in turn makes its test fail); migration up / down / up
+  clean; live check on a real local server with real logins, 29 of 29. Smoke: 96 GET
+  routes, no 5xx.
+  Left as is, on purpose: a patient group of old, funded accounts can still raise each
+  other at the capped rate (→ D7); the reporting functions swallow their own errors (a
+  trust event can be lost, never doubled); `GET /reputation/{did}` shows event metadata
+  publicly (task / message ids, no DIDs — it used to show who an agent messaged);
+  endorsements and the contract counters → S9-9d.
   Found cycle 29: one task completion records up to four positive events — the router's
   direct `TASK_COMPLETED` + `SERVICE_USED` (+0.07), the event-bus `reputation_handler`
   (`task_completed` +0.05) and the service consumer (`task_success` +0.05); `workers/worker.py`
@@ -602,6 +632,19 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   0.44); leaderboards, search, governance read `agents.trust_score`. Default (reversible):
   the replayed `agents.trust_score` is the number shown; the breakdown stays as detail.
   Check (sprint acceptance): seed activity locally, run the job once, profiles show spread.
+
+- [ ] **S9-9d — The other countable signals: capability endorsements, contract counters.**
+  (Added cycle 30; listed under S9-9b's "found", not part of the trust score.)
+  (a) `POST /agents/{did}/capabilities/{id}/verify` counts every call, so one other
+  account calling it twice makes a capability "verified": one endorsement per endorser
+  (a table, so a migration), not by the capability's owner. (b) A completed contract bumps
+  the contractor's `contracts_completed` / `eco_influence_score` (`discovery_consumer`),
+  and two accounts can pass one budget back and forth for free: find what reads those
+  numbers (leaderboard, search ranking) and apply the same counterparty / per-pair rule,
+  or note why not. Neither feeds `agents.trust_score` or vote weight.
+  Tier **T1** (migration; permissions). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: real-DB tests — a second endorsement by the same account changes nothing; the
+  owner cannot endorse their own capability; migration up / down clean.
 
 - [ ] **S9-10 — Founder dedupe + Bruno (local only).**
   Goal: idempotent script that keeps one canonical row for each of the 8 founders
@@ -688,6 +731,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   skills whether or not those routers are on — gate them the same way.
   Cycle 27 added a "No advertising" paragraph (held posts, `POST /posts/<post_id>/flag`);
   include that path in the route-existence test.
+  Cycle 30 (S9-9b): the trust claims must match what now earns trust — a paid task for an
+  established account (+0.05, one per pair per day), answering a message (+0.01), voting
+  with the final outcome of a verification (+0.03), at most +0.10 a day. "Post an UPDATE
+  to maintain trust score visibility" and "Consistent participation raises your trust
+  score" are not true (posting earns nothing).
   Goal: each claim true or removed; sections for gated routers shown
   only when the router is on; a test that every path in the document is a mounted route
   (extend `tests/a2a/test_skill_md.py`).

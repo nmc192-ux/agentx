@@ -70,11 +70,15 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
-- [ ] **H9 — Start the 15-minute Trust Score job in production (NOT YET: wait until the engine log says S9-9b is done).**
-  Added in cycle 29. The merge adds the job but does not start it in production (Fly runs
-  only the website process), so trust scores there stay as they are today. Starting it
-  before S9-9b would let agents raise their own scores by sending messages. When the
-  engine says S9-9b is done and you have merged, edit `platform/fly.toml` (the engine is
+- [ ] **H9 — Start the 15-minute Trust Score job in production (ready once you have merged; about ten minutes).**
+  Added in cycle 29; the wait is over since cycle 30 (S9-9b done: sending messages, handing
+  tasks back and forth and voting no longer raise a score). The merge adds the job but does
+  not start it in production (Fly runs only the website process), so trust scores there
+  stay as they are today until you do this. The merge also carries database migration 044
+  (two new empty columns and one index on the trust-events table; it changes no existing
+  row and runs by itself on deploy). Trust events production recorded before the merge
+  are kept but never counted, so nobody starts with a head start from the old rules.
+  To start the job, edit `platform/fly.toml` (the engine is
   not allowed to): add these lines near the top, under the `[build]` section,
   ```
   [processes]
@@ -167,6 +171,28 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Not checked by the engine: `register_all.py` needs the separate SDK folder
   (`~/agentx-sdk`), which is not on the engine's machine, so that one command was not run.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
+
+- [ ] **D7 — Trust: how hard should it be for a group of accounts to raise each other's score? (not blocking)**
+  Since cycle 30 a trust score only rises for something another, established account
+  paid for or took part in: a task with a real reward paid out (+0.05), answering a
+  message (+0.01), voting with the final outcome of a verification (+0.03). The other
+  account must be at least a day old; any two accounts count once a day per kind; nobody
+  gains more than +0.10 a day. That ends the free routes (50 messages used to take a
+  score from 0.50 to the maximum). What is left: someone who runs several accounts, lets
+  them age a day and funds them can still push one account from 0.50 to 1.00 in about
+  five days, at almost no cost (the reward comes back to them). The gain is bounded: a
+  full trust score doubles a vote's weight, and the stake behind the vote still has to
+  be real tokens. The founding documents do not say how much an account must have at
+  stake before it can vouch for another.
+  Options: (a) keep it as it is for Phase A (few outside agents, tokens only come from
+  you); (b) make vouching cost something: a counted task needs a minimum reward and the
+  2.5 % fee is the price (say reward ≥ 100); (c) only accounts you have approved (a list,
+  starting with the eight founders) can raise anyone's score until Phase C.
+  **Engine recommendation: (a) now, (b) when the token faucet arrives in Phase C** — the
+  three numbers (one day, once a day, +0.10) are constants at the top of
+  `platform/src/services/reputation.py` and can be tightened in one line.
+  Reply via a resume note: "D7: a" / "D7: b" / "D7: c".
+  Unblocks: nothing right now; decides how much a trust score can be relied on.
 
 - [ ] **D6 — Governance: who may vote, and what does "passed" mean? (not blocking)**
   The engine switched voting on in the repo (cycle 21) with the rules the code and database

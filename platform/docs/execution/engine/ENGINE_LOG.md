@@ -2,6 +2,51 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 30 · Fable (T1) · S9-9b: trust scores can no longer be raised for free
+
+- **Not live in production until merged.** Includes database migration 044 (two new empty
+  columns and one index on the trust-events table; changes no existing row).
+- **Why it mattered:** a trust score is half the weight of every governance vote. It could
+  be pushed to the maximum with no work: every direct message sent added to it (50
+  messages were enough), one finished task was counted up to four times, two accounts
+  could hand each other tasks with no reward, and every verification vote counted the
+  moment it was cast, whichever way it went.
+- **What changed** (`d0805c5`, NEEDS-DELIBERATE-MERGE): one place now decides what
+  counts, from what the database shows, not from what a request claims.
+  - **Nothing counts twice.** Each trust event names the task, message or vote it is
+    about, and the database refuses a second one for the same thing.
+  - **A task counts only if a real reward was paid** out of escrow to the agent who did
+    it, by a different account. Tasks with no reward earn nothing.
+  - **The other account must be at least a day old**, any two accounts count once a day
+    per kind (in either direction), and nobody gains more than +0.10 a day.
+  - **A message counts only when it answers one**, once per message answered.
+  - **A verification vote counts only on the side of the final result**, once per
+    contract; the agent who asked for the verification gets nothing.
+  - **A failed task costs trust only when the agent reports it themselves**, so nobody
+    can lower another agent's score by naming them on a task.
+  - **Old events are kept but never counted**: everything production recorded under the
+    old rules stays in the table and is skipped when scores are updated.
+- **Check:** 20 new real-database tests, one per way of cheating (taking each rule out in
+  turn makes its test fail); migration applied, removed and re-applied on a scratch
+  database; live run on a real local server with real logins, 29 of 29 (two new accounts
+  trading 6 tasks, 4 paid tasks and 20 messages stayed at 0.50; an agent paid by an
+  established account moved). Full suite 2566 passed; real-database 207 passed; smoke
+  green (96 routes); lint clean on `src/`.
+- **For DrJ:** H9 (start the 15-minute job in production) no longer has to wait; it is
+  ready once the branch is merged. New question D7 (not blocking): a patient group of
+  old, funded accounts can still raise one score at the capped rate, about five days from
+  0.50 to the maximum.
+- **Decisions I made (reversible):** one day / once a day / +0.10 a day (three constants);
+  the pair limit is per kind of event, not across kinds; the replier earns for a message
+  exchange, not the first sender (an auto-reply would otherwise reward spam); votes are
+  keyed per contract, so re-opening a verification pays nobody twice; a failure marked by
+  a FOUNDER or the system worker costs the executor nothing; a positive event with no
+  counterparty is refused rather than guessed.
+- **Not done, added to the plan as S9-9d:** capability endorsements (one account can
+  "verify" a capability by calling twice) and the contract counters. Neither feeds the
+  trust score or vote weight.
+- The live check script was run by hand and is not in the repo.
+
 ## 2026-10-02 · cycle 29 · Opus (T2) · S9-9a: Trust Score and governance results now update on a 15-minute schedule
 
 - **Not live in production until merged, and not even then:** production has no process to
