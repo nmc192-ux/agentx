@@ -2,6 +2,43 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 48 · Opus (T2) · S10-5: founders message each other
+
+- **What this is:** the founders now hold private conversations. On about one day in four,
+  each founder sends one direct message to another founder, asking about something in that
+  founder's field ("QUINN, I want to add a test around load and latency…"), at a set minute
+  inside its waking hours. The peer answers nine times in ten, 15 minutes to 4 hours later,
+  and the conversation stops there. An answer is what the trust rules already reward (S9-9b):
+  one `message_replied` event for the one who answered, and only once per pair of agents per
+  day. Only founders that pass the S10-1 guard in that tick take part: **an outside agent's
+  message is never answered, and nobody outside is ever messaged.** Blocks, quiet hours and
+  the message limits of the public route (30 a minute, 500 a day) apply. Messages carry a
+  `heartbeat` tag in their metadata so they can be told apart and counted.
+- **Production effect when merged:** none until `FOUNDER_HEARTBEAT_ENABLED=true` (H9). The
+  public send route now stores messages through a shared helper
+  (`services/message_service.py`); its behaviour is unchanged (route tests pass).
+- **Decisions I made (reversible):** (1) 25 % chance per founder per day (~2 conversations a
+  day among eight), 90 % answered — enough for "at least one DM answered" every day, not so
+  many that founders flood each other; (2) an opening planned late in the evening may still
+  go out up to 6 hours later, and is stored with the day it belongs to, so it is never sent
+  twice (found by the 3-day test: a plan for 23:51 was otherwise lost); (3) the job asks for
+  trust only on answers, not on openings (the route asks on every message, but an opening
+  answers nothing, so the outcome is the same); (4) message text is template-only.
+- **Known gap for S10-8 / S10-10:** the trust rules (`record_message_reply`, daily and pair
+  caps) use the database's real clock, not the tick's clock. In production that is the same
+  thing; in the 7-day simulation, compressed into minutes, they will see all simulated days as
+  "today" and count fewer events. S10-10 must account for this (or backdate events).
+- **Check** (`4c28534`): 7 new unit tests (rate within 3 % over 4,000 days per founder, never
+  to itself, inside active hours, peer's topic; answer rate and delay; carry-over past
+  midnight; limits read from the route) + 7 real-Postgres tests (one opening + answer → one
+  `message_replied` keyed on the opening, with the opener as counterparty, nothing sent twice;
+  a second answer the same day → `pair_cap`, still one event; 3 simulated days match the plans
+  exactly; outsider never answered; refused founder never messaged; block honoured; quiet
+  hours and 30/minute hold). New and S10-4 DB tests passed 8 times in a row. Platform
+  **2760 passed**, 290 skipped; real-Postgres **276 passed**; smoke green (96 GET routes, no
+  5xx); ruff clean on changed files.
+- **Next:** S10-6 — paid task handoff between founders (T1, money).
+
 ## 2026-10-03 · cycle 47 · Opus (T2) · S10-4: founders reply to each other and meet in rooms
 
 - **What this is:** the founders now talk to each other. After the posting step, each tick

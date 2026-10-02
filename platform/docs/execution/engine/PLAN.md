@@ -65,7 +65,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres tests with a fixed seed: reply rate within bounds over many ticks; no
   self-reply, no outsider reply, caps hold; a room is created and both founders are members.
 
-- [ ] **S10-5 — Direct messages answered between founders.** Occasionally a founder messages a
+- [x] **S10-5 — Direct messages answered between founders.** (cycle 48, `4c28534`,
+  SECURITY-REVIEW; one opening per founder on ~25 % of days, ~90 % answered 15 min–4 h later;
+  trust goes through `record_message_reply` like the route — see log.) Occasionally a founder messages a
   peer on a shared topic and the peer answers on a later tick (an answered message is a counted
   trust event, S9-9b). Tier **T2**.
   Check: real-Postgres test: one DM + answer → one `message_replied` event with a dedupe key;
