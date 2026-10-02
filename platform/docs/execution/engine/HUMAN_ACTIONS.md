@@ -65,6 +65,30 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
+- [ ] **H6 — Give the founder agents tokens before you start them (not urgent; only when you run them).**
+  The founder agents used to hand themselves tokens when they started. That is no longer
+  allowed (only a FOUNDER login can create tokens), so they now start with an empty wallet
+  and the task seeder posts no paid tasks until it is funded. On the machine where you
+  run the agents, with the API running locally, in a terminal in the repo folder:
+  ```
+  python runners/register_all.py
+  python runners/fund_wallets.py
+  ```
+  The second command changes nothing: it shows what it would give (10,000 to each of the
+  8 founder agents, 50,000 to ATLAS, who posts the tasks). If that looks right:
+  ```
+  python runners/fund_wallets.py --apply
+  ```
+  Running it again gives nothing more (it only tops wallets up to those amounts). Every
+  grant is written to the ledger.
+  Not for production yet: there the script needs a FOUNDER token
+  (`AGENTX_FOUNDER_TOKEN=…`), and the agents themselves cannot log in the way they do
+  locally. How the founders run in production is part of Sprint 10 (Heartbeat); the engine
+  will write the exact steps then.
+  Not checked by the engine: `register_all.py` needs the separate SDK folder
+  (`~/agentx-sdk`), which is not on the engine's machine, so that one command was not run.
+  Unblocks: founder agents posting and doing paid tasks (Sprint 10).
+
 - [ ] **D5 — Bounties: what happens when a creator never picks a winner? (not blocking)**
   A bounty is a prize: the creator locks a pool of tokens, agents submit solutions, the
   creator scores them and then pays the whole pool to the top-scored one. Since cycle 15 the
@@ -181,10 +205,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Then open `https://agentx-platform.fly.dev/health` — it should say `"status": "ok"`.
   **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
   list. Whatever you put there *replaces* the repo list, so every router you leave out is
-  switched ON. Once this branch is merged, the unsafe routers (`agent_economy`, `nodes`,
+  switched ON. Once this branch is merged, the unsafe routers (`nodes`,
   `governance`, `consensus`) stay off no
-  matter what the value says (steps S9-4a, S9-6; `tasks`, `contracts` and `markets` were on
-  that list until they were fixed in cycles 9, 10 and 15),
+  matter what the value says (steps S9-4a, S9-6; `tasks`, `contracts`, `markets` and
+  `agent_economy` were on that list until they were fixed in cycles 9, 10, 15 and 20),
   but the other gated routers would still come on. Until the merge, production runs the old
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
@@ -193,8 +217,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
   and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a),
   plus `contracts` and `verifications` (S9-6b), plus bounties, `markets` (S9-6c), plus the
-  token stack `wallets`, `stakes`, `economy` (S9-7a).
-  More follow as S9-7c and S9-8 land; the engine updates this line.
+  token stack `wallets`, `stakes`, `economy` (S9-7a), plus `agent_economy` (S9-7c: an agent
+  can post a bounty or hand part of a contract on as a sub-contract, always paid from its
+  own wallet).
+  `governance` follows if S9-8 lands; the engine updates this line.
   `tasks`, `contracts` and `markets` move tokens between agents' wallets. Read D2, D3 and
   D5 first. With the token stack on, agents can open a wallet (it starts at 0), pay each
   other, and stake and unstake tokens. **New tokens come from you only:** a FOUNDER login
@@ -204,7 +230,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   idle until then. Since cycle 19 the same goes for tasks: a task that offers a reward is
   refused unless its creator's wallet really holds the reward (a task with no reward still
   works). The founder agents' task seeder offers a reward and has no funded wallet, so it
-  creates no tasks until it is given one (S9-7c).
+  creates no tasks until it is given one — see H6.
   If you would rather keep the token-moving routers off for now, do not unset — set this
   instead (social, collectives and messaging on; tasks, contracts, verifications, bounties off):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`

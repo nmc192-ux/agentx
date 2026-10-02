@@ -2,6 +2,85 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 20 · Fable (T1) · S9-7c: the last money router is reviewed and on (in the repo); new agents are no longer told they have 100 tokens; the founder agents get their tokens from a FOUNDER, not from themselves
+
+- **Mostly not live in production.** The router this step switches on (`agent_economy`:
+  agents posting their own bounties, and handing part of a contract on as a
+  "sub-contract") is off there until H3. **One part does go live on merge:** what sign-up
+  tells a new agent (below).
+- **What the review found** (`8046e48`):
+  1. **Sub-contracts.** The check "is this contract still in progress, and are you the
+     one doing it?" and the creation of the sub-contract were two separate steps. A
+     contract finished or disputed in between still got a sub-contract. They are now one
+     step, with the parent contract locked while it happens.
+  2. **A sub-contract could claim a different parent** than the one it was made from
+     (through its free-form details). Fixed.
+  3. **The bounty route that was the original reason this router was locked** (it used
+     to take money from whichever agent the request named, with no login) was fixed
+     earlier in the sprint. Confirmed on a real database: no login, no bounty; the
+     logged-in agent pays, whoever the request names; no funds, no bounty.
+  4. **Two calculator routes that need no login** crashed (error 500) on a malformed
+     request. They now refuse it cleanly and only accept a request of limited size.
+  5. **Absurdly large amounts** (beyond what the database column holds) on a contract,
+     bid, sub-contract or bounty crashed instead of being refused. Now refused.
+- **Sign-up was telling new agents something untrue.** `/onboard` answered "wallet
+  balance: 100" and pointed at a wallet page that did not exist. The 100 is a number in an
+  old points table; it is not in the wallet and cannot be spent. Now the answer says
+  wallet balance 0, shows the 100 separately as "welcome points", and points at a wallet
+  page that exists (new: look up a wallet by the agent's DID). The instructions document
+  outside agents read (`skill.md`) no longer says "funds your wallet with 100 AXP". The
+  bonus itself is untouched: nobody lost or gained anything.
+- **Founder agents** (`a750199`). The scripts that run them each asked for free tokens at
+  start-up (1,000 to 50,000). That is refused now, which left them with no wallet, and the
+  task seeder then retried a doomed request every 30 seconds for ever. Now they open an
+  empty wallet; a new script, `runners/fund_wallets.py`, lets a FOUNDER top them up
+  (it shows what it would do first and only acts with `--apply`; a second run gives
+  nothing more); and the seeder says once that it needs funding, waits 10 minutes, and
+  tries again. Steps for DrJ are in H6.
+- **Result:** every router the plan wanted on is on in the repo except governance (S9-8).
+  Still off on purpose: `nodes`, `consensus`, `governance`.
+- **What merging will do:** no database change. New sign-ups see "wallet balance 0,
+  welcome points 100" instead of "wallet balance 100", and are no longer sent to the
+  governance and wallet pages while those are switched off. `skill.md` changes as above.
+  Nothing else changes in production until H3.
+- **Check:** platform suite **2470 passed, 134 skipped**; database tests **120 passed**
+  (`--db`; 17 new, and 6 of the 15 that test the router fail on the old code — the other
+  9 confirm behaviour that was already right); smoke 92 GET routes on the repo default
+  and 97 with every router on, no 5xx; changed files lint clean (three older lint notes
+  in files I touched were left alone). Live check on a real local server, real local
+  database, real logins, running the real funding script and the seeder's own code:
+  **37 of 37**, 65 requests, no server error, and at the end every token in existence
+  (60,000, both grants) matched the supply counter and the ledger.
+- **Not done / not checked:**
+  - `register_all.py` and `sdk_agent_runner.py` were changed and compile, but were **not
+    run**: they need the separate SDK folder (`~/agentx-sdk`), which is not on this
+    machine. The seeder and the funding script were run for real.
+  - The live check script was run by hand and is not in the repo. Its first run reported
+    36 of 37: the one miss was the script's own search of the server log matching the
+    words "paid 500 to". With that search corrected the run is 37 of 37.
+  - Only the wallet claims in `skill.md` were corrected. The rest of that document
+    (governance, rooms, "tiers") was not checked against the code → new step S9-13a.
+  - The funding script reads a balance and then tops it up in two calls; two copies run
+    at the same moment could both grant. Run one at a time.
+  - On a fresh local database only ATLAS exists under the name the runners use; the
+    other seven founders are seeded under different DIDs (S9-10), so the funding script
+    reports them as "not registered" until `register_all.py` has run.
+  - A sub-contract is only a label. Nothing ties its budget or its outcome to the parent
+    contract, and an ordinary contract can call itself a sub-contract. Nothing reads the
+    link today; noted in `router_config.py` so that nothing starts trusting it.
+- **Decisions I made (reversible):**
+  - The welcome bonus stays unspendable. Sign-up is open and limited only per IP address
+    (5 an hour), so a spendable 100 could be farmed. The plan puts a faucet in Phase C.
+  - `/onboard` reports 0 as the wallet balance and adds a `welcome_points` field, rather
+    than keeping "100" under the name "wallet balance".
+  - Added the read-only wallet lookup by DID instead of only rewording the message: an
+    agent knows its DID, not its internal id, and the old instructions already named
+    that address.
+  - Funding amounts: 10,000 per founder agent and 50,000 for ATLAS (the old scripts'
+    own numbers), changeable on the command line.
+  - "Not the contractor" is now answered 403 and "parent not in progress" 409 (was 400
+    for both), the same as the contracts routes.
+
 ## 2026-10-02 · cycle 19 · Fable (T1) · S9-7b: a task could promise a reward its creator did not have — fixed; a creator can now cancel a task nobody took and get the tokens back
 
 - **Not live in production.** `tasks` and the token routers are switched off there.

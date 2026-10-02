@@ -295,7 +295,27 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres tests — unfunded reward → no task, tokens unchanged; concurrent
   cancels refund once; cancel of a taken task → 409; other agent → 403; tokens conserved.
 
-- [ ] **S9-7c — Review and enable `agent_economy`; founder-funded seeding for the runners.**
+- [x] **S9-7c — Review and enable `agent_economy`; founder-funded seeding for the runners.**
+  Done cycle 20, `8046e48` + `a750199` (NEEDS-DELIBERATE-MERGE). (a) Sub-contract: parent row
+  locked and child created (budget escrowed from the caller's own wallet) in one
+  transaction; not the assigned contractor → 403, parent not in flight → 409; the payload
+  cannot overwrite the parent reference. (b) `bounties/auto` confirmed on real Postgres
+  (creator = login, whatever the body says); docstrings corrected. (c) The two login-free
+  calculators take a typed, bounded body (a malformed one was a 500). (d) `agent_economy`
+  left Tier A: the repo default now disables `nodes`, `governance`, `consensus` only.
+  (e) Runners open their wallet at 0; new `runners/fund_wallets.py` (FOUNDER grant, top-up
+  to a target, dry run unless `--apply`); the seeder backs off 10 min on "Insufficient
+  funds". (f) `/onboard` answers `wallet_balance: 0` + `welcome_points: 100`, names only
+  routes that are on; new public `GET /wallets/by-did`; skill.md says the wallet starts
+  at 0. Also: amounts beyond BIGINT (contract budget, bid, sub-contract, auto-bounty) → 422.
+  Proof: `tests/integration/test_agent_economy_db.py` (17 tests, real local Postgres,
+  `--db`; 6 fail on the old code); `tests/runners` (15); live check on a real local server
+  with real logins, 37 of 37. Smoke: 92 GET routes, no 5xx (97 with everything on).
+  Left as is, on purpose: the welcome bonus is still not spendable (needs a farming guard;
+  faucet is Phase C); a sub-contract is a label only (nothing ties it to the parent, and
+  `POST /contracts` accepts `contract_type: "subcontract"`); `register_all.py` and
+  `sdk_agent_runner.py` were compiled, not run (they need the standalone SDK, not on this
+  machine); the rest of skill.md was not audited (→ S9-13a).
   (a) `subcontract_service.spawn_subcontract` reads the parent contract without a lock
   before creating the child (the child's own escrow is safe since S9-6b) — lock or re-check.
   (b) `POST /markets/bounties/auto` takes the creator from the login since Sprint 9 (chain)
@@ -348,6 +368,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
 
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
+  Note (cycle 20): `/onboard` and skill.md advertise governance only when the router is on
+  (`_build_next_steps`); skill.md's Governance section is static and still tells agents to
+  vote — make it match when this lands (or in S9-13a).
   Note (cycle 18): vote power = the voter's unreleased stakes × trust score, read when the
   vote is cast (`governance_service.py:216`). Since S9-7a a stake with no `locked_until`
   can be released at once, so the same tokens can vote, be released, be transferred to a
@@ -374,6 +397,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   created). Decide whether log mode should pass the request on; fix or document here.
   Note (cycle 19): `POST /tasks` has no per-agent limit either, and since S9-7b a task can
   be created and cancelled at no cost — give task creation a budget here too.
+  Note (cycle 20): `POST /economy/market-analysis` and `/economy/strategies/select` take
+  no login and have no rate limit (cheap, bounded bodies since S9-7c) — give them a per-IP
+  budget here. Read in code, not tested: the 64 KiB body limit in `main.py` only looks at
+  the `Content-Length` header, so a chunked upload without one is not limited — check and
+  fix here.
   Note (cycle 16): `POST /agents` and `POST /agents/register` (open sign-up, no login) have
   no rate limit at all — only `/onboard` does. `/agents/register` creates an agent row and
   returns no token, so it is mostly a way to fill the agents list with junk. Give both the
@@ -443,6 +471,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Root cause (cycle 1): three seed sources disagree on DIDs — `platform/scripts/seed_agents.py`
   uses `atlas-001 … gia-008`; `runners/register_all.py` and `runners/start_all.sh` use
   `<name>-001`. Pick one canonical DID set and make every seed use it, so re-runs can't duplicate.
+  Note (cycle 20): `runners/fund_wallets.py` funds `did:agentx:<name>-001` (what the runners
+  use); on a database built from `init-db.sql` only `atlas-001` exists under that name.
+  Keep its `RUNNER_DIDS` in step with the canonical set chosen here. The root
+  `scripts/seed_ecosystem.py` still posts `initial_balance: 10_000` to `/wallets/by-did`
+  with no login (401 since S9-1) — fix or retire it with the other seeds.
   Tier **T1** (data-affecting). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
   Check: on a local DB loaded with duplicates, exactly 8 founders, no orphans; dry-run mode default.
   Production run → `[human]` (HUMAN_ACTIONS).
@@ -471,6 +504,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   can now answer 400 ("Insufficient funds") — surface both. Task status has a new value,
   `cancelled`.
 
+  Note (cycle 20): `/onboard` now answers `wallet_balance: 0` and a new `welcome_points`;
+  there is a new `GET /wallets/by-did?agent_did=…` (the SDK's `wallet.py` sends DIDs where
+  the API wants UUIDs — this route is the DID one); `POST /contracts/{id}/subcontract`
+  answers 403 / 409 where it answered 400; contract and bid amounts above 2^63-1 → 422.
+
   Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
   `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID
   (422 today). SDK callers of `/services/register`, `/a2a` `message/send` and
@@ -483,6 +521,18 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
   Check: README renders; LICENSE present once D1 answered.
 
+- [ ] **S9-13a — skill.md truth audit.** (Added cycle 20.)
+  `GET /.well-known/skill.md` is what outside agents act on. S9-7c fixed its wallet claims
+  only. Still unchecked: every `curl` in it names a route that exists and is on in the
+  repo default (the Governance section tells agents to vote while `governance` is off;
+  `/agents/<did>/recommended-tasks`, `/notifications`, `/rooms/<id>/join` not verified);
+  "raises your trust score and unlocks higher tiers (STANDARD → PRO → ENTERPRISE)" against
+  what the code does. Goal: each claim true or removed; sections for gated routers shown
+  only when the router is on; a test that every path in the document is a mounted route
+  (extend `tests/a2a/test_skill_md.py`).
+  Tier **T1** (`.well-known`). Commit prefix `SECURITY-REVIEW:`.
+  Check: the route-existence test passes on the repo default router list; suite green.
+
 - [ ] **S9-14 — Sprint close.** Run the sprint acceptance criteria locally, write
   `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
 
@@ -494,6 +544,12 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
 
 - [human] **S9-H5 — Check production for self-made FOUNDERs; get the S9-6d fixes live.**
   See HUMAN_ACTIONS H5 (urgent).
+
+Note for Sprint 10 (cycle 20): the founder agents get tokens only from
+`runners/fund_wallets.py` (a FOUNDER grant). In production the runners cannot log in the
+way they do locally (the `client_credentials` grant is refused there), so the heartbeat
+needs a real credential path for the founders and a FOUNDER token for the funding step —
+both are decisions for the Sprint 10 spec, and the funding run itself is a human action.
 
 After Sprint 9 closes: draft `sprint_10_heartbeat.md` from Plan v2 §4 (open questions on LLM
 provider and daily cost ceiling become DECISION_NEEDED unless a reversible default exists).
