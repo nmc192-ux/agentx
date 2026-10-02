@@ -423,7 +423,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `node_modules` on the engine machine yet).
   Tier **T3**. Check: `npm run build` and `npm run lint` in `ui/` pass.
 
-- [ ] **S9-8e — UI lint clean.** (Added cycle 22.) `npm run lint` in `ui/` reports 31 errors
+- [x] **S9-8e — UI lint clean.** (Added cycle 22.) Done cycle 23, `2d770a4`: lint 0 problems,
+  build passes, new `ui` job (npm ci, lint, build) in `ci.yml`. Note: a red `ui` job now fails
+  CI, and `deploy.yml` deploys the backend only after CI passes. `npm run lint` in `ui/` reports 31 errors
   and 22 warnings, all in files outside governance (e.g. `app/graph/page.tsx`,
   `app/tasks/page.tsx`, `components/DevPanel.tsx`, `components/pulse/*`, `components/rooms/*`):
   mostly unused imports and React-hooks rules. Fix them, then consider adding a `ui` lint +

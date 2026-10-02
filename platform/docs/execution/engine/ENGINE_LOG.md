@@ -2,6 +2,20 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 23 · Opus (T2) · S9-8e: the website's code-quality check now passes, and CI runs it
+
+- **What changed** (`2d770a4`): the website's lint check (an automatic scan for code
+  mistakes) reported 31 errors and 22 warnings. Now it reports none. Most were leftover
+  imports and loose types. One was a real bug: the live network map was meant to skip
+  a connection it already showed, but the check never matched, so repeats were drawn
+  twice. CI (the automatic checks GitHub runs on every change) now has a website job
+  that installs, lints and builds `ui/`.
+- **Check:** `npm ci`, `npm run lint` (0 problems), `npx tsc --noEmit` and `npm run build`
+  all pass in `ui/`.
+- **What merging will do:** nothing visible on the site. CI gets the new website job. If
+  that job ever fails on `main`, the backend deploy waits, because `deploy.yml` deploys
+  only after all of CI passes.
+
 ## 2026-10-02 · cycle 22 · Opus (T2) · S9-8d: the website's governance page now shows the real result of a vote
 
 - **Not live in production.** The governance page is switched off on the website
