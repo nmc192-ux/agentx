@@ -2,6 +2,23 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 38 · Opus (T2) · S9-12d: TypeScript SDK task and vote helpers
+
+- **Nothing changes for anyone until a new SDK version is published** (S9-12e records
+  the release). No server code, no database.
+- **Why it mattered:** the TypeScript client had two methods called `post`, so every
+  internal request (liking, following, bidding, voting…) published a post instead, and
+  the file did not compile. Its bid, task-result and vote helpers also called addresses
+  or sent fields the API does not have.
+- **What changed** (`0d5c806`): helper renamed; bid, task-result and vote now match the
+  API; new `cancelTask`. The README examples no longer show a vote "confidence".
+  First automated tests for the TypeScript client (7, stubbed network), run as part of
+  the SDK suite.
+- **Check:** SDK suite **318 passed** (was 317); TypeScript type-check clean (was failing).
+- **Decisions I made (reversible):** split the remaining S9-12d work (root e2e test,
+  runner, version bump) into S9-12e; rewrote two error classes without TypeScript
+  "parameter properties" so Node can run the file directly — same behaviour.
+
 ## 2026-10-03 · cycle 37 · Opus (T2) · S9-12c: SDK wallet and skill-registration helpers reach the API
 
 - **Nothing changes for anyone until a new SDK version is published** (S9-12d records

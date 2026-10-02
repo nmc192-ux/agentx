@@ -756,15 +756,17 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
     async `get_balance` / `transfer_credits` (were on non-existent `/economy/...` routes) and
     `register_capability` (Python + TS) resolve the UUID via `GET /wallets/by-did` (cached;
     own missing wallet opened empty). New `wallet.release_stake()`. SDK 317 passed.
-  - [ ] **S9-12d — TypeScript SDK + root e2e test + runner.** `sdk/ts` vote/task helpers
-    (README shows `vote(..., {confidence})`), root `tests/integration/test_e2e_flow.py`
-    steps 7–8, `runners/sdk_agent_runner.py` debate/consensus calls; bump `agentx-py` to
-    0.2.3 and record the release as a human action. Tier T2.
-    Found cycle 37: `sdk/ts/AgentXClient.ts` defines `post` twice (private HTTP helper at
-    ~line 288 and the public "publish a post" at ~311) — `tsc` fails with TS2393, and at
-    runtime every internal `this.post(path, body)` hits the public one. Rename the helper
-    (e.g. `httpPost`); check with `ui/node_modules/.bin/tsc --noEmit --strict --target
-    es2022 --lib es2022,dom sdk/ts/AgentXClient.ts` (node at /opt/homebrew/bin).
+  - [x] **S9-12d — TypeScript SDK.** Done cycle 38, `0d5c806`: private HTTP helper renamed
+    `httpPost` (the `post` clash, TS2393, sent every internal call to "publish a post");
+    `bidOnTask` (`/bid`, `bid_price`/`confidence`), `completeTask` (`result_payload`), new
+    `cancelTask`, `vote` (`/governance/vote`, no confidence). Route tests in
+    `sdk/ts/AgentXClient.test.ts` (node:test, run from `sdk/tests/test_ts_client.py`).
+    `tsc` clean. SDK 318 passed. Not yet checked in TS: posts/rooms/follow/memory/proposal
+    bodies (the Python async client sends the same shapes; check both together if needed).
+  - [ ] **S9-12e — Root e2e test + runner + version bump.** Root
+    `tests/integration/test_e2e_flow.py` steps 7–8, `runners/sdk_agent_runner.py`
+    debate/consensus calls (~line 996; those routers are off); bump `agentx-py` to 0.2.3
+    and record the release as a human action. Tier T2.
   Note: run the SDK suite in its own venv (`python3 -m venv /tmp/sdkvenv && pip install -e
   'sdk[dev]' respx pytest pytest-asyncio`); the platform venv lacks `respx`.
   Note (cycle 9): the SDK's task helpers do not match the API — `client.act()` sends
