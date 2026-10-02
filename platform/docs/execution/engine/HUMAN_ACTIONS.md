@@ -312,6 +312,14 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   and it is one more change to production data).
   **Engine recommendation: (a).** If H10's `keep` lines already end in `-001`, there is
   nothing to decide.
+  Added in cycle 44: whichever option, **in production the founders act only for the
+  addresses you list** in one setting, `FOUNDER_DIDS` (for example
+  `atlas=did:agentx:atlas-001,nova=did:agentx:nova-seed-001,…`); an unlisted founder is
+  refused, and so is any address that is not that founder's own, is not ACTIVE, or is not
+  displayed under the founder's name. Anyone can sign up under an address like
+  `did:agentx:bruno-001` (production has no Bruno yet), so before listing an address, check
+  on the site that the profile is the one you (or H10) created. The Sprint 10 runbook will
+  give the exact line to set.
   Reply via a resume note: "D8: a" / "D8: b", with the `keep` lines from H10.
   Unblocks: the founder heartbeat in production (Sprint 10).
 

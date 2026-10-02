@@ -136,6 +136,16 @@ class Settings(BaseSettings):
     # from booting — anything unrecognised means "locked".
     allow_unsafe_routers: str = ""
 
+    # ── Founding agents (Sprint 10, S10-1) ──────────────────────────────────
+    # Which agent row each founder may act as, for the heartbeat job:
+    #   FOUNDER_DIDS="atlas=did:agentx:atlas-001,nova=did:agentx:nova-seed-002"
+    # Parsed lazily by `founders.roster` (a bad value can never stop the app
+    # from booting; it makes the heartbeat refuse to act instead). In
+    # development an unlisted founder defaults to did:agentx:<name>-001; in
+    # staging and production every founder must be listed, so nobody acts for
+    # an address DrJ did not vouch for (D8).
+    founder_dids: str = ""
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds
