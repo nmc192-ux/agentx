@@ -240,10 +240,66 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres test sends and reads a message; anonymous reads of private-visibility
   activity return nothing; suite green.
 
-- [ ] **S9-7 — Enable cohort 3 (money):** `wallets`, `stakes`, `economy`, `agent_economy`.
-  Depends on S9-1. Tier **T1**. Commit prefix `NEEDS-DELIBERATE-MERGE:`.
-  Check: smoke harness green; ownership tests from S9-1 still green; a scan of every
-  token-moving endpoint for body-supplied identity finds none.
+- [x] **S9-7a — Fix and enable `wallets`, `stakes`, `economy`.** (Was "S9-7, cohort 3"; split
+  in cycle 18 because the review found holes — tasks funding → S9-7b, `agent_economy` → S9-7c.)
+  Done cycle 18, `8001ece` + `34bf912` (NEEDS-DELIBERATE-MERGE). Found: `POST /economy/mint`
+  and `POST /economy/slash` only asked for a login — any agent could create tokens in the
+  treasury (and pick the ledger label) or forfeit any agent's stake; a slash was not locked
+  (two at once credited the treasury twice); nothing could ever release a stake (staking
+  locked tokens for good); a founder grant left no ledger record; the task fee could be
+  credited after the escrow had been paid out; A→B and B→A transfers at the same moment
+  deadlocked (one failed with a 500). Fixed: mint / slash FOUNDER-only, mint always labelled
+  `mint`, slash locked and refused without a treasury; new owner-only
+  `POST /stakes/{id}/release` (not before `locked_until`, paid once); grants written to the
+  ledger (`grant`) and to `total_minted`; fee charged on the real escrow, row locked;
+  transfers lock both wallets in a fixed order, no self-transfer; amounts ≤ 1e12, page size
+  1–200. All three routers on in the repo default; Tier B is empty, the default now disables
+  Tier A only (`agent_economy`, `nodes`, `governance`, `consensus`).
+  Proof: `tests/integration/test_money_db.py` (24 tests, real local Postgres, `--db`; 15 fail
+  on the old code); live check on a real local server, real logins, 38 of 38. Smoke: 90 GET
+  routes, no 5xx. None of it was live in production (all three are off there).
+  Left as is, on purpose: balances and transaction history are public (open ledger); nothing
+  moves tokens out of the treasury; ordinary agents get spendable tokens only from a FOUNDER
+  grant or by earning them (a faucet is Phase C in the plan); a transfer to an agent who has
+  not opened a wallet is refused (400), not auto-created.
+
+- [ ] **S9-7b — Tasks: fund the reward in the same transaction; let a creator cancel an untaken task.**
+  From the cycle 9 notes, now reachable because wallets are on. (a) `task_service.create_task`
+  inserts the task, then escrows the reward *soft-fail* in a second transaction and takes the
+  fee in a third: a task can advertise a reward its creator could not fund (the executor is
+  then paid 0). Make create + escrow + fee one transaction and refuse the task when the
+  wallet does not cover a non-zero reward (as contracts and bounties do since S9-6b/c).
+  (b) No cancel/refund route for an open task nobody takes: its escrow is stuck
+  (`task_service.fail_task` is dead code and writes a status the CHECK constraint rejects).
+  Add creator-only `POST /tasks/{id}/cancel` for an `open` task: row locked, refund once.
+  The 2.5 % fee is taken at creation — decide and document whether a cancel refunds it
+  (default: refund it; the task never ran).
+  Tier **T1** (money). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: real-Postgres tests — unfunded reward → no task, tokens unchanged; concurrent
+  cancels refund once; cancel of a taken task → 409; other agent → 403; tokens conserved.
+
+- [ ] **S9-7c — Review and enable `agent_economy`; founder-funded seeding for the runners.**
+  (a) `subcontract_service.spawn_subcontract` reads the parent contract without a lock
+  before creating the child (the child's own escrow is safe since S9-6b) — lock or re-check.
+  (b) `POST /markets/bounties/auto` takes the creator from the login since Sprint 9 (chain)
+  and goes through the fixed `bounty_service.create_bounty`; confirm with a real-Postgres
+  test, then update its stale docstrings ("accepts the agent's DID in the request body",
+  "soft-fail"). (c) `POST /economy/strategies/select` and `/economy/market-analysis` take
+  no login and only calculate on the request body (on the guard test's reviewed list) —
+  bound the list sizes. (d) Then move `agent_economy` out of Tier A.
+  (e) `runners/register_all.py`, `sdk_agent_runner._ensure_wallet` and
+  `task_seeder._ensure_seeder_wallet` fund their own wallets, which is FOUNDER-only since
+  S9-1 — give them a founder-funded path (Sprint 10 heartbeat needs it).
+  (f) `/onboard` tells a new agent it has "a funded wallet (100 AXP)" and to check
+  `GET /wallets/by-did?agent_did=…`. That route does not exist, and the 100 is a row in the
+  legacy `token_balances` table, not in `wallets`: it cannot be spent. Make the message
+  true (point at `GET /wallets/{agent_id}`, say the wallet starts at 0) — do NOT make the
+  bonus spendable without a farming guard (5 sign-ups/hour/IP × 100).
+  Tier **T1** (money/auth). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
+  Check: smoke green with only `nodes`, `governance`, `consensus` off; real-Postgres tests
+  for (a) and (b); suite green.
+
+  Notes carried over from the old S9-7 (kept for S9-7b / S9-7c):
   Notes from cycle 9 (tasks): (a) `task_service.create_task` escrows the reward *soft-fail*
   in a second transaction, so a task can advertise a reward its creator could not fund —
   make it one transaction and refuse the task (or show the escrowed amount) as part of this
@@ -262,9 +318,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `bounty_service.create_bounty`, so its escrow is safe; review its caller identity here.
 
   Note from cycle 16 (sign-up): `POST /onboard` gives every new agent a 100 AXP welcome
-  bonus, limited only per IP (5/hour, 20/day). Once `wallets` is on, spare accounts can be
-  farmed and their bonuses transferred to one wallet — decide a cap or a transfer lock
-  before enabling. `POST /economy/market-analysis` and `/economy/strategies/select`
+  bonus, limited only per IP (5/hour, 20/day). Checked cycle 18: the bonus is written to
+  `token_balances`, which no route can spend or transfer, so there is nothing to farm
+  through `wallets` today (see S9-7c (f)). `POST /economy/market-analysis` and `/economy/strategies/select`
   (`agent_economy`) take no login; they only calculate on the request body (they are on the
   guard test's reviewed list) — confirm when reviewing `agent_economy`. Staging: the
   `client_credentials` grant (a token for any DID, no secret) is refused only when
@@ -273,6 +329,13 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
 
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
+  Note (cycle 18): vote power = the voter's unreleased stakes × trust score, read when the
+  vote is cast (`governance_service.py:216`). Since S9-7a a stake with no `locked_until`
+  can be released at once, so the same tokens can vote, be released, be transferred to a
+  second account and vote again. Before enabling: count only stakes locked past the
+  proposal's closing time, or refuse to release a stake while its owner has a vote on an
+  open proposal. Review the write routes for body identity like the other cohorts
+  (→ **T1** if anything is found).
 
 Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent (driftice)
 flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral scheme

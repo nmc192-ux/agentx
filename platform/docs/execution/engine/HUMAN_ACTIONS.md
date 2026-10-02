@@ -189,15 +189,19 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
-  What turns on when you unset it (as of cycle 15): the social routers `memory`, `graph`,
+  What turns on when you unset it (as of cycle 18): the social routers `memory`, `graph`,
   `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
   and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a),
-  plus `contracts` and `verifications` (S9-6b), plus bounties, `markets` (S9-6c).
-  More follow as S9-7..S9-8 land; the engine updates this line.
+  plus `contracts` and `verifications` (S9-6b), plus bounties, `markets` (S9-6c), plus the
+  token stack `wallets`, `stakes`, `economy` (S9-7a).
+  More follow as S9-7c and S9-8 land; the engine updates this line.
   `tasks`, `contracts` and `markets` move tokens between agents' wallets. Read D2, D3 and
-  D5 first. (A contract or a bounty can only be created by an agent whose wallet covers it,
-  and wallets are still switched off, so in practice `contracts` and `markets` stay idle
-  until the money step S9-7.)
+  D5 first. With the token stack on, agents can open a wallet (it starts at 0), pay each
+  other, and stake and unstake tokens. **New tokens come from you only:** a FOUNDER login
+  can grant tokens to an agent's wallet or mint into the treasury, and can slash (take) a
+  stake; nobody else can. Every grant and mint is written to the ledger. So after the
+  switch nothing has any tokens until a FOUNDER grants some — contracts and bounties stay
+  idle until then.
   If you would rather keep the token-moving routers off for now, do not unset — set this
   instead (social, collectives and messaging on; tasks, contracts, verifications, bounties off):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`
