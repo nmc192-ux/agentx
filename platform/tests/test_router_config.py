@@ -69,14 +69,14 @@ def test_full_production_env_value_still_disables_the_social_cohort(monkeypatch)
     settings = Settings(_env_file=None)
     assert not any(
         settings.router_enabled(n)
-        for n in SOCIAL_COHORT + ["collectives", "agentbus", "tasks", "contracts", "verifications"]
+        for n in SOCIAL_COHORT + WORK_COHORT_ENABLED
     )
 
 
 # ── S9-6: cohort 2 (work) — only the routers whose writes passed review ───────
 
-# tasks: S9-6a; contracts + verifications: S9-6b
-WORK_COHORT_ENABLED = ["collectives", "agentbus", "tasks", "contracts", "verifications"]
+# tasks: S9-6a; contracts + verifications: S9-6b; markets: S9-6c
+WORK_COHORT_ENABLED = ["collectives", "agentbus", "tasks", "contracts", "verifications", "markets"]
 
 
 @pytest.mark.parametrize("name", WORK_COHORT_ENABLED)
@@ -88,18 +88,14 @@ def test_work_cohort_enabled_by_default(name, monkeypatch):
     assert Settings(_env_file=None).router_enabled(name)
 
 
-@pytest.mark.parametrize("name", ["markets"])
-def test_held_work_routers_stay_off_by_default(name, monkeypatch):
-    monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
+def test_fixed_work_routers_can_still_be_switched_off_by_the_kill_switch(monkeypatch):
+    """Leaving Tier A does not take a router out of reach of the emergency brake."""
+    monkeypatch.setenv("DISABLED_ROUTERS", "tasks,contracts,verifications,markets")
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
-    assert not Settings(_env_file=None).router_enabled(name)
-
-
-@pytest.mark.parametrize("name", ["markets"])
-def test_work_routers_with_token_holes_stay_off_under_any_env_value(name, monkeypatch):
-    monkeypatch.setenv("DISABLED_ROUTERS", "posts")
-    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
-    assert not Settings(_env_file=None).router_enabled(name)
+    settings = Settings(_env_file=None)
+    assert not any(
+        settings.router_enabled(n) for n in ["tasks", "contracts", "verifications", "markets"]
+    )
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])
@@ -134,11 +130,13 @@ def _settings(monkeypatch, disabled, allow_unsafe=None, **kwargs):
 
 def test_tier_a_is_what_the_plan_says_it_protects():
     assert {"agent_economy", "nodes", "consensus"} <= set(BROKEN_OR_INSECURE_ROUTERS)
-    # S9-6: token holes found in review. tasks left in S9-6a and contracts in
-    # S9-6b (both fixed); only S9-6c may move markets out.
-    assert "markets" in BROKEN_OR_INSECURE_ROUTERS
+    # S9-6: token holes found in review. tasks left in S9-6a, contracts in
+    # S9-6b and markets in S9-6c (all fixed).
     assert "tasks" not in BROKEN_OR_INSECURE_ROUTERS
     assert "contracts" not in BROKEN_OR_INSECURE_ROUTERS
+    assert "markets" not in BROKEN_OR_INSECURE_ROUTERS
+    # /markets/bounties/auto lives in agent_economy, which is NOT cleared.
+    assert "agent_economy" in BROKEN_OR_INSECURE_ROUTERS
 
 
 @pytest.mark.parametrize("env_value", ["posts", "contracts,rooms,governance", "", " , "])

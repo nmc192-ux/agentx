@@ -96,15 +96,6 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # proposal model (decision O10, debate + consensus in rooms) — a design
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
-
-    # SECURITY (found Sprint 9, S9-6; was Tier B): `POST
-    # /markets/bounties/{id}/distribute` reads the status without a lock,
-    # credits the winner first and closes the bounty with an unconditional
-    # UPDATE; `bounty_rewards` has no UNIQUE(bounty_id). Two concurrent calls
-    # pay the reward twice — tokens from nothing (a creator can win via a
-    # second account, since creators may submit to their own bounty).
-    # Fix in PLAN S9-6c.
-    "markets",
 ]
 
 # ── Tier B — parity hold. Audit-cleared, but OFF in production today. ──────────
@@ -144,7 +135,7 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 # Cohort 2, work (S9-6): only the two routers whose writes passed review.
 # tasks, contracts, markets went to Tier A (token holes); verifications waited
 # for contracts. tasks came back out in S9-6a, contracts (with verifications)
-# in S9-6b; markets (S9-6c) is still Tier A.
+# in S9-6b, markets in S9-6c.
 #   collectives   — writes use the caller's JWT identity; approve / remove are
 #                   OWNER/ADMIN. S9-6: assigning a task to a collective now
 #                   requires the caller to be the task's requester or executor,
@@ -192,9 +183,30 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   verifier-reward payout is switched off because nothing
 #                   funds the reward pool (it would have minted tokens).
 #                   Advisory only: a verification never moves escrow.
+#   markets       — was Tier A (S9-6): `POST /markets/bounties/{id}/distribute`
+#                   read the status without a lock, credited the winner and
+#                   closed the bounty with an unconditional UPDATE, so two
+#                   concurrent calls paid the reward twice — tokens from
+#                   nothing (and a creator could win their own bounty). Fixed
+#                   in S9-6c: every write locks the bounty row; "rewarded" and
+#                   the payout are ONE transaction behind a status guard, with
+#                   UNIQUE(bounty_rewards.bounty_id) (migration 041) as the
+#                   database backstop; the payout is no longer soft-fail (a
+#                   winner without a wallet gets one); the creator cannot
+#                   submit to, or win, their own bounty; wrong caller → 403,
+#                   wrong state → 409; new creator-only `/cancel` refunds an
+#                   open bounty nobody submitted to. Proven against real
+#                   Postgres in tests/integration/test_bounty_escrow_db.py.
+#                   Known and NOT changed (design, HUMAN_ACTIONS D5): nothing
+#                   makes a creator pick a winner and a bounty with
+#                   submissions cannot be cancelled, so that pool can stay
+#                   locked; submissions are public while the bounty is open.
+#                   Needs a funded wallet, i.e. is only usable once the money
+#                   cohort (`wallets`, S9-7) is on. `POST /markets/bounties/auto`
+#                   is a different router (`agent_economy`, still Tier A).
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
-    "collectives", "agentbus", "tasks", "contracts", "verifications",
+    "collectives", "agentbus", "tasks", "contracts", "verifications", "markets",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

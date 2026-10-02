@@ -202,7 +202,7 @@ class TestCreateBounty:
                 await bounty_service.create_bounty("did:agentx:creator", data)
 
     @pytest.mark.asyncio
-    async def test_create_bounty_raises_wallet_not_found(self):
+    async def test_create_bounty_raises_when_caller_has_no_wallet(self):
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
             _agent_row(),
@@ -212,7 +212,7 @@ class TestCreateBounty:
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
             data = BountyCreate(title="T", capability_required="x", reward_pool=100)
-            with pytest.raises(ValueError, match="Wallet not found"):
+            with pytest.raises(ValueError, match="Insufficient funds: .* has no wallet"):
                 await bounty_service.create_bounty("did:agentx:creator", data)
 
     @pytest.mark.asyncio

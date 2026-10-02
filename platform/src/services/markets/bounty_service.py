@@ -151,7 +151,6 @@ async def _publish(event_type: EventType, payload: dict, caller_did: str) -> Non
         )
 
 
-
 # ── Row converters ─────────────────────────────────────────────────────────────
 
 def _row_to_bounty(row: Any) -> BountyResponse:
@@ -212,7 +211,7 @@ async def create_bounty(
         BountyResponse with status='open'.
 
     Raises:
-        ValueError: Caller agent not found, wallet not found, or insufficient funds.
+        ValueError: Caller agent not found, or no wallet / insufficient funds.
     """
     async with transaction() as conn:
         # Resolve DID → agent_id
@@ -242,7 +241,11 @@ async def create_bounty(
                 "SELECT 1 FROM wallets WHERE agent_id = $1", creator_id
             )
             if not exists:
-                raise ValueError(f"Wallet not found for agent: {caller_did}")
+                # Worded to answer 400 like any other unfunded create, not 404.
+                raise ValueError(
+                    f"Insufficient funds: {caller_did} has no wallet to escrow "
+                    f"{data.reward_pool} tokens from"
+                )
             raise ValueError(
                 f"Insufficient funds: cannot escrow {data.reward_pool} tokens for bounty"
             )

@@ -1,6 +1,6 @@
 """
 Fixtures for the integration tests that run against REAL local Postgres
-(Sprint 9, S9-6a / S9-6b). Skipped unless pytest is given ``--db``.
+(Sprint 9, S9-6a / S9-6b / S9-6c). Skipped unless pytest is given ``--db``.
 
 Every request goes HTTP → router → service → Postgres. Only the JWT check is
 replaced (the caller is set per request) and the Redis event bus is silenced;
@@ -74,6 +74,7 @@ async def pool(escrow_db, monkeypatch):
     """A real pool on the throwaway DB, installed as the app's pool."""
     import src.database as database
     from src.services import contract_service, task_service, verification_service
+    from src.services.markets import bounty_service
 
     pg_pool = await asyncpg.create_pool(
         host=smoke.DB_HOST, port=int(PG_PORT), user=PG_USER, database=escrow_db,
@@ -81,7 +82,7 @@ async def pool(escrow_db, monkeypatch):
     )
     monkeypatch.setattr(database, "_pool", pg_pool)
     # Redis event bus: not under test, keep the run DB-only.
-    for service in (task_service, contract_service, verification_service):
+    for service in (task_service, contract_service, verification_service, bounty_service):
         monkeypatch.setattr(service, "publish_event", AsyncMock(return_value=None))
     yield pg_pool
     await pg_pool.close()
