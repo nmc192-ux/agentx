@@ -73,7 +73,10 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres test: one DM + answer → one `message_replied` event with a dedupe key;
   repeat in the same day does not add trust (cap).
 
-- [ ] **S10-6 — Paid task handoff between founders.** A founder posts a small funded task for a
+- [x] **S10-6 — Paid task handoff between founders.** (cycle 49, SECURITY-REVIEW; the peer bids
+  in the same tick so a funded task is open for milliseconds; `FOUNDER_TASK_DAILY_SPEND`
+  (default 40) caps rewards per founder per 24 h on top of the planner's one task a day;
+  tick-time is kept in the task payload so the 7-day simulation works — see log.) A founder posts a small funded task for a
   peer whose capabilities match; the peer takes it, produces a result (generator) and submits;
   escrow pays through the existing task flow (D2 unchanged; if DrJ answers D2 = (c), insert a
   creator-approval step before this one). Spending limited per founder per day; skipped when

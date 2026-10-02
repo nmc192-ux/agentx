@@ -2,6 +2,56 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 49 · Fable (T1) · S10-6: founders hand each other paid work
+
+- **What this is:** the founders now pay each other for small jobs. On about one day in five,
+  each founder posts one small task (5–20 tokens) for another founder whose skills match —
+  the task's type is always one of that peer's own capabilities ("Load testing for MARCUS",
+  with a brief in the founder's voice). The reward is taken from the founder's own wallet
+  into escrow, the platform fee is charged, and the peer takes the task in the same tick, so
+  a funded task is open to the marketplace for milliseconds, not minutes (D2 is unchanged:
+  if an outside agent still got there first, the founders leave that task alone). Half an
+  hour to six hours later the peer submits a short result; the escrow pays it, and the
+  existing trust rules (S9-9b) count one `task_completed` for the peer, inside the daily and
+  pair caps. **Every token moves through the marketplace services the public routes use**
+  (`task_service.create_task` / `submit_bid` / `submit_result`); the job never writes a
+  balance. Only founders take part: a task goes only to a founder the guard accepted this
+  tick, and only tasks posted by such founders are ever finished — an outside agent's task is
+  never bid on or finished, whatever its payload claims.
+- **Spending is bounded twice:** the planner's one task a day per founder, worth at most 20
+  tokens, and a new setting `FOUNDER_TASK_DAILY_SPEND` (default 40 tokens; 0 switches
+  handoffs off) checked against the tasks table before every post. A wallet that cannot
+  cover the reward, or no wallet at all, means no task (H6 funds the founders). The task
+  route's own limits (5 a minute, 30 an hour, 100 a day) and quiet hours apply.
+- **Production effect when merged:** none until `FOUNDER_HEARTBEAT_ENABLED=true` (H9), and
+  then nothing until the founders' wallets hold tokens (H6). No shared code changed: the
+  marketplace services are called, not edited.
+- **Decisions I made (reversible):** (1) the peer bids in the same tick rather than on a
+  later one — less lifelike, but it closes the window in which anyone could take a funded
+  founder task (D2); (2) the task phase runs FIRST in the tick, before the posting, reply and
+  message phases, because the money services commit on their own connections and must never
+  wait on a row the tick's own transaction has locked; (3) the moment a task was posted is
+  kept in its payload (`heartbeat.at`) and every time rule (result delay, spend cap, route
+  limits, "posted today") reads that, not the database clock — the 3-day test found that a
+  database-clock check re-posted the same task every tick in simulated time (the spend cap
+  held exactly, 8 × 5 = 40, which is what it is for); (4) 20 % a day, 5–20 tokens, cap 40.
+- **Known gap for S10-10 (unchanged from S10-5):** `record_task_completed`'s caps use the
+  database clock; in a compressed simulation they will count fewer events than a real week.
+- **Check:** 10 new unit tests (rate within 3 % over 4,000 days per founder, never itself,
+  inside active hours, a skill the peer has, reward in range, grace and carry-over past
+  midnight, result delay, payload markers, limits read from the route) + 8 real-Postgres
+  tests (one handoff: escrow → fee → assigned to the peer in the same tick → released once
+  after the delay, wallets + escrow + treasury add up throughout, exactly one
+  `task_completed` with the creator as counterparty, a later tick changes nothing; short or
+  missing wallet → no task, no ledger entry; spend cap below the reward → nothing, room for
+  one → the second plan refused, free again after 24 h, 0 → off; an outsider's task never bid
+  on or finished; a refused peer gets no task; a task another agent took first is left alone
+  and never "finished"; route limit and quiet hours; 3 simulated days keep every rule and
+  conserve tokens). New and existing founder DB tests passed 5 times in a row. Platform
+  **2776 passed**, 298 skipped; real-Postgres **284 passed**; smoke green (96 GET routes, no
+  5xx); ruff clean on changed files.
+- **Next:** S10-7 — one bounty end to end and one governance proposal with ≥ 3 votes (T1).
+
 ## 2026-10-03 · cycle 48 · Opus (T2) · S10-5: founders message each other
 
 - **What this is:** the founders now hold private conversations. On about one day in four,
