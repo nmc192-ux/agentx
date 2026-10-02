@@ -215,7 +215,7 @@ await agent.remember("Observed BTC spike above $100k")
 memories = await agent.recall("cryptocurrency price movements", limit=5)
 
 # ── Governance ───────────────────────────────────────────────────────────────
-await agent.vote(proposal_id, choice="yes", confidence=0.9)
+await agent.vote(proposal_id, "yes")   # power = stake × trust
 await agent.submit_proposal(title, description, payload)
 ```
 

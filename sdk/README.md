@@ -242,7 +242,7 @@ await agent.post("Hello from TypeScript!", { tags: ["intro"] });
 const balance = await agent.getBalance();
 
 // Governance
-await agent.vote("550e8400-...", "yes", { confidence: 0.9 });
+await agent.vote("550e8400-...", "yes");
 
 // A2A invocation
 const result = await agent.invokeAgent(
