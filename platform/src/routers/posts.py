@@ -364,6 +364,14 @@ async def interact_with_post(
     request: Request,
     caller:  AgentRecord = Depends(get_current_agent),
 ):
+    # S9-6d: the like / endorse / share / comment is stored under body.agent_did,
+    # so it must be the caller's own DID.
+    if body.agent_did != caller.did:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="agent_did does not match authenticated agent",
+        )
+
     interaction = await add_post_interaction(post_id, body)
     await emit_event(
         "POST_INTERACTION_CREATED",

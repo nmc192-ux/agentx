@@ -13,7 +13,7 @@ All service calls are mocked; no real DB connections are made.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -48,6 +48,35 @@ def _graph_edge(agent_id=None, peer_agent_id=None, trust_weight=0.5, count=1):
         last_interaction=datetime.now(UTC),
         created_at=datetime.now(UTC),
     )
+
+
+def _caller(role):
+    from src.auth.jwt import TokenClaims
+    from src.auth.middleware import AgentRecord
+    did = f"did:agentx:{role.lower()}-001"
+    claims = MagicMock(spec=TokenClaims)
+    claims.agent_did = did
+    return AgentRecord(
+        row={
+            "agent_did": did, "display_name": role, "governance_role": role,
+            "tier": "STANDARD", "status": "ACTIVE", "trust_score": 0.9,
+        },
+        claims=claims,
+    )
+
+
+@pytest.fixture
+def as_role():
+    """Log in as an agent with the given governance role for one test."""
+    from src.auth.middleware import get_current_agent
+
+    def _login(role):
+        app.dependency_overrides[get_current_agent] = lambda: _caller(role)
+
+    try:
+        yield _login
+    finally:
+        app.dependency_overrides.pop(get_current_agent, None)
 
 
 def _collaborator(trust_weight=0.6, count=3):
@@ -235,6 +264,11 @@ class TestGetTopCollaborators:
 # ── POST /agents/{agent_id}/trust-network/interactions ────────────────────────
 
 class TestRecordInteraction:
+    """FOUNDER only since S9-6d (it used to take no login at all)."""
+
+    @pytest.fixture(autouse=True)
+    def _founder(self, as_role):
+        as_role("FOUNDER")
 
     @pytest.mark.asyncio
     async def test_returns_201(self, client):
@@ -334,6 +368,48 @@ class TestRecordInteraction:
             json={"peer_agent_id": str(peer_id), "weight_delta": 2.0},
         )
         assert resp.status_code == 422
+
+
+class TestRecordInteractionNeedsFounder:
+    """S9-6d: the trust graph cannot be written without a FOUNDER login."""
+
+    @staticmethod
+    async def _post(client, headers=None):
+        with patch(
+            "src.routers.reputation_graph.rep_graph_svc.record_interaction",
+            new=AsyncMock(return_value=_graph_edge()),
+        ) as mock_fn:
+            resp = await client.post(
+                f"/agents/{uuid4()}/trust-network/interactions",
+                json={"peer_agent_id": str(uuid4()), "weight_delta": 1.0},
+                headers=headers,
+            )
+        return resp, mock_fn
+
+    async def test_no_token_is_401_and_writes_nothing(self, client):
+        resp, mock_fn = await self._post(client)
+        assert resp.status_code == 401
+        mock_fn.assert_not_awaited()
+
+    async def test_bad_token_is_401_and_writes_nothing(self, client):
+        resp, mock_fn = await self._post(client, headers={"Authorization": "Bearer nope"})
+        assert resp.status_code == 401
+        mock_fn.assert_not_awaited()
+
+    @pytest.mark.parametrize("role", ["MEMBER", "OBSERVER", "DELEGATE", "OPERATOR"])
+    async def test_non_founder_is_403_and_writes_nothing(self, client, as_role, role):
+        as_role(role)
+        resp, mock_fn = await self._post(client)
+        assert resp.status_code == 403
+        mock_fn.assert_not_awaited()
+
+    async def test_reads_stay_public(self, client):
+        with patch(
+            "src.routers.reputation_graph.rep_graph_svc.get_agent_trust_network",
+            new=AsyncMock(return_value=[]),
+        ):
+            resp = await client.get(f"/agents/{uuid4()}/trust-network")
+        assert resp.status_code == 200
 
 
 # ── GET /agents/{agent_id}/graph-score ────────────────────────────────────────
