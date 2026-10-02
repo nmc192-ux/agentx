@@ -46,6 +46,23 @@ async def test_wallet_commands_name_routes_that_exist(skill_md):
 
 
 @pytest.mark.asyncio
+async def test_governance_commands_name_routes_that_exist(skill_md):
+    """S9-8: the section used to name a vote route that never existed."""
+    routes = {(m, r.path) for r in app.routes for m in (getattr(r, "methods", None) or [])}
+    governance = skill_md.split("## Governance")[1].split("## Collaboration Rooms")[0]
+    paths = set(re.findall(r'"http://testserver(/[^"?]*)', governance))
+    assert paths == {
+        "/governance/proposals", "/governance/vote",
+        "/governance/results", "/governance/parameters",
+    }
+    assert ("POST", "/governance/vote") in routes
+    for path in paths - {"/governance/vote"}:
+        assert ("GET", path) in routes
+    assert '{"proposal_id": "<proposal-id>", "vote": "yes"}' in governance
+    assert "stakes cannot be released" in governance
+
+
+@pytest.mark.asyncio
 async def test_template_renders_without_leftover_placeholders(skill_md):
     assert "{base_url}" not in skill_md
     assert "-d '{}'" in skill_md

@@ -120,11 +120,27 @@ def test_money_routers_can_still_be_switched_off_by_the_kill_switch(monkeypatch)
     assert not any(settings.router_enabled(n) for n in MONEY_COHORT_ENABLED)
 
 
+# ── S9-8: cohort 4 (governance), after its fixes ─────────────────────────────
+
+def test_governance_enabled_by_default(monkeypatch):
+    assert "governance" in ENABLED_IN_SPRINT_9
+    assert "governance" not in DEFAULT_DISABLED_ROUTERS
+    monkeypatch.delenv("DISABLED_ROUTERS", raising=False)
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert Settings(_env_file=None).router_enabled("governance")
+
+
+def test_governance_can_still_be_switched_off_by_the_kill_switch(monkeypatch):
+    monkeypatch.setenv("DISABLED_ROUTERS", "governance")
+    monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
+    assert not Settings(_env_file=None).router_enabled("governance")
+
+
 def test_repo_default_now_disables_tier_a_only(monkeypatch):
     """Tier B and Tier C are empty: everything still off is off for a reason
     written next to it in router_config.py."""
     assert set(DEFAULT_DISABLED_ROUTERS) == set(BROKEN_OR_INSECURE_ROUTERS)
-    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"nodes", "governance", "consensus"}
+    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"nodes", "consensus"}
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])
@@ -167,6 +183,9 @@ def test_tier_a_is_what_the_plan_says_it_protects():
     # /markets/bounties/auto lives in agent_economy: reviewed and cleared in
     # S9-7c (tests/integration/test_agent_economy_db.py).
     assert "agent_economy" not in BROKEN_OR_INSECURE_ROUTERS
+    # governance: reviewed and cleared in S9-8
+    # (tests/integration/test_governance_db.py).
+    assert "governance" not in BROKEN_OR_INSECURE_ROUTERS
 
 
 @pytest.mark.parametrize("env_value", ["posts", "contracts,rooms,governance", "", " , "])

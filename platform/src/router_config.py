@@ -49,7 +49,8 @@ Three tiers of "disabled" are recorded separately so the distinctions are not lo
      parity (zero behavior change on merge). Sprint 9 enables them. Empty
      since S9-7a (``wallets``, ``stakes``, ``economy`` — which turned out NOT
      to be safe as audited; fixed, then enabled — see ``ENABLED_IN_SPRINT_9``).
-     Tier A itself lost ``agent_economy`` in S9-7c (reviewed, fixed, enabled).
+     Tier A itself lost ``agent_economy`` in S9-7c and ``governance`` in S9-8
+     (each reviewed, fixed, enabled).
   C. ``PARITY_UNEXPLAINED_ROUTERS`` — off in production for a reason not yet
      established (was: ``memory``, a core primitive). Held off for parity;
      the "why" is a Sprint 9 investigation, not a 9a assumption. Empty since
@@ -72,14 +73,6 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # unsigned) and nothing in Phase A needs it. Enable only once signed events
     # exist AND there is a real peer to federate with. (Phase D)
     "nodes",
-
-    # CODE FIXED (Sprint 9), NOT PROD-READY: the missing `governance_votes`
-    # table is now created by migration 039, and vote-casting returns 200 on a
-    # correctly-migrated DB (verified locally). STILL DISABLED because
-    # production's schema is divergent — governance also reads `stakes` (for
-    # vote power), which prod lacks. Enable only after the production schema is
-    # reconciled. See briefing_2026-07-04_chain.md.
-    "governance",
 
     # NON-FUNCTIONAL, KEPT OFF ON PURPOSE (Sprint 9, S9-3): consensus tallies
     # read the baseline `votes` table (votes on PROPOSAL *posts*: post_id /
@@ -275,10 +268,46 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   `POST /contracts` accepts contract_type='subcontract' with
 #                   any payload, so the parent link is informational and
 #                   must not be trusted by future code (nothing reads it).
+# Cohort 4, governance (S9-8).
+#   governance    — was Tier A: votes answered 500 (no `governance_votes`
+#                   table; created by migration 039) and production lacked
+#                   `stakes`, which vote power reads (H1 reconciles that; like
+#                   every router here it stays off in production until H3).
+#                   The review before enabling found more:
+#                   · vote weight = the voter's unreleased stakes at the
+#                     moment of voting, and since S9-7a a stake without a
+#                     lock period can be released at once — so the same
+#                     tokens could vote, be released, move to a second
+#                     account and vote again. Now a vote locks the voter's
+#                     stake rows while it counts them, and
+#                     `POST /stakes/{id}/release` answers 409 while its owner
+#                     has a weighted vote on a proposal still open;
+#                   · nothing ever closed a proposal (`finalize_proposal` had
+#                     no caller), so /governance/results was always empty.
+#                     The list routes now close what is due first;
+#                   · the outcome was "yes > no", so one vote of any weight
+#                     passed a proposal; the quorum and pass threshold seeded
+#                     in `governance_parameters` were never read. They decide
+#                     now, on a recount of the vote rows, proposal row locked;
+#                   · a vote could land after the close (no lock, app clock);
+#                     it now locks the proposal row and uses the DB clock;
+#                   · wrong state → 409 (was 400); lists page (≤ 200);
+#                     description / type / payload bounded; at most 3 open
+#                     proposals per agent.
+#                   Every write takes its identity from the JWT; no body
+#                   field names an agent. Proven against real Postgres in
+#                   tests/integration/test_governance_db.py.
+#                   Known and NOT changed: a passed proposal changes nothing
+#                   by itself (`execute_proposal` is a status change with no
+#                   route); any logged-in agent may propose and vote, the
+#                   `governance_role` (OBSERVER included) is not looked at —
+#                   weight comes from stake × trust only; `consensus` (debate
+#                   rounds on PROPOSAL posts) is a different, unwired model
+#                   and stays off (S9-3, decision O10).
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
     "collectives", "agentbus", "tasks", "contracts", "verifications", "markets",
-    "wallets", "stakes", "economy", "agent_economy",
+    "wallets", "stakes", "economy", "agent_economy", "governance",
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

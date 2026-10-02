@@ -328,6 +328,7 @@ class TestReleaseStake:
             wallet_row,  # UPDATE wallets RETURNING
             tx_row,      # INSERT transactions RETURNING
         ])
+        conn.fetchval = AsyncMock(return_value=None)   # no vote on an open proposal
         conn.execute = AsyncMock()
 
         with patch("src.services.token_service.transaction", return_value=_tx_context(conn)):
@@ -336,6 +337,29 @@ class TestReleaseStake:
         assert result.balance == 1300
         conn.execute.assert_awaited_once()  # UPDATE stakes SET released_at
         assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
+
+    @pytest.mark.asyncio
+    async def test_release_stake_refused_while_it_backs_a_vote_on_an_open_proposal(self):
+        """S9-8: otherwise the same tokens could vote again from another account."""
+        stake_id  = uuid4()
+        owner_id  = uuid4()
+        stake_row = {
+            "stake_id": stake_id, "agent_id": owner_id, "amount": 100,
+            "still_locked": False, "released_at": None,
+        }
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=stake_row)
+        conn.fetchval = AsyncMock(return_value=_now())   # that proposal's closing time
+
+        with (
+            patch("src.services.token_service.transaction", return_value=_tx_context(conn)),
+            pytest.raises(token_service.StakeConflictError, match="still\\s+open"),
+        ):
+            await token_service.release_stake(stake_id, owner_id)
+        conn.execute.assert_not_awaited()
+        query, voter = conn.fetchval.await_args.args
+        assert "governance_votes" in query and "vote_power > 0" in query
+        assert voter == owner_id
 
     @pytest.mark.asyncio
     async def test_release_stake_raises_if_already_released(self):

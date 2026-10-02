@@ -354,7 +354,9 @@ async def release_stake(stake_id: UUID, caller_agent_id: UUID) -> WalletResponse
     Release a stake back to its owner: credits the owner's wallet and sets
     released_at.
 
-    Only the stake's owner may release it, and not before ``locked_until``.
+    Only the stake's owner may release it, not before ``locked_until``, and
+    not while the owner has a weighted vote on a proposal still open for
+    voting (S9-8: the stake backs that vote).
     The stake row is locked (``FOR UPDATE``) before ``released_at`` is read, so
     two concurrent releases (or a release racing a slash) cannot both see it
     unreleased: the second waits for the first to commit, then is refused.
@@ -362,7 +364,8 @@ async def release_stake(stake_id: UUID, caller_agent_id: UUID) -> WalletResponse
     Raises:
         ValueError:         stake not found.
         PermissionError:    caller does not own the stake.
-        StakeConflictError: already released / slashed, or still locked.
+        StakeConflictError: already released / slashed, still locked, or
+                            backing a vote on an open proposal.
     """
     async with transaction() as conn:
         stake_row = await conn.fetchrow(
@@ -389,6 +392,30 @@ async def release_stake(stake_id: UUID, caller_agent_id: UUID) -> WalletResponse
 
         agent_id: UUID = stake_row["agent_id"]
         amount: int = stake_row["amount"]
+
+        # Sprint 9 (S9-8): a stake that gave weight to a vote stays staked
+        # until that proposal's voting closes. Otherwise the same tokens could
+        # be released, moved to another account, staked and vote again.
+        # governance_service.vote_on_proposal locks the voter's stake rows
+        # before it counts them, and this runs with the stake row locked
+        # (above), so a vote and a release cannot slip past each other.
+        open_vote_ends_at = await conn.fetchval(
+            """
+            SELECT MAX(p.voting_ends_at)
+            FROM   governance_votes v
+            JOIN   proposals p ON p.proposal_id = v.proposal_id
+            WHERE  v.voter_id = $1
+              AND  v.vote_power > 0
+              AND  p.status = 'active'
+              AND  p.voting_ends_at > CURRENT_TIMESTAMP
+            """,
+            agent_id,
+        )
+        if open_vote_ends_at is not None:
+            raise StakeConflictError(
+                "Your stakes back a vote on a governance proposal that is still "
+                f"open; they can be released after voting closes ({open_vote_ends_at.isoformat()})"
+            )
 
         # Mark stake as released
         await conn.execute(
