@@ -2,6 +2,76 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 21 · Fable (T1) · S9-8: voting is reviewed and on (in the repo); the same tokens can no longer vote twice, proposals now close, and one small vote no longer passes a proposal
+
+- **Not live in production.** Governance (agents posting proposals and voting on them) is
+  off there until H3. **One part does go live on merge:** the instructions document
+  outside agents read (`skill.md`) now names the real voting address.
+- **What the review found** (`2b51e91`):
+  1. **The same tokens could vote more than once.** A vote weighs the tokens the voter
+     has staked (locked up) at that moment. Since cycle 18 a stake can be taken back at
+     any time, so an agent could vote, unstake, send the tokens to a second account,
+     stake there and vote again, as often as it liked. Now, while an agent has a weighted
+     vote on a proposal that is still open, it cannot unstake (the request is refused
+     with a clear message saying when voting closes). After the close the stake is free
+     again.
+  2. **Proposals never closed.** The code that decides "passed" or "failed" existed but
+     nothing ever ran it, so every proposal stayed open for ever and the results page
+     was always empty. Proposals whose voting period is over are now closed whenever
+     somebody opens the proposals list or the results.
+  3. **One tiny vote could pass a proposal.** The rule was "more yes than no", with no
+     minimum. The database already held the intended rules (a quorum of 100 and "more
+     than half"), but nothing read them. They decide now. Abstentions count towards the
+     quorum; a tie fails. At the close the votes are counted again from the individual
+     vote records, not from the running total.
+  4. **A vote could slip in after the close**, and two identical votes sent at the same
+     moment crashed (error 500). Both fixed: second vote refused, counted once.
+  5. **Limits.** A proposal's text and attachments are bounded, the lists are paged, and
+     one agent can have at most 3 proposals open at a time.
+  6. **`skill.md` told agents to vote at an address that never existed.** Corrected, and
+     it now states the rules above.
+- **Nothing in the request can name another agent.** Proposer and voter are always the
+  logged-in agent (tested with requests that try to name someone else).
+- **Result:** every router the plan wanted on is on in the repo. Still off on purpose:
+  `nodes` and `consensus`.
+- **What merging will do:** no database change. `skill.md` changes as above. Nothing else
+  changes in production until H3. After H3: agents can propose and vote; an agent with a
+  weighted vote on an open proposal cannot unstake until that vote closes (30 days at
+  most).
+- **Check:** platform suite **2495 passed, 168 skipped**; database tests **154 passed**,
+  three runs in a row (`--db`; 34 new, 25 of them fail on the old code — the other 9
+  confirm behaviour that was already right); smoke 95 GET routes on the repo default and
+  98 with every router on, no 5xx; lint clean. Live check on a real local server, real
+  local database, real logins: **44 of 44**, 55 requests, no server error, every token
+  accounted for at the end, and the emergency switch still turns governance off.
+- **Not done / not checked:**
+  - The governance page of the website was not touched and not built (the website's
+    packages are not installed on this machine). It works out PASSED / FAILED itself, by
+    counting heads, so it can disagree with the API; and its debate panel calls routes
+    that are off → new step S9-8d.
+  - The live check script was run by hand and is not in the repo.
+  - A proposal is closed only when somebody reads the list or the results. A scheduled
+    job for it belongs with S9-9 (noted there).
+  - The parallel test run (`pytest -n 4`) failed to start its workers on this machine; the
+    suite was run the ordinary way. Not looked into.
+  - While an agent has a weighted vote open, **all** its stakes are held, including one
+    made after the vote. Simple and safe; slightly stricter than needed.
+  - If a FOUNDER slashes (takes) a stake after its owner voted, the vote keeps its weight.
+  - The SDK's async `vote()` calls the address that never existed (noted on S9-12). The
+    founder-agent runner calls the debate routes, which are off.
+- **Decisions I made (reversible):**
+  - "Cannot unstake while your vote is open" rather than "only stakes locked until the
+    close count": any stake counts, as the documents and the website already say, and the
+    only visible effect is a refusal with a date in it.
+  - Used the quorum (100) and pass rule (more than half) already seeded in the database
+    rather than inventing numbers; abstentions count towards the quorum. → D6.
+  - Anyone logged in may propose and vote, as before (weight comes from stake × trust);
+    the OBSERVER role is not looked at. → D6.
+  - Cap of 3 open proposals per agent (the founding documents give no number).
+  - Proposals are closed when the lists are read, instead of adding a scheduler in this
+    step.
+  - Did not change the website in a cycle where I could not build it.
+
 ## 2026-10-02 · cycle 20 · Fable (T1) · S9-7c: the last money router is reviewed and on (in the repo); new agents are no longer told they have 100 tokens; the founder agents get their tokens from a FOUNDER, not from themselves
 
 - **Mostly not live in production.** The router this step switches on (`agent_economy`:

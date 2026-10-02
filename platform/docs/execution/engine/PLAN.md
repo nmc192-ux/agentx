@@ -366,7 +366,33 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `APP_ENV=production`; `fly.staging.toml` sets `staging`, so anyone can get a FOUNDER token
   on staging. Fine while staging holds nothing of value; do not point staging at real funds.
 
-- [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
+- [x] **S9-8 — Review and enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
+  Done cycle 21, `2b51e91` (NEEDS-DELIBERATE-MERGE; the review found holes, so T1 work).
+  (a) The stake behind a vote stays put: a vote locks the voter's stake rows while it counts
+  them, and `POST /stakes/{id}/release` answers 409 while the owner has a weighted vote on a
+  proposal still open (it was: vote, release, move the tokens to a second account, vote
+  again). (b) Proposals close: `finalize_due_proposals` closes every proposal whose voting
+  period is over; the two list routes call it first (nothing called `finalize_proposal`, so
+  results were always empty). (c) The outcome follows the rules seeded in
+  `governance_parameters`, which nothing read: total weight (abstentions included) ≥ quorum
+  (100) and yes > 50 % of yes + no, on a recount of the vote rows (it was "yes > no": one
+  vote of weight 0.5 passed a proposal). (d) A vote locks the proposal row and uses the
+  database clock (no vote after the close); a concurrent duplicate vote was a 500, now 409.
+  (e) Wrong state → 409 (was 400); lists page (≤ 200); description / type / payload
+  bounded; at most 3 open proposals per agent; new `GET /governance/parameters`; responses
+  carry `abstain_power` and yes / no / abstain head counts. (f) skill.md's Governance
+  section named a vote route that never existed — corrected. `governance` is on in the repo
+  default: only `nodes` and `consensus` are off. No migration.
+  Proof: `tests/integration/test_governance_db.py` (34 tests, real local Postgres, `--db`;
+  25 fail on the old code); live check on a real local server with real logins, 44 of 44.
+  Smoke: 95 GET routes, no 5xx (98 with everything on).
+  Left as is, on purpose (→ D6): any logged-in agent may propose and vote —
+  `governance_role` (OBSERVER included) is not looked at, weight is stake × trust only; a
+  passed proposal changes nothing by itself (`execute_proposal` has no route and no
+  effect); a FOUNDER slash after a vote does not reduce that vote; all of a voter's stakes
+  are held while they have a weighted vote open, including stakes made after the vote;
+  `min_vote_power` and `default_voting_days` in `governance_parameters` are shown but not
+  read (the seeded values match what the code does).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
   Note (cycle 20): `/onboard` and skill.md advertise governance only when the router is on
   (`_build_next_steps`); skill.md's Governance section is static and still tells agents to
@@ -378,6 +404,17 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   proposal's closing time, or refuse to release a stake while its owner has a vote on an
   open proposal. Review the write routes for body identity like the other cohorts
   (→ **T1** if anything is found).
+
+- [ ] **S9-8d — Governance page (UI): show the real outcome.** (Added cycle 21.)
+  `ui/app/governance/GovernanceClient.tsx` decides PASSED / FAILED itself, as "more yes
+  votes than no votes" by head count (lines ~360 and ~604). The API decides by weight and
+  quorum, so the page can say PASSED for a proposal the API closed as failed. Use the
+  proposal's `status`. The page also calls the debate / consensus routes
+  (`/governance/proposals/{id}/debate` …), which belong to `consensus` and are off (404):
+  hide that panel while they are. The head counts the page reads (`yes_votes`, `no_votes`,
+  `abstain_votes`) exist in the API since S9-8. Needs `npm ci` in `ui/` first (no
+  `node_modules` on the engine machine yet).
+  Tier **T3**. Check: `npm run build` and `npm run lint` in `ui/` pass.
 
 Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent (driftice)
 flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral scheme
@@ -461,6 +498,10 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   it needs one endorsement per endorser (a table, so a migration). The trust graph
   (`agent_reputation_graph`) has no writer except the now FOUNDER-only manual route, so
   graph scores are empty until real events feed it.
+  Note (cycle 21): put `governance_service.finalize_due_proposals()` on the same schedule.
+  Today a proposal past its closing time is only closed when somebody reads
+  `GET /governance/proposals` or `/results`. Trust score is also half of every vote's weight
+  (stake × trust), so whatever makes trust farmable makes votes farmable.
   Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
   beat schedule registered; suite green.
 
@@ -509,6 +550,15 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   the API wants UUIDs — this route is the DID one); `POST /contracts/{id}/subcontract`
   answers 403 / 409 where it answered 400; contract and bid amounts above 2^63-1 → 422.
 
+  Note (cycle 21): governance. The async client's `vote()` (`sdk/agentx_sdk/client.py:488`)
+  posts to `/governance/proposals/{id}/vote` with `voter_did` / `choice` — that route does
+  not exist; the real one is `POST /governance/vote` with `proposal_id` / `vote` (the sync
+  `client.governance.vote` is right). "Already voted" and "voting closed" answer 409 now
+  (were 400), a 4th open proposal 409; proposals carry `abstain_power`, `yes_votes`,
+  `no_votes`, `abstain_votes`; new `GET /governance/parameters`; `POST /stakes/{id}/release`
+  can answer 409 while the caller has a weighted vote on an open proposal.
+  `runners/sdk_agent_runner.py` (~line 996) calls the debate / consensus routes, which are off.
+
   Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
   `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID
   (422 today). SDK callers of `/services/register`, `/a2a` `message/send` and
@@ -527,7 +577,12 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   repo default (the Governance section tells agents to vote while `governance` is off;
   `/agents/<did>/recommended-tasks`, `/notifications`, `/rooms/<id>/join` not verified);
   "raises your trust score and unlocks higher tiers (STANDARD → PRO → ENTERPRISE)" against
-  what the code does. Goal: each claim true or removed; sections for gated routers shown
+  what the code does. Cycle 21 corrected the Governance section (real routes, real rules);
+  still untrue there: "PRO tier — higher API rate limits, weighted governance votes" (a
+  vote's weight is stake × trust, the tier plays no part). The agent card
+  (`a2a/agent_card.py`, `/.well-known/agent.json`) lists the governance, token and contract
+  skills whether or not those routers are on — gate them the same way.
+  Goal: each claim true or removed; sections for gated routers shown
   only when the router is on; a test that every path in the document is a mounted route
   (extend `tests/a2a/test_skill_md.py`).
   Tier **T1** (`.well-known`). Commit prefix `SECURITY-REVIEW:`.

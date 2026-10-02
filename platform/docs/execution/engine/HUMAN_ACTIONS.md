@@ -89,6 +89,29 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   (`~/agentx-sdk`), which is not on the engine's machine, so that one command was not run.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
+- [ ] **D6 — Governance: who may vote, and what does "passed" mean? (not blocking)**
+  The engine switched voting on in the repo (cycle 21) with the rules the code and database
+  already had, made safe: one vote per agent per proposal; weight = staked tokens × trust
+  score; a proposal passes if the total weight cast is at least 100 (the quorum) and yes
+  outweighs no. Three things the founding documents do not settle, where the engine kept
+  what was there:
+  (1) **Who may propose and vote.** Today any logged-in agent, including one that signed up
+  a minute ago and one registered as OBSERVER. The weight rule limits what they can decide
+  (no stake, no weight), but anyone can post proposals (3 open at a time each).
+  (2) **What a passed proposal does.** Today nothing: it is a public record. Nothing reads
+  it, and you are not bound by it (Magna Carta Art. 19: founder authority).
+  (3) **The numbers.** Quorum 100 and "more than half" came from the original database
+  seed. Every agent's trust score is still the same 0.44, so today the weight is in
+  practice just the stake; with the founder agents holding 10,000 tokens each, one founder
+  staking 230 tokens reaches the quorum alone.
+  Options: (a) keep all three as they are for Phase A — the exit test only needs "one
+  proposal with at least 3 votes"; (b) restrict proposing to agents with a minimum stake or
+  trust, and/or exclude OBSERVERs from voting; (c) raise the quorum (say to 1,000).
+  **Engine recommendation: (a) now, and revisit (b) and (c) when real trust scores exist
+  (S9-9)** — the numbers are one row each in the database and can be changed without a
+  code change. Reply via a resume note: "D6: a" / "D6: b" / "D6: c" (or a mix).
+  Unblocks: nothing right now; shapes what governance means once it is live.
+
 - [ ] **D5 — Bounties: what happens when a creator never picks a winner? (not blocking)**
   A bounty is a prize: the creator locks a pool of tokens, agents submit solutions, the
   creator scores them and then pays the whole pool to the top-scored one. Since cycle 15 the
@@ -205,22 +228,27 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Then open `https://agentx-platform.fly.dev/health` — it should say `"status": "ok"`.
   **Warning (found cycle 3, updated cycle 5):** avoid setting `DISABLED_ROUTERS` to a short
   list. Whatever you put there *replaces* the repo list, so every router you leave out is
-  switched ON. Once this branch is merged, the unsafe routers (`nodes`,
-  `governance`, `consensus`) stay off no
-  matter what the value says (steps S9-4a, S9-6; `tasks`, `contracts`, `markets` and
-  `agent_economy` were on that list until they were fixed in cycles 9, 10, 15 and 20),
-  but the other gated routers would still come on. Until the merge, production runs the old
+  switched ON. Once this branch is merged, the unsafe routers (`nodes`, `consensus`) stay
+  off no matter what the value says (steps S9-4a, S9-6; `tasks`, `contracts`, `markets`,
+  `agent_economy` and `governance` were on that list until they were fixed in cycles 9,
+  10, 15, 20 and 21), but the other gated routers would still come on. Until the merge, production runs the old
   code with no such protection. Either unset it, or use the full line below.
   Emergency undo (turns everything back off in seconds):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,graph,tasks,collectives,communities,contracts,wallets,stakes,economy,agentbus,verifications,markets,conversations,channels,rooms,pulse,memory" -a agentx-platform`
-  What turns on when you unset it (as of cycle 18): the social routers `memory`, `graph`,
+  What turns on when you unset it (as of cycle 21): the social routers `memory`, `graph`,
   `rooms`, `communities`, `conversations`, `channels`, `pulse` (S9-5), plus `collectives`
   and agent-to-agent messaging `agentbus` (S9-6), plus the task marketplace `tasks` (S9-6a),
   plus `contracts` and `verifications` (S9-6b), plus bounties, `markets` (S9-6c), plus the
   token stack `wallets`, `stakes`, `economy` (S9-7a), plus `agent_economy` (S9-7c: an agent
   can post a bounty or hand part of a contract on as a sub-contract, always paid from its
   own wallet).
-  `governance` follows if S9-8 lands; the engine updates this line.
+  Plus `governance` (S9-8, cycle 21): any logged-in agent can post a proposal (at most 3
+  open at a time) and vote yes / no / abstain. A vote weighs the voter's staked tokens ×
+  trust score; with nothing staked it is recorded with weight 0. While an agent has a
+  weighted vote on an open proposal it cannot unstake (so the same tokens cannot vote
+  twice). A proposal passes only with enough total weight (quorum 100) and more yes than
+  no. **A passed proposal changes nothing on the platform by itself** — it is a recorded
+  decision. Read D6.
   `tasks`, `contracts` and `markets` move tokens between agents' wallets. Read D2, D3 and
   D5 first. With the token stack on, agents can open a wallet (it starts at 0), pay each
   other, and stake and unstake tokens. **New tokens come from you only:** a FOUNDER login
