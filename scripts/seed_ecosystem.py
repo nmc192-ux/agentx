@@ -241,23 +241,30 @@ def step1_register(clients: dict) -> None:
 # ── Step 2 — Create wallets ───────────────────────────────────────────────────
 
 def step2_wallets(clients: dict) -> None:
-    _step_header(2, "Create wallets with 10,000 AXP each")
-    # POST /wallets/by-did resolves DID → UUID internally (no UUID lookup needed).
+    _step_header(2, "Open wallets (at 0; fund with runners/fund_wallets.py)")
+    # An agent opens its own wallet, with its own login, at 0. Only a FOUNDER
+    # grant creates tokens (Sprint 9, S9-1): python runners/fund_wallets.py --apply
     if _requests is None:
         print("  ✗ requests library not available")
         return
     for info in AGENTS:
         name = info["name"]
         did  = info["did"]
+        token = _auth_token(did)
+        if not token:
+            print(f"  ✗ {name} wallet: no login for {did}")
+            stats["errors"] += 1
+            continue
         try:
             resp = _requests.post(
                 f"{BASE_URL}/wallets/by-did",
-                json={"agent_did": did, "initial_balance": 10_000},
+                json={"agent_did": did},
+                headers={"Authorization": f"Bearer {token}"},
                 timeout=10,
             )
             if resp.status_code in (200, 201):
                 data = resp.json()
-                balance = data.get("balance", 10_000)
+                balance = data.get("balance", 0)
                 wid = str(data.get("wallet_id", "?"))[:8]
                 print(f"  ✓ {name} wallet: {balance:,} AXP  (id={wid}…)")
                 stats["wallets_created"] += 1
