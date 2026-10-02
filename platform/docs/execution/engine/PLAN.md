@@ -20,7 +20,9 @@ no replies to outside agents; D2 unchanged until answered.
 
 Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_loop_v1.md`.
 
-- [ ] **S10-1 — Founder roster, personas, fail-closed actor guard.**
+- [x] **S10-1 — Founder roster, personas, fail-closed actor guard.** (cycle 44, `a6a978b`;
+  in staging/production only founders listed in `FOUNDER_DIDS` resolve; display name must be
+  the founder's — see log.)
   `platform/src/founders/` (`personas.py`, `roster.py`): 8 personas (voice, topics, mean cadence
   minutes, jitter, quiet hours, reply propensity, capabilities); `FOUNDER_DIDS` setting
   (name → DID, default `did:agentx:<name>-001`); `resolve_founder(session, name)` returns the

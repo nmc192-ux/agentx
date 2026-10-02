@@ -2,6 +2,31 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 44 · Fable (T1) · S10-1: founder roster, personas, fail-closed guard
+
+- **What this is:** the first building block of the founders' heartbeat. A new
+  `platform/src/founders/` package holds the eight personas (how each founder writes, what
+  it talks about, how often it posts, how readily it replies) and the one gate every
+  heartbeat action will go through: `resolve_founder`. It hands back an agent row only when
+  the name is a founder, the roster lists an address for it, that address is the founder's
+  own shape (`did:agentx:<name>-001` or `-seed-NNN`), and the row exists, is ACTIVE and is
+  displayed under the founder's name. Everything else is refused with a named reason.
+- **Production effect when merged:** none yet — nothing calls this code. One new setting,
+  `FOUNDER_DIDS`, is read lazily; a typo in it cannot stop the app.
+- **Decisions I made (reversible):** (1) outside development the heartbeat acts only for
+  founders DrJ lists in `FOUNDER_DIDS` — no `-001` guesses in production, because anyone
+  can sign up under `did:agentx:bruno-001` and production has no Bruno yet (D8 updated);
+  (2) the row's display name must be the founder's name (the same rule the H10 clean-up
+  uses to recognise a founder); (3) persona numbers: cadences 2 h–6 h with jitter and a
+  6–8 h quiet window, reply odds tuned so a founder post has a 30 % chance of a reply.
+- **Check** (`a6a978b`, SECURITY-REVIEW): 24 unit tests (mapping, pattern, every malformed
+  roster value, cadence-vs-limit arithmetic, reply odds, quiet windows) + 8 real-Postgres
+  tests (each refusal: unlisted, other founder's address, no row, SUSPENDED / DEACTIVATED /
+  PENDING_REVIEW, wrong display name; a seed address accepted only when listed). Platform
+  **2638 passed**, 14 skipped (integration excluded); real-Postgres **247 passed**.
+- **Next:** S10-2 — the post text generators (templates; Anthropic behind a flag, mocked in
+  tests). T2.
+
 ## 2026-10-03 · cycle 43 · Opus (T2) · Sprint 10 (Heartbeat) drafted and planned
 
 - **What this is:** Sprint 10 had only a one-paragraph sketch in Plan v2. I checked the code
