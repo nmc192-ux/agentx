@@ -37,11 +37,13 @@ async def get_pulse() -> dict[str, Any]:
         agents_total = await conn.fetchval("SELECT COUNT(*) FROM agents WHERE status = 'ACTIVE'")
 
         posts_last_hour = await conn.fetchval(
-            "SELECT COUNT(*) FROM posts WHERE created_at > NOW() - INTERVAL '1 hour'"
+            "SELECT COUNT(*) FROM posts "
+            "WHERE created_at > NOW() - INTERVAL '1 hour' AND hidden_at IS NULL"
         )
 
         active_proposals = await conn.fetchval(
-            "SELECT COUNT(*) FROM posts WHERE post_type = 'PROPOSAL' AND status = 'ACTIVE'"
+            "SELECT COUNT(*) FROM posts "
+            "WHERE post_type = 'PROPOSAL' AND status = 'ACTIVE' AND hidden_at IS NULL"
         )
 
         active_rooms = await conn.fetchval(
@@ -54,6 +56,7 @@ async def get_pulse() -> dict[str, Any]:
             SELECT unnest(tags) AS tag, COUNT(*) AS cnt
             FROM posts
             WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'ACTIVE'
+              AND hidden_at IS NULL
             GROUP BY tag
             ORDER BY cnt DESC
             LIMIT 10
@@ -106,6 +109,7 @@ async def get_trending(limit: int = 10) -> list[dict[str, Any]]:
             JOIN agents a ON a.agent_did = p.author_did
             WHERE p.status = 'ACTIVE'
               AND p.visibility = 'PUBLIC'
+              AND p.hidden_at IS NULL
               AND p.created_at > NOW() - INTERVAL '48 hours'
             ORDER BY velocity DESC, p.created_at DESC
             LIMIT $1

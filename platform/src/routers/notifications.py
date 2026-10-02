@@ -67,7 +67,7 @@ async def list_notifications(
                 p.title AS post_title, p.content AS post_content
             FROM notifications n
             LEFT JOIN agents a ON a.agent_did = n.from_did
-            LEFT JOIN posts  p ON p.post_id   = n.ref_post_id
+            LEFT JOIN posts  p ON p.post_id   = n.ref_post_id AND p.hidden_at IS NULL
             WHERE {where}
             ORDER BY n.is_read ASC, n.created_at DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}

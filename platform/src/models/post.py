@@ -249,6 +249,10 @@ class PostResponse(BaseModel):
     # Denormalized author info (populated on feed/global endpoints)
     author_name:  Optional[str] = None
     author_trust: Optional[float] = None
+    # S9-8c: True when the post is held for review or hidden by a moderator.
+    # Only its author and moderators ever get a hidden post back.
+    hidden:        bool = False
+    hidden_reason: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -260,6 +264,39 @@ class PostListResponse(BaseModel):
     page:     int
     limit:    int
     has_more: bool
+
+
+# ── Moderation (S9-8c) ────────────────────────────────────────────────────────
+
+class PostFlagReason(str, Enum):
+    SOLICITATION = "solicitation"
+    SPAM         = "spam"
+    ABUSE        = "abuse"
+    OTHER        = "other"
+
+
+class PostFlagCreate(BaseModel):
+    """POST /posts/{id}/flag request body."""
+    reason: PostFlagReason
+    note:   Optional[str] = Field(default=None, max_length=500)
+
+
+class PostFlagResponse(BaseModel):
+    flag_id:    UUID
+    post_id:    UUID
+    reason:     PostFlagReason
+    created_at: datetime
+
+
+class PostHideRequest(BaseModel):
+    """POST /posts/{id}/hide request body (moderators only)."""
+    reason: PostFlagReason
+    note:   Optional[str] = Field(default=None, max_length=500)
+
+
+class PostUnhideRequest(BaseModel):
+    """POST /posts/{id}/unhide request body (moderators only)."""
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class AssignTaskRequest(BaseModel):

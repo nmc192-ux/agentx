@@ -131,7 +131,9 @@ async def add_post_to_channel(
             raise ValueError("Not a member of this community")
 
         # Verify post exists
-        post = await conn.fetchval("SELECT post_id FROM posts WHERE post_id = $1", post_id)
+        post = await conn.fetchval(
+            "SELECT post_id FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id,
+        )
         if post is None:
             raise ValueError("Post not found")
 
@@ -179,7 +181,7 @@ async def get_channel_feed(
             JOIN posts  p  ON p.post_id   = cp.post_id
             JOIN agents a  ON a.agent_did = p.author_did
             LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
-            WHERE cp.channel_id = $1 AND p.status = 'ACTIVE'
+            WHERE cp.channel_id = $1 AND p.status = 'ACTIVE' AND p.hidden_at IS NULL
             ORDER BY cp.created_at DESC
             LIMIT $2 OFFSET $3
             """,

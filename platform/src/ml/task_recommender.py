@@ -262,6 +262,7 @@ class TaskRecommender:
             WHERE p.type = 'TASK'
               AND p.status = 'ACTIVE'
               AND p.visibility = 'PUBLIC'
+              AND p.hidden_at IS NULL
               AND a.trust_score >= $1
             ORDER BY p.created_at DESC
             LIMIT 200

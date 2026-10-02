@@ -11,6 +11,13 @@ Endpoints:
   PATCH  /posts/{post_id}          — Update post (author only, limited fields)
   POST   /posts/{post_id}/close    — Close post (author or assignee)
   POST   /posts/{post_id}/assign   — Assign TASK to agent
+  POST   /posts/{post_id}/flag     — Flag a post (one flag per agent per post)
+  POST   /posts/{post_id}/hide     — Hide a post (FOUNDER / OPERATOR)
+  POST   /posts/{post_id}/unhide   — Make a hidden post visible again (FOUNDER / OPERATOR)
+  GET    /posts/moderation/queue   — Hidden / flagged posts (FOUNDER / OPERATOR)
+
+Moderation (Sprint 9, S9-8c): a hidden post (``hidden_at`` set) is left out by
+every reader here; only its author and moderators can fetch it, by id.
 
 SOURCE: agentx_api_v1.yaml /posts paths — ATLAS Phase 1
         post_synthesis_schema.json — ATLAS Phase 1
@@ -22,7 +29,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth.middleware import AgentRecord, get_current_agent
+from ..auth.middleware import (
+    AgentRecord,
+    get_current_agent,
+    get_current_agent_optional,
+    require_role,
+)
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..middleware.rate_limits import (
@@ -35,6 +47,8 @@ from ..middleware.rate_limits import (
     LIMIT_POST_REPLY_DAY,
     LIMIT_POST_LIKE,
     LIMIT_POST_LIKE_HR,
+    LIMIT_POST_FLAG,
+    LIMIT_POST_FLAG_HR,
 )
 from ..ml.semantic_router import semantic_router  # Sprint 4 — module-level for patching
 from ..models.agent_post import PostCreate as AgentPostCreate
@@ -42,11 +56,16 @@ from ..models.agent_post import PostResponse as AgentPostResponse
 from ..models.post import (
     AssignTaskRequest,
     PostCreate,
+    PostFlagCreate,
+    PostFlagResponse,
+    PostHideRequest,
     PostListResponse,
     PostResponse,
+    PostUnhideRequest,
     PostUpdate,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
+from ..services import post_moderation
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -136,7 +155,7 @@ async def global_feed(
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT COUNT(*) FROM posts p WHERE {where}", *params
+            f"SELECT COUNT(*) FROM posts p WHERE p.hidden_at IS NULL AND {where}", *params
         )
         rows = await conn.fetch(
             f"""
@@ -151,7 +170,7 @@ async def global_feed(
                 a.trust_score  AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
-            WHERE {where}
+            WHERE p.hidden_at IS NULL AND {where}
             ORDER BY p.created_at DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
@@ -190,6 +209,8 @@ def _row_to_response(row: dict) -> PostResponse:
         reply_count=int(row.get("reply_count") or 0),
         author_name=row.get("author_name"),
         author_trust=float(row["author_trust"]) if row.get("author_trust") is not None else None,
+        hidden=row.get("hidden_at") is not None,
+        hidden_reason=row.get("hidden_reason"),
     )
 
 
@@ -263,9 +284,17 @@ async def create_post(
                 body.topic,
             )
             await bump_posts_count(conn, caller.did)
+            held = await post_moderation.hold_if_solicitation(
+                conn, row["post_id"], body.topic, body.content,
+            )
 
-        await cache_delete(feed_key("global"))
         response = _simple_post_row_to_response(dict(row))
+        if held:
+            # Held for review: stored, but not announced and not in any feed.
+            logger.info("Post %s by %s held for review (%s)", row["post_id"], caller.did, held)
+            response.hidden = True
+            return response
+        await cache_delete(feed_key("global"))
         await emit_event(
             "POST_CREATED",
             agent_row["agent_did"],
@@ -357,12 +386,21 @@ async def create_post(
             )
         if db_dict["parent_post_id"] is None:
             await bump_posts_count(conn, caller.did)
+        held = await post_moderation.hold_if_solicitation(
+            conn, db_dict["post_id"], db_dict["title"], db_dict["content"],
+            " ".join(db_dict["tags"]),
+        )
 
     logger.info(
         "Post created: %s type=%s author=%s",
         db_dict["post_id"], db_dict["post_type"], caller.did,
     )
     response = _row_to_response(dict(row))
+    if held:
+        # Held for review: stored, but not announced and not in any feed.
+        logger.info("Post %s by %s held for review (%s)", response.post_id, caller.did, held)
+        response.hidden, response.hidden_reason = True, held
+        return response
     await emit_event(
         "POST_CREATED",
         caller.did,
@@ -462,7 +500,10 @@ async def create_reply(
     # REPLY notification below.
     async with get_db() as conn:
         parent = await conn.fetchrow(
-            "SELECT post_id, author_did FROM posts WHERE post_id = $1::uuid AND visibility != 'PRIVATE'",
+            """
+            SELECT post_id, author_did FROM posts
+            WHERE post_id = $1::uuid AND visibility != 'PRIVATE' AND hidden_at IS NULL
+            """,
             str(post_id),
         )
     if parent is None:
@@ -508,8 +549,14 @@ async def create_reply(
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
         )
 
-        # REPLY notification — skip self-reply (matches LIKE / FOLLOW patterns).
-        if parent_author_did and parent_author_did != caller.did:
+        held = await post_moderation.hold_if_solicitation(
+            conn, db_dict["post_id"], db_dict["title"], db_dict["content"],
+            " ".join(db_dict["tags"]),
+        )
+
+        # REPLY notification — skip self-reply (matches LIKE / FOLLOW patterns),
+        # and a reply held for review.
+        if parent_author_did and parent_author_did != caller.did and not held:
             await conn.execute(
                 """
                 INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
@@ -521,12 +568,17 @@ async def create_reply(
             )
 
     logger.info("Reply %s → parent %s by %s", db_dict["post_id"], post_id, caller.did)
+    response = _row_to_response(dict(row))
+    if held:
+        logger.info("Reply %s by %s held for review (%s)", response.post_id, caller.did, held)
+        response.hidden, response.hidden_reason = True, held
+        return response
     await emit_event(
         "POST_CREATED",
         caller.did,
         {"post_id": str(db_dict["post_id"]), "parent_post_id": str(post_id)},
     )
-    return _row_to_response(dict(row))
+    return response
 
 
 @feed_router.get(
@@ -545,6 +597,7 @@ async def get_feed(request: Request):
             SELECT post_id, agent_id, type, topic, content, confidence, created_at
             FROM posts
             WHERE agent_id IS NOT NULL
+              AND hidden_at IS NULL
             ORDER BY created_at DESC
             LIMIT 50
             """
@@ -601,7 +654,7 @@ async def list_posts(
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT count(*) FROM posts p WHERE {where}",
+            f"SELECT count(*) FROM posts p WHERE p.hidden_at IS NULL AND {where}",
             *params,
         )
         rows = await conn.fetch(
@@ -612,12 +665,13 @@ async def list_posts(
                 p.parent_post_id, p.metadata, p.created_at, p.updated_at,
                 p.expires_at,
                 COALESCE(p.like_count, 0) AS like_count,
-                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count,
+                (SELECT count(*) FROM posts r
+                  WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
                 a.display_name AS author_name,
                 a.trust_score  AS author_trust
             FROM posts p
             LEFT JOIN agents a ON a.agent_did = p.author_did
-            WHERE {where}
+            WHERE p.hidden_at IS NULL AND {where}
             ORDER BY p.created_at DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
@@ -657,7 +711,7 @@ async def find_similar_posts(
     async with get_db() as conn:
         # Verify post exists
         exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1", post_id
+            "SELECT 1 FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id
         )
         if not exists:
             raise HTTPException(
@@ -696,8 +750,17 @@ async def find_similar_posts(
     response_model=PostResponse,
     summary="Get single post",
 )
-async def get_post(post_id: UUID, request: Request):
-    """Fetch a single post by UUID. Returns 404 if not found."""
+async def get_post(
+    post_id: UUID,
+    request: Request,
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    Fetch a single post by UUID. Returns 404 if not found.
+
+    A hidden post (held for review, or hidden by a moderator) and a PRIVATE
+    post answer 404 to everyone except the author and moderators.
+    """
     async with get_db() as conn:
         row = await conn.fetchrow(
             """
@@ -705,13 +768,18 @@ async def get_post(post_id: UUID, request: Request):
                 p.post_id, p.author_did, p.post_type, p.title, p.content,
                 p.tags, p.visibility, p.status, p.collective_id,
                 p.parent_post_id, p.metadata, p.created_at, p.updated_at,
-                p.expires_at,
-                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count
+                p.expires_at, p.hidden_at, p.hidden_reason,
+                (SELECT count(*) FROM posts r
+                  WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count
             FROM posts p
             WHERE p.post_id = $1
             """,
             post_id,
         )
+
+    if row is not None and (row["hidden_at"] is not None or row["visibility"] == "PRIVATE"):
+        if not post_moderation.may_see_hidden(caller, row["author_did"]):
+            row = None
 
     if row is None:
         raise HTTPException(
@@ -735,7 +803,16 @@ async def update_post(
     request: Request,
     caller:  AgentRecord = Depends(get_current_agent),
 ):
-    """Update a post's title, content, tags or visibility. Author only."""
+    """
+    Update a post's title, content, tags or visibility. Author only.
+
+    The new text goes through the same checks as a new post. Editing never
+    makes a hidden post visible; an edit that matches the solicitation list
+    hides the post for review.
+    """
+    if body.title is not None or body.content is not None:
+        check_content(body.title, body.content or "")
+
     updates: dict = {}
     if body.title is not None:
         updates["title"] = body.title
@@ -754,6 +831,9 @@ async def update_post(
 
     set_parts  = [f"{col} = ${i+1}" for i, col in enumerate(updates.keys())]
     set_parts.append("updated_at = now()")
+    if "title" in updates or "content" in updates:
+        # A moderator cleared the old text, not this one: flags count again.
+        set_parts.append("moderation_cleared_at = NULL")
     values     = list(updates.values())
     values.extend([caller.did, str(post_id)])
 
@@ -769,10 +849,16 @@ async def update_post(
                 post_id, author_did, post_type, title, content, tags,
                 visibility, status, collective_id, parent_post_id,
                 metadata, created_at, updated_at, expires_at,
+                hidden_at, hidden_reason,
                 0 AS reply_count
             """,
             *values,
         )
+        held = None
+        if row is not None:
+            held = await post_moderation.hold_if_solicitation(
+                conn, post_id, row["title"], row["content"], " ".join(row["tags"] or []),
+            )
 
     if row is None:
         raise HTTPException(
@@ -781,7 +867,12 @@ async def update_post(
         )
 
     logger.info("Post %s updated by %s", post_id, caller.did)
-    return _row_to_response(dict(row))
+    response = _row_to_response(dict(row))
+    if held and not response.hidden:
+        logger.info("Post %s by %s held for review on edit (%s)", post_id, caller.did, held)
+        response.hidden, response.hidden_reason = True, held
+        await cache_delete(feed_key("global"))
+    return response
 
 
 # ── POST /posts/{post_id}/close ───────────────────────────────────────────────
@@ -954,7 +1045,10 @@ async def toggle_like(
     async with get_db() as conn:
         # Verify post exists
         post_row = await conn.fetchrow(
-            "SELECT post_id, author_did, like_count FROM posts WHERE post_id = $1::uuid AND visibility != 'PRIVATE'",
+            """
+            SELECT post_id, author_did, like_count FROM posts
+            WHERE post_id = $1::uuid AND visibility != 'PRIVATE' AND hidden_at IS NULL
+            """,
             str(post_id),
         )
     if post_row is None:
@@ -1020,13 +1114,16 @@ async def get_replies(
     async with get_db() as conn:
         # Verify parent exists
         exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1::uuid", str(post_id)
+            "SELECT 1 FROM posts WHERE post_id = $1::uuid AND hidden_at IS NULL", str(post_id)
         )
         if not exists:
             raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
 
         total = await conn.fetchval(
-            "SELECT COUNT(*) FROM posts WHERE parent_post_id = $1::uuid AND status = 'ACTIVE'",
+            """
+            SELECT COUNT(*) FROM posts
+            WHERE parent_post_id = $1::uuid AND status = 'ACTIVE' AND hidden_at IS NULL
+            """,
             str(post_id),
         )
         rows = await conn.fetch(
@@ -1044,6 +1141,7 @@ async def get_replies(
             JOIN agents a ON a.agent_did = p.author_did
             WHERE p.parent_post_id = $1::uuid
               AND p.status = 'ACTIVE'
+              AND p.hidden_at IS NULL
             ORDER BY p.created_at ASC
             LIMIT $2 OFFSET $3
             """,
@@ -1053,3 +1151,136 @@ async def get_replies(
     posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total)
+
+
+# ── Moderation (Sprint 9, S9-8c) ──────────────────────────────────────────────
+
+_moderator = require_role(*post_moderation.MODERATOR_ROLES)
+
+
+def _moderation_row(row: dict) -> dict:
+    return {
+        "post_id":        str(row["post_id"]),
+        "author_did":     row["author_did"],
+        "post_type":      row["post_type"],
+        "title":          row["title"],
+        "content":        row["content"],
+        "visibility":     row["visibility"],
+        "status":         row["status"],
+        "parent_post_id": str(row["parent_post_id"]) if row["parent_post_id"] else None,
+        "created_at":     row["created_at"],
+        "hidden":         row["hidden_at"] is not None,
+        "hidden_at":      row["hidden_at"],
+        "hidden_reason":  row["hidden_reason"],
+        "hidden_by":      row["hidden_by"],
+        "moderation_cleared_at": row["moderation_cleared_at"],
+        "flag_count":     int(row["flag_count"]),
+        "flag_reasons":   list(row.get("flag_reasons") or []),
+    }
+
+
+@router.get(
+    "/moderation/queue",
+    response_model=dict,
+    summary="Posts waiting for a moderator (FOUNDER / OPERATOR)",
+)
+async def moderation_queue(
+    request: Request,
+    state:   str = Query(default="hidden", pattern=r"^(hidden|flagged)$"),
+    page:    int = Query(default=1, ge=1),
+    limit:   int = Query(default=50, ge=1, le=200),
+    caller:  AgentRecord = Depends(_moderator),
+):
+    """
+    ``state=hidden``: every hidden post (held by the pattern list, hidden by
+    flags or by a moderator), newest first. ``state=flagged``: visible posts
+    with at least one flag that no moderator has cleared, most flags first.
+    """
+    async with get_db() as conn:
+        result = await post_moderation.moderation_queue(
+            conn, state, limit, (page - 1) * limit,
+        )
+    return {
+        "state":    state,
+        "posts":    [_moderation_row(r) for r in result["posts"]],
+        "total":    result["total"],
+        "page":     page,
+        "limit":    limit,
+        "has_more": (page * limit) < result["total"],
+    }
+
+
+@router.post(
+    "/{post_id}/flag",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PostFlagResponse,
+    summary="Flag a post for moderators",
+)
+@limiter_did.limit(LIMIT_POST_FLAG_HR)
+@limiter_did.limit(LIMIT_POST_FLAG)
+async def flag_post(
+    post_id: UUID,
+    body:    PostFlagCreate,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Flag a post. One flag per agent per post (a second one → 409); you cannot
+    flag your own post. The flag is stored under the caller's own DID.
+
+    When enough established accounts have flagged a post it is hidden until a
+    moderator reviews it. The answer does not say whether that happened.
+    """
+    async with transaction() as conn:
+        result = await post_moderation.flag_post(
+            conn, post_id, caller.did, body.reason.value, body.note,
+        )
+    if result["hidden"]:
+        logger.info("Post %s hidden by flags (last flag by %s)", post_id, caller.did)
+        await cache_delete(feed_key("global"))
+    return PostFlagResponse(**result["flag"])
+
+
+@router.post(
+    "/{post_id}/hide",
+    response_model=dict,
+    summary="Hide a post (FOUNDER / OPERATOR)",
+)
+async def hide_post(
+    post_id: UUID,
+    body:    PostHideRequest,
+    request: Request,
+    caller:  AgentRecord = Depends(_moderator),
+):
+    """Hide a post from every feed, list and search. 409 if already hidden."""
+    async with transaction() as conn:
+        row = await post_moderation.hide_post(
+            conn, post_id, caller.did, body.reason.value, body.note,
+        )
+    logger.info("Post %s hidden by %s (%s)", post_id, caller.did, body.reason.value)
+    await cache_delete(feed_key("global"))
+    return _moderation_row(row)
+
+
+@router.post(
+    "/{post_id}/unhide",
+    response_model=dict,
+    summary="Make a hidden post visible again (FOUNDER / OPERATOR)",
+)
+async def unhide_post(
+    post_id: UUID,
+    request: Request,
+    body:    Optional[PostUnhideRequest] = None,
+    caller:  AgentRecord = Depends(_moderator),
+):
+    """
+    Review a post: make it visible again and dismiss its flags, so the same
+    flags cannot hide it again. 409 if the post is neither hidden nor flagged.
+    """
+    async with transaction() as conn:
+        row = await post_moderation.unhide_post(
+            conn, post_id, caller.did, body.note if body else None,
+        )
+    logger.info("Post %s cleared by %s", post_id, caller.did)
+    await cache_delete(feed_key("global"))
+    return _moderation_row(row)

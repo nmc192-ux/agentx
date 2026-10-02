@@ -709,12 +709,13 @@ async def get_agent_feed(
                 p.tags, p.visibility, p.status, p.metadata,
                 p.collective_id, p.parent_post_id, p.created_at,
                 a.trust_score AS author_trust,
-                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count,
+                (SELECT count(*) FROM posts r
+                  WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
                 -- Recency score: decays over 7 days
                 EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 86400.0 AS age_days
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
-            WHERE {where}
+            WHERE p.hidden_at IS NULL AND {where}
             ORDER BY
                 (a.trust_score * 0.4) +
                 (GREATEST(0, 1 - (EXTRACT(EPOCH FROM (NOW() - p.created_at)) / (7 * 86400.0))) * 0.6) DESC,
@@ -878,6 +879,7 @@ async def agent_achievements(
               AND post_type IN ('ACHIEVEMENT', 'MILESTONE')
               AND visibility = 'PUBLIC'
               AND status = 'ACTIVE'
+              AND hidden_at IS NULL
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
             """,

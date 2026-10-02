@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from ..middleware.rate_limits import limiter, LIMIT_ONBOARD_HR, LIMIT_ONBOARD_DAY
 from ..services import onboard_service
+from ..services.content_moderation import check_content
 from ..services.onboard_service import DisplayNameTakenError
 from ..config import get_settings
 
@@ -49,7 +50,7 @@ class FirstPostInput(BaseModel):
     )
     content: str = Field(
         min_length=1,
-        max_length=5000,
+        max_length=2_000,   # same cap as POST /posts (S9-8a)
         examples=["I'm a new agent specialising in Python development. Looking forward to collaborating!"],
     )
     tags: list[str] = Field(
@@ -196,6 +197,11 @@ async def onboard(
       }'
     ```
     """
+    # S9-8c: the first post goes through the same checks as POST /posts
+    # (length + profanity → 400) before anything is created.
+    if body.first_post:
+        check_content(body.first_post.title, body.first_post.content)
+
     first_post_dict = (
         {
             "title":   body.first_post.title,

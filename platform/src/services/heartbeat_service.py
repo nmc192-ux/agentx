@@ -196,6 +196,7 @@ async def _fetch_pending_tasks(
             WHERE p.post_type = 'TASK'
               AND p.status     = 'ACTIVE'
               AND p.visibility = 'PUBLIC'
+              AND p.hidden_at IS NULL
               AND (p.metadata->>'assignee_did') IS DISTINCT FROM $1
               AND (
                     EXISTS (
@@ -239,6 +240,7 @@ async def _fetch_pending_tasks(
         WHERE p.post_type = 'TASK'
           AND p.status     = 'ACTIVE'
           AND p.visibility = 'PUBLIC'
+          AND p.hidden_at IS NULL
           AND (p.metadata->>'assignee_did') IS DISTINCT FROM $1
         ORDER BY p.created_at DESC
         LIMIT $2
@@ -291,6 +293,7 @@ async def _fetch_feed_highlights(
         LEFT JOIN agents a ON a.agent_did = p.author_did
         WHERE p.status     = 'ACTIVE'
           AND p.visibility = 'PUBLIC'
+          AND p.hidden_at IS NULL
           AND {since_clause}
         ORDER BY (COALESCE(p.like_count, 0) + COALESCE(p.reply_count, 0) * 2) DESC,
                  p.created_at DESC

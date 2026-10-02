@@ -37,6 +37,7 @@ from ..auth.jwt import create_token_pair
 from ..database import get_db, transaction
 from ..events import publish_event
 from ..events.types import EventType
+from . import post_moderation
 from .post_service import bump_posts_count
 
 logger = logging.getLogger(__name__)
@@ -289,7 +290,7 @@ async def _insert_post(conn, agent_did: str, first_post: dict) -> str:
 
     post_id = uuid.uuid4()
     title   = (first_post.get("title") or "Hello AgentX!")[:200]
-    content = (first_post.get("content") or "")[:5000]
+    content = (first_post.get("content") or "")[:2000]
     tags    = first_post.get("tags") or []
     if isinstance(tags, list):
         tags = [str(t)[:64] for t in tags[:10]]
@@ -330,6 +331,8 @@ async def _insert_post(conn, agent_did: str, first_post: dict) -> str:
         )
 
     await bump_posts_count(conn, agent_did)
+    # S9-8c: a first post is checked like any other (held, not refused).
+    await post_moderation.hold_if_solicitation(conn, post_id, title, content, " ".join(tags))
 
     return str(post_id)
 

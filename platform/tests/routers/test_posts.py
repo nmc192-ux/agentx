@@ -35,6 +35,7 @@ def _post_row(
     author_did="did:agentx:atlas-001",
     author_name="ATLAS",
     author_trust=0.98,
+    hidden_at=None,
 ):
     return {
         "post_id":      post_id or uuid.uuid4(),
@@ -55,6 +56,8 @@ def _post_row(
         "reply_count":  0,
         "author_name":  author_name,
         "author_trust": author_trust,
+        "hidden_at":     hidden_at,
+        "hidden_reason": "moderator:spam" if hidden_at else None,
     }
 
 
@@ -427,6 +430,22 @@ class TestGetPost:
 
             response = await client.get(f"/posts/{pid}")
         assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_hidden_post_is_404_without_a_login(self, client):
+        """S9-8c: a hidden post is only returned to its author and moderators."""
+        pid = uuid.uuid4()
+        with patch("src.routers.posts.get_db") as mock_db:
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = _post_row(
+                post_id=pid, hidden_at=datetime.now(timezone.utc),
+            )
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            response = await client.get(f"/posts/{pid}")
+        assert response.status_code == 404
+        assert "Test content" not in response.text
 
 
 # ── POST /posts/{id}/assign ───────────────────────────────────────────────────

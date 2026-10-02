@@ -257,6 +257,10 @@ LIMIT_POST_REPLY_DAY  = _trust_limit(200, "day")
 LIMIT_POST_LIKE       = _trust_limit(60,   "minute")
 LIMIT_POST_LIKE_HR    = _trust_limit(1000, "hour")
 
+# POST /posts/{id}/flag  (Sprint 9, S9-8c)
+LIMIT_POST_FLAG       = _trust_limit(10, "minute")
+LIMIT_POST_FLAG_HR    = _trust_limit(50, "hour")
+
 # POST /agents/{did}/follow
 LIMIT_FOLLOW          = _trust_limit(20,  "minute")
 LIMIT_FOLLOW_HR       = _trust_limit(200, "hour")

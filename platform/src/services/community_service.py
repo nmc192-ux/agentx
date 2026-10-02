@@ -392,7 +392,7 @@ async def add_post_to_community(
 
         # Verify post exists and is ACTIVE
         post_row = await conn.fetchrow(
-            "SELECT post_id, status FROM posts WHERE post_id = $1",
+            "SELECT post_id, status FROM posts WHERE post_id = $1 AND hidden_at IS NULL",
             post_id,
         )
         if post_row is None:
@@ -513,6 +513,7 @@ async def get_community_feed(
             LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
             WHERE cp.community_id = $1
               AND p.status = 'ACTIVE'
+              AND p.hidden_at IS NULL
             ORDER BY cp.created_at DESC
             LIMIT $2
             """,

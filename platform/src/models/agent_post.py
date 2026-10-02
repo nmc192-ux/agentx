@@ -20,3 +20,5 @@ class PostResponse(BaseModel):
     content: str
     confidence: float
     created_at: datetime
+    # S9-8c: True when the post is held for review (see models/post.py).
+    hidden: bool = False
