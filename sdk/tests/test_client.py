@@ -209,18 +209,28 @@ class TestGovernance:
 
     @respx.mock
     async def test_vote_sends_correct_choice(self):
-        route = respx.post(f"{BASE}/governance/proposals/prop-uuid/vote").mock(
-            return_value=httpx.Response(200, json={"vote_id": "v1"})
+        route = respx.post(f"{BASE}/governance/vote").mock(
+            return_value=httpx.Response(201, json={"vote_id": "v1"})
         )
         client = _authed_client()
-        result = await client.vote("prop-uuid", "yes", confidence=0.9)
+        result = await client.vote("prop-uuid", "yes")
         await client.close()
 
         import json
         payload = json.loads(route.calls.last.request.content)
-        assert payload["choice"] == "yes"
-        assert payload["confidence"] == 0.9
+        # The API's body: no voter DID (it comes from the token), no confidence.
+        assert payload == {"proposal_id": "prop-uuid", "vote": "yes"}
         assert result["vote_id"] == "v1"
+
+    @respx.mock
+    async def test_vote_twice_raises(self):
+        respx.post(f"{BASE}/governance/vote").mock(
+            return_value=httpx.Response(409, json={"detail": "Already voted"})
+        )
+        client = _authed_client()
+        with pytest.raises(AgentXError, match="409"):
+            await client.vote("prop-uuid", "no")
+        await client.close()
 
     @respx.mock
     async def test_get_proposals_returns_list(self):
@@ -248,3 +258,47 @@ class TestContextManager:
             await client.get_profile()
         # If close() wasn't called the httpx client would still be open — no error means it closed
         assert client._http.is_closed
+
+
+# ── Task marketplace ──────────────────────────────────────────────────────────
+
+class TestTaskMarketplace:
+    @respx.mock
+    async def test_bid_on_task_uses_api_route_and_fields(self):
+        route = respx.post(f"{BASE}/tasks/t1/bid").mock(
+            return_value=httpx.Response(201, json={"bid_id": "b1"})
+        )
+        client = _authed_client()
+        result = await client.bid_on_task("t1", 50, confidence=0.8)
+        await client.close()
+
+        import json
+        assert json.loads(route.calls.last.request.content) == {
+            "bid_price": 50, "confidence": 0.8,
+        }
+        assert result["bid_id"] == "b1"
+
+    @respx.mock
+    async def test_complete_task_sends_result_payload(self):
+        route = respx.post(f"{BASE}/tasks/t1/result").mock(
+            return_value=httpx.Response(201, json={"result_id": "r1"})
+        )
+        client = _authed_client()
+        await client.complete_task("t1", {"summary": "done"})
+        await client.close()
+
+        import json
+        assert json.loads(route.calls.last.request.content) == {
+            "result_payload": {"summary": "done"},
+        }
+
+    @respx.mock
+    async def test_cancel_task(self):
+        route = respx.post(f"{BASE}/tasks/t1/cancel").mock(
+            return_value=httpx.Response(200, json={"status": "cancelled"})
+        )
+        client = _authed_client()
+        result = await client.cancel_task("t1")
+        await client.close()
+        assert route.called
+        assert result["status"] == "cancelled"

@@ -158,7 +158,7 @@ class TaskCreate(BaseModel):
     """Input for creating a direct (non-routed) task."""
 
     requester_agent_did: str
-    executor_agent_did:  str
+    executor_agent_did:  Optional[str] = None  # None while a marketplace task is open
     task_type:           str
     payload:             Optional[dict[str, Any]] = None
 
@@ -168,7 +168,7 @@ class Task(BaseModel):
 
     task_id:             UUID
     requester_agent_did: str
-    executor_agent_did:  str
+    executor_agent_did:  Optional[str] = None  # None while a marketplace task is open
     task_type:           str
     payload:             Optional[dict[str, Any]] = None
     status:              str

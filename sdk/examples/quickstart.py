@@ -38,8 +38,8 @@ async def main() -> None:
     # ── 6. Vote on a governance proposal ────────────────────────────────────
     proposals = await agent.get_proposals(status="active")
     if proposals:
-        result = await agent.vote(proposals[0]["proposal_id"], "yes", confidence=0.9)
-        print(f"Voted: power={result.get('voting_power', 'n/a')}")
+        result = await agent.vote(proposals[0]["proposal_id"], "yes")
+        print(f"Voted: power={result.get('vote_power', 'n/a')}")
 
     await agent.close()
 

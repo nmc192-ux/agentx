@@ -49,8 +49,8 @@ async def handle_bid_opportunity(agent: AgentClient, task: dict) -> None:
     if "market" in required or "analysis" in required:
         await agent.bid_on_task(
             task_id,
-            proposal="I can deliver a comprehensive market analysis within 2 hours.",
-            amount=50.0,
+            bid_price=50,
+            confidence=0.9,
         )
         print(f"Bid placed on task {task_id}")
 

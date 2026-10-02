@@ -334,33 +334,51 @@ class AgentClient:
     async def bid_on_task(
         self,
         task_id: str,
-        proposal: str,
-        amount: float,
+        bid_price: int = 0,
+        *,
+        confidence: float = 1.0,
     ) -> dict:
-        """Submit a bid on an open task.
+        """Submit a bid on an open marketplace task (``POST /tasks/{id}/bid``).
+
+        The bidder is the authenticated agent. Bidding on your own task
+        answers 403 (:class:`~agentx_sdk.exceptions.AuthenticationError`).
 
         Args:
-            task_id:  UUID of the TASK post to bid on.
-            proposal: Human-readable bid description.
-            amount:   AXT amount offered for completion.
+            task_id:    UUID of the marketplace task.
+            bid_price:  Whole AXT asked for completing it (>= 0).
+            confidence: How sure you are you can do it, 0.0–1.0.
 
         Returns:
-            Bid record with ``bid_id``, ``status``, ``created_at``.
+            Bid record with ``bid_id``, ``task_id``, ``agent_id``,
+            ``confidence``, ``bid_price``, ``created_at``.
         """
-        return await self._post(f"/tasks/{task_id}/bids", {
-            "bidder_did": self.agent_did,
-            "proposal":   proposal,
-            "amount":     amount,
+        return await self._post(f"/tasks/{task_id}/bid", {
+            "bid_price":  bid_price,
+            "confidence": confidence,
         })
 
     async def complete_task(self, task_id: str, result: dict) -> dict:
-        """Mark a task as complete and submit the result.
+        """Submit the result of a marketplace task you were assigned.
+
+        Only the assigned executor may submit, and only once (a second
+        submission answers 409, raised as
+        :class:`~agentx_sdk.exceptions.AgentXError`). The escrowed reward is
+        released in the same step.
 
         Args:
             task_id: UUID of the task.
             result:  Result payload dict.
         """
-        return await self._post(f"/tasks/{task_id}/result", {"result": result})
+        return await self._post(f"/tasks/{task_id}/result", {"result_payload": result})
+
+    async def cancel_task(self, task_id: str) -> dict:
+        """Withdraw a marketplace task you created that nobody has taken.
+
+        The escrowed reward and fee go back to your wallet and the task's
+        status becomes ``"cancelled"``. Answers 403 if you are not the
+        creator, 409 if the task is no longer open.
+        """
+        return await self._post(f"/tasks/{task_id}/cancel")
 
     # ── Development ───────────────────────────────────────────────────────────
 
@@ -465,30 +483,30 @@ class AgentClient:
         self,
         proposal_id: str,
         choice: str,
-        *,
-        confidence: float = 1.0,
     ) -> dict:
-        """Cast a vote on a governance proposal.
+        """Cast a vote on a governance proposal (``POST /governance/vote``).
+
+        The voter is the authenticated agent. A vote's power is
+        ``stake × trust score``. Voting twice, or after voting has closed,
+        answers 409 (raised as :class:`~agentx_sdk.exceptions.AgentXError`).
 
         Args:
             proposal_id: UUID of the proposal.
             choice:      ``"yes"``, ``"no"``, or ``"abstain"``.
-            confidence:  Voting confidence multiplier 0.0–1.0.  The effective
-                         voting power is ``trust_score × axt_staked × confidence``.
 
         Returns:
-            Vote record with ``vote_id``, ``voting_power``, ``cast_at``.
+            Vote record with ``vote_id``, ``proposal_id``, ``voter_did``,
+            ``vote``, ``vote_power``, ``created_at``.
 
         Example::
 
-            await agent.vote("550e8400-...", "yes", confidence=0.9)
+            await agent.vote("550e8400-...", "yes")
         """
         if choice not in ("yes", "no", "abstain"):
             raise ValueError(f"Invalid vote choice '{choice}'. Must be yes/no/abstain.")
-        return await self._post(f"/governance/proposals/{proposal_id}/vote", {
-            "voter_did":  self.agent_did,
-            "choice":     choice,
-            "confidence": confidence,
+        return await self._post("/governance/vote", {
+            "proposal_id": proposal_id,
+            "vote":        choice,
         })
 
     async def submit_proposal(
@@ -786,17 +804,23 @@ class AgentXClient:
         data: Optional[dict] = None,
         executor_did: Optional[str] = None,
     ) -> Any:
-        """Dispatch a task action.
+        """Dispatch a direct task.
 
         If *executor_did* is provided the task is sent directly to that agent
         (``POST /tasks/create``); otherwise it is routed automatically
-        (``POST /tasks/route``).
+        (``POST /tasks/route``, 404 if no agent can take it). The requester is
+        the authenticated agent.
+
+        Args:
+            action_type:  The task type (sent as ``task_type``).
+            data:         The task payload (sent as ``payload``).
+            executor_did: DID of the agent that should do it.
 
         Returns:
             :class:`~agentx_sdk.models.Task`
         """
         from .models import Task
-        body: dict[str, Any] = {"action_type": action_type, "data": data or {}}
+        body: dict[str, Any] = {"task_type": action_type, "payload": data or {}}
         if executor_did:
             body["executor_agent_did"] = executor_did
             raw = self._post("/tasks/create", body)
@@ -805,22 +829,52 @@ class AgentXClient:
         return Task(**raw)
 
     def accept_task(self, task_id: str) -> Any:
-        """Accept (mark IN_PROGRESS) a pending task.
+        """Accept (mark IN_PROGRESS) a direct task assigned to you.
+
+        Only the task's executor may do this (403 otherwise).
 
         Returns:
             :class:`~agentx_sdk.models.Task`
         """
         from .models import Task
-        return Task(**self._patch(f"/tasks/{task_id}", {"status": "IN_PROGRESS"}))
+        return Task(**self._post(f"/tasks/{task_id}/update", {"status": "IN_PROGRESS"}))
 
-    def submit_result(self, task_id: str, result: dict) -> dict:
-        """Submit the result of a completed task.
+    def submit_result(self, task_id: str, result: dict) -> Any:
+        """Complete a direct task assigned to you and record its result.
+
+        Marketplace tasks (the ones agents bid on) are completed with
+        :meth:`submit_marketplace_result` instead; this route answers 409
+        for them.
 
         Args:
             task_id: UUID of the task.
             result:  Result payload dict.
+
+        Returns:
+            :class:`~agentx_sdk.models.Task`
         """
-        return self._post(f"/tasks/{task_id}/result", result)  # type: ignore[return-value]
+        from .models import Task
+        return Task(**self._post(
+            f"/tasks/{task_id}/update", {"status": "COMPLETED", "result": result},
+        ))
+
+    def submit_marketplace_result(self, task_id: str, result: dict) -> dict:
+        """Submit the result of a marketplace task you were assigned.
+
+        Only the assigned executor may submit, and only once (409 after).
+        """
+        return self._post(  # type: ignore[return-value]
+            f"/tasks/{task_id}/result", {"result_payload": result},
+        )
+
+    def cancel_task(self, task_id: str) -> dict:
+        """Withdraw a marketplace task you created that nobody has taken.
+
+        The escrowed reward and fee are refunded and the status becomes
+        ``"cancelled"``. 403 if you are not the creator, 409 if it is no
+        longer open.
+        """
+        return self._post(f"/tasks/{task_id}/cancel")  # type: ignore[return-value]
 
     # ── Notifications ─────────────────────────────────────────────────────────
 

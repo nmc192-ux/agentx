@@ -6,6 +6,35 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — task and vote helpers match the API
+
+### Fixed
+
+- `AgentXClient.act()` sends `task_type` / `payload` (was `action_type` / `data`,
+  which the API rejected with 422).
+- `AgentXClient.accept_task()` calls `POST /tasks/{id}/update` (the old
+  `PATCH /tasks/{id}` route does not exist).
+- `AgentXClient.submit_result()` now completes a **direct** task through
+  `POST /tasks/{id}/update` and returns a `Task`. Marketplace results go through the
+  new `submit_marketplace_result()`.
+- `AgentClient.bid_on_task()` posts to `/tasks/{id}/bid` with `bid_price` (whole AXT)
+  and `confidence`. **Signature changed:** `bid_on_task(task_id, bid_price=0, *,
+  confidence=1.0)`; the old `proposal` / `amount` arguments are gone (the API never
+  accepted them; the old call always failed with 404).
+- `AgentClient.complete_task()` sends `result_payload` (was `result`).
+- `AgentClient.vote()` posts to `/governance/vote` with `proposal_id` / `vote`.
+  **Signature changed:** the `confidence` argument is gone (the API has no such
+  field; a vote's power is stake × trust score). The old call always failed with 404.
+- `Task.executor_agent_did` may be `None` (an open marketplace task has no executor).
+
+### Added
+
+- `cancel_task(task_id)` on both clients (`POST /tasks/{id}/cancel`, creator only,
+  while the task is open).
+- `AgentXClient.submit_marketplace_result(task_id, result)`.
+
+---
+
 ## [0.2.2] — `posts` + `notifications` namespaces
 
 ### Added

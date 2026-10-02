@@ -196,32 +196,82 @@ class TestAct:
     @respx.mock
     def test_act_auto_route(self):
         t = task_payload()
-        respx.post(f"{BASE}/tasks/route").mock(return_value=httpx.Response(200, json=t))
+        route = respx.post(f"{BASE}/tasks/route").mock(return_value=httpx.Response(200, json=t))
         task = make_client().act("ACCEPT_TASK", data={"post_id": "abc"})
         assert task.task_type == "ACCEPT_TASK"
+        # The API's field names, and no requester: it comes from the token.
+        assert json.loads(route.calls.last.request.content) == {
+            "task_type": "ACCEPT_TASK", "payload": {"post_id": "abc"},
+        }
 
     @respx.mock
     def test_act_direct(self):
         t = task_payload()
-        respx.post(f"{BASE}/tasks/create").mock(return_value=httpx.Response(200, json=t))
+        route = respx.post(f"{BASE}/tasks/create").mock(return_value=httpx.Response(200, json=t))
         task = make_client().act("DO_WORK", data={}, executor_did="did:agentx:other-001")
         assert task.status == "PENDING"
+        assert json.loads(route.calls.last.request.content) == {
+            "task_type": "DO_WORK", "payload": {},
+            "executor_agent_did": "did:agentx:other-001",
+        }
+
+    @respx.mock
+    def test_task_without_executor_parses(self):
+        t = task_payload()
+        t["executor_agent_did"] = None
+        respx.post(f"{BASE}/tasks/route").mock(return_value=httpx.Response(200, json=t))
+        assert make_client().act("DO", data={}).executor_agent_did is None
 
     @respx.mock
     def test_accept_task(self):
         t = task_payload(status="IN_PROGRESS")
         tid = t["task_id"]
-        respx.patch(f"{BASE}/tasks/{tid}").mock(return_value=httpx.Response(200, json=t))
+        route = respx.post(f"{BASE}/tasks/{tid}/update").mock(
+            return_value=httpx.Response(200, json=t)
+        )
         task = make_client().accept_task(tid)
         assert task.status == "IN_PROGRESS"
+        assert json.loads(route.calls.last.request.content) == {"status": "IN_PROGRESS"}
 
     @respx.mock
-    def test_submit_result(self):
-        respx.post(f"{BASE}/tasks/abc/result").mock(
-            return_value=httpx.Response(200, json={"ok": True})
+    def test_submit_result_completes_direct_task(self):
+        t = task_payload(status="COMPLETED")
+        tid = t["task_id"]
+        route = respx.post(f"{BASE}/tasks/{tid}/update").mock(
+            return_value=httpx.Response(200, json=t)
         )
-        result = make_client().submit_result("abc", {"output": "done"})
-        assert result["ok"] is True
+        task = make_client().submit_result(tid, {"output": "done"})
+        assert task.status == "COMPLETED"
+        assert json.loads(route.calls.last.request.content) == {
+            "status": "COMPLETED", "result": {"output": "done"},
+        }
+
+    @respx.mock
+    def test_submit_marketplace_result(self):
+        route = respx.post(f"{BASE}/tasks/abc/result").mock(
+            return_value=httpx.Response(201, json={"result_id": "r1"})
+        )
+        result = make_client().submit_marketplace_result("abc", {"output": "done"})
+        assert result["result_id"] == "r1"
+        assert json.loads(route.calls.last.request.content) == {
+            "result_payload": {"output": "done"},
+        }
+
+    @respx.mock
+    def test_cancel_task(self):
+        route = respx.post(f"{BASE}/tasks/abc/cancel").mock(
+            return_value=httpx.Response(200, json={"status": "cancelled"})
+        )
+        assert make_client().cancel_task("abc")["status"] == "cancelled"
+        assert route.called
+
+    @respx.mock
+    def test_cancel_taken_task_raises(self):
+        respx.post(f"{BASE}/tasks/abc/cancel").mock(
+            return_value=httpx.Response(409, json={"detail": "Task is not open"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().cancel_task("abc")
 
 
 class TestNotifications:
