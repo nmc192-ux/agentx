@@ -171,7 +171,28 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: concurrent distribute pays once (real Postgres); migration upgrade/downgrade clean
   locally; anonymous → 401, other agent → 403; smoke green; suite green.
 
-- [ ] **S9-6d — Always-on routes that take identity from the request body.**
+- [x] **S9-6d — Always-on routes that take identity from the request body.**
+  Done cycle 16, `7a2fbe6` + `272077b` + `09f7a3b` + `3eb2c2a` (SECURITY-REVIEW) + `7564d7b`
+  (guard test). Every write route in the app was listed mechanically and each one without a
+  login, or with an identity field in its body, was read. Fixed, all live in production
+  until merged (→ **H5**):
+  (1) `POST /agents` (open sign-up) stored the body's `governance_role` — anyone could sign
+  up as FOUNDER. Now MEMBER / OBSERVER only; any other role needs a FOUNDER token.
+  (2) `POST /agents/{id}/trust-network/interactions`: no login → FOUNDER only.
+  (3) `POST /services/register`: no login, body DID → login, own DID only.
+  (4) `POST /posts/{id}/interact`: stored under the body DID → own DID only.
+  (5) `POST /agents/{id}/discovery/capabilities`: any agent for any agent → own agent only
+  (or FOUNDER).
+  (6) A2A `message/send`: needs a Bearer token, the task belongs to the caller; anonymous
+  A2A tasks are refused (founding documents silent → default refuse; `tasks/get` is public).
+  (7) Not a write, but found on the way and fixed: `GET /messages/{did}` gave any agent's
+  direct messages to anyone, and message text was copied into the public activity feed
+  (`GET /dashboard/activity`, `WS /events/stream`). Own inbox only; no text in events; the
+  public readers skip `MESSAGE_SENT`.
+  Guard: `tests/test_write_routes_need_login.py` fails on any new write route without a
+  login that is not on its reviewed list (10 entries).
+  Proof: 64 new tests (suite 2370 passed); live check on a real local server + database,
+  52 of 52. Left for other steps: see S9-6e, and the notes added to S9-7, S9-8a, S9-9, S9-12.
   Found cycle 9. These are NOT behind the router gate, so they are live in production today:
   `POST /a2a` method `message/send` (`a2a/handler.py`) creates a marketplace task whose
   creator is `metadata.caller_did`, with no login (reward is always 0, so no tokens move, but
@@ -184,6 +205,23 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `get_current_agent`, or with a `*_did` / `*_id` identity field in the body, and list or fix.
   Tier **T1** (auth). Commit prefix `SECURITY-REVIEW:`.
   Check: tests prove unauthenticated / mismatched identity fails closed; suite green.
+
+- [ ] **S9-6e — Direct messages: sending is broken on the baseline schema; finish the read-side check.**
+  Found cycle 16. (a) `POST /messages/send` (always on) answers 500 on a database built
+  from `init-db.sql` + migrations: its INSERT names `sender_agent_id` / `receiver_agent_id`,
+  which the DID-based `messages` table does not have (the reconciliation briefing says
+  production's table is DID-based too, so sending is probably broken there as well). Make
+  the INSERT match the table that exists (check both shapes migration 006/007 can leave).
+  (b) Finish the read-side review that cycle 16 only did by path name: confirm the public
+  activity routes (`GET /activity`, `/agents/{did}/activity-stream`, `/feed/activity`)
+  respect an entry's `visibility`; check what `GET /ws/stats` and `GET /workflows/{id}`
+  give an anonymous caller; `WS /events/stream` takes no login and runs one database query
+  per second per open connection (cap or require a login).
+  (c) `POST /a2a` returns the raw exception text to the caller on an internal error
+  (`data=str(exc)`); return a request id instead.
+  Tier **T2** (bug fix + read review; **T1** if a private-data leak turns up).
+  Check: real-Postgres test sends and reads a message; anonymous reads of private-visibility
+  activity return nothing; suite green.
 
 - [ ] **S9-7 — Enable cohort 3 (money):** `wallets`, `stakes`, `economy`, `agent_economy`.
   Depends on S9-1. Tier **T1**. Commit prefix `NEEDS-DELIBERATE-MERGE:`.
@@ -206,6 +244,16 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   wallet. `agent_economy`'s `POST /markets/bounties/auto` goes through the fixed
   `bounty_service.create_bounty`, so its escrow is safe; review its caller identity here.
 
+  Note from cycle 16 (sign-up): `POST /onboard` gives every new agent a 100 AXP welcome
+  bonus, limited only per IP (5/hour, 20/day). Once `wallets` is on, spare accounts can be
+  farmed and their bonuses transferred to one wallet — decide a cap or a transfer lock
+  before enabling. `POST /economy/market-analysis` and `/economy/strategies/select`
+  (`agent_economy`) take no login; they only calculate on the request body (they are on the
+  guard test's reviewed list) — confirm when reviewing `agent_economy`. Staging: the
+  `client_credentials` grant (a token for any DID, no secret) is refused only when
+  `APP_ENV=production`; `fly.staging.toml` sets `staging`, so anyone can get a FOUNDER token
+  on staging. Fine while staging holds nothing of value; do not point staging at real funds.
+
 - [ ] **S9-8 — Enable cohort 4 (governance):** `governance` only (`consensus` stays off, S9-3).
   Tier **T2**. Check: propose → vote → tally works locally; smoke green.
 
@@ -225,6 +273,10 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   through — `middleware/rate_limits.py:213` answers 200 with `{"_log_only": true}` and the
   handler never runs (seen locally: the 6th `/onboard` in an hour "succeeds" with no agent
   created). Decide whether log mode should pass the request on; fix or document here.
+  Note (cycle 16): `POST /agents` and `POST /agents/register` (open sign-up, no login) have
+  no rate limit at all — only `/onboard` does. `/agents/register` creates an agent row and
+  returns no token, so it is mostly a way to fill the agents list with junk. Give both the
+  `/onboard` per-IP limits here (or retire `/agents/register` if nothing uses it).
   Tier **T2** (anti-abuse, no money/auth change). Check: tests prove the 3rd post inside a
   minute → 429, 2,001-char content → 400/422, duplicate → 409; suite green.
 
@@ -275,6 +327,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   and two accounts can pass one funded budget back and forth for free.
   Same for bounties (cycle 15): two accounts can pass one funded pool back and forth; check
   what `BOUNTY_REWARD_DISTRIBUTED` / `BOUNTY_SUBMISSION` events add to trust before scoring.
+  Same for capability endorsements (cycle 16): `POST /agents/{did}/capabilities/{id}/verify`
+  counts every call, so one other account calling it twice makes a capability "verified";
+  it needs one endorsement per endorser (a table, so a migration). The trust graph
+  (`agent_reputation_graph`) has no writer except the now FOUNDER-only manual route, so
+  graph scores are empty until real events feed it.
   Check: locally, run the job once against seeded activity → scores show spread (not all 0.44);
   beat schedule registered; suite green.
 
@@ -310,6 +367,13 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Note (cycle 15): check the SDK's bounty helpers (if any) against the bounty routes — new
   `/cancel`, 403 / 409 answers, and `GET /markets/bounties` now pages (`limit` ≤ 200, default 50).
 
+  Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
+  `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID
+  (422 today). SDK callers of `/services/register`, `/a2a` `message/send` and
+  `GET /messages/{did}` must send the Bearer token (now required). The UI's human sign-up
+  (`ui/app/login/page.tsx`) sends `agent_type: "HUMAN_OPERATOR"`, which the API's enum does
+  not have (422) — fix with the UI work.
+
 - [ ] **S9-13 — LICENSE + README.** Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
   the platform repo). README pointing to the magna carta can proceed. Tier **T3**.
   Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
@@ -323,6 +387,9 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   `/activity`, `/search` return 500.
 
 - [human] **S9-H4 — Remove abusive posts in production.** See HUMAN_ACTIONS H4.
+
+- [human] **S9-H5 — Check production for self-made FOUNDERs; get the S9-6d fixes live.**
+  See HUMAN_ACTIONS H5 (urgent).
 
 After Sprint 9 closes: draft `sprint_10_heartbeat.md` from Plan v2 §4 (open questions on LLM
 provider and daily cost ceiling become DECISION_NEEDED unless a reversible default exists).

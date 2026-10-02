@@ -2,6 +2,75 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 16 · Fable (T1) · S9-6d: sign-up could make anyone a FOUNDER; private messages were public — both fixed
+
+- **Read this first: H5 in `HUMAN_ACTIONS.md`.** Two of the holes below are serious and
+  are in the code production runs today. The fixes are on this branch only. H5 has a
+  five-minute check for intruders and a fast way to ship just these fixes.
+- **S9-6d done.** The step was "find the always-on routes that trust what the caller says
+  about who they are". I had the app list every route that changes something, and read
+  each one that either takes no login or carries an identity in its request. Six were
+  wrong; one more turned up on the way.
+  1. **Sign-up handed out any role** (`7a2fbe6`). Registering an agent takes no login,
+     which is intended. But the caller could also pick the new agent's role, FOUNDER
+     included, and got back a working FOUNDER login. Now sign-up gives MEMBER or OBSERVER
+     only; any other role needs an existing FOUNDER's login (the seeding script already
+     sends one).
+  2. **Trust links** (`272077b`). Anyone, with no login, could record "agent A trusts
+     agent B" with any weight, or wipe a link out. Now FOUNDER only.
+  3. **Service listings** (`272077b`). Anyone, with no login, could list a service under
+     any agent's name. Now an agent lists only its own.
+  4. **Likes, endorsements, shares, comments** (`272077b`). A logged-in agent could record
+     one in another agent's name. Now only in its own.
+  5. **Declared capabilities** (`272077b`). A logged-in agent could declare capabilities
+     for any other agent. Now only for itself (or a FOUNDER for anyone).
+  6. **A2A tasks** (`09f7a3b`). An outside caller, with no login, could create a task in
+     any agent's name. Creating one now needs a login and the task belongs to that agent.
+  7. **Direct messages** (`3eb2c2a`). Anyone could read any agent's messages with no
+     login. The text of every sent message was also copied into the public activity feed.
+     Now an agent reads only its own messages; the text is no longer copied; the public
+     feed and live stream skip message events, so copies already stored are not shown.
+- **So it does not happen again** (`7564d7b`): a test now fails whenever a route that
+  changes something has no login check, unless it is on a short reviewed list (10 routes:
+  sign-up, getting a login, and searches).
+- **Production:** unchanged, and still exposed, until these commits are deployed (H5).
+  **Merging adds no database migration.** What outside agents will notice: listing a
+  service, sending an A2A task and reading messages now need their own login; signing up
+  with a role above MEMBER is refused.
+- **Check:** full platform suite **2370 passed, 74 skipped** (was 2306; 64 new tests).
+  Database tests: **60 passed** (`--db`, unchanged). Each group of new tests was also run
+  against the old code to confirm it fails there (16, 15, 13 and 7 failures). Live check
+  on a real local server, real local database and real logins: **52 of 52** — every
+  attack above is refused and writes nothing, and the legitimate version of each call
+  still works. Smoke harness green on the repo default (85 GET routes) and with every
+  router on (96), no 5xx. Lint clean. The four security commits also apply cleanly on top
+  of `main` by themselves, and the suite passes there (2093) — that is option (a) in H5.
+- **Not done / not checked:**
+  - I cannot see production, so I do not know whether anyone used these holes. H5 step 1
+    answers that for the FOUNDER one. For messages there is no record of who read what.
+  - The live check script was run by hand and is not in the repo.
+  - Sending a message fails with a server error on a database built from the repo
+    (an older bug, not from this cycle; → new step S9-6e). So in the live check the test
+    message was written straight into the database; reading it was tested for real.
+  - The two database filters that hide message events were checked in the live run, not by
+    the automated suite (which only checks the query text).
+- **Decisions I made (reversible):**
+  - Anonymous A2A tasks are refused. The founding documents do not say; the Agent Cards
+    already tell callers to bring a login, and an outside agent gets one from one call to
+    `/onboard`.
+  - Hand-recorded trust links are FOUNDER only, not "each agent for itself": the caller
+    chooses the weight, so self-service would be a way to inflate scores.
+  - Only a FOUNDER may grant FOUNDER, OPERATOR or DELEGATE (not an OPERATOR).
+  - Nobody but the two parties can read a message, FOUNDER included. If you want a
+    moderation view, say so.
+  - A login that does not check out counts as no login (401), never as a lower level.
+- **Found, not fixed (noted on the steps that own them):** sending messages is broken and
+  the read-side check needs finishing (S9-6e, new); sign-up routes other than `/onboard`
+  have no rate limit (S9-8a); the 100-token welcome bonus can be farmed with spare
+  accounts once wallets are on, and staging hands a FOUNDER login to anyone (S9-7); one
+  account can "verify" another's capability by endorsing twice (S9-9); the SDK calls a
+  few of these routes the wrong way (S9-12).
+
 ## 2026-10-02 · cycle 15 · Fable (T1) · S9-6c bounties fixed; markets enabled
 
 - **Recovered cycle 11.** Its unfinished work was in `git stash`. I read all of it, judged

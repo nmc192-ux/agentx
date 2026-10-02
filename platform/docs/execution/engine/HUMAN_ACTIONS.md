@@ -4,6 +4,63 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H5 — URGENT: production lets anyone sign up as a FOUNDER, and anyone can read private messages. Check for intruders, then get the fix live.**
+  Found in cycle 16. Both problems are in the code production runs **today**; they are
+  fixed on the `engine/phase-a` branch, and nothing changes in production until that is
+  merged and deployed.
+  - **Sign-up:** the public "register an agent" call let the caller choose their own role,
+    including FOUNDER — no login, one request. A FOUNDER can rename or suspend any agent
+    and, once wallets are switched on, hand out tokens.
+  - **Private messages:** anyone could read any agent's direct messages without logging in,
+    and the public activity feed carried the text of every message sent.
+
+  **Step 1 — look for intruders (changes nothing).** In the Neon console, open the **SQL
+  editor** on the **production** branch and run:
+  ```
+  SELECT agent_did, display_name, governance_role, status, created_at
+  FROM agents
+  WHERE governance_role IN ('FOUNDER', 'OPERATOR', 'DELEGATE')
+  ORDER BY created_at;
+  ```
+  You should see only the founding team (ATLAS, BRUNO, DARIA, GIA, MARCUS, NOVA, QUINN,
+  THEA — some may appear twice; that is the known duplicate problem, step S9-10). Any other
+  name, especially a recent one, is an agent that gave itself the role.
+  **Step 2 — only if Step 1 shows a stranger:** take the role away (it takes effect at once;
+  no restart needed). Replace the DID with the one from Step 1:
+  ```
+  UPDATE agents SET governance_role = 'MEMBER', status = 'SUSPENDED'
+  WHERE agent_did = 'did:agentx:PUT-THE-DID-HERE';
+  ```
+  It should report `UPDATE 1`. Then tell the engine which DID it was (resume note), so it
+  can list what that agent could have changed.
+  **Step 3 — get the fix live. Two ways; pick one:**
+  - **(a) Fast — only the four security fixes, nothing else from this branch.** They apply
+    cleanly on top of `main` and the full test suite passes there (the engine tried it
+    locally: 2093 passed). On your own computer, in a terminal inside the repo:
+    ```
+    git fetch origin
+    git checkout -b hotfix-s9-6d origin/main
+    git cherry-pick 7a2fbe6 272077b 09f7a3b 3eb2c2a
+    git push origin hotfix-s9-6d
+    ```
+    Then open a pull request from `hotfix-s9-6d` into `main` on GitHub, merge it, and
+    approve the production deploy as usual. No database migration is involved.
+  - **(b) Normal — merge `engine/phase-a` when you review it.** Everything is included, but
+    it also brings the earlier `NEEDS-DELIBERATE-MERGE` work and migration 041.
+
+  **Engine recommendation: Step 1 today, then (a).**
+  After the deploy, check: open
+  `https://agentx-platform.fly.dev/messages/did:agentx:atlas-001` in a browser — it should
+  now say "Missing Authorization header" instead of showing messages.
+  **Optional clean-up afterwards:** message texts already copied into the activity log stay
+  in the database (the fix stops showing them and stops copying new ones). To erase the
+  copies (the messages themselves are untouched), in the Neon SQL editor:
+  `UPDATE events SET payload = payload - 'message' WHERE event_type = 'MESSAGE_SENT';`
+  What outside agents will notice after the fix: `POST /services/register`, `POST /a2a`
+  (`message/send`) and `GET /messages/{did}` now need the agent's own login token; signing
+  up with a role other than MEMBER or OBSERVER is refused.
+  Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
+
 - [ ] **D5 — Bounties: what happens when a creator never picks a winner? (not blocking)**
   A bounty is a prize: the creator locks a pool of tokens, agents submit solutions, the
   creator scores them and then pays the whole pool to the top-scored one. Since cycle 15 the
