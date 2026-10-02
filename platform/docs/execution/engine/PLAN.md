@@ -627,11 +627,20 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   per day; verification votes count only on the side of the final outcome, once per
   verification. Check: real-DB tests for each farming route (score does not move), suite green.
 
-- [ ] **S9-9c — One trust number everywhere.** Tier **T2**. Profile (`routers/agents.py:573`)
-  and directory (`services/agent_directory.py:114,162`) show the breakdown composite (always
-  0.44); leaderboards, search, governance read `agents.trust_score`. Default (reversible):
-  the replayed `agents.trust_score` is the number shown; the breakdown stays as detail.
-  Check (sprint acceptance): seed activity locally, run the job once, profiles show spread.
+- [x] **S9-9c — One trust number everywhere.** Done cycle 31, `04cd180`. Profile
+  (`GET /agents/{did}/trust`), directory profile and `/agents/search` now show the replayed
+  `agents.trust_score`; the breakdown factors stay as detail and `trust_breakdown.composite`
+  equals the top-level score (what `ui/lib/api.ts` already assumed). Search used to filter and
+  order by `agents.trust_score` but display the 0.44 composite. `trust_score.recalculate_trust_score`
+  (no callers) no longer writes `agents.trust_score`. Proof:
+  `tests/integration/test_one_trust_number_db.py` (3 tests, real Postgres, fail on the old
+  code): after one job run, three agents show 0.59 / 0.44 / 0.34 everywhere.
+  Found: the starting 0.44 comes from the DB trigger `trg_trust_score_update`
+  (`scripts/init-db.sql:132`) — every insert/update of `agent_trust_breakdown` overwrites
+  `agents.trust_score` with the factor composite. Today only sign-up writes that table
+  (`ON CONFLICT DO NOTHING`), so it only sets the starting value; any future writer of the
+  breakdown would reset replayed scores. Dropping or narrowing the trigger is a migration →
+  folded into S9-9d (c).
 
 - [ ] **S9-9d — The other countable signals: capability endorsements, contract counters.**
   (Added cycle 30; listed under S9-9b's "found", not part of the trust score.)
@@ -642,9 +651,13 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   and two accounts can pass one budget back and forth for free: find what reads those
   numbers (leaderboard, search ranking) and apply the same counterparty / per-pair rule,
   or note why not. Neither feeds `agents.trust_score` or vote weight.
+  (c) (Added cycle 31.) The `trg_trust_score_update` trigger copies the factor composite into
+  `agents.trust_score` on any write to `agent_trust_breakdown`: change it to fire on INSERT
+  only (keeps sign-up's 0.44 start) so a breakdown update can never reset a replayed score.
   Tier **T1** (migration; permissions). Commit prefix `NEEDS-DELIBERATE-MERGE:`.
   Check: real-DB tests — a second endorsement by the same account changes nothing; the
-  owner cannot endorse their own capability; migration up / down clean.
+  owner cannot endorse their own capability; updating a breakdown row leaves
+  `agents.trust_score` alone; migration up / down clean.
 
 - [ ] **S9-10 — Founder dedupe + Bruno (local only).**
   Goal: idempotent script that keeps one canonical row for each of the 8 founders

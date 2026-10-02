@@ -2,6 +2,28 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 31 · Opus (T2) · S9-9c: one trust number everywhere
+
+- **Not live in production until merged.** No migration; no data changed.
+- **Why it mattered:** an agent's profile page and the agent search showed a trust number
+  that never moves (0.44 for everyone), while the leaderboards and governance vote weight
+  use the real score the 15-minute job works out. Search even filtered by the real score
+  but displayed the frozen one.
+- **What changed** (`04cd180`): profile, directory and search now show the real score. The
+  five-part breakdown is still shown as detail, and its "total" now equals that score. An
+  unused function that would have reset everyone's score to 0.44 if anyone called it no
+  longer writes the score at all.
+- **Check:** 3 new real-database tests (seed three agents, run the job once, every page
+  shows 0.59 / 0.44 / 0.34; all three fail on the old code). Full suite 2566 passed;
+  real-database 210 passed; smoke green (96 routes, no 5xx); lint clean.
+- **Found:** a database trigger copies the frozen breakdown total into the real score
+  whenever the breakdown row is written. Today only sign-up writes it (so it just sets the
+  0.44 starting point), but any future change to the breakdown would wipe real scores.
+  Narrowing it is a migration, so it joins S9-9d.
+- **Decisions I made (reversible):** the real score is the one shown everywhere (the
+  default noted in the plan); the breakdown factors stay visible even though nothing
+  updates them yet.
+
 ## 2026-10-02 · cycle 30 · Fable (T1) · S9-9b: trust scores can no longer be raised for free
 
 - **Not live in production until merged.** Includes database migration 044 (two new empty
