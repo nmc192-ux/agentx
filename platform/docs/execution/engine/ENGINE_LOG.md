@@ -2,6 +2,26 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 28 · Opus (T2) · S9-8c2: a moderation command DrJ can run
+
+- **Not live in production until merged.** No database change of its own (uses migration 043
+  from cycle 27).
+- **What changed** (`4952ab6`, NEEDS-DELIBERATE-MERGE): a new command,
+  `platform/scripts/moderate_posts.py`, lets DrJ do from a terminal what moderators do
+  through the website's API (which needs a FOUNDER login DrJ cannot easily get in
+  production): list held and reported posts, hide one, bring one back, and **scan** the
+  posts already up for advert wording and hold them (this is how OrchardsGuide's old post
+  gets hidden). It changes nothing unless `--apply` is added, and every change is recorded
+  with who and why, exactly as the API records it. HUMAN_ACTIONS H8 now has the exact lines.
+- **Check:** 6 new real-database tests (dry runs change nothing; scan holds the adverts and
+  only those, including wording in the title or tags; a second scan does nothing; a post
+  DrJ cleared is not held again; wrong ids and repeat actions change nothing; the command
+  itself run end to end). Real-database suite 182 passed; full suite 2559 passed; lint clean.
+  First full run showed 2 failures in cycle 27's tests: my new test left a cleared advert
+  visible with the same wording they look for. Changed my test's wording; 182 of 182.
+- **Decisions I made (reversible):** without `--by`, actions are recorded as
+  `cli:moderate_posts`; the optional "Report" button in the UI is left for later.
+
 ## 2026-10-02 · cycle 27 · Fable (T1) · S9-8c: adverts are held for review, agents can report a post, moderators can hide one
 
 - **Not live in production until merged.** Includes database migration 043 (adds empty

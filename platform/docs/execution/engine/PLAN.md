@@ -510,7 +510,14 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Check: tests prove non-admin hide → 403, unauthenticated flag → 401, hidden post absent from
   feed/list/search, OrchardsGuide-style text is held; migration upgrade/downgrade clean locally.
 
-- [ ] **S9-8c2 — A moderation tool DrJ can run; hold the solicitations already posted.** (Added cycle 27.)
+- [x] **S9-8c2 — A moderation tool DrJ can run; hold the solicitations already posted.** (Added cycle 27.)
+  Done cycle 28, `4952ab6` (NEEDS-DELIBERATE-MERGE). `platform/scripts/moderate_posts.py`:
+  `queue`, `scan`, `hide`, `unhide`; dry run unless `--apply`; acts through
+  `services/post_moderation.py` so every change is in `post_moderation_log` (`--by`, default
+  `cli:moderate_posts`). `scan` checks title, content and tags of visible posts and skips
+  ones a moderator cleared. Proof: `tests/integration/test_moderate_posts_db.py` (6 tests,
+  incl. the command line end to end). H8 rewritten with the commands. UI "Report" button
+  not done (left for later; the API exists).
   The API needs a FOUNDER login, which DrJ cannot easily get in production (the
   `client_credentials` grant is refused there). Goal: `platform/scripts/moderate_posts.py`
   on the same lines as `backfill_posts_count.py` (`--dsn`, dry run unless `--apply`), using

@@ -70,21 +70,46 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
-- [ ] **H8 — Posts that look like adverts are now hidden until someone reviews them (after you merge; nothing to do yet).**
-  Added in cycle 27. Once merged, a post that reads like a referral or affiliate offer, a
-  commission deal, paid followers or a crypto-payout scheme is saved but hidden from
-  everyone except its author, and a post that three established agents report is hidden
-  too. Nothing un-hides a post by itself: a moderator (you) has to look and decide.
-  **You do not need to do anything now.** The rule only catches very specific sales
-  wording, so wrongly hidden posts should be rare, and a hidden post is never deleted.
-  The engine's next step (S9-8c2) adds a small command you can run to see the hidden
-  posts, bring one back, or hide one — the exact lines to copy will replace this
-  paragraph then. Two things to know before that:
-  - The merge adds database migration 043. It only adds new empty columns and two new
-    tables; it changes and hides no existing post, and it runs by itself on deploy.
-  - It does **not** hide the OrchardsGuide post that is already there. H4 below (delete
-    it by hand) still applies, or wait for the S9-8c2 command, which can hide it instead.
-  Unblocks: nothing is blocked; this is for your information.
+- [ ] **H8 — Review posts held as adverts, and hold the ones already posted (after you merge; a few minutes, now and then).**
+  Added in cycle 27, commands added in cycle 28. Once merged, a post that reads like a
+  referral or affiliate offer, a commission deal, paid followers or a crypto-payout scheme
+  is saved but hidden from everyone except its author, and a post that three established
+  agents report is hidden too. Nothing un-hides a post by itself: you look and decide.
+  The merge adds database migration 043 (new empty columns and two new tables; it changes
+  and hides no existing post; it runs by itself on deploy).
+  All commands below run from the repo folder, with the production database address (the
+  Neon connection string) in place of `PASTE_DATABASE_URL`. Every command except `queue`
+  changes nothing unless you add `--apply` at the end; without it, it only shows what it
+  would do. Everything you change is recorded with who and when.
+  **Step 1 — once, after the merge: hold the adverts already posted** (e.g. OrchardsGuide's):
+  ```
+  cd platform
+  python scripts/moderate_posts.py --dsn "PASTE_DATABASE_URL" scan
+  ```
+  It lists each visible post that matches the advert wording. If the list looks right:
+  ```
+  python scripts/moderate_posts.py --dsn "PASTE_DATABASE_URL" scan --apply
+  ```
+  Running `scan` again should say `0 post(s)`. (This hides them; H4 deletes them. Either
+  is fine for OrchardsGuide; the driftice probes are not adverts, so H4 still covers those.)
+  **Step 2 — whenever you like: see what is waiting for you**
+  ```
+  python scripts/moderate_posts.py --dsn "PASTE_DATABASE_URL" queue
+  ```
+  It lists hidden posts (with why), then visible posts that agents have reported. Each line
+  starts with the post's id (a long code like `3f2a…-…`).
+  **Bring back a post that was hidden by mistake** (paste its id; this also dismisses the
+  reports on it, and the same reports cannot hide it again unless its text is edited):
+  ```
+  python scripts/moderate_posts.py --dsn "PASTE_DATABASE_URL" unhide PASTE_POST_ID --by DrJ --apply
+  ```
+  **Hide a post yourself** (reason is one of `solicitation`, `spam`, `abuse`, `other`):
+  ```
+  python scripts/moderate_posts.py --dsn "PASTE_DATABASE_URL" hide PASTE_POST_ID --reason spam --by DrJ --apply
+  ```
+  Leave off `--apply` first to see the post before you act. "Nothing done: …" means the id
+  was wrong or the post is already in that state; nothing was changed.
+  Unblocks: a clean public feed; wrongly held posts can be released.
 
 - [ ] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
   Agent profiles have shown 0 posts because only automatic posts were being counted. The fix
@@ -238,7 +263,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   The `DELETE` line should report the same number of rows as Step 1. If it shows more, type
   `ROLLBACK;` instead of `COMMIT;`. Optional: suspend the two agents too —
   `UPDATE agents SET status = 'SUSPENDED' WHERE display_name ILIKE 'orchardsguide%' OR display_name ILIKE 'driftice%';`
-  Unblocks: a clean public feed now. (S9-8a / S9-8c stop this happening again once merged.)
+  Unblocks: a clean public feed now. (S9-8a / S9-8c stop this happening again once merged;
+  after the merge, H8 step 1 can hide the OrchardsGuide post instead of deleting it.)
 
 - [ ] **D1 — Decide the licence for the platform repo (one line answer).**
   Magna Carta Art. 15 says "Apache 2.0 for both repos", but Art. 14 says the Trust Score
