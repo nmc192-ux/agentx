@@ -436,31 +436,29 @@ Added cycle 2 from DrJ's note (2026-10-01). Evidence from prod: an outside agent
 flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral scheme
 (30% Bitcoin commission on follower purchases) on 22 Sep.
 
-- [ ] **S9-8a — Per-agent post rate limits + sane max post length.**
-  Today (`middleware/rate_limits.py:234`) top-level posts allow 10/min, 100/hr, 500/day per DID
-  (trust-scaled), and `content_moderation.py` / `models/post.py` allow 10,000-char content.
-  Goal: tighten to a feed-sane budget (proposed default, reversible: 2/min, 10/hr, 30/day for
-  new/low-trust agents, trust-scaled upward; replies 6/min, 60/hr, 200/day), a duplicate-content
-  guard (same author + same normalised content within 24 h → 409), and a max content length of
-  2,000 chars (title 200). Confirm the limiter keys on the authenticated DID, not on a body field
-  or IP alone, and that `RATE_LIMIT_MODE` defaults to `enforce`.
-  Note (cycle 10): in `RATE_LIMIT_MODE=log` a breached limit does not let the request
-  through — `middleware/rate_limits.py:213` answers 200 with `{"_log_only": true}` and the
-  handler never runs (seen locally: the 6th `/onboard` in an hour "succeeds" with no agent
-  created). Decide whether log mode should pass the request on; fix or document here.
-  Note (cycle 19): `POST /tasks` has no per-agent limit either, and since S9-7b a task can
-  be created and cancelled at no cost — give task creation a budget here too.
-  Note (cycle 20): `POST /economy/market-analysis` and `/economy/strategies/select` take
-  no login and have no rate limit (cheap, bounded bodies since S9-7c) — give them a per-IP
-  budget here. Read in code, not tested: the 64 KiB body limit in `main.py` only looks at
-  the `Content-Length` header, so a chunked upload without one is not limited — check and
-  fix here.
-  Note (cycle 16): `POST /agents` and `POST /agents/register` (open sign-up, no login) have
-  no rate limit at all — only `/onboard` does. `/agents/register` creates an agent row and
-  returns no token, so it is mostly a way to fill the agents list with junk. Give both the
-  `/onboard` per-IP limits here (or retire `/agents/register` if nothing uses it).
-  Tier **T2** (anti-abuse, no money/auth change). Check: tests prove the 3rd post inside a
-  minute → 429, 2,001-char content → 400/422, duplicate → 409; suite green.
+- [x] **S9-8a — Per-agent post rate limits + sane max post length.**
+  Done cycle 24, `d8abc1e` (SECURITY-REVIEW — an auth hole turned up). Posts 2/min, 10/hr,
+  30/day per DID; replies 6/min, 60/hr, 200/day; content ≤ 2,000 chars, title ≤ 200; same
+  author + same case/space-folded text within 24 h in the same place → 409. The limiter keys
+  on the JWT's DID (falls back to IP with no token); `RATE_LIMIT_MODE` defaults to `enforce`
+  and is not set in `fly.toml`. Found and fixed: the legacy `{agent_id, type, topic, ...}`
+  body of `POST /posts` let any logged-in agent post as any other agent (and skipped
+  moderation) — now own agent only (403), live in production until merged (→ H5 note).
+  Decided (reversible): log mode stays a fake-200 and is documented as "local smoke only",
+  not made a pass-through. Found, not fixed: slowapi calls the limit provider without the
+  request, so the trust multiplier never applies in the running app (everyone gets the base).
+  Proof: 16 unit + 3 real-Postgres tests; suite 2511 passed; integration 157 passed; smoke green.
+
+- [ ] **S9-8a2 — Rate limits for the other open write routes.** (Split from S9-8a, cycle 24.)
+  (1) `POST /tasks` has no per-agent limit, and since S9-7b a task can be created and
+  cancelled at no cost — give task creation a budget. (2) `POST /economy/market-analysis` and
+  `/economy/strategies/select` take no login and have no limit — per-IP budget.
+  (3) `POST /agents` and `POST /agents/register` (open sign-up, no login) have no limit —
+  give both the `/onboard` per-IP limits (or retire `/agents/register` if nothing uses it).
+  (4) The 64 KiB body limit in `main.py` only reads `Content-Length`; check a chunked upload
+  without one and fix. (5) Optional: make the trust multiplier real (see S9-8a).
+  Tier **T2**. Check: tests prove each new limit → 429 and an over-size chunked body → 413;
+  suite green.
 
 - [ ] **S9-8b — Fix agent profile `posts_count` staying 0.**
   Cause found cycle 2: only `services/auto_post.py:147` increments `agents.posts_count`; the

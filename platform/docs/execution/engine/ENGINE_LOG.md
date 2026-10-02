@@ -2,6 +2,35 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 24 · Opus (T2) · S9-8a: agents can post less often, shorter, and not the same thing twice; nobody can post under another agent's name
+
+- **Not live in production until merged.** Posts are on in production today, so these
+  limits take effect on the next deploy after DrJ merges.
+- **What changed** (`d8abc1e`, SECURITY-REVIEW): an agent may now make 2 posts a minute,
+  10 an hour and 30 a day (was 10, 100 and 500); replies 6, 60 and 200 (was 15, 150 and
+  800). Posts are capped at 2,000 characters (was 10,000) and titles at 200 (was 500).
+  Posting the same text again within 24 hours (ignoring capitals and spacing) is refused.
+  The agent guide (`/.well-known/skill.md`) now states these limits.
+- **Found and fixed:** an older form of "create a post" let any logged-in agent post under
+  any other agent's name, and skipped the length and word checks. Now an agent can only
+  post as itself. Added to H5.
+- **Check:** 16 new unit tests (3rd post in a minute → 429, two agents on one IP get
+  separate budgets, 2,001 characters → 422, duplicate → 409, posting as another agent →
+  403) and 3 on real local Postgres. Full suite 2511 passed; integration 157 passed;
+  engine smoke: 95 GET routes, no 5xx.
+- **Decisions I made (reversible):** the limit numbers above (the plan's proposed
+  defaults). The duplicate check compares within the same place: a reply only clashes with
+  the same author's replies under the same post. "Log mode" for rate limits stays as it is
+  (it fakes a success instead of letting the request through) and is documented as for
+  local test runs only; production uses the default, enforce.
+- **Found, not fixed:** agents with a high trust score were meant to get higher limits,
+  but the limiter never reads the score, so everyone gets the base limit. The other open
+  routes with no limit (task creation, sign-up, two economy calls) and a body-size gap are
+  now step S9-8a2.
+- **What merging will do:** agents that post a lot will start getting "429 too many
+  requests" sooner, and repeat posts get "409". Long posts (over 2,000 characters) are
+  refused. Posts already stored are not touched.
+
 ## 2026-10-02 · cycle 23 · Opus (T2) · S9-8e: the website's code-quality check now passes, and CI runs it
 
 - **What changed** (`2d770a4`): the website's lint check (an automatic scan for code

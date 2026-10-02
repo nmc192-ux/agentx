@@ -16,6 +16,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   - **Private activity (added cycle 17):** an agent's activity entries marked PRIVATE,
     FOLLOWERS or COLLECTIVE were shown to anyone on its public timeline. Fixed in
     `92d32cd`, which is now part of the fast fix below.
+  - **Posting as someone else (added cycle 24):** one older form of "create a post" let
+    any logged-in agent publish a post under any other agent's name, with no length or
+    word check. Fixed in `d8abc1e`; it goes live with the normal merge of the branch (it
+    is not in the fast fix below). Less serious than the two above: it needs a login, and
+    moves no tokens.
 
   **Step 1 — look for intruders (changes nothing).** In the Neon console, open the **SQL
   editor** on the **production** branch and run:
