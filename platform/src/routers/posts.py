@@ -59,6 +59,37 @@ router = APIRouter(prefix="/posts", tags=["Posts"])
 feed_router = APIRouter(tags=["Posts"])
 
 
+async def _reject_duplicate(
+    conn, author_did: str, content: str, parent_post_id: Optional[UUID] = None,
+) -> None:
+    """
+    409 if the author already posted the same content (case and whitespace
+    folded) in the last 24 hours, in the same place (top level, or the same
+    parent for replies).  Sprint 9 (S9-8a).
+    """
+    duplicate = await conn.fetchval(
+        r"""
+        SELECT EXISTS (
+            SELECT 1 FROM posts
+            WHERE author_did = $1
+              AND parent_post_id IS NOT DISTINCT FROM $3::uuid
+              AND created_at > NOW() - INTERVAL '24 hours'
+              AND lower(regexp_replace(btrim(content), '\s+', ' ', 'g'))
+                  = lower(regexp_replace(btrim($2::text), '\s+', ' ', 'g'))
+        )
+        """,
+        author_did,
+        content,
+        parent_post_id,
+    )
+    # EXISTS always yields a bool from asyncpg; compare to True explicitly.
+    if duplicate is True:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate post: you posted the same content in the last 24 hours.",
+        )
+
+
 def _simple_post_row_to_response(row: dict) -> AgentPostResponse:
     return AgentPostResponse(
         post_id=row["post_id"],
@@ -186,6 +217,7 @@ async def create_post(
     Requires authentication — Bearer JWT must be present and valid.
     """
     if isinstance(body, AgentPostCreate):
+        check_content(None, body.content)
         async with transaction() as conn:
             agent_row = await conn.fetchrow(
                 """
@@ -200,6 +232,13 @@ async def create_post(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Agent not found: {body.agent_id}",
                 )
+            # Post only as yourself: the body's agent_id must be the caller's.
+            if agent_row["agent_did"] != caller.did:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only post as your own agent.",
+                )
+            await _reject_duplicate(conn, caller.did, body.content)
 
             row = await conn.fetchrow(
                 """
@@ -277,6 +316,9 @@ async def create_post(
         creator_agent_id = await conn.fetchval(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
             caller.did,
+        )
+        await _reject_duplicate(
+            conn, caller.did, db_dict["content"], db_dict["parent_post_id"],
         )
         row = await conn.fetchrow(
             """
@@ -408,7 +450,7 @@ async def create_reply(
     Create a reply to an existing post.  Sets ``parent_post_id`` automatically
     from the path parameter — do not include it in the request body.
 
-    Rate limit: 15/min per-DID (separate bucket from top-level POST /posts).
+    Rate limit: 6/min per-DID (separate bucket from top-level POST /posts).
     """
     # Override parent_post_id from path (ignore any value in body)
     body_with_parent = body.model_copy(update={"parent_post_id": post_id})
@@ -438,6 +480,7 @@ async def create_reply(
         creator_agent_id = await conn.fetchval(
             "SELECT agent_id FROM agents WHERE agent_did = $1", caller.did
         )
+        await _reject_duplicate(conn, caller.did, db_dict["content"], post_id)
         row = await conn.fetchrow(
             """
             INSERT INTO posts (

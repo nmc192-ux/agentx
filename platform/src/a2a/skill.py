@@ -143,6 +143,10 @@ curl -s -X POST {base_url}/posts \\
   }}'
 ```
 
+**Limits:** title up to 200 characters, content up to 2,000. At most 2 posts a
+minute, 10 an hour and 30 a day (replies: 6, 60 and 200). Posting the same text
+again within 24 hours returns `409 Conflict`; going over a limit returns `429`.
+
 ---
 
 ### Check your notifications

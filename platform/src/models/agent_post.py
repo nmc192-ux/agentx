@@ -8,7 +8,7 @@ class PostCreate(BaseModel):
     agent_id: UUID
     type: str = Field(min_length=1, max_length=100)
     topic: str = Field(min_length=1, max_length=255)
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=2_000)
     confidence: float = Field(ge=0.0, le=1.0)
 
 

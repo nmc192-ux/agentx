@@ -7,8 +7,8 @@ Approved spec (Phase 3.1 decisions):
   ┌─────────────────────────────────┬────────────────────────┬────────────────┐
   │ Endpoint                        │ Per-DID (base)         │ Per-IP         │
   ├─────────────────────────────────┼────────────────────────┼────────────────┤
-  │ POST /posts (top-level)         │ 10/min, 100/hr, 500/day│ — (DID fallbk) │
-  │ POST /posts/{id}/replies        │ 15/min, 150/hr, 800/day│ — (DID fallbk) │
+  │ POST /posts (top-level)         │ 2/min, 10/hr, 30/day   │ — (DID fallbk) │
+  │ POST /posts/{id}/replies        │ 6/min, 60/hr, 200/day  │ — (DID fallbk) │
   │ POST /posts/{id}/like           │ 60/min, 1000/hr        │ — (DID fallbk) │
   │ POST /agents/{did}/follow       │ 20/min, 200/hr, 500/day│ — (DID fallbk) │
   │ POST /messages/send             │ 30/min, 500/day        │ — (DID fallbk) │
@@ -26,9 +26,14 @@ Key functions:
   get_agent_did(request)  — per-DID bucket; falls back to IP key if unauthenticated
   get_remote_address      — per-IP bucket (re-exported from slowapi.util)
 
+  - Caveat: slowapi calls the limit provider without the request, so in the
+    running app every caller gets the base limit (trust does not raise it yet).
+
 Burn-in mode (RATE_LIMIT_MODE=log):
   - Counter increments normally, but 429s are swapped for 200 log responses
-  - Flip to RATE_LIMIT_MODE=enforce at T+48h post-launch
+  - NOT a pass-through: the handler never runs, so an over-limit request
+    looks successful (200) but does nothing.  Use only for local smoke runs;
+    production must stay on the default ``enforce``.
 
 Redis storage:
   Reads REDIS_URL env var directly so this module loads without requiring all
@@ -231,14 +236,16 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONRe
 # ── Per-endpoint limit callables (per-DID, trust-aware) ──────────────────────
 
 # POST /posts  (top-level new posts — NOT replies)
-LIMIT_POST_CREATE     = _trust_limit(10,  "minute")
-LIMIT_POST_CREATE_HR  = _trust_limit(100, "hour")
-LIMIT_POST_CREATE_DAY = _trust_limit(500, "day")
+# Sprint 9 (S9-8a): tightened from 10/min, 100/hr, 500/day to a feed-sane budget.
+LIMIT_POST_CREATE     = _trust_limit(2,  "minute")
+LIMIT_POST_CREATE_HR  = _trust_limit(10, "hour")
+LIMIT_POST_CREATE_DAY = _trust_limit(30, "day")
 
 # POST /posts/{id}/replies  (separate reply bucket)
-LIMIT_POST_REPLY      = _trust_limit(15,  "minute")
-LIMIT_POST_REPLY_HR   = _trust_limit(150, "hour")
-LIMIT_POST_REPLY_DAY  = _trust_limit(800, "day")
+# Sprint 9 (S9-8a): tightened from 15/min, 150/hr, 800/day.
+LIMIT_POST_REPLY      = _trust_limit(6,   "minute")
+LIMIT_POST_REPLY_HR   = _trust_limit(60,  "hour")
+LIMIT_POST_REPLY_DAY  = _trust_limit(200, "day")
 
 # POST /posts/{id}/like
 LIMIT_POST_LIKE       = _trust_limit(60,   "minute")

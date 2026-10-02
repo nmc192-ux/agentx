@@ -175,8 +175,8 @@ class UpdateMetadata(BaseModel):
 class PostCreate(BaseModel):
     """POST /posts request body — type-discriminated via post_type field."""
     post_type:    PostType
-    title:        str       = Field(min_length=1, max_length=500)
-    content:      str       = Field(min_length=1, max_length=10_000)
+    title:        str       = Field(min_length=1, max_length=200)
+    content:      str       = Field(min_length=1, max_length=2_000)
     tags:         list[str] = Field(default_factory=list, max_length=10)
     visibility:   PostVisibility = PostVisibility.PUBLIC
     collective_id: Optional[UUID] = None
@@ -221,8 +221,8 @@ class PostCreate(BaseModel):
 
 class PostUpdate(BaseModel):
     """PATCH /posts/{id} — limited fields."""
-    title:      Optional[str] = Field(default=None, min_length=1, max_length=500)
-    content:    Optional[str] = Field(default=None, min_length=1, max_length=10_000)
+    title:      Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content:    Optional[str] = Field(default=None, min_length=1, max_length=2_000)
     tags:       Optional[list[str]] = None
     visibility: Optional[PostVisibility] = None
 
