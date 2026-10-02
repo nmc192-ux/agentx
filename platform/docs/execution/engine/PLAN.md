@@ -449,16 +449,18 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   request, so the trust multiplier never applies in the running app (everyone gets the base).
   Proof: 16 unit + 3 real-Postgres tests; suite 2511 passed; integration 157 passed; smoke green.
 
-- [ ] **S9-8a2 — Rate limits for the other open write routes.** (Split from S9-8a, cycle 24.)
-  (1) `POST /tasks` has no per-agent limit, and since S9-7b a task can be created and
-  cancelled at no cost — give task creation a budget. (2) `POST /economy/market-analysis` and
-  `/economy/strategies/select` take no login and have no limit — per-IP budget.
-  (3) `POST /agents` and `POST /agents/register` (open sign-up, no login) have no limit —
-  give both the `/onboard` per-IP limits (or retire `/agents/register` if nothing uses it).
-  (4) The 64 KiB body limit in `main.py` only reads `Content-Length`; check a chunked upload
-  without one and fix. (5) Optional: make the trust multiplier real (see S9-8a).
-  Tier **T2**. Check: tests prove each new limit → 429 and an over-size chunked body → 413;
-  suite green.
+- [x] **S9-8a2 — Rate limits for the other open write routes.** (Split from S9-8a, cycle 24.)
+  Done cycle 25, `f266b3d` (SECURITY-REVIEW). Task creation (`POST /tasks`, `/tasks/create`,
+  `/tasks/route`) shares one per-DID budget, 5/min, 30/hr, 100/day. The two no-login economy
+  calculators share a per-IP budget, 30/min, 300/hr. `POST /agents` + `/agents/register` share
+  a per-IP sign-up budget, 5/hr, 20/day (the `/onboard` limits); a FOUNDER token gets its own
+  bucket (100/hr, 500/day) for seeding. `/agents/register` is kept: the SDK and
+  `workers/worker.py` use it. The body limit is now a pure ASGI middleware counting the bytes it
+  receives: chunked 64 KiB+1 → 413, bad Content-Length → 400 (was 500). Not done: (5) the
+  trust multiplier (optional). slowapi passes the *key* to a limit provider that asks for it,
+  but the DID key carries no trust score, so it needs a lookup; left for later.
+  Proof: 13 tests in `tests/routers/test_open_write_limits.py`; suite 2524 passed; integration
+  157 passed; smoke green.
 
 - [ ] **S9-8b — Fix agent profile `posts_count` staying 0.**
   Cause found cycle 2: only `services/auto_post.py:147` increments `agents.posts_count`; the

@@ -2,6 +2,36 @@
 
 Newest at the top.
 
+## 2026-10-02 · cycle 25 · Opus (T2) · S9-8a2: limits on task creation, sign-up and two open calculators; big uploads can no longer sneak past the size check
+
+- **What changed** (`f266b3d`, SECURITY-REVIEW):
+  - An agent can create at most 5 tasks a minute, 30 an hour and 100 a day, counted across
+    all three ways of creating one. Before, there was no limit, and a task can be cancelled
+    for free, so an agent could flood the task list at no cost.
+  - Signing up a new agent (`POST /agents` and `POST /agents/register`) is limited to 5 an
+    hour and 20 a day from one internet address, the same as `/onboard`. A FOUNDER's login
+    gets its own, higher allowance (100 an hour) so the founding-team setup script still works.
+  - The two economy "calculator" calls that need no login are limited to 30 a minute per
+    address.
+  - The 64 KB request-size cap only looked at the size the sender *declared*. A sender that
+    declared no size could upload any amount. It now counts the bytes it actually receives.
+    A nonsense size header now gets a clear "400" instead of a server error.
+- **Check:** 13 new tests (6th task in a minute → 429, other agents unaffected, 31st
+  calculator call → 429, 6th sign-up → 429, a member's or fake login can't dodge the sign-up
+  cap, oversized upload with no declared size → 413). Full suite 2524 passed; real-Postgres
+  integration 157 passed; engine smoke: 95 GET routes, no 5xx.
+- **Test-only changes:** every test now starts with fresh rate-limit counters. Two task
+  race tests create 6 tasks a minute on purpose, so they switch the per-agent limiter off,
+  the same way the post tests already do.
+- **Decisions I made (reversible):** the numbers above. `POST /agents` and
+  `/agents/register` share one budget, separate from `/onboard`'s. `/agents/register` was
+  kept rather than retired because the SDK and the worker script call it. Side effect: one
+  machine can start at most 5 new workers an hour, since each worker registers itself.
+- **Not done:** making the "high-trust agents get more" multiplier real (optional item 5).
+  It needs a trust lookup per request; left for a later step.
+- **What merging will do:** sign-up and the request-size fix take effect on the next deploy
+  (those routes are always on). The task limit applies wherever the tasks router is on.
+
 ## 2026-10-02 · cycle 24 · Opus (T2) · S9-8a: agents can post less often, shorter, and not the same thing twice; nobody can post under another agent's name
 
 - **Not live in production until merged.** Posts are on in production today, so these
