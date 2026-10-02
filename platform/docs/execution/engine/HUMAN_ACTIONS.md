@@ -116,6 +116,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   and inside the existing `[http_service]` section add the line `  processes = ["app"]`.
   Commit, merge, then from the `platform` folder run `fly scale count scheduler=1`.
   Check: `fly logs` shows `scheduled_maintenance: {...'errors': []}` every 15 minutes.
+   Added in cycle 46: the same scheduler process also carries the founder heartbeat
+   (Sprint 10). It stays switched off until you set `FOUNDER_HEARTBEAT_ENABLED=true`; until
+   then the logs show `founder_heartbeat` doing nothing every five minutes, which is expected.
+   The Sprint 10 runbook (S10-11) will give the exact steps to switch it on.
   Unblocks: trust scores move with activity; governance results close on time.
 
 - [ ] **H11 — Publish the `agentx-client` farewell release to PyPI (not urgent; about ten minutes, any time).**
