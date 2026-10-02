@@ -94,3 +94,86 @@ async def test_legacy_body_posts_only_as_caller(client, pool, agents, quiet):
     )
     assert own.status_code == 201, own.text
     assert await _count(pool, mallory.did) == 1
+
+
+# ── posts_count (S9-8b) ───────────────────────────────────────────────────────
+
+async def _stored(pool, did: str) -> int:
+    return await pool.fetchval("SELECT posts_count FROM agents WHERE agent_did = $1", did)
+
+
+async def test_posts_count_follows_top_level_posts(client, pool, agents, quiet):
+    alice, bob = await agents("alice"), await agents("bob")
+
+    p1 = await client.post("/posts", json=_update("first"), headers=alice.headers)
+    assert p1.status_code == 201, p1.text
+    legacy = {"type": "note", "topic": "t", "content": "legacy", "confidence": 0.5,
+              "agent_id": str(alice.agent_id)}
+    assert (await client.post("/posts", json=legacy, headers=alice.headers)).status_code == 201
+    # Replies do not count, for either the replier or the parent's author.
+    reply = await client.post(
+        f"/posts/{p1.json()['post_id']}/replies", json=_update("reply"), headers=bob.headers,
+    )
+    assert reply.status_code == 201, reply.text
+    # A rejected duplicate does not count either.
+    assert (await client.post("/posts", json=_update("first"), headers=alice.headers)).status_code == 409
+
+    assert await _stored(pool, alice.did) == 2
+    assert await _stored(pool, bob.did) == 0
+    profile = await client.get(f"/agents/{alice.did}")
+    assert profile.status_code == 200, profile.text
+    assert profile.json()["posts_count"] == 2
+
+
+async def test_delete_post_decrements(pool, agents, quiet):
+    from src.services.post_service import delete_post
+    alice = await agents("alice")
+    post_id = await pool.fetchval(
+        "INSERT INTO posts (author_did, post_type, title, content) "
+        "VALUES ($1, 'UPDATE', 't', 'c') RETURNING post_id",
+        alice.did,
+    )
+    await pool.execute("UPDATE agents SET posts_count = 1 WHERE agent_did = $1", alice.did)
+    assert await delete_post(post_id) is True
+    assert await _stored(pool, alice.did) == 0
+    assert await delete_post(post_id) is False
+    assert await _stored(pool, alice.did) == 0
+
+
+async def test_backfill_dry_run_then_apply(pool, agents):
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location(
+        "backfill_posts_count",
+        Path(__file__).resolve().parents[2] / "scripts" / "backfill_posts_count.py",
+    )
+    backfill_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(backfill_mod)
+
+    alice, bob = await agents("alice"), await agents("bob")
+    parent = None
+    for i in range(3):
+        pid = await pool.fetchval(
+            "INSERT INTO posts (author_did, post_type, title, content) "
+            "VALUES ($1, 'UPDATE', 't', $2) RETURNING post_id",
+            alice.did, f"post {i}",
+        )
+        parent = parent or pid
+    await pool.execute(
+        "INSERT INTO posts (author_did, post_type, title, content, parent_post_id) "
+        "VALUES ($1, 'UPDATE', 't', 'a reply', $2)",
+        bob.did, parent,
+    )
+    await pool.execute("UPDATE agents SET posts_count = 7 WHERE agent_did = $1", bob.did)
+
+    async with pool.acquire() as conn:
+        drift = {d: (s, a) for d, s, a in await backfill_mod.backfill(conn)}
+        assert drift[alice.did] == (0, 3)
+        assert drift[bob.did] == (7, 0)
+        assert await _stored(pool, alice.did) == 0          # dry run wrote nothing
+
+        await backfill_mod.backfill(conn, apply=True)
+        assert await _stored(pool, alice.did) == 3
+        assert await _stored(pool, bob.did) == 0
+        again = {d for d, _, _ in await backfill_mod.backfill(conn)}
+        assert alice.did not in again and bob.did not in again

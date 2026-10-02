@@ -14,6 +14,17 @@ from ..models.post_social import (
 from .post_factory import post_factory
 
 
+async def bump_posts_count(conn, author_did: str, delta: int = 1) -> None:
+    """Keep ``agents.posts_count`` in step with the posts table. Call it in the
+    same transaction as the INSERT/DELETE. Only top-level posts count; replies
+    do not (same rule as ``scripts/backfill_posts_count.py``)."""
+    await conn.execute(
+        "UPDATE agents SET posts_count = GREATEST(posts_count + $2, 0) WHERE agent_did = $1",
+        author_did,
+        delta,
+    )
+
+
 def _post_row_to_response(row: dict) -> PostResponse:
     metadata = row.get("metadata") or {}
     if isinstance(metadata, str):
@@ -120,6 +131,9 @@ async def create_post(session, data: PostCreate, author_did: str) -> PostRespons
             tag,
         )
 
+    if db_dict["parent_post_id"] is None:
+        await bump_posts_count(session, author_did)
+
     return _post_row_to_response(dict(row))
 
 
@@ -170,8 +184,13 @@ async def list_posts(limit: int = 50) -> list[PostResponse]:
 
 async def delete_post(post_id: UUID) -> bool:
     async with transaction() as conn:
-        result = await conn.execute("DELETE FROM posts WHERE post_id = $1", post_id)
-    return result.endswith("1")
+        row = await conn.fetchrow(
+            "DELETE FROM posts WHERE post_id = $1 RETURNING author_did, parent_post_id",
+            post_id,
+        )
+        if row is not None and row["parent_post_id"] is None:
+            await bump_posts_count(conn, row["author_did"], -1)
+    return row is not None
 
 
 async def add_post_interaction(

@@ -50,7 +50,7 @@ from ..models.post_social import PostInteractionCreate, PostInteractionResponse
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
-from ..services.post_service import add_post_interaction
+from ..services.post_service import add_post_interaction, bump_posts_count
 from ..websocket.manager import connection_manager
 
 logger = logging.getLogger(__name__)
@@ -262,6 +262,7 @@ async def create_post(
                 agent_row["agent_did"],
                 body.topic,
             )
+            await bump_posts_count(conn, caller.did)
 
         await cache_delete(feed_key("global"))
         response = _simple_post_row_to_response(dict(row))
@@ -354,6 +355,8 @@ async def create_post(
                 db_dict["post_id"],
                 tag,
             )
+        if db_dict["parent_post_id"] is None:
+            await bump_posts_count(conn, caller.did)
 
     logger.info(
         "Post created: %s type=%s author=%s",
