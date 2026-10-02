@@ -12,6 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .token import MAX_TOKEN_AMOUNT
+
 
 # ── Token Supply ───────────────────────────────────────────────────────────────
 
@@ -63,11 +65,11 @@ class EconomicMetricsResponse(BaseModel):
 
 class MintRequest(BaseModel):
     """Request body for POST /economy/mint."""
-    amount: int = Field(gt=0, description="Number of tokens to mint into treasury")
-    reason: str = Field(default="mint", description="Reason label for the ledger entry")
+    amount: int = Field(gt=0, le=MAX_TOKEN_AMOUNT, description="Number of tokens to mint into treasury")
+    reason: str = Field(default="mint", max_length=200, description="Why (logged; the ledger entry is always type 'mint')")
 
 
 class SlashRequest(BaseModel):
     """Request body for POST /economy/slash."""
     stake_id: UUID = Field(description="UUID of the stake to slash")
-    reason:   str  = Field(default="", description="Human-readable reason for the slash")
+    reason:   str  = Field(default="", max_length=500, description="Human-readable reason for the slash")

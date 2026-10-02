@@ -21,6 +21,11 @@ Design notes
 • Fees are taken from the task escrow (escrowed_reward reduced) and
   credited directly to the treasury wallet.
 • All DB calls use asyncpg via get_db() / transaction().
+• Sprint 9 (S9-7a): minting and slashing are FOUNDER-only at the router. A
+  mint is always written to the ledger as type='mint' (the caller's reason
+  is logged, never used as the ledger label). A slash locks the stake row,
+  so a stake is forfeited once, and is refused if there is no treasury to
+  receive it. The task fee is taken from the escrow that is really there.
 """
 from __future__ import annotations
 
@@ -34,7 +39,12 @@ from ..models.economy import (
     TokenSupplyResponse,
 )
 from ..models.token import WalletResponse
-from .token_service import _get_treasury_wallet_id, _record_transaction, _row_to_wallet
+from .token_service import (
+    StakeConflictError,
+    _get_treasury_wallet_id,
+    _record_transaction,
+    _row_to_wallet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +139,10 @@ async def mint_tokens(amount: int, reason: str = "mint") -> TokenSupplyResponse:
     """
     Mint *amount* new tokens: credit treasury wallet + update token_supply.
 
+    The ledger entry is always type='mint'. *reason* is free text from the
+    caller; it is logged, not stored as the type, so a mint can never be
+    passed off in the ledger as an escrow release, a fee or a transfer.
+
     Raises:
         ValueError: treasury or token_supply not initialised.
     """
@@ -172,10 +186,10 @@ async def mint_tokens(amount: int, reason: str = "mint") -> TokenSupplyResponse:
             from_wallet=None,
             to_wallet=treasury_id,
             amount=amount,
-            tx_type=reason,
+            tx_type="mint",
         )
 
-    logger.info("economy_service: minted %d tokens (%s)", amount, reason)
+    logger.info("economy_service: minted %d tokens (reason: %r)", amount, reason)
     return _row_to_supply(supply_row)
 
 
@@ -201,7 +215,15 @@ async def collect_task_fee(task_id: UUID, escrow_amount: int) -> int:
         if policy is None or policy["rate_bps"] == 0:
             return 0
 
-        fee = escrow_amount * policy["rate_bps"] // 10_000
+        # The fee comes out of the task's escrow, so charge it on what is in
+        # escrow now, with the row locked — not on the amount the caller
+        # remembers. If the escrow has already been paid out, there is nothing
+        # to take, and crediting the treasury anyway would create tokens.
+        in_escrow = await conn.fetchval(
+            "SELECT escrowed_reward FROM tasks WHERE task_id = $1 FOR UPDATE",
+            task_id,
+        )
+        fee = min(escrow_amount, in_escrow or 0) * policy["rate_bps"] // 10_000
         if fee <= 0:
             return 0
 
@@ -225,7 +247,7 @@ async def collect_task_fee(task_id: UUID, escrow_amount: int) -> int:
         await conn.execute(
             """
             UPDATE tasks
-               SET escrowed_reward = GREATEST(escrowed_reward - $1, 0),
+               SET escrowed_reward = escrowed_reward - $1,
                    task_fee        = task_fee + $1
              WHERE task_id = $2
             """,
@@ -255,8 +277,14 @@ async def slash_stake(stake_id: UUID, reason: str = "") -> StakeSlashResponse:
     """
     Slash a stake: forfeit the full amount to the treasury and mark as released.
 
+    The stake row is locked (``FOR UPDATE``) before ``released_at`` is read, so
+    two concurrent slashes (or a slash racing the owner's release) cannot both
+    see it unreleased — the treasury is credited once.
+
     Raises:
-        ValueError: stake not found or already released/slashed.
+        ValueError:         stake not found, or no treasury to receive it (the
+                            tokens would otherwise vanish without a record).
+        StakeConflictError: stake already released or slashed.
     """
     async with transaction() as conn:
         stake = await conn.fetchrow(
@@ -264,13 +292,20 @@ async def slash_stake(stake_id: UUID, reason: str = "") -> StakeSlashResponse:
             SELECT stake_id, agent_id, amount, released_at
             FROM   stakes
             WHERE  stake_id = $1
+            FOR UPDATE
             """,
             stake_id,
         )
         if stake is None:
             raise ValueError(f"Stake not found: {stake_id}")
         if stake["released_at"] is not None:
-            raise ValueError(f"Stake already released or slashed: {stake_id}")
+            raise StakeConflictError(f"Stake already released or slashed: {stake_id}")
+
+        treasury_id = await _get_treasury_wallet_id(conn)
+        if treasury_id is None:
+            raise ValueError(
+                "Treasury not initialised. Call initialize_treasury() first."
+            )
 
         # Mark stake as released (slash = forced release)
         await conn.execute(
@@ -278,27 +313,25 @@ async def slash_stake(stake_id: UUID, reason: str = "") -> StakeSlashResponse:
             stake_id,
         )
 
-        # Credit treasury (if initialised)
-        treasury_id = await _get_treasury_wallet_id(conn)
-        if treasury_id:
-            await conn.execute(
-                """
-                UPDATE wallets
-                   SET balance    = balance + $1,
-                       updated_at = CURRENT_TIMESTAMP
-                 WHERE wallet_id = $2
-                """,
-                stake["amount"],
-                treasury_id,
-            )
-            await _record_transaction(
-                conn,
-                from_wallet=None,
-                to_wallet=treasury_id,
-                amount=stake["amount"],
-                tx_type="slash",
-                related_id=stake_id,
-            )
+        # Credit treasury
+        await conn.execute(
+            """
+            UPDATE wallets
+               SET balance    = balance + $1,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE wallet_id = $2
+            """,
+            stake["amount"],
+            treasury_id,
+        )
+        await _record_transaction(
+            conn,
+            from_wallet=None,
+            to_wallet=treasury_id,
+            amount=stake["amount"],
+            tx_type="slash",
+            related_id=stake_id,
+        )
 
         # Immutable slash record
         slash_row = await conn.fetchrow(

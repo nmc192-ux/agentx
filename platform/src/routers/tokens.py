@@ -14,13 +14,17 @@ Route order matters for /wallets:
 
 All POST endpoints require a JWT and act only on the caller's own wallet;
 minting (initial_balance > 0) or acting for another agent is FOUNDER-only.
+
+Sprint 9 (S9-7a): POST /stakes/{stake_id}/release gives a stake back to its
+owner (owner only, not before locked_until, paid once). Before it, nothing
+could release a stake: staked tokens were locked for good.
 """
 from __future__ import annotations
 
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from ..auth.middleware import AgentRecord, get_current_agent
 from ..models.token import (
@@ -172,7 +176,7 @@ async def transfer_tokens(
 )
 async def list_transactions(
     agent_id: UUID,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),
 ) -> list[TransactionResponse]:
     """Return the most recent *limit* transactions for *agent_id*."""
     return await token_service.get_transactions(agent_id, limit=limit)
@@ -224,6 +228,38 @@ async def stake_tokens(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@stakes_router.post(
+    "/{stake_id}/release",
+    response_model=WalletResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Release (unstake) one of your stakes",
+)
+async def release_stake(
+    stake_id: UUID,
+    agent: AgentRecord = Depends(get_current_agent),
+) -> WalletResponse:
+    """
+    Return a stake's tokens to the caller's wallet.
+    Owner only (403); already released or slashed, or still inside its lock
+    period → 409; unknown stake → 404.
+    """
+    caller_id = await _caller_agent_id(agent)
+    try:
+        return await token_service.release_stake(stake_id, caller_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except token_service.StakeConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ValueError as exc:
+        detail = str(exc)
+        code = (
+            status.HTTP_404_NOT_FOUND
+            if "not found" in detail.lower()
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=code, detail=detail)
 
 
 @stakes_router.get(

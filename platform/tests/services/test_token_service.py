@@ -78,14 +78,51 @@ class TestCreateWallet:
         row = _wallet_row(agent_id=agent_id, balance=500)
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(return_value=row)
+        conn.fetchrow = AsyncMock(side_effect=[
+            row,                                                  # INSERT wallets
+            _tx_row(to_w=row["wallet_id"], amount=500, tx_type="grant"),  # ledger
+        ])
 
         with patch("src.services.token_service.transaction", return_value=_tx_context(conn)):
             result = await token_service.create_wallet(agent_id, initial_balance=500)
 
         assert result.agent_id == agent_id
         assert result.balance == 500
+
+    @pytest.mark.asyncio
+    async def test_grant_is_written_to_ledger_and_supply(self):
+        """S9-7a: tokens created by a grant leave a 'grant' ledger entry and
+        are added to token_supply.total_minted, in the same transaction."""
+        agent_id = uuid4()
+        row = _wallet_row(agent_id=agent_id, balance=500)
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=[
+            row, _tx_row(to_w=row["wallet_id"], amount=500, tx_type="grant"),
+        ])
+
+        with patch("src.services.token_service.transaction", return_value=_tx_context(conn)):
+            await token_service.create_wallet(agent_id, initial_balance=500)
+
+        supply_sql, supply_amount = conn.execute.await_args.args
+        assert "token_supply" in supply_sql and "total_minted" in supply_sql
+        assert supply_amount == 500
+        ledger_args = conn.fetchrow.await_args_list[1].args
+        assert "INSERT INTO transactions" in ledger_args[0]
+        assert ledger_args[1:5] == (None, row["wallet_id"], 500, "grant")
+
+    @pytest.mark.asyncio
+    async def test_self_service_wallet_writes_no_ledger_entry(self):
+        """A wallet created at 0 creates no tokens: no ledger, no supply change."""
+        agent_id = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=_wallet_row(agent_id=agent_id, balance=0))
+
+        with patch("src.services.token_service.transaction", return_value=_tx_context(conn)):
+            await token_service.create_wallet(agent_id)
+
         conn.fetchrow.assert_awaited_once()
+        conn.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_create_wallet_funds_existing_wallet(self):
@@ -95,7 +132,9 @@ class TestCreateWallet:
         row = _wallet_row(agent_id=agent_id, balance=1500)
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(return_value=row)
+        conn.fetchrow = AsyncMock(side_effect=[
+            row, _tx_row(to_w=row["wallet_id"], amount=500, tx_type="grant"),
+        ])
 
         with patch("src.services.token_service.transaction", return_value=_tx_context(conn)):
             result = await token_service.create_wallet(agent_id, initial_balance=500)
@@ -277,7 +316,7 @@ class TestReleaseStake:
             "stake_id":     stake_id,
             "agent_id":     agent_id,
             "amount":       300,
-            "locked_until": None,
+            "still_locked": False,
             "released_at":  None,
         }
         wallet_row = _wallet_row(wallet_id=wid, agent_id=agent_id, balance=1300)
@@ -292,19 +331,21 @@ class TestReleaseStake:
         conn.execute = AsyncMock()
 
         with patch("src.services.token_service.transaction", return_value=_tx_context(conn)):
-            result = await token_service.release_stake(stake_id)
+            result = await token_service.release_stake(stake_id, agent_id)
 
         assert result.balance == 1300
         conn.execute.assert_awaited_once()  # UPDATE stakes SET released_at
+        assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
 
     @pytest.mark.asyncio
     async def test_release_stake_raises_if_already_released(self):
         stake_id  = uuid4()
+        owner_id  = uuid4()
         stake_row = {
             "stake_id":     stake_id,
-            "agent_id":     uuid4(),
+            "agent_id":     owner_id,
             "amount":       100,
-            "locked_until": None,
+            "still_locked": False,
             "released_at":  _now(),   # already released
         }
 
@@ -313,9 +354,45 @@ class TestReleaseStake:
 
         with (
             patch("src.services.token_service.transaction", return_value=_tx_context(conn)),
-            pytest.raises(ValueError, match="already released"),
+            pytest.raises(token_service.StakeConflictError, match="already released"),
         ):
-            await token_service.release_stake(stake_id)
+            await token_service.release_stake(stake_id, owner_id)
+        conn.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_release_stake_refuses_another_agents_stake(self):
+        stake_id  = uuid4()
+        stake_row = {
+            "stake_id": stake_id, "agent_id": uuid4(), "amount": 100,
+            "still_locked": False, "released_at": None,
+        }
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=stake_row)
+
+        with (
+            patch("src.services.token_service.transaction", return_value=_tx_context(conn)),
+            pytest.raises(PermissionError),
+        ):
+            await token_service.release_stake(stake_id, uuid4())
+        conn.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_release_stake_refused_inside_lock_period(self):
+        stake_id  = uuid4()
+        owner_id  = uuid4()
+        stake_row = {
+            "stake_id": stake_id, "agent_id": owner_id, "amount": 100,
+            "still_locked": True, "released_at": None,
+        }
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=stake_row)
+
+        with (
+            patch("src.services.token_service.transaction", return_value=_tx_context(conn)),
+            pytest.raises(token_service.StakeConflictError, match="locked"),
+        ):
+            await token_service.release_stake(stake_id, owner_id)
+        conn.execute.assert_not_awaited()
 
 
 # ── get_transactions ──────────────────────────────────────────────────────────

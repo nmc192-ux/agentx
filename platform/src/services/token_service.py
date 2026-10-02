@@ -10,7 +10,7 @@ Public API
   get_balance(agent_id)                     → int
   transfer_tokens(from_id, to_id, amount, tx_type, related_id) → TransactionResponse
   stake_tokens(agent_id, amount, locked_until)  → StakeResponse
-  release_stake(stake_id)                   → WalletResponse
+  release_stake(stake_id, caller_agent_id)  → WalletResponse
   get_transactions(agent_id, limit)         → list[TransactionResponse]
   get_stakes(agent_id)                      → list[StakeResponse]
 
@@ -22,6 +22,18 @@ Internal helpers (used by task_service)
 All DB access uses asyncpg via get_db() / transaction() context managers.
 Atomic debit is performed with ``WHERE balance >= $amount RETURNING wallet_id``
 so a failed RETURNING means insufficient funds without a separate SELECT.
+
+Sprint 9 (S9-7a) — money rules
+──────────────────────────────
+• Tokens are created in two places only, both FOUNDER-only at the router and
+  both written to the ledger and to token_supply.total_minted: a founder
+  grant (``create_wallet`` with initial_balance > 0, type='grant') and a
+  treasury mint (``economy_service.mint_tokens``, type='mint').
+• A stake leaves in two ways only, each with the stake row locked
+  (``FOR UPDATE``) so it happens once: back to its owner (``release_stake``)
+  or to the treasury (``economy_service.slash_stake``).
+• Errors: PermissionError → 403, StakeConflictError → 409, other ValueError
+  → 400 (404 for "not found").
 """
 from __future__ import annotations
 
@@ -38,6 +50,10 @@ from ..models.token import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class StakeConflictError(ValueError):
+    """The stake is not in a state that allows the action (HTTP 409)."""
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -112,6 +128,11 @@ async def create_wallet(
     Create a wallet for *agent_id*, or add *initial_balance* to an existing one.
 
     ON CONFLICT is idempotent: calling twice is safe and just credits the agent.
+
+    A non-zero *initial_balance* creates tokens (a founder grant — the router
+    only lets a FOUNDER pass one). It is written to the ledger (NULL → wallet,
+    type='grant') and added to token_supply.total_minted in the same
+    transaction, so no token exists without a record.
     """
     async with transaction() as conn:
         row = await conn.fetchrow(
@@ -126,6 +147,25 @@ async def create_wallet(
             agent_id,
             initial_balance,
         )
+        if initial_balance > 0:
+            await conn.execute(
+                """
+                UPDATE token_supply
+                   SET total_minted = total_minted + $1,
+                       updated_at   = CURRENT_TIMESTAMP
+                """,
+                initial_balance,
+            )
+            await _record_transaction(
+                conn,
+                from_wallet=None,
+                to_wallet=row["wallet_id"],
+                amount=initial_balance,
+                tx_type="grant",
+            )
+            logger.info(
+                "token_service: granted %d tokens to agent %s", initial_balance, agent_id
+            )
     return _row_to_wallet(row)
 
 
@@ -164,9 +204,26 @@ async def transfer_tokens(
     Atomically transfer *amount* tokens from one agent's wallet to another.
 
     Raises:
-        ValueError: if either wallet does not exist or sender has insufficient funds.
+        ValueError: if either wallet does not exist, sender has insufficient
+                    funds, or sender and receiver are the same agent.
     """
+    if from_agent_id == to_agent_id:
+        raise ValueError("Cannot transfer tokens to your own wallet")
+
     async with transaction() as conn:
+        # Lock both wallets in one fixed order (by wallet_id) before touching
+        # either. Without this, A→B and B→A at the same moment each hold one
+        # row and wait for the other: Postgres kills one with a deadlock error.
+        await conn.execute(
+            """
+            SELECT wallet_id FROM wallets
+             WHERE agent_id = ANY($1::uuid[])
+             ORDER BY wallet_id
+               FOR UPDATE
+            """,
+            [from_agent_id, to_agent_id],
+        )
+
         # ── Debit sender (atomic: only succeeds when balance >= amount) ────────
         debit_row = await conn.fetchrow(
             """
@@ -285,26 +342,43 @@ async def stake_tokens(
     return _row_to_stake(stake_row)
 
 
-async def release_stake(stake_id: UUID) -> WalletResponse:
+async def release_stake(stake_id: UUID, caller_agent_id: UUID) -> WalletResponse:
     """
-    Release a previously created stake: credits the agent's wallet and sets released_at.
+    Release a stake back to its owner: credits the owner's wallet and sets
+    released_at.
+
+    Only the stake's owner may release it, and not before ``locked_until``.
+    The stake row is locked (``FOR UPDATE``) before ``released_at`` is read, so
+    two concurrent releases (or a release racing a slash) cannot both see it
+    unreleased: the second waits for the first to commit, then is refused.
 
     Raises:
-        ValueError: if stake not found or already released.
+        ValueError:         stake not found.
+        PermissionError:    caller does not own the stake.
+        StakeConflictError: already released / slashed, or still locked.
     """
     async with transaction() as conn:
         stake_row = await conn.fetchrow(
             """
-            SELECT stake_id, agent_id, amount, locked_until, released_at
+            SELECT stake_id, agent_id, amount, released_at,
+                   (locked_until IS NOT NULL
+                    AND locked_until > CURRENT_TIMESTAMP) AS still_locked
             FROM   stakes
             WHERE  stake_id = $1
+            FOR UPDATE
             """,
             stake_id,
         )
         if stake_row is None:
             raise ValueError(f"Stake not found: {stake_id}")
+        if stake_row["agent_id"] != caller_agent_id:
+            raise PermissionError("Only the stake's owner can release it")
         if stake_row["released_at"] is not None:
-            raise ValueError(f"Stake already released: {stake_id}")
+            raise StakeConflictError(f"Stake already released or slashed: {stake_id}")
+        if stake_row["still_locked"]:
+            raise StakeConflictError(
+                f"Stake is locked until its lock period ends: {stake_id}"
+            )
 
         agent_id: UUID = stake_row["agent_id"]
         amount: int = stake_row["amount"]

@@ -469,6 +469,92 @@ class TestStakeTokens:
         assert resp.status_code == 400
 
 
+# ── POST /stakes/{stake_id}/release (S9-7a) ───────────────────────────────────
+
+class TestReleaseStake:
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_returns_401(self, client):
+        release = AsyncMock(return_value=_wallet())
+        with patch("src.routers.tokens.token_service.release_stake", new=release):
+            resp = await client.post(f"/stakes/{uuid4()}/release")
+        assert resp.status_code == 401
+        release.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_owner_release_passes_the_callers_identity(self, client):
+        caller_id, stake_id = uuid4(), uuid4()
+        release = AsyncMock(return_value=_wallet(agent_id=caller_id, balance=1300))
+        with _as(_make_agent(), caller_id), patch(
+            "src.routers.tokens.token_service.release_stake", new=release,
+        ):
+            resp = await client.post(f"/stakes/{stake_id}/release")
+        assert resp.status_code == 200
+        assert resp.json()["balance"] == 1300
+        release.assert_awaited_once_with(stake_id, caller_id)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("role", ["MEMBER", "FOUNDER"])
+    async def test_another_agents_stake_is_403(self, client, role):
+        """Owner only — a FOUNDER takes a stake by slashing it, on the record."""
+        with _as(_make_agent(role=role), uuid4()), patch(
+            "src.routers.tokens.token_service.release_stake",
+            new=AsyncMock(side_effect=PermissionError("Only the stake's owner can release it")),
+        ):
+            resp = await client.post(f"/stakes/{uuid4()}/release")
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_released_or_locked_stake_is_409(self, client):
+        from src.services.token_service import StakeConflictError
+        with _as(_make_agent(), uuid4()), patch(
+            "src.routers.tokens.token_service.release_stake",
+            new=AsyncMock(side_effect=StakeConflictError("Stake already released or slashed")),
+        ):
+            resp = await client.post(f"/stakes/{uuid4()}/release")
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_unknown_stake_is_404(self, client):
+        with _as(_make_agent(), uuid4()), patch(
+            "src.routers.tokens.token_service.release_stake",
+            new=AsyncMock(side_effect=ValueError("Stake not found: x")),
+        ):
+            resp = await client.post(f"/stakes/{uuid4()}/release")
+        assert resp.status_code == 404
+
+
+# ── Amount and page-size bounds (S9-7a) ───────────────────────────────────────
+
+class TestBounds:
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("amount", [10**12 + 1, 10**30])
+    async def test_oversized_amounts_are_422_not_500(self, client, amount):
+        caller_id = uuid4()
+        transfer = AsyncMock(return_value=_transaction())
+        stake    = AsyncMock(return_value=_stake())
+        with _as(_make_agent(), caller_id), patch(
+            "src.routers.tokens.token_service.transfer_tokens", new=transfer,
+        ), patch("src.routers.tokens.token_service.stake_tokens", new=stake):
+            r1 = await client.post(
+                "/wallets/transfer", json={"to_id": str(uuid4()), "amount": amount},
+            )
+            r2 = await client.post("/stakes", json={"amount": amount})
+        assert (r1.status_code, r2.status_code) == (422, 422)
+        transfer.assert_not_awaited()
+        stake.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("limit", [0, -1, 201, 10**9])
+    async def test_transaction_page_size_is_bounded(self, client, limit):
+        listing = AsyncMock(return_value=[])
+        with patch("src.routers.tokens.token_service.get_transactions", new=listing):
+            resp = await client.get(f"/wallets/{uuid4()}/transactions?limit={limit}")
+        assert resp.status_code == 422
+        listing.assert_not_awaited()
+
+
 # ── GET /stakes/{agent_id} ────────────────────────────────────────────────────
 
 class TestListStakes:

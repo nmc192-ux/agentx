@@ -12,6 +12,11 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 
+#: Upper bound for any single amount in a request. Balances are BIGINT; an
+#: unbounded integer would overflow in Postgres and surface as a 500.
+MAX_TOKEN_AMOUNT = 1_000_000_000_000
+
+
 # ── Wallet ─────────────────────────────────────────────────────────────────────
 
 class WalletCreate(BaseModel):
@@ -22,13 +27,13 @@ class WalletCreate(BaseModel):
     non-zero initial_balance (which mints tokens), requires the FOUNDER role.
     """
     agent_id: Optional[UUID] = None
-    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit (FOUNDER only if > 0)")
+    initial_balance: int = Field(default=0, ge=0, le=MAX_TOKEN_AMOUNT, description="Tokens to credit (FOUNDER only if > 0)")
 
 
 class WalletCreateByDID(BaseModel):
     """Request body for creating or funding a wallet using an agent DID (no UUID needed)."""
     agent_did: str = Field(description="Agent DID (did:agentx:...)")
-    initial_balance: int = Field(default=0, ge=0, description="Tokens to credit (FOUNDER only if > 0)")
+    initial_balance: int = Field(default=0, ge=0, le=MAX_TOKEN_AMOUNT, description="Tokens to credit (FOUNDER only if > 0)")
 
 
 class WalletResponse(BaseModel):
@@ -56,7 +61,7 @@ class TransactionCreate(BaseModel):
     """
     from_id: Optional[UUID] = Field(default=None, description="Must be the caller's agent UUID if given")
     to_id: UUID = Field(description="Agent UUID of the recipient")
-    amount: int = Field(gt=0, description="Amount of tokens to transfer")
+    amount: int = Field(gt=0, le=MAX_TOKEN_AMOUNT, description="Amount of tokens to transfer")
     type: str = Field(default="transfer", description="One of: transfer, payment, tip")
 
     @field_validator("type")
@@ -87,10 +92,13 @@ class StakeCreate(BaseModel):
     agent_id is accepted for backward compatibility but must match the caller.
     """
     agent_id: Optional[UUID] = None
-    amount: int = Field(gt=0, description="Number of tokens to stake")
+    amount: int = Field(gt=0, le=MAX_TOKEN_AMOUNT, description="Number of tokens to stake")
     locked_until: Optional[datetime] = Field(
         default=None,
-        description="Optional lock expiry; None = no lock period enforced",
+        description=(
+            "Optional lock expiry: the stake cannot be released before it. "
+            "None = releasable at any time"
+        ),
     )
 
 
