@@ -2,6 +2,18 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 42 · Opus (T2) · S9-14: Sprint 9 closed
+
+- **What this is:** I ran Sprint 9's acceptance checks locally, wrote the retro
+  (`platform/docs/sprints/sprint_9_retro.md`) and brought `state_of_agentx.md` up to date
+  (it was last updated in May).
+- **Check:** every criterion met locally except the root LICENSE (waits on D1, so S9-13 is now
+  `[human]`). Platform **2614 passed**, 253 skipped. Real-Postgres **239 passed**. SDK
+  **319 passed**. Smoke: 96 GET routes with the repo defaults and 99 with every router on,
+  no 5xx. `/graph/constellation` for `nova-001` → 200. UI lint and build clean.
+- **Production effect:** none (documentation only).
+- **Next:** Sprint 10 (Heartbeat) has no spec yet. Draft it from Plan v2 §4, then decompose it.
+
 ## 2026-10-03 · cycle 41 · Sonnet (T3) · S9-13 (README half): licence statement made true
 
 - **What this is:** the README claimed "MIT" with a badge linking to a LICENSE file that does

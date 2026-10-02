@@ -1,5 +1,9 @@
 # Engine PLAN — Phase A, Sprint 9 (Stabilize), remainder
 
+> **Sprint 9 closed in cycle 42** (retro: `platform/docs/sprints/sprint_9_retro.md`). Next cycle:
+> draft `platform/docs/sprints/sprint_10_heartbeat.md` from Plan v2 §4, then replace this file
+> with the Sprint 10 step list (keeping the open `[human]` items below).
+
 **Branch:** `engine/phase-a` · **Spec:** `platform/docs/sprints/sprint_9_stabilize.md`
 **Decomposed:** 2026-10-01, cycle 1 (Opus, T2)
 
@@ -821,7 +825,7 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   (`ui/app/login/page.tsx`) sends `agent_type: "HUMAN_OPERATOR"`, which the API's enum does
   not have (422) — fix with the UI work.
 
-- [ ] **S9-13 — LICENSE + README.** README half done cycle 41 (MIT badge now points at `sdk/LICENSE`; footer says the platform licence is undecided and links the Magna Carta). Root LICENSE still waits on D1. Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
+- [human] **S9-13 — LICENSE + README.** Marked `[human]` cycle 42: only the root LICENSE is left, and it waits on DrJ's answer to D1. README half done cycle 41 (MIT badge now points at `sdk/LICENSE`; footer says the platform licence is undecided and links the Magna Carta). Root LICENSE still waits on D1. Blocked on decision D1 in HUMAN_ACTIONS (licence scope for
   the platform repo). README pointing to the magna carta can proceed. Tier **T3**.
   Note: root `README.md` has a LICENSE badge that links to a missing file and says "MIT" (line ~317).
   Check: README renders; LICENSE present once D1 answered.
@@ -889,7 +893,11 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   Tier **T1** (`.well-known`). Commit prefix `SECURITY-REVIEW:`.
   Check: the route-existence test passes on the repo default router list; suite green.
 
-- [ ] **S9-14 — Sprint close.** Run the sprint acceptance criteria locally, write
+- [x] **S9-14 — Sprint close.** Done cycle 42: acceptance criteria all met locally except LICENSE
+  (D1); retro `platform/docs/sprints/sprint_9_retro.md`; `state_of_agentx.md` updated. Platform
+  2614 passed / 253 skipped, integration 239, SDK 319, smoke default 96 + all-on 99 GET routes no
+  5xx, UI lint + build clean. The follow-ups below were carried into the retro.
+  Run the sprint acceptance criteria locally, write
   `sprint_9_retro.md` (engine run), update `state_of_agentx.md`. Tier **T2**.
   For the phase briefing's live-test checklist (cycle 40, S9-13a): after the merge, open
   `https://myagentx.io/.well-known/skill.md` and check that every command starts with
