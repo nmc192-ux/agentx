@@ -10,8 +10,13 @@ Endpoints
   GET  /markets/bounties/{id}                  — get a bounty (public)
   POST /markets/bounties/{id}/submit           — submit a solution (auth required)
   GET  /markets/bounties/{id}/submissions      — list submissions (public)
-  POST /markets/bounties/{id}/submissions/{sid}/evaluate — score a submission (auth)
-  POST /markets/bounties/{id}/distribute       — distribute rewards (auth required)
+  POST /markets/bounties/{id}/submissions/{sid}/evaluate — score a submission (creator)
+  POST /markets/bounties/{id}/distribute       — pay the winner, close the bounty (creator)
+  POST /markets/bounties/{id}/cancel           — cancel a bounty with no submissions, refund (creator)
+
+Identity (Sprint 9, S9-6c): every write acts as the JWT caller; no request
+body carries an agent identity. Service errors map to HTTP as: PermissionError
+→ 403, BountyConflictError → 409, "… not found" → 404, anything else → 400.
 """
 from __future__ import annotations
 
@@ -37,6 +42,20 @@ logger = logging.getLogger(__name__)
 markets_router = APIRouter(prefix="/markets", tags=["Agent Markets"])
 
 
+def _http_error(exc: Exception) -> HTTPException:
+    """Map a bounty_service error to its HTTP response."""
+    detail = str(exc)
+    if isinstance(exc, PermissionError):
+        code = status.HTTP_403_FORBIDDEN
+    elif isinstance(exc, bounty_service.BountyConflictError):
+        code = status.HTTP_409_CONFLICT
+    elif "not found" in detail.lower():
+        code = status.HTTP_404_NOT_FOUND
+    else:
+        code = status.HTTP_400_BAD_REQUEST
+    return HTTPException(status_code=code, detail=detail)
+
+
 # ── POST /markets/bounties ────────────────────────────────────────────────────
 
 @markets_router.post(
@@ -50,8 +69,9 @@ async def create_bounty(
     agent=Depends(get_current_agent),
 ) -> BountyResponse:
     """
-    Create a new capability bounty.  The caller's wallet is immediately
-    debited by *reward_pool* tokens as escrow.
+    Create a new capability bounty.  The caller's wallet is debited by
+    *reward_pool* tokens as escrow in the same transaction: a caller who
+    cannot cover the pool gets a 400 and no bounty is created.
     Requires authentication.
     """
     try:
@@ -59,14 +79,8 @@ async def create_bounty(
             caller_did=agent.did,
             data=body,
         )
-    except ValueError as exc:
-        detail = str(exc)
-        code = (
-            status.HTTP_404_NOT_FOUND
-            if "not found" in detail.lower()
-            else status.HTTP_400_BAD_REQUEST
-        )
-        raise HTTPException(status_code=code, detail=detail)
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
 
 
 # ── GET /markets/bounties ─────────────────────────────────────────────────────
@@ -79,14 +93,18 @@ async def create_bounty(
 async def list_bounties(
     status: str | None = Query(default=None, description="Filter by status"),
     capability: str | None = Query(default=None, description="Filter by capability"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> List[BountyResponse]:
     """
-    List all bounties, optionally filtered by status and/or capability.
-    Open to unauthenticated callers.
+    List bounties, newest first, optionally filtered by status and/or
+    capability.  Open to unauthenticated callers.
     """
     return await bounty_service.list_bounties(
         status=status,
         capability=capability,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -124,7 +142,8 @@ async def submit_solution(
     agent=Depends(get_current_agent),
 ) -> SubmissionResponse:
     """
-    Submit a solution to an open bounty.
+    Submit a solution to an open bounty.  The bounty's creator cannot submit
+    to their own bounty (403).
     Requires authentication.
     """
     try:
@@ -133,14 +152,8 @@ async def submit_solution(
             caller_did=agent.did,
             data=body,
         )
-    except ValueError as exc:
-        detail = str(exc)
-        code = (
-            status.HTTP_404_NOT_FOUND
-            if "not found" in detail.lower()
-            else status.HTTP_400_BAD_REQUEST
-        )
-        raise HTTPException(status_code=code, detail=detail)
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
 
 
 # ── GET /markets/bounties/{id}/submissions ────────────────────────────────────
@@ -188,14 +201,8 @@ async def evaluate_submission(
             caller_did=agent.did,
             score=body.score,
         )
-    except ValueError as exc:
-        detail = str(exc)
-        code = (
-            status.HTTP_404_NOT_FOUND
-            if "not found" in detail.lower()
-            else status.HTTP_400_BAD_REQUEST
-        )
-        raise HTTPException(status_code=code, detail=detail)
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
 
 
 # ── POST /markets/bounties/{id}/distribute ────────────────────────────────────
@@ -211,8 +218,9 @@ async def distribute_rewards(
     agent=Depends(get_current_agent),
 ) -> RewardResponse:
     """
-    Close the bounty and credit the reward_pool to the top-scored submission.
-    Only the bounty creator may call this endpoint.
+    Close the bounty and pay the escrowed reward_pool to the top-scored
+    evaluated submission, once.  Only the bounty creator may call this
+    endpoint; a bounty that is already rewarded or cancelled answers 409.
     Requires authentication.
     """
     try:
@@ -220,11 +228,32 @@ async def distribute_rewards(
             bounty_id=bounty_id,
             caller_did=agent.did,
         )
-    except ValueError as exc:
-        detail = str(exc)
-        code = (
-            status.HTTP_404_NOT_FOUND
-            if "not found" in detail.lower()
-            else status.HTTP_400_BAD_REQUEST
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
+
+
+# ── POST /markets/bounties/{id}/cancel ────────────────────────────────────────
+
+@markets_router.post(
+    "/bounties/{bounty_id}/cancel",
+    response_model=BountyResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Cancel a bounty that has no submissions (refunds the reward pool)",
+)
+async def cancel_bounty(
+    bounty_id: UUID,
+    agent=Depends(get_current_agent),
+) -> BountyResponse:
+    """
+    Cancel an open bounty that nobody has submitted to.  The escrowed
+    reward_pool goes back to the creator, once.  Only the bounty creator may
+    call this endpoint; a bounty with submissions answers 409.
+    Requires authentication.
+    """
+    try:
+        return await bounty_service.cancel_bounty(
+            bounty_id=bounty_id,
+            caller_did=agent.did,
         )
-        raise HTTPException(status_code=code, detail=detail)
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)

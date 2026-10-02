@@ -27,7 +27,7 @@ class BountyCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: str = Field(default="")
     capability_required: str = Field(..., min_length=1, max_length=100)
-    reward_pool: int = Field(..., ge=1)
+    reward_pool: int = Field(..., ge=1, le=2**63 - 1)   # BIGINT column
     deadline: datetime | None = None
 
 
