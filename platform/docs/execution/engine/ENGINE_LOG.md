@@ -53,8 +53,9 @@ Newest at the top.
     matching contracts. Wrong caller is 403, wrong state 409 (both were 400).
   - `GET /markets/bounties` returns 50 rows per call by default, 200 at most (was: the
     whole table).
-  - Entries stay publicly readable while a bounty is open (unchanged; noted in D5's
-    background as a design matter, not a token risk).
+  - Entries stay publicly readable while a bounty is open (unchanged: a later entrant can
+    read earlier entries. A design matter, not a token risk; recorded in the comment on
+    `markets` in `router_config.py`).
 - **Found, not fixed (noted on the steps that own them):** bounties can be farmed for
   reputation with spare accounts like tasks and contracts (S9-9); SDK bounty helpers need
   checking against the new routes (S9-12).
