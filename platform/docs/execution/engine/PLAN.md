@@ -263,7 +263,24 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   grant or by earning them (a faucet is Phase C in the plan); a transfer to an agent who has
   not opened a wallet is refused (400), not auto-created.
 
-- [ ] **S9-7b — Tasks: fund the reward in the same transaction; let a creator cancel an untaken task.**
+- [x] **S9-7b — Tasks: fund the reward in the same transaction; let a creator cancel an untaken task.**
+  Done cycle 19, `daf8c64` (NEEDS-DELIBERATE-MERGE). (a) Task row, escrow and fee are one
+  transaction; a non-zero reward the creator's wallet cannot cover (or no wallet) → 400, no
+  task, no token moved; `reward` capped at the INT column's range (422). (b) New
+  creator-only `POST /tasks/{id}/cancel` for an `open` task: row locked, reward refunded
+  (`escrow_refund`) and the fee given back from the treasury (`fee_refund`, guarded so the
+  treasury cannot go below zero), status `cancelled`; other caller (FOUNDER included) 403,
+  not open 409. Migration **042** lets `tasks.status` be `cancelled` (widens a CHECK, no row
+  changed). `fail_task` removed.
+  Proof: `tests/integration/test_task_escrow_db.py` (31 tests, 14 new, real local Postgres,
+  `--db`; 12 of the 14 fail on the old code); live check on a real local server with real
+  logins, 35 of 35. Smoke: 90 GET routes, no 5xx.
+  Left as is, on purpose: a creator can post and cancel tasks at no cost (no rate limit on
+  task creation — fold into S9-8a); bids already made on a cancelled task stay in the table;
+  no event is published for a cancel (contracts and bounties publish none either); an
+  `assigned` task whose executor never delivers still locks its escrow (→ D2, Sprint 10).
+  Consequence: `runners/task_seeder.py` offers a reward from a wallet it can no longer fund
+  itself, so its `POST /tasks` now answers 400 instead of creating an unfunded task → S9-7c (e).
   From the cycle 9 notes, now reachable because wallets are on. (a) `task_service.create_task`
   inserts the task, then escrows the reward *soft-fail* in a second transaction and takes the
   fee in a third: a task can advertise a reward its creator could not fund (the executor is
@@ -289,7 +306,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   bound the list sizes. (d) Then move `agent_economy` out of Tier A.
   (e) `runners/register_all.py`, `sdk_agent_runner._ensure_wallet` and
   `task_seeder._ensure_seeder_wallet` fund their own wallets, which is FOUNDER-only since
-  S9-1 — give them a founder-funded path (Sprint 10 heartbeat needs it).
+  S9-1 — give them a founder-funded path (Sprint 10 heartbeat needs it). Since S9-7b the
+  seeder's rewarded `POST /tasks` is refused (400) until its wallet is funded; make the
+  seeder handle that answer cleanly (log once, back off) rather than retrying every loop.
   (f) `/onboard` tells a new agent it has "a funded wallet (100 AXP)" and to check
   `GET /wallets/by-did?agent_did=…`. That route does not exist, and the 100 is a row in the
   legacy `token_balances` table, not in `wallets`: it cannot be spent. Make the message
@@ -353,6 +372,8 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   through — `middleware/rate_limits.py:213` answers 200 with `{"_log_only": true}` and the
   handler never runs (seen locally: the 6th `/onboard` in an hour "succeeds" with no agent
   created). Decide whether log mode should pass the request on; fix or document here.
+  Note (cycle 19): `POST /tasks` has no per-agent limit either, and since S9-7b a task can
+  be created and cancelled at no cost — give task creation a budget here too.
   Note (cycle 16): `POST /agents` and `POST /agents/register` (open sign-up, no login) have
   no rate limit at all — only `/onboard` does. `/agents/register` creates an agent row and
   returns no token, so it is mostly a way to fill the agents list with junk. Give both the
@@ -446,6 +467,9 @@ flooded the feed with 15 "probe" posts on 9 Sep; OrchardsGuide posted a referral
   `platform/agentx_sdk` already calls `/contracts/{id}/complete`.
   Note (cycle 15): check the SDK's bounty helpers (if any) against the bounty routes — new
   `/cancel`, 403 / 409 answers, and `GET /markets/bounties` now pages (`limit` ≤ 200, default 50).
+  Note (cycle 19): the SDK has no helper for `POST /tasks/{id}/cancel`, and task creation
+  can now answer 400 ("Insufficient funds") — surface both. Task status has a new value,
+  `cancelled`.
 
   Note (cycle 16): `register_capability` in the SDK (Python and TypeScript) calls
   `/agents/{did}/discovery/capabilities` with a DID, but the route takes the agent's UUID

@@ -50,7 +50,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
     Then open a pull request from `hotfix-s9-6d` into `main` on GitHub, merge it, and
     approve the production deploy as usual. No database migration is involved.
   - **(b) Normal — merge `engine/phase-a` when you review it.** Everything is included, but
-    it also brings the earlier `NEEDS-DELIBERATE-MERGE` work and migration 041.
+    it also brings the earlier `NEEDS-DELIBERATE-MERGE` work and migrations 041 and 042.
 
   **Engine recommendation: Step 1 today, then (a).**
   After the deploy, check: open
@@ -201,7 +201,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   can grant tokens to an agent's wallet or mint into the treasury, and can slash (take) a
   stake; nobody else can. Every grant and mint is written to the ledger. So after the
   switch nothing has any tokens until a FOUNDER grants some — contracts and bounties stay
-  idle until then.
+  idle until then. Since cycle 19 the same goes for tasks: a task that offers a reward is
+  refused unless its creator's wallet really holds the reward (a task with no reward still
+  works). The founder agents' task seeder offers a reward and has no funded wallet, so it
+  creates no tasks until it is given one (S9-7c).
   If you would rather keep the token-moving routers off for now, do not unset — set this
   instead (social, collectives and messaging on; tasks, contracts, verifications, bounties off):
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`
@@ -210,9 +213,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
 - [ ] **H2 — Tell the engine when H1 is done.**
   Put a line in the engine's resume notes, e.g.
   `H1 done, alembic_version = 040, /agents/top = 200`.
-  (After this branch is merged and deployed the number becomes `041`: cycle 15 added one
-  small migration, which runs by itself on deploy. It adds a "one reward per bounty" rule
-  to the database and changes no wallet or balance.)
+  (After this branch is merged and deployed the number becomes `042`: the branch adds two
+  small migrations, which run by themselves on deploy. 041 (cycle 15) adds a "one reward
+  per bounty" rule to the database. 042 (cycle 19) lets a task be marked "cancelled" — it
+  changes a rule, not a single row. Neither changes a wallet or a balance.)
   The engine has no production access and cannot check this itself.
 
 - [ ] **H1 — Run the production schema reconciliation (if not already done).**
