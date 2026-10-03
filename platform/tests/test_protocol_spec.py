@@ -1,4 +1,4 @@
-"""Guard: the protocol spec names only endpoints the app really serves (S12-12).
+"""Guard: the protocol spec names only endpoints the app really serves (S12-12, S12-13).
 
 platform/docs/protocol/protocol_spec.md is written for people building a
 compatible client or server without the source, so every endpoint it names
@@ -41,6 +41,40 @@ CORE_ENDPOINTS = {
     ("GET", "/health"),
 }
 
+# Part 2 (S12-13): messages, rooms, collectives, governance, the economy
+# (including the S12-2..6 approval, dispute and deadline routes) and trust.
+PART2_ENDPOINTS = {
+    ("POST", "/messages/send"),
+    ("GET", "/messages/{}"),
+    ("POST", "/rooms"),
+    ("POST", "/rooms/{}/join"),
+    ("POST", "/collectives"),
+    ("POST", "/collectives/{}/join"),
+    ("POST", "/governance/proposals"),
+    ("POST", "/governance/vote"),
+    ("GET", "/governance/results"),
+    ("POST", "/wallets"),
+    ("GET", "/wallets/by-did"),
+    ("POST", "/tasks"),
+    ("POST", "/tasks/{}/bid"),
+    ("POST", "/tasks/{}/result"),
+    ("POST", "/tasks/{}/approve"),
+    ("POST", "/tasks/{}/reject"),
+    ("POST", "/contracts"),
+    ("POST", "/contracts/{}/assign"),
+    ("POST", "/contracts/{}/reclaim"),
+    ("POST", "/contracts/{}/dispute"),
+    ("POST", "/contracts/{}/settle"),
+    ("POST", "/markets/bounties"),
+    ("POST", "/markets/bounties/{}/submit"),
+    ("POST", "/markets/bounties/{}/distribute"),
+    ("GET", "/agents/{}/trust"),
+    ("GET", "/reputation/{}"),
+}
+
+# Sections the conformance checklist must keep (C = core, O = optional feature).
+CHECKLIST_IDS = [f"C{i}" for i in range(1, 12)] + [f"O{i}" for i in range(1, 10)]
+
 
 def _shape(path: str) -> str:
     return _PARAM_RE.sub("{}", path)
@@ -82,6 +116,24 @@ def test_spec_names_the_core_endpoints(named):
     assert CORE_ENDPOINTS <= named, sorted(CORE_ENDPOINTS - named)
 
 
+def test_spec_names_the_part2_endpoints(named):
+    assert PART2_ENDPOINTS <= named, sorted(PART2_ENDPOINTS - named)
+
+
+def test_conformance_checklist_is_complete():
+    text = SPEC.read_text(encoding="utf-8")
+    assert "## 15. Conformance checklist" in text
+    checklist = text.split("## 15. Conformance checklist", 1)[1]
+    missing = [i for i in CHECKLIST_IDS if f"| {i} |" not in checklist]
+    assert not missing, missing
+
+
+def test_automatic_release_period_in_spec_matches_the_code():
+    from src.services.auto_release import AUTO_RELEASE_DAYS
+    text = SPEC.read_text(encoding="utf-8")
+    assert f"**N days** (reference: {AUTO_RELEASE_DAYS})" in text
+
+
 def test_every_named_endpoint_exists_in_openapi(named):
     served = _default_app_endpoints()
     missing = sorted(named - served)
@@ -91,3 +143,13 @@ def test_every_named_endpoint_exists_in_openapi(named):
 def test_parser_reads_methods_paths_and_ignores_queries():
     text = "`GET /agents/discover?capability=x` and `POST /posts/{post_id}/flag`, `DELETE`"
     assert spec_endpoints(text) == {("GET", "/agents/discover"), ("POST", "/posts/{}/flag")}
+
+
+def test_trust_reference_values_in_spec_match_the_code():
+    from src.services import reputation
+    text = SPEC.read_text(encoding="utf-8").split("## 14. Trust interface", 1)[1]
+    hours = int(reputation.MIN_COUNTERPARTY_AGE.total_seconds() // 3600)
+    assert f"(reference: {hours} hours)" in text
+    assert f"(reference: {reputation.PAIR_DAILY_LIMIT})" in text
+    assert f"(reference: {reputation.MAX_DAILY_GAIN:.2f})" in text
+    assert f"received in the last {reputation.MESSAGE_REPLY_WINDOW.days} days" in text
