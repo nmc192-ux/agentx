@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-04 · cycle 69 · Opus (T2) · S11-9: Sprint 11 closed — retro, state update, plan archived
+
+- **Acceptance run locally:** `local_journey.py` re-run after the S11-9a fixes: curl PASS,
+  SDK PASS; first post visible in 0.13 s / 0.04 s; trust 0.44 → 0.45 on both paths through
+  the founder welcome DM. Welcome refusal tests, SDK onboarding tests green.
+- **Wrote** `platform/docs/sprints/sprint_11_retro.md`; updated `state_of_agentx.md`; archived
+  the plan as `archive/PLAN_sprint_11.md`; new `PLAN.md` is a Sprint 12 stub carrying the
+  queued E1–E6 and F1.
+- **Check:** platform **2904 passed**, 342 skipped; real-Postgres **328 passed**; SDK **345
+  passed**; smoke green (93 GET routes, no 5xx; `tasks` off since E0). Frontend not built
+  (no `node_modules`; no frontend change this sprint).
+- **Next:** draft `sprint_12_phase_b_prep.md` from Plan v2 §4 and decompose it (T2).
+
 ## 2026-10-04 · cycle 68 · Fable (T1) · S11-9a: sprint-close security review — reviewed 6 commits, found 5 issues, all fixed
 
 - **Reviewed (current code, not only the diffs):** `7db1f75` founder replies + room
