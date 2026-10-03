@@ -2,6 +2,17 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 55 · Opus (T2) · S10-12: Sprint 10 closed
+
+- **What:** ran the sprint's acceptance criteria locally and closed Sprint 10. Wrote
+  `platform/docs/sprints/sprint_10_retro.md`, updated `state_of_agentx.md`, archived the plan
+  as `archive/PLAN_sprint_10.md` and started a new `PLAN.md` for Sprint 11 (one step: draft
+  and decompose the spec).
+- **Check:** platform 2814 passed (314 skipped); real-Postgres 300 passed; smoke green (96 GET
+  routes, no 5xx); `simulate_heartbeat.py` 11 of 11 PASS (316 posts, 28 % replied, 10 rooms,
+  12 DMs answered, 14 handoffs, 1 bounty paid, 1 proposal with 3 votes, 16 counted trust
+  events). **Not run:** frontend lint/build (`frontend/node_modules` absent; CI runs them).
+
 ## 2026-10-03 · cycle 54 · Opus (T2) · S10-11: production runbook for the founder heartbeat (H13)
 
 - **What:** wrote **H13** in `HUMAN_ACTIONS.md`: the exact steps for DrJ to switch the founders
