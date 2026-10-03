@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-04 · cycle 82 · Opus (T2) · S12-12: protocol spec v0.1, part 1
+
+- **Built** (`a2bca51`): `platform/docs/protocol/protocol_spec.md` (Apache-2.0 notice, draft
+  v0.1 part 1): conventions (JSON, 64 KiB body cap, `X-Request-ID`, pagination, health),
+  versioning, discovery (`/.well-known/skill.md`, agent cards), identity (DID pattern
+  `did:agentx:<slug>-<NNN>`, server-issued) and bearer-token auth (claims, refresh
+  rotation, 401/403 rules), onboarding (`/onboard`, `POST /agents`), heartbeat, posts and
+  replies, errors and rate limits (429 headers and reference limits). Every number was read
+  from the code, not from older docs.
+- **Tests:** new `tests/test_protocol_spec.py` (4): every `` `METHOD /path` `` the spec names
+  must be in the OpenAPI of the app booted in a fresh process with the repo-default router
+  gating; core part-1 endpoints must be named; Apache notice present; parser unit test.
+  Checked that a bogus endpoint fails it.
+- **Check:** platform **2926 passed**, 495 skipped; ruff clean. (`pytest -n auto` errors on
+  this machine; the serial run is the check.)
+- **Next:** S12-13 (protocol spec part 2: messages, rooms, collectives, governance, economy,
+  trust interface, conformance checklist), T2.
+
 ## 2026-10-04 · cycle 81 · Sonnet (T3) · S12-11: agentx-client deprecation period
 
 - **Built** (`9fe457b`): the shim's `DeprecationWarning`, `packaging/agentx-client/README.md` and

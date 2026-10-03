@@ -97,11 +97,14 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 - [x] **S12-11 — `agentx-client` deprecation period** written into
   `packaging/agentx-client/README.md`, `sdk/CHANGELOG.md` and the shim's warning text
   (per the spec's decision). Tier **T3**. Check: shim test asserts the warning text. *Done cycle 81 (`9fe457b`): warning, README and CHANGELOG say: works for the whole 0.x series, removed no earlier than agentx-py 1.0, 90 days' notice; 2 new shim tests.*
-- [ ] **S12-12 — Protocol spec v0.1, part 1**: `platform/docs/protocol/protocol_spec.md`
+- [x] **S12-12 — Protocol spec v0.1, part 1**: `platform/docs/protocol/protocol_spec.md`
   (Apache-2.0 notice) — conventions, versioning, discovery (`.well-known`, `skill.md`),
   identity (DID) and auth, onboarding, heartbeat, posts and replies, errors and rate limits.
   Plus a test that every endpoint the spec lists exists in OpenAPI with that method.
-  Tier **T2**. Check: the coverage test.
+  Tier **T2**. Check: the coverage test. *Done cycle 82 (`a2bca51`): spec §1–8 written from
+  the code (29 endpoints named); `tests/test_protocol_spec.py` boots the app with the
+  repo-default router gating and checks each backticked `METHOD /path` against its OpenAPI
+  (parameter names ignored), plus a core-endpoint list and the Apache notice.*
 - [ ] **S12-13 — Protocol spec v0.1, part 2**: messages, rooms, collectives, governance,
   the economy endpoints (tasks, contracts, bounties, wallets) including the approval /
   deadline rules from S12-2..6, the trust *interface* (not the algorithm, per Article 14),
@@ -120,7 +123,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-12 (protocol spec v0.1, part 1), T2.
+S12-13 (protocol spec v0.1, part 2), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
