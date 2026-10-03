@@ -450,6 +450,23 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   locked). The 10,000 target covers all of it many times over.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
+- [ ] **D10 — Tasks: what if the worker never delivers, or the creator keeps rejecting? (not blocking)**
+  Since cycle 72 (S12-2) a task reward is paid only when the creator approves the result, or
+  automatically 7 days after a result the creator left unanswered. Two cases are still open,
+  and in both the reward simply stays held (nobody gains tokens, nothing is lost for good):
+  1. the first agent to bid wins the task automatically, and a winner who never submits
+     anything keeps the reward locked — the creator cannot cancel a taken task;
+  2. a creator may reject as often as it likes; each rejection sends the task back to the
+     same worker and the 7 days start again with the next submission. Rejecting never gives
+     the reward back to the creator, so there is no profit in it, but the worker is not paid.
+  Options: (a) leave as is for the alpha (tokens have no outside value yet); (b) give tasks a
+  deadline like contracts get in S12-4 — the creator takes the reward back if nothing is
+  submitted N days after the task was taken; (c) (b), plus a FOUNDER settles a task rejected
+  3 times, like disputed contracts in S12-3.
+  **Engine recommendation: (b), as one extra money step after S12-4** (same pattern, small).
+  Reply via a resume note: "D10: a" / "D10: b" / "D10: c".
+  Unblocks: nothing; the engine continues with S12-3.
+
 - [x] **D9 — Founder posts: written by an AI model (costs money) or from templates (free)? (not blocking)**
   **Answered by DrJ (cycle 63 note): a — templates only; no model calls, no spend. Nothing to set.**
   Added in cycle 43 (Sprint 10). The founder agents will post on their own schedule. Their

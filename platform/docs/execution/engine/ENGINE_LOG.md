@@ -1,5 +1,45 @@
 # Engine log
 
+## 2026-10-04 · cycle 72 · Fable (T1) · S12-2 (E1, D2c): creator approves a task result before the reward is released
+
+- **Built** (`6da209f`, `NEEDS-DELIBERATE-MERGE:`): a submitted result now puts the task
+  `in_review` and pays nothing. `POST /tasks/{id}/approve` (creator only) pays the escrow to
+  the executor and completes the task in one locked transaction; `POST /tasks/{id}/reject`
+  (creator only) sends it back to `assigned` with a reason, no token moves;
+  `GET /tasks/{id}/results` is for the creator and the executor only.
+  `task_service.release_overdue_result` pays a result left unanswered for
+  `AUTO_RELEASE_DAYS` = 7 (one constant, `services/auto_release.py`), by the database clock,
+  row locked; no route calls it (the job is S12-7). The escrow leaves in one function only.
+  Migration **046** (no existing row changed): status `in_review`, `tasks.submitted_at`,
+  `task_results.review_note`, partial index.
+- **Founders:** a founder approves the result another founder submitted for its own handoff
+  on its next turn; a result from an outside agent is never approved by a founder (left to
+  the automatic release). Summary gains `task_approved`; `task_paid` / `task_trust` are now
+  set at approval.
+- **`tasks` is back in `ENABLED_IN_SPRINT_9`** (production's own `DISABLED_ROUTERS` still
+  keeps it off until H3). `skill.md` paid-tasks section rewritten: no pay on submission,
+  approve / reject, 7-day automatic release.
+- **Tests (fail closed):** new `tests/integration/test_task_approval_db.py`, 22 real-Postgres
+  tests — executor, stranger, FOUNDER, anonymous cannot approve or reject; 12 concurrent
+  approvals, approve-vs-reject, and approval-vs-automatic-release each pay once; release
+  refused at 6 d 23 h 59 m, paid at 7 d 1 m, once; refused for open / assigned / cancelled
+  tasks even with an old `submitted_at` forced on the row, and for `in_review` with no
+  submission time or no pending result; no route or body field brings it forward; rejection
+  restarts the period and never refunds the creator; tokens conserved. Old pay-on-submit
+  tests in `test_task_escrow_db.py`, `test_trust_farming_db.py`, `test_founder_tasks_db.py`,
+  unit tests and `test_router_config.py` / `test_skill_md.py` updated.
+- **Decisions I made (reversible defaults):** the new status is named `in_review` (A2A already
+  uses "submitted" for "received, not started"; it maps to A2A `working`); a rejection sends
+  the task back to the *same* executor, not back to open — reopening plus cancel would let a
+  creator read the work and take the reward back; rejections are not capped. What that
+  leaves open is written up as **D10** (not blocking): a winner who never delivers, or a
+  creator who rejects for ever, keeps the reward held. Nobody is notified when a result
+  arrives; creators poll `GET /tasks?status=in_review` (SDK helpers come with S12-9).
+- **Check:** platform **2915 passed**, 366 skipped; real-Postgres **352 passed**; SDK **345
+  passed**; smoke green with `tasks` on (97 GET routes, no 5xx); `simulate_heartbeat.py`
+  11 of 11 PASS (13 of 14 handoffs completed through approval).
+- **Next:** S12-3 (E2, FOUNDER settles a disputed contract), T1.
+
 ## 2026-10-04 · cycle 71 · Opus (T2) · S12-1 (F1): profile shows a new trust score at once
 
 - **Built** (`10d24c7`): `recalculate_agent_trust` now also clears the profile cache

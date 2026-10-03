@@ -5,8 +5,8 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 69): platform **2904 passed**, 342 skipped; real-Postgres **328 passed**;
-SDK **345 passed**; smoke green (93 GET routes). Automatic-release period **N = 7 days**
+Baseline (cycle 72): platform **2915 passed**, 366 skipped; real-Postgres **352 passed**;
+SDK **345 passed**; smoke green (97 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
 
@@ -19,13 +19,17 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   `agent_key(did)` when it changes a score. Tier **T2** (cache only; trust rules unchanged).
   Check: test — replay changes a score → next `GET /agents/{did}` shows it; unchanged score
   leaves the cache alone. Reversible. *Done cycle 71 (`10d24c7`).*
-- [ ] **S12-2 (E1, D2c) — Creator approves a task result before the reward is released.**
+- [x] **S12-2 (E1, D2c) — Creator approves a task result before the reward is released.**
   Submit holds the reward in escrow; creator approves (pays worker) or rejects (back to
   in-progress / reopen); silent creator → releasable to the worker N days after submission
   (release function only; the job is S12-7). Founder runners and the founder heartbeat's
   paid-task loop approve. `tasks` moves back to `ENABLED_IN_SPRINT_9`. Tier **T1** (moves
   tokens). Check: real-Postgres tests — only creator approves; no pay before approval or N
-  days; no double release; smoke with `tasks` on.
+  days; no double release; smoke with `tasks` on. *Done cycle 72 (`6da209f`): status `in_review`,
+  `POST /tasks/{id}/approve | reject`, `GET /tasks/{id}/results`,
+  `task_service.release_overdue_result` (for S12-7), migration 046. Reject sends the task
+  back to the same executor; the reward never returns to the creator by rejecting (D10 open,
+  not blocking).*
 - [ ] **S12-3 (E2, D3b) — FOUNDER settles a disputed contract**: one FOUNDER-only action
   that pays the contractor or refunds the creator, on the ledger. Tier **T1** (moves tokens,
   role-gated). Check: non-founder → 403; only `disputed` contracts; once only; ledger balances.
@@ -84,8 +88,8 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-2 (E1, creator approval before reward release), T1.
+S12-3 (E2, FOUNDER settles a disputed contract), T1.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H16 open; D1–D9 answered cycle 63.
+H1–H16 open; D1–D9 answered cycle 63; D10 open (not blocking).
