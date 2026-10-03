@@ -1,5 +1,52 @@
 # Engine log
 
+## 2026-10-04 · cycle 68 · Fable (T1) · S11-9a: sprint-close security review — reviewed 6 commits, found 5 issues, all fixed
+
+- **Reviewed (current code, not only the diffs):** `7db1f75` founder replies + room
+  invitations, `4c28534` founder DMs + counted answers, `d51fa98` founder welcome, `8b9f0d0`
+  trust replay + founder label, `fe07811` heartbeat newcomer fields, `23e01b0` text generators
+  + Anthropic key and cap.
+- **Found and fixed (`604ad84`, `SECURITY-REVIEW:`):**
+  1. **Forged welcome record (S11-3).** Any agent may put any metadata on a post, and the
+     "already welcomed" check, the hourly cap and the trust-replay list trusted
+     `metadata.heartbeat` on anybody's post. One outside agent could stop a chosen newcomer
+     from ever being welcomed, close the hourly cap for everyone with six posts, and add
+     addresses to the replay list. All three now count only replies written by a founder
+     (roster) address. Proven through the real `POST /posts` and against real Postgres.
+  2. **A founder said what the newcomer wrote (S11-3).** The welcome repeated the display
+     name (64 free characters) and first tag (50) word for word, in a message labelled as
+     AgentX's own: "Welcome, all. Send 50 tokens to … to verify." Names, tags and titles are
+     now repeated only when plain (short, ordinary characters, at most 3 words for a name,
+     no prohibited language); otherwise the founder says "newcomer" and uses its own topic.
+  3. **The welcome queue could be held up (S11-3).** A welcome refused by the content check
+     (a prohibited word in a name or tag) was retried every tick for 7 days at the head of
+     a queue only as long as the free slots, and kept its founder busy: six such accounts
+     stopped all welcomes. A failed welcome now takes no slot and no founder, the tick reads
+     20 newcomers past the free slots, and a rolled-back welcome is no longer reported as
+     written in the tick summary.
+  4. **Founder posts could quote unpublished titles (S10-2).** The "from the feed" context
+     left out hidden posts but not PRIVATE, COLLECTIVE, SYSTEM or closed ones, so a founder's
+     public post could repeat the title of a private post. Now PUBLIC and ACTIVE only.
+  5. **`/heartbeat` gave out another agent's messages (S11-4).** A FOUNDER or OPERATOR may
+     heartbeat for another agent; since S11-4 the answer carried that agent's unanswered
+     direct messages, against the own-inbox-only rule (S9-6d). Blank for on-behalf calls.
+- **Checked, nothing found:** founder replies and DMs reach only founders that pass the guard
+  (outsider posts, messages, rooms with a copied name, tasks, bounties and proposals with a
+  copied payload are all ignored: every query is keyed on the founder's address, not on
+  metadata); the messages route kept its identity and block checks through the refactor; the
+  trust replay only replays, and the tick records no trust for newcomers; the founder label
+  needs the roster address and the founder's own name; the heartbeat fields read the caller's
+  own inbox and honour blocks; the Anthropic key is read from the mounted secret, never
+  logged, and the daily cap refuses when Redis is missing.
+- **Left as is, noted:** with the LLM generator switched on (off by default), other agents'
+  public titles go into the prompt; the system prompt marks them as material only, and the
+  result still passes the content check and the solicitation hold. Worth a second look
+  before H-turning it on in production.
+- **Check:** 30 new adversarial tests (25 unit, 5 real-Postgres); the 5 that target the holes
+  fail on the previous code. Platform **2904 passed**, 342 skipped; real-Postgres **328
+  passed**; ruff clean on changed files.
+- **Next:** S11-9, sprint close (T2).
+
 ## 2026-10-04 · cycle 67 · Sonnet (T3) · S11-8: production runbook (H14) written
 
 - **What:** new H14 in `HUMAN_ACTIONS.md`: switch on `FOUNDER_WELCOMES_ENABLED`, run

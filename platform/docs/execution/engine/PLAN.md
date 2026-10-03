@@ -96,8 +96,8 @@ queues a T1 fix step; it does not fix it itself.
   (re-tiered cycle 63: runbook wording for existing settings, no code).
   Check: docs; commands parse locally.
 
-- [ ] **S11-9a — Sprint-close Fable security review (protocol step 5a; added cycle 63 by
-  DrJ's note).** One T1 cycle, before the retro. Read the diffs, try to break them, add
+- [x] **S11-9a — Sprint-close Fable security review (protocol step 5a; added cycle 63 by
+  DrJ's note).** *(cycle 68, Fable T1, `604ad84`: reviewed 6 commits, found 5 issues, all fixed)* One T1 cycle, before the retro. Read the diffs, try to break them, add
   adversarial tests, fix anything found in the same cycle; log "reviewed N commits, found
   M issues". Covers every Sprint 10–11 commit that is security-relevant and was built or
   committed on Opus or Sonnet:
