@@ -260,10 +260,11 @@ def test_gated_features_are_left_out_when_their_routers_are_off():
 
 # ── S9-13a: the claims themselves ────────────────────────────────────────────
 
-def _render(*enabled: str, access: int = 900, refresh: int = 604_800) -> str:
+def _render(*enabled: str, access: int = 900, refresh: int = 604_800,
+            welcomes: bool = False) -> str:
     return render_skill_md(
         BASE, lambda name: name in enabled,
-        access_token_ttl=access, refresh_token_ttl=refresh,
+        access_token_ttl=access, refresh_token_ttl=refresh, welcomes=welcomes,
     )
 
 
@@ -500,3 +501,61 @@ async def test_message_send_is_refused_while_the_tasks_router_is_off(monkeypatch
 def test_message_send_is_offered_while_the_tasks_router_is_on():
     from src.a2a.router import available_methods
     assert available_methods() == ["message/send", "tasks/get"]
+
+
+# ── S11-5: "what happens after you join", only while welcomes are live ───────
+
+def test_what_happens_next_only_while_founders_welcome_newcomers():
+    assert "## What happens after you join" not in _render()
+    welcoming = _render(welcomes=True)
+    section = welcoming.split("## What happens after you join")[1].split("## Machine-readable")[0]
+    # The numbers are the ones the code enforces.
+    weight = reputation.EVENT_WEIGHTS["message_replied"]
+    assert f"**+{weight:.2f}**" in section
+    assert "at least 1 day old" in section
+    assert reputation.MIN_COUNTERPARTY_AGE.total_seconds() == 86_400
+    assert "first 7 days" in section
+    from src.founders.welcome import WELCOME_WINDOW
+    assert WELCOME_WINDOW.days == 7
+    assert "operated by AgentX" in section
+    for field in ("replies_to_you", "unanswered_messages", "trust_score"):
+        assert field in section
+
+
+def test_what_happens_next_names_only_mounted_routes():
+    routes = _deployment("repo default")["routes"]
+    named = _paths_in(_render(welcomes=True))
+    assert ("POST", "/messages/send") in named
+    assert ("GET", f"/agents/{_EXAMPLE_DID}") in named
+    assert not _unmounted(named, routes)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("heartbeat, welcomes, shown", [
+    ("", "", False), ("true", "", False), ("", "true", False), ("true", "true", True),
+])
+async def test_served_document_follows_both_welcome_flags(monkeypatch, heartbeat, welcomes, shown):
+    monkeypatch.setenv("FOUNDER_HEARTBEAT_ENABLED", heartbeat)
+    monkeypatch.setenv("FOUNDER_WELCOMES_ENABLED", welcomes)
+    get_settings.cache_clear()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
+            resp = await client.get("/.well-known/skill.md")
+    finally:
+        get_settings.cache_clear()
+    assert resp.status_code == 200
+    assert ("## What happens after you join" in resp.text) is shown
+
+
+def test_heartbeat_fields_are_documented_with_the_service_numbers():
+    from src.services import heartbeat_service as hb
+    doc = _render()
+    heartbeat = doc.split("## Heartbeat")[1].split("## Trust score")[0]
+    for field in ("trust_score", "replies_to_you", "unanswered_messages",
+                  "unanswered_messages_count"):
+        assert f'"{field}"' in heartbeat, field
+    assert f"the last {hb.REPLIES_FIRST_LOOKBACK_DAYS} days on your first one" in heartbeat
+    assert f"the last {hb.MESSAGES_LOOKBACK_DAYS} days" in heartbeat
+    assert f"at most {hb.MESSAGES_LIMIT}" in heartbeat
+    assert ("POST", "/messages/send") in _paths_in(doc)
+    assert ("GET", f"/messages/{_EXAMPLE_DID}") in _paths_in(doc)

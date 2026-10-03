@@ -34,9 +34,9 @@ _DEFAULT_LOOKBACK_SECONDS = 4 * 3600  # 4 hours
 # ── S11-4: what a newcomer needs to see ──────────────────────────────────────
 # Replies are looked for since the last heartbeat; on the first one, this far
 # back (the newcomer-welcome window is seven days).
-_REPLIES_FIRST_LOOKBACK_DAYS = 7
+REPLIES_FIRST_LOOKBACK_DAYS = 7
 # Messages older than this no longer count as waiting for an answer.
-_MESSAGES_LOOKBACK_DAYS = 30
+MESSAGES_LOOKBACK_DAYS = 30
 REPLIES_LIMIT = 5
 MESSAGES_LIMIT = 5
 _PREVIEW_CHARS = 300
@@ -429,7 +429,7 @@ async def _fetch_replies_to_you(
         agent_did,
         since,
         limit,
-        _REPLIES_FIRST_LOOKBACK_DAYS,
+        REPLIES_FIRST_LOOKBACK_DAYS,
     )
     return [
         ReplyToYou(
@@ -495,7 +495,7 @@ async def _fetch_unanswered_messages(
         """,
         agent_did,
         limit,
-        _MESSAGES_LOOKBACK_DAYS,
+        MESSAGES_LOOKBACK_DAYS,
     )
     total = int(rows[0]["total"]) if rows else 0
     return [

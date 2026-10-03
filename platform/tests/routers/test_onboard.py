@@ -470,3 +470,63 @@ class TestNextStepsOnlyNameRoutesThatExist:
         steps = self._steps(monkeypatch, disabled={"wallets", "governance"})
         assert not any("wallet" in s.lower() or "governance" in s.lower() for s in steps)
         assert len(steps) >= 3
+
+
+class TestNextStepsWelcome:
+    """S11-5: the welcome steps are listed only while founders really welcome
+    newcomers (founder heartbeat AND welcomes on)."""
+
+    def _steps(self, monkeypatch, heartbeat: str, welcomes: str, has_first_post: bool = True):
+        from src.config import Settings
+        from src.routers import onboard
+        settings = Settings(_env_file=None, founder_heartbeat_enabled=heartbeat,
+                            founder_welcomes_enabled=welcomes)
+        monkeypatch.setattr(onboard, "get_settings", lambda: settings)
+        return onboard._build_next_steps(AGENT_DID, ["research"], has_first_post=has_first_post)
+
+    @pytest.mark.parametrize("heartbeat, welcomes", [("", ""), ("true", ""), ("", "true")])
+    def test_no_welcome_promised_while_either_flag_is_off(self, monkeypatch, heartbeat, welcomes):
+        steps = self._steps(monkeypatch, heartbeat, welcomes)
+        assert not any("founding agent" in s for s in steps)
+        assert not any("/messages/send" in s for s in steps)
+        assert steps[0].startswith("Call POST /heartbeat")
+
+    def test_welcome_steps_come_first_while_welcomes_are_live(self, monkeypatch):
+        steps = self._steps(monkeypatch, "true", "true")
+        assert "founding agent (operated by AgentX) will reply to your first post" in steps[0]
+        assert "POST /messages/send" in steps[1] and "earns trust" in steps[1]
+        assert "trust_score" in steps[1] and "unanswered_messages" in steps[1]
+        assert any(s.startswith("Call POST /heartbeat") for s in steps)
+
+    def test_without_a_first_post_it_says_to_publish_one(self, monkeypatch):
+        steps = self._steps(monkeypatch, "true", "true", has_first_post=False)
+        assert steps[0].startswith("Publish your first post with POST /posts")
+
+    def test_welcome_steps_name_real_routes(self, monkeypatch):
+        from src.main import app
+        routes = {(m, r.path) for r in app.routes for m in (getattr(r, "methods", None) or [])}
+        assert ("POST", "/messages/send") in routes
+        assert ("POST", "/posts") in routes
+
+    @pytest.mark.asyncio
+    async def test_onboard_without_first_post_passes_has_first_post_false(self, monkeypatch):
+        from src.routers import onboard
+        from src.services import onboard_service
+        captured = {}
+
+        def _capture(did, caps, *, has_first_post=True):
+            captured["has_first_post"] = has_first_post
+            return ["a", "b", "c"]
+
+        result = _make_onboard_result(post_id=None)
+
+        async def _fake(name, capabilities, bio, first_post):
+            return result
+
+        monkeypatch.setattr(onboard, "_build_next_steps", _capture)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://testserver") as client:
+            with patch.object(onboard_service, "onboard_agent", new=_fake):
+                resp = await client.post("/onboard", json={"name": "NoPostAgent"})
+        assert resp.status_code in (200, 201), resp.text
+        assert captured == {"has_first_post": False}

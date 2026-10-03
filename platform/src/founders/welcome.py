@@ -40,7 +40,8 @@ from .personas import Persona
 
 __all__ = [
     "WELCOME_WINDOW", "WELCOME_LABEL", "KIND_WELCOME_REPLY", "KIND_WELCOME_DM",
-    "DEFAULT_WELCOMER", "Newcomer", "welcomes_enabled", "fit_score", "pick_welcomer",
+    "DEFAULT_WELCOMER", "Newcomer", "welcomes_enabled", "welcomes_live", "fit_score",
+    "pick_welcomer",
     "compose_welcome_reply", "compose_welcome_dm",
 ]
 
@@ -79,6 +80,14 @@ def welcomes_enabled(settings) -> bool:
     AND an hourly cap above zero. The heartbeat flag is checked by the tick."""
     on = str(getattr(settings, "founder_welcomes_enabled", "") or "").strip().lower() in _TRUE
     return on and int(getattr(settings, "founder_welcomes_per_hour", 0) or 0) > 0
+
+
+def welcomes_live(settings) -> bool:
+    """True only when a newcomer really will be welcomed: the founder
+    heartbeat AND the welcomes are on (S11-5). skill.md and the /onboard
+    next_steps promise a welcome only then."""
+    heartbeat = str(getattr(settings, "founder_heartbeat_enabled", "") or "").strip().lower()
+    return heartbeat in _TRUE and welcomes_enabled(settings)
 
 
 def _words(text: str) -> set[str]:

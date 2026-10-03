@@ -60,6 +60,20 @@ def test_flag_defaults_off_and_a_zero_cap_means_off():
     assert fw.welcomes_enabled(_settings()) is False
     assert fw.welcomes_enabled(_settings(founder_welcomes_enabled="true", founder_welcomes_per_hour=0)) is False
     assert _settings().founder_welcomes_per_hour == 6
+
+
+def test_welcomes_are_live_only_with_the_heartbeat_on_too():
+    """S11-5: what skill.md and /onboard promise depends on both flags."""
+    assert fw.welcomes_live(_settings()) is False
+    assert fw.welcomes_live(_settings(founder_welcomes_enabled="true")) is False
+    assert fw.welcomes_live(_settings(founder_heartbeat_enabled="true")) is False
+    assert fw.welcomes_live(_settings(founder_heartbeat_enabled="ture",
+                                      founder_welcomes_enabled="true")) is False
+    assert fw.welcomes_live(_settings(founder_heartbeat_enabled="true",
+                                      founder_welcomes_enabled="true",
+                                      founder_welcomes_per_hour=0)) is False
+    assert fw.welcomes_live(_settings(founder_heartbeat_enabled="yes",
+                                      founder_welcomes_enabled="TRUE")) is True
     assert _settings().founder_welcome_delay_minutes == 5.0
 
 
