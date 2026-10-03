@@ -111,7 +111,8 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: the report says PASS on every engine-verifiable criterion in the spec; suite,
   real-Postgres suite and smoke green.
 
-- [human] **S10-11 — Production runbook.** Write the HUMAN_ACTIONS item: Fly process for Celery
+- [human] **S10-11 — Production runbook.** (cycle 54: written as **H13** in HUMAN_ACTIONS; the
+  running is DrJ's.) Write the HUMAN_ACTIONS item: Fly process for Celery
   beat (with H9), env vars (`FOUNDER_HEARTBEAT_ENABLED`, `FOUNDER_DIDS` from H10 / D8), funding
   (H6 adapted to production), optional LLM key (D9), how to watch with `heartbeat_report.py`, how
   to switch it off. The engine writes it; DrJ runs it. Tier **T2** to write.

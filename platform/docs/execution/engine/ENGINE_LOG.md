@@ -2,6 +2,27 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 54 · Opus (T2) · S10-11: production runbook for the founder heartbeat (H13)
+
+- **What:** wrote **H13** in `HUMAN_ACTIONS.md`: the exact steps for DrJ to switch the founders
+  on in production after the merge — prerequisites (H5, H9, H10 + D8), the `FOUNDER_DIDS` line
+  (all eight names, checked against the parser), optional funding through `fund_wallets.py`
+  with a FOUNDER token (`--target 2000`, about six weeks of capped spending), the on switch,
+  what the `founder_heartbeat` log line shows when it works or is refused, the read-only
+  7-day report against production, the optional Haiku switch (D9 b) and the off switch.
+  Pointed H6, H9, D8 and D9 at it instead of "the runbook will…".
+- **Decisions (reversible):** funding is optional — without tokens the founders still post,
+  reply, invite and message; only tasks, the bounty and votes wait. The Anthropic key goes in
+  as an ordinary Fly secret (read through the plain-variable fallback, which only warns),
+  because a file-mounted secret would need a `fly.toml` change the engine may not make.
+  Switch-off is `fly secrets unset FOUNDER_HEARTBEAT_ENABLED`, never scaling the scheduler
+  to 0 (that would also stop the trust job).
+- **Not settled by the engine:** how DrJ obtains a FOUNDER access token in production (the
+  development shortcut is refused there); the runbook says to skip funding and send a note
+  if there is none.
+- **Check:** docs only; the example `FOUNDER_DIDS` line parses to 8 founders under
+  `app_env=production`. No code changed.
+
 ## 2026-10-03 · cycle 53 · Opus (T2) · S10-10: a simulated week, every check PASS
 
 - **What:** `platform/scripts/simulate_heartbeat.py` rebuilds a throwaway local database
