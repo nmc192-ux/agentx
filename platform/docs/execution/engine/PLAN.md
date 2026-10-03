@@ -22,6 +22,13 @@ changes; SDK becomes 0.4.0; screenshots are DrJ's in production.
 ## Steps
 
 Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_loop_v1.md`.
+**Re-tiered cycle 63 (DrJ note: Fable only where needed).** T1 (Fable) only for: fixing a
+found security hole; designing/changing code that moves tokens or balances, grants roles or
+permissions, or authenticates; scripts/migrations that change existing production data.
+T2 (Opus) is the default for engineering, planning and sprint close; T3 (Sonnet) for docs,
+tests-only work and bookkeeping. When unsure between T1 and T2, T2: the sprint-close Fable
+review (S11-9a) is the safety net. An Opus/Sonnet cycle that finds a hole records it and
+queues a T1 fix step; it does not fix it itself.
 
 - [x] **S11-1 — Stranger's journey script.** `platform/scripts/external_smoke.py`: plain
   `httpx`, no platform imports, `--base-url`, `--path curl|sdk` (sdk path added in S11-7).
@@ -80,16 +87,67 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   `platform/docs/sprints/sprint_11_journey_local.md` with the transcripts and timings; fill
   timings into the quickstart. Tier **T2**.
   Check: both paths exit 0; trust rose through one counted `message_replied`; first post
-  visible in < 10 s machine time.
+  visible in < 10 s machine time. (T2 confirmed: test tooling and a local run; calls the
+  reviewed onboard/auth routes without changing them.)
 
 - [ ] **S11-8 — Production runbook (H14) `[human]`.** Exact steps for DrJ after merge: turn
   welcomes on, run `external_smoke.py --base-url https://…` (both paths), take the listed
-  screenshots, and invite one real outside agent (Phase A exit criterion). Tier **T2**.
+  screenshots, and invite one real outside agent (Phase A exit criterion). Tier **T3**
+  (re-tiered cycle 63: runbook wording for existing settings, no code).
   Check: docs; commands parse locally.
+
+- [ ] **S11-9a — Sprint-close Fable security review (protocol step 5a; added cycle 63 by
+  DrJ's note).** One T1 cycle, before the retro. Read the diffs, try to break them, add
+  adversarial tests, fix anything found in the same cycle; log "reviewed N commits, found
+  M issues". Covers every Sprint 10–11 commit that is security-relevant and was built or
+  committed on Opus or Sonnet:
+  - `7db1f75` S10-4 founder reply loop + topic room invitations (Opus, cycle 47, `SECURITY-REVIEW:`)
+  - `4c28534` S10-5 founders message each other; answers counted as trust events (Opus, cycle 48, `SECURITY-REVIEW:`)
+  - `d51fa98` S11-3 founder welcome reply + DM (written by Fable cycle 59, committed unreviewed
+    by Sonnet cycle 60 with a test-fixture change, `SECURITY-REVIEW:`)
+  - `8b9f0d0` S10-8 trust replay at the end of each tick + founder label (Sonnet, cycle 51;
+    no prefix, but it records trust)
+  - `fe07811` S11-4 heartbeat lists replies and unanswered DMs (Opus, cycle 61; no prefix, but
+    it reads private messages: check own-inbox only and the block filters)
+  - `23e01b0` S10-2 founder text generators, Anthropic key as file secret + daily cap
+    (Opus, cycle 45; no prefix, handles a secret and spend)
+  Not in scope (built on Fable): S10-1, S10-3, S10-6, S10-7, S11-2. Tier **T1**.
+  Check: adversarial tests added and green; unit + real-Postgres suites green; findings and
+  fixes in ENGINE_LOG.
 
 - [ ] **S11-9 — Sprint close.** Acceptance criteria locally, `sprint_11_retro.md`,
   `state_of_agentx.md`, archive this plan; decompose Sprint 12 next cycle. Tier **T2**.
 
+## Queued from DrJ's decisions (cycle 63) — to be placed when Sprint 12 is decomposed
+
+DrJ answered D1–D9 (cycle 63 note): D1 a, D2 b+c, D3 b+c, D4 b, D5 b, D6 a, D7 a, D8 a, D9 a.
+D1 is done (root LICENSE). D6, D7, D9: no change. D8 (a): production keeps its addresses and
+lists them in `FOUNDER_DIDS` (already how H13 works). D2 (b): `tasks` stays off in production
+until creator approval ships (HUMAN_ACTIONS H3 note). The rest is code that moves tokens, so
+each is its own **T1** step with a `NEEDS-DELIBERATE-MERGE:` commit and fail-closed tests:
+
+- [ ] **E0 (D2b) — Hold `tasks` off in the repo default until E1 ships**: move it from
+  `ENABLED_IN_SPRINT_9` back onto the off-list in `src/router_config.py` with the reason;
+  check the founder heartbeat's paid-task loop (it uses the services, not the route) and the
+  smoke/e2e tests still pass. Do this next (Sprint 11, before S11-6): it decides what the
+  merge switches on. Tier **T2** (configuration that only turns a route off).
+- [ ] **E1 (D2c) — Creator approves a task result before the reward is released**; automatic
+  release to the worker N days after submission if the creator stays silent; founder runners
+  and the founder heartbeat's paid-task loop updated to approve. Tier **T1** (moves tokens).
+- [ ] **E2 (D3b) — FOUNDER settles a disputed contract**: one founder-only action that pays
+  the contractor or refunds the creator, on the ledger. Tier **T1** (moves tokens, role-gated).
+- [ ] **E3 (D3c) — Contract deadlines**: creator may reclaim after the deadline with no
+  delivery; contractor paid automatically N days after delivery if the creator is silent;
+  disputes still go to E2. Tier **T1** (moves tokens).
+- [ ] **E4 (D4b) — Pay the accepted bid, refund the rest; bids above budget refused.**
+  Tier **T1** (moves tokens).
+- [ ] **E5 (D5b) — Bounty deadline enforced**: no submissions after it; N days later an
+  unpaid pool goes to the top-scored submission, or back to the creator if nothing was
+  scored (the trade-off flagged in D5 stands as DrJ chose it). Tier **T1** (moves tokens).
+- [ ] **E6 — Scheduled job that runs the automatic releases (E1/E3/E5)**, reusing the existing
+  scheduler; calls the reviewed release functions only. Tier **T2**.
+  N for all automatic releases: engine default 7 days, one constant (reversible).
+
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H13, D1–D9. H12 moved to SDK 0.4.0 at S11-2 (cycle 58); H14 arrives at S11-8.
+H1–H13; D1–D9 answered cycle 63 (see above). H12 moved to SDK 0.4.0 at S11-2 (cycle 58); H14 arrives at S11-8.

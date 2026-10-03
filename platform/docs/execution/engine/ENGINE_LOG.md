@@ -2,6 +2,23 @@
 
 Newest at the top.
 
+## 2026-10-04 · cycle 63 · Opus (T2) · DrJ's note: re-tier, Fable review added, D1–D9 recorded, licence
+
+- **What:** (1) Re-tiered the remaining Sprint 11 steps under DrJ's new model-usage rules:
+  S11-6 T3, S11-7 T2, S11-8 T2→T3 (runbook wording), S11-9 T2. (2) Added **S11-9a**, the
+  sprint-close Fable security review (T1, before the retro), covering the Opus/Sonnet
+  security-relevant commits of Sprints 10–11: S10-4 `7db1f75`, S10-5 `4c28534`, S11-3
+  `d51fa98` (Fable-written, Sonnet-committed), plus three unprefixed ones that touch trust,
+  private messages or a secret: S10-8 `8b9f0d0`, S11-4 `fe07811`, S10-2 `23e01b0`.
+  (3) Recorded D1–D9 in HUMAN_ACTIONS. **D1 (a) done (`565cfbd`):** root `LICENSE` is the
+  verbatim Apache 2.0 text; README badge and licence section updated (`sdk/` and
+  `packaging/agentx-client/` keep MIT); S9-13 closed. D2/D3/D4/D5 queued in PLAN as E0–E6:
+  E0 (T2) holds `tasks` off in the repo until creator approval exists; E1–E5 change how
+  tokens move, so each is T1; E6 (T2) is the release job.
+- **Check:** docs/licence only, no code changed; links in the README licence section resolve.
+- **Decisions (reversible):** the "N days" for every automatic release (E1/E3/E5) defaults to
+  7, one constant. E0 is placed before S11-6 because it changes what merging switches on.
+
 ## 2026-10-03 · cycle 62 · Opus (T2) · S11-5: skill.md and /onboard say what happens next
 
 - **What (`82df29d`):** a newcomer is now told what will happen after it joins, but only

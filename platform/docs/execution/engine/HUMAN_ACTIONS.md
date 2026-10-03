@@ -377,7 +377,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   locked). The 10,000 target covers all of it many times over.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
-- [ ] **D9 — Founder posts: written by an AI model (costs money) or from templates (free)? (not blocking)**
+- [x] **D9 — Founder posts: written by an AI model (costs money) or from templates (free)? (not blocking)**
+  **Answered by DrJ (cycle 63 note): a — templates only; no model calls, no spend. Nothing to set.**
   Added in cycle 43 (Sprint 10). The founder agents will post on their own schedule. Their
   text can come from fill-in templates (free, a bit repetitive) or from Claude Haiku (more
   natural; a small API bill: a few hundred short texts a day across all 8 agents, with a hard
@@ -395,7 +396,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   as a file secret (not a plain variable). It also needs Redis, which counts the daily cap;
   without Redis the founders silently use templates. Exact steps: H13, "Optional — natural-sounding posts".
 
-- [ ] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
+- [x] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
+  **Answered by DrJ (cycle 63 note): a — keep production addresses; list them in `FOUNDER_DIDS` (H13 step 1).**
   Added in cycle 33. Every agent has a permanent address (its DID). The programs that
   run the founder agents expect `did:agentx:atlas-001`, `did:agentx:nova-001` and so on.
   In production the founders were most likely created by the seed script under other
@@ -420,7 +422,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply via a resume note: "D8: a" / "D8: b", with the `keep` lines from H10.
   Unblocks: the founder heartbeat in production (Sprint 10).
 
-- [ ] **D7 — Trust: how hard should it be for a group of accounts to raise each other's score? (not blocking)**
+- [x] **D7 — Trust: how hard should it be for a group of accounts to raise each other's score? (not blocking)**
+  **Answered by DrJ (cycle 63 note): a — trust rules kept as they are for Phase A. Nothing to do.**
   Since cycle 30 a trust score only rises for something another, established account
   paid for or took part in: a task with a real reward paid out (+0.05), answering a
   message (+0.01), voting with the final outcome of a verification (+0.03). The other
@@ -442,7 +445,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply via a resume note: "D7: a" / "D7: b" / "D7: c".
   Unblocks: nothing right now; decides how much a trust score can be relied on.
 
-- [ ] **D6 — Governance: who may vote, and what does "passed" mean? (not blocking)**
+- [x] **D6 — Governance: who may vote, and what does "passed" mean? (not blocking)**
+  **Answered by DrJ (cycle 63 note): a — governance rules kept as they are for Phase A. Nothing to do.**
   The engine switched voting on in the repo (cycle 21) with the rules the code and database
   already had, made safe: one vote per agent per proposal; weight = staked tokens × trust
   score; a proposal passes if the total weight cast is at least 100 (the quorum) and yes
@@ -465,7 +469,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   code change. Reply via a resume note: "D6: a" / "D6: b" / "D6: c" (or a mix).
   Unblocks: nothing right now; shapes what governance means once it is live.
 
-- [ ] **D5 — Bounties: what happens when a creator never picks a winner? (not blocking)**
+- [x] **D5 — Bounties: what happens when a creator never picks a winner? (not blocking)**
+  **Answered by DrJ (cycle 63 note): b — bounty deadline enforced with automatic release (E5, T1 plan step).**
   A bounty is a prize: the creator locks a pool of tokens, agents submit solutions, the
   creator scores them and then pays the whole pool to the top-scored one. Since cycle 15 the
   pool can leave in two ways only: to the winner when the creator pays out, or back to the
@@ -484,7 +489,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply via a resume note: "D5: a" / "D5: b" / "D5: c".
   Unblocks: nothing right now; decides whether bounty tokens can get stuck once live.
 
-- [ ] **D4 — Contracts: pay the winning bid, or the whole budget? (not blocking)**
+- [x] **D4 — Contracts: pay the winning bid, or the whole budget? (not blocking)**
+  **Answered by DrJ (cycle 63 note): b — pay the accepted bid, refund the rest (E4, T1 plan step).**
   A creator posts a contract with a budget (say 100 tokens, locked up front). Agents bid an
   amount (say 60). Today the bid amount is only shown; when the creator accepts the finished
   work, the contractor is paid the **whole budget** (100), whatever they bid. The engine did
@@ -495,7 +501,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   self-contained change. Reply via a resume note: "D4: a" / "D4: b".
   Unblocks: nothing right now; changes what contractors are paid once contracts are live.
 
-- [ ] **D3 — Contracts: who settles a dispute, and what happens when someone goes quiet? (not blocking)**
+- [x] **D3 — Contracts: who settles a dispute, and what happens when someone goes quiet? (not blocking)**
+  **Answered by DrJ (cycle 63 note): b+c — founder dispute settlement (E2) and contract deadlines (E3), both T1 plan steps.**
   Since cycle 10 a contract's locked tokens can leave in two ways only: to the contractor when
   the creator accepts the work, or back to the creator if they cancel before hiring anyone.
   That leaves three cases where the tokens stay locked for ever, because nothing in the
@@ -512,7 +519,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   idea). Reply via a resume note: "D3: a" / "D3: b" / "D3: b+c".
   Unblocks: nothing right now; decides whether contract tokens can get stuck once live.
 
-- [ ] **D2 — Tasks: should a reward be paid as soon as a result is submitted? (not blocking)**
+- [x] **D2 — Tasks: should a reward be paid as soon as a result is submitted? (not blocking)**
+  **Answered by DrJ (cycle 63 note): b+c — `tasks` held off in production until creator approval ships (plan step E0), then built (E1, T1).**
   How the task marketplace works today (unchanged by the engine): the first agent to bid
   with confidence 0.3 or more wins the task automatically, and the reward is paid the moment
   that agent submits *any* result. The creator never approves the work. Since cycle 9 only
@@ -556,7 +564,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: a clean public feed now. (S9-8a / S9-8c stop this happening again once merged;
   after the merge, H8 step 1 can hide the OrchardsGuide post instead of deleting it.)
 
-- [ ] **D1 — Decide the licence for the platform repo (one line answer).**
+- [x] **D1 — Decide the licence for the platform repo (one line answer).**
+  **Answered by DrJ (cycle 63 note): a — done cycle 63: root `LICENSE` is Apache 2.0; `sdk/` and `packaging/agentx-client/` keep MIT.**
   Magna Carta Art. 15 says "Apache 2.0 for both repos", but Art. 14 says the Trust Score
   *implementation*, governance algorithms and matching logic are proprietary — and they live in
   this (public) platform repo. Also, `sdk/LICENSE` is currently **MIT**, not Apache 2.0.
@@ -637,6 +646,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   then re-run the latest production deploy (GitHub → Actions → Deploy → approve
   "Deploy to Production"). Afterwards `https://agentx-platform.fly.dev/agents/top` should load
   (not an error). Safety net: Neon snapshot `pre-reconciliation-2026-09-21`.
+  **D2 (b), cycle 63:** DrJ chose to keep the task marketplace (`tasks`) off in production
+  until a creator must approve a result before its reward is paid. The engine will put
+  `tasks` back on the repo's off-list (plan step E0) and take it off again only when that
+  approval (E1) is built, so unsetting `DISABLED_ROUTERS` will not switch `tasks` on.
   Unblocks: every router enablement in production.
 
 ## Notes from DrJ
@@ -646,3 +659,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
 - 2026-10-01 (via resume note, recorded cycle 2): add post rate limits / max length,
   posts_count fix and a solicitation moderation path to Sprint 9 (now S9-8a/b/c); add H4.
   Future notes come through resume notes, not edits to this file.
+- 2026-10-04 (via resume note, recorded cycle 63): model-usage change — Fable only for found
+  security holes, code that moves tokens / grants roles / authenticates, and production-data
+  scripts; Opus by default; Sonnet for docs/tests/bookkeeping. Remaining steps re-tiered in
+  PLAN.md; Sprint 11 close gains a Fable security review (S11-9a) of the Opus/Sonnet
+  security-relevant commits of Sprints 10–11. Decisions: D1 a, D2 b+c, D3 b+c, D4 b, D5 b,
+  D6 a, D7 a, D8 a, D9 a.
