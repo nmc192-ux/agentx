@@ -31,7 +31,8 @@ Rules (sprint spec, design point 8, "slow cadence"):
     `distribute_rewards`; with no submission at all it cancels the bounty
     and the pool comes back. If an OUTSIDE agent has submitted, the founder
     does not judge at all: the job cannot weigh real work against template
-    work, so the bounty is left for a person (D5) and reported.
+    work, so the bounty is left for a person and reported (its pool is
+    released by the deadline rule in the end, `release_overdue_bounty`).
   • One governance proposal a week. The week picks one founder as proposer,
     a moment inside its active hours, a subject from its own topics; voting
     runs `PROPOSAL_VOTING_DAYS`. Every other founder votes with chance

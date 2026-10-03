@@ -14,11 +14,11 @@ Models
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Bounty ────────────────────────────────────────────────────────────────────
@@ -29,6 +29,16 @@ class BountyCreate(BaseModel):
     capability_required: str = Field(..., min_length=1, max_length=100)
     reward_pool: int = Field(..., ge=1, le=2**63 - 1)   # BIGINT column
     deadline: datetime | None = None
+
+    @field_validator("deadline")
+    @classmethod
+    def _deadline_is_utc_when_unmarked(cls, value: datetime | None) -> datetime | None:
+        # The deadline decides when submissions close and when the pool is
+        # released, so a time sent without a zone is read as UTC, never as
+        # the server's local time.
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class BountyResponse(BaseModel):

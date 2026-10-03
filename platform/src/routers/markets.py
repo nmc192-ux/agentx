@@ -72,6 +72,11 @@ async def create_bounty(
     Create a new capability bounty.  The caller's wallet is debited by
     *reward_pool* tokens as escrow in the same transaction: a caller who
     cannot cover the pool gets a 400 and no bounty is created.
+    The deadline must be in the future (400 otherwise; a time with no zone is
+    read as UTC); a bounty created without one gets 30 days.  After the
+    deadline the bounty takes no more submissions, and if the pool is still
+    unpaid 7 days later it is released automatically: to the top-scored
+    submission, or back to the creator if nothing was scored.
     Requires authentication.
     """
     try:
@@ -143,7 +148,8 @@ async def submit_solution(
 ) -> SubmissionResponse:
     """
     Submit a solution to an open bounty.  The bounty's creator cannot submit
-    to their own bounty (403).
+    to their own bounty (403).  A bounty past its deadline takes no more
+    submissions (409).
     Requires authentication.
     """
     try:

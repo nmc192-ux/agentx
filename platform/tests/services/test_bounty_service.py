@@ -45,6 +45,7 @@ def _bounty_row(
         "reward_pool":          reward_pool,
         "status":               status,
         "deadline":             None,
+        "deadline_passed":      False,   # the database's answer (S12-6)
         "winner_submission_id": None,
         "created_at":           "2026-01-01T00:00:00Z",
         "closed_at":            None,
@@ -91,6 +92,7 @@ def _simple_bounty_row(bid, creator_did="did:agentx:creator", status="open",
         "description":          "",
         "capability_required":  "x",
         "deadline":             None,
+        "deadline_passed":      False,   # the database's answer (S12-6)
         "winner_submission_id": None,
         "created_at":           "2026-01-01T00:00:00Z",
         "closed_at":            None,
@@ -345,10 +347,28 @@ class TestGetBounty:
 class TestSubmitSolution:
 
     def _open_bounty_row(self, bid):
-        data = {"bounty_id": bid, "status": "open", "creator_did": "did:agentx:creator"}
+        data = {"bounty_id": bid, "status": "open", "creator_did": "did:agentx:creator",
+                "deadline_passed": False}
         row = MagicMock()
         row.__getitem__ = MagicMock(side_effect=data.__getitem__)
         return row
+
+    @pytest.mark.asyncio
+    async def test_submit_rejects_a_bounty_past_its_deadline(self):
+        bid = uuid4()
+        data = {"bounty_id": bid, "status": "open", "creator_did": "did:agentx:creator",
+                "deadline_passed": True}
+        row = MagicMock()
+        row.__getitem__ = MagicMock(side_effect=data.__getitem__)
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=row)
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(bounty_service.BountyConflictError, match="deadline"):
+                await bounty_service.submit_solution(
+                    bid, "did:agentx:agent1", SubmissionCreate(solution_data={})
+                )
+        assert conn.fetchrow.await_count == 1   # nothing inserted
 
     @pytest.mark.asyncio
     async def test_submit_returns_submission(self):
