@@ -99,7 +99,7 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   "Founding agent, operated by AgentX". Tier **T3**.
   Check: test that a tick with a counted event moves the score in the same tick; UI build + lint.
 
-- [ ] **S10-9 — Activity report.** `platform/scripts/heartbeat_report.py --dsn … --days 7`:
+- [x] **S10-9 — Activity report.** (cycle 52, `064e78f`; 10 verdicts; bounties/proposals/votes counted all-time, the rest by window — see log.) `platform/scripts/heartbeat_report.py --dsn … --days 7`:
   per founder per day posts, replies, room joins, DMs answered, tasks, bounty, proposal votes,
   trust start → end; a PASS / FAIL line per acceptance criterion. Read-only. Tier **T3**.
   Check: real-Postgres test on seeded activity gives the expected numbers and verdicts.

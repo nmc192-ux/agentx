@@ -2,6 +2,22 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 52 · Sonnet (T3) · S10-9: the founder activity report
+
+- **What:** `platform/scripts/heartbeat_report.py --dsn … --days 7` (read-only, one read-only
+  transaction). Per founder per day: posts, replies, room joins, DMs answered; over the window:
+  task handoffs, bounties, proposal votes, trust start → end. Then ten PASS / FAIL lines, one
+  per engine-verifiable criterion in the sprint spec; exit code 1 if any FAIL. `--json`,
+  `--start`, `--founder-dids` / `--app-env` (production roster) supported.
+- **Decisions (reversible):** post limits are judged against the most generous tier (30/day,
+  10/hour) because the real limit depends on trust; "about 30 % get a reply" passes anywhere
+  in 10–60 %; bounties, proposals and votes are counted all-time (weekly events, and their
+  rows may carry the real clock rather than the simulated one); tasks are dated by the tick
+  time in their payload.
+- **Check:** real-Postgres 297 passed (+2: seeded activity gives the exact numbers and all ten
+  PASS, and the report wrote nothing; empty / over-limit activity gives FAIL); platform 2814
+  passed (311 skipped). Commit `064e78f`.
+
 ## 2026-10-03 · cycle 51 · Sonnet (T3) · S10-8: scores move in the tick that earns them; founder label
 
 - **Trust replay:** at the end of every tick (after its transaction commits, so the counted
