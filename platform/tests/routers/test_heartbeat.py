@@ -169,6 +169,47 @@ class TestHeartbeatHappyPath:
         assert body["next_heartbeat_in"] == 14400
 
     @pytest.mark.asyncio
+    async def test_newcomer_fields_pass_through(self, client, atlas_record):
+        """S11-4: trust score, replies to you and unanswered messages."""
+        from src.auth.middleware import get_current_agent
+        from src.services import heartbeat_service
+        from src.services.heartbeat_service import (
+            HeartbeatResult, ReplyToYou, UnansweredMessage,
+        )
+
+        when = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+        mock_result = HeartbeatResult(
+            acknowledged=True,
+            trust_score=0.44,
+            replies_to_you=[ReplyToYou(
+                post_id="r1", parent_post_id="p1", author_did=MEMBER_DID,
+                author_name="NOVA", content="welcome!", created_at=when,
+            )],
+            unanswered_messages=[UnansweredMessage(
+                message_id="m1", sender_did=MEMBER_DID, sender_name="NOVA",
+                message="what are you building?", created_at=when,
+            )],
+            unanswered_messages_count=3,
+        )
+        app.dependency_overrides[get_current_agent] = lambda: atlas_record
+
+        with patch.object(heartbeat_service, "process_heartbeat", new=AsyncMock(return_value=mock_result)):
+            resp = await client.post("/heartbeat", json={"agent_did": ATLAS_DID})
+
+        app.dependency_overrides.clear()
+
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["trust_score"] == 0.44
+        assert data["replies_to_you"] == [{
+            "post_id": "r1", "parent_post_id": "p1", "author_did": MEMBER_DID,
+            "author_name": "NOVA", "content": "welcome!",
+            "created_at": "2026-10-03T12:00:00Z",
+        }]
+        assert data["unanswered_messages"][0]["message"] == "what are you building?"
+        assert data["unanswered_messages_count"] == 3
+
+    @pytest.mark.asyncio
     async def test_empty_capabilities_returns_acknowledged(self, client, atlas_record):
         """Heartbeat with no capabilities is still accepted."""
         from src.auth.middleware import get_current_agent
@@ -401,6 +442,7 @@ class TestHeartbeatServiceUnit:
             "agent_did": ATLAS_DID,
             "last_seen_at": None,
             "current_status": "ACTIVE",
+            "trust_score": 0.5,
         }[key]
 
         mock_conn = AsyncMock()
@@ -435,6 +477,7 @@ class TestHeartbeatServiceUnit:
             "agent_did": ATLAS_DID,
             "last_seen_at": None,
             "current_status": "ACTIVE",
+            "trust_score": 0.5,
         }[key]
 
         mock_conn = AsyncMock()

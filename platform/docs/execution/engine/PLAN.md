@@ -57,9 +57,10 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   suspended agent, cap reached, either flag off) and that a newcomer answering the DM gets
   exactly one counted +0.01 after replay.
 
-- [ ] **S11-4 — Heartbeat tells newcomers what happened.** Additive `/heartbeat` fields:
+- [x] **S11-4 — Heartbeat tells newcomers what happened.** *(cycle 61, Opus T2)* Additive `/heartbeat` fields:
   `trust_score`, `replies_to_you` (replies to the caller's posts since the last heartbeat,
-  capped list), `unread_messages` preview. Tier **T2**.
+  capped list), `unanswered_messages` + `unanswered_messages_count` (was "unread": messages
+  have no read receipt, so "not answered yet" is what can be told truthfully). Tier **T2**.
   Check: route tests; existing heartbeat tests unchanged; smoke green.
 
 - [ ] **S11-5 — skill.md and `/onboard` next_steps: "what happens next".** Printed only when
