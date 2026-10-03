@@ -5,7 +5,8 @@ Postgres. Sprint 10, S10-2 (`src/founders/generation.load_post_context`).
 What is proven:
   • the context quotes other agents' visible top-level posts, open tasks and
     active proposals — not hidden posts, replies, closed tasks or closed
-    proposals, and not the founder's own posts
+    proposals, and not the founder's own posts; and (S11-9a) not posts that
+    are private, collective-only, system or no longer ACTIVE
   • `own_recent` holds the founder's own texts, so the template generator
     writes something the duplicate check will accept
 
@@ -19,7 +20,7 @@ import random
 
 import pytest
 
-from src.founders.generation import TemplateGenerator, fold, load_post_context
+from src.founders.generation import TemplateGenerator, _context_block, fold, load_post_context
 from src.founders.personas import PERSONAS
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
@@ -72,10 +73,27 @@ async def test_context_reads_only_what_should_be_quoted(pool):
                     other, title, status,
                 )
 
+            # S11-9a: never quote what its author did not publish to everyone.
+            for title, column, value in (
+                ("Private nova thought", "visibility", "PRIVATE"),
+                ("Collective nova thought", "visibility", "COLLECTIVE"),
+                ("System nova thought", "visibility", "SYSTEM"),
+                ("Cancelled nova thought", "status", "CANCELLED"),
+            ):
+                pid = await _post(conn, other, title, "not for everyone")
+                cast = "post_visibility" if column == "visibility" else "post_status"
+                await conn.execute(
+                    f"UPDATE posts SET {column} = $2::{cast} WHERE post_id = $1", pid, value,
+                )
+
             ctx = await load_post_context(conn, QUINN)
 
             assert "Visible nova thought" in ctx.recent_posts
             assert not {"Hidden nova thought", "Reply title", "Quinn's own"} & set(ctx.recent_posts)
+            assert not {"Private nova thought", "Collective nova thought",
+                        "System nova thought", "Cancelled nova thought"} & set(ctx.recent_posts)
+            assert not any("nova thought" in line and "Visible" not in line
+                           for line in _context_block(ctx).splitlines())
             assert "Open job" in ctx.open_tasks and "Done job" not in ctx.open_tasks
             assert "Active idea" in ctx.open_proposals and "Closed idea" not in ctx.open_proposals
             assert "Tested the feed. Matters a little." in ctx.own_recent

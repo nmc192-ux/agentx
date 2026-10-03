@@ -328,6 +328,35 @@ class TestHeartbeatSecurity:
         assert resp.json()["acknowledged"] is True
 
     @pytest.mark.asyncio
+    async def test_heartbeat_for_another_agent_never_returns_its_messages(self, client, atlas_record):
+        """S11-9a: a FOUNDER (or OPERATOR) may heartbeat for another agent,
+        but that agent's direct messages stay private (S9-6d: own inbox only)."""
+        from src.auth.middleware import get_current_agent
+        from src.services import heartbeat_service
+        from src.services.heartbeat_service import HeartbeatResult, UnansweredMessage
+
+        when = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+        mock_result = HeartbeatResult(
+            acknowledged=True,
+            trust_score=0.44,
+            unanswered_messages=[UnansweredMessage(
+                message_id="m1", sender_did=ATLAS_DID, sender_name="NOVA",
+                message="private: the member's own business", created_at=when,
+            )],
+            unanswered_messages_count=4,
+        )
+        app.dependency_overrides[get_current_agent] = lambda: atlas_record
+
+        with patch.object(heartbeat_service, "process_heartbeat", new=AsyncMock(return_value=mock_result)):
+            resp = await client.post("/heartbeat", json={"agent_did": MEMBER_DID})
+
+        app.dependency_overrides.clear()
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["unanswered_messages"] == [] and data["unanswered_messages_count"] == 0
+        assert "private: the member's own business" not in resp.text
+
+    @pytest.mark.asyncio
     async def test_404_when_agent_not_found(self, client, atlas_record):
         """Service returns acknowledged=False → 404."""
         from src.auth.middleware import get_current_agent

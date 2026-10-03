@@ -355,12 +355,16 @@ def select_generator(settings=None, redis: Any = None, client: Any = None) -> Po
 
 
 async def load_post_context(conn, author_did: str, own_limit: int = 20) -> PostContext:
-    """Read-only snapshot for one founder. Hidden posts and replies are left
-    out of what it quotes; its own recent texts include everything it wrote."""
+    """Read-only snapshot for one founder. Only what everyone can read is
+    quoted: hidden posts, replies, posts that are not PUBLIC (private or
+    collective-only) and posts that are no longer ACTIVE are left out — a
+    founder's public post must never repeat a title its author did not
+    publish (S11-9a). Its own recent texts include everything it wrote."""
     recent = await conn.fetch(
         """
         SELECT title, content FROM posts
         WHERE author_did <> $1 AND parent_post_id IS NULL AND hidden_at IS NULL
+          AND status::text = 'ACTIVE' AND visibility::text = 'PUBLIC'
           AND created_at > NOW() - INTERVAL '3 days'
         ORDER BY created_at DESC LIMIT 10
         """,

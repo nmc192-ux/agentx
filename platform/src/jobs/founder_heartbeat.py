@@ -267,7 +267,7 @@ __all__ = [
     "wallet_balance", "handoff_posted_on", "load_handoffs_to_finish", "founder_heartbeat",
     "load_founder_bounties", "bounty_posted_at", "load_submissions", "load_founder_proposals",
     "proposal_posted_at", "has_voted", "has_stake",
-    "load_newcomers", "welcomes_in_last_hour", "recently_welcomed",
+    "load_newcomers", "welcomes_in_last_hour", "recently_welcomed", "WELCOME_SCAN_EXTRA",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -635,6 +635,9 @@ async def create_founder_reply(
 
 # ── Welcoming newcomers (S11-3) ───────────────────────────────────────────────
 
+# How many newcomers beyond the free slots one tick looks at (see `_welcome_phase`).
+WELCOME_SCAN_EXTRA = 20
+
 async def load_newcomers(
     conn, founder_dids: list[str], now: datetime, delay: timedelta, limit: int,
 ) -> list[Newcomer]:
@@ -644,7 +647,12 @@ async def load_newcomers(
     guarded or not) and not a FOUNDER by governance role. ACTIVE agents only,
     created in the last WELCOME_WINDOW. An agent whose first post is held,
     private or not ACTIVE is left out (and so never welcomed for a later
-    post: the first post is the one that counts)."""
+    post: the first post is the one that counts).
+
+    The record of a welcome is a reply WRITTEN BY A ROSTER ADDRESS that
+    carries ``metadata.heartbeat.welcomed``. Post metadata is free for any
+    caller of POST /posts to set, so the author is part of the record: a
+    post by anyone else that claims to be a welcome is ignored (S11-9a)."""
     if limit <= 0:
         return []
     rows = await conn.fetch(
@@ -672,7 +680,8 @@ async def load_newcomers(
           AND fp.created_at + $4::interval <= $2::timestamptz
           AND NOT EXISTS (
                 SELECT 1 FROM posts w
-                WHERE w.metadata->'heartbeat'->>'kind' = $5
+                WHERE w.author_did = ANY($1::text[])
+                  AND w.metadata->'heartbeat'->>'kind' = $5
                   AND w.metadata->'heartbeat'->>'welcomed' = a.agent_did
           )
         ORDER BY fp.created_at, fp.post_id
@@ -690,29 +699,35 @@ async def load_newcomers(
     ]
 
 
-async def welcomes_in_last_hour(conn, now: datetime) -> int:
-    """Welcome replies written in the hour before *now* (held ones included;
-    anything dated later than *now* counts too, so a clock jump cannot open
-    the cap)."""
+async def welcomes_in_last_hour(conn, now: datetime, founder_dids: list[str]) -> int:
+    """Welcome replies written by *founder_dids* (the roster addresses) in the
+    hour before *now* (held ones included; anything dated later than *now*
+    counts too, so a clock jump cannot open the cap). Only the founders'
+    own replies count: an outsider's post that copies the welcome metadata
+    must not be able to use up the cap (S11-9a)."""
     return await conn.fetchval(
         """
         SELECT COUNT(*) FROM posts
-        WHERE metadata->'heartbeat'->>'kind' = $1
+        WHERE author_did = ANY($3::text[])
+          AND metadata->'heartbeat'->>'kind' = $1
           AND created_at > $2::timestamptz - INTERVAL '1 hour'
         """,
-        KIND_WELCOME_REPLY, now,
+        KIND_WELCOME_REPLY, now, founder_dids,
     )
 
 
-async def recently_welcomed(conn, now: datetime) -> list[str]:
-    """DIDs welcomed in the 24 hours before *now* (for the trust replay)."""
+async def recently_welcomed(conn, now: datetime, founder_dids: list[str]) -> list[str]:
+    """DIDs welcomed by *founder_dids* in the 24 hours before *now* (for the
+    trust replay). Read from the founders' own replies only, so nobody else
+    can add an address to the replay list."""
     rows = await conn.fetch(
         """
         SELECT DISTINCT metadata->'heartbeat'->>'welcomed' AS did FROM posts
-        WHERE metadata->'heartbeat'->>'kind' = $1
+        WHERE author_did = ANY($3::text[])
+          AND metadata->'heartbeat'->>'kind' = $1
           AND created_at > $2::timestamptz - INTERVAL '24 hours'
         """,
-        KIND_WELCOME_REPLY, now,
+        KIND_WELCOME_REPLY, now, founder_dids,
     )
     return sorted(r["did"] for r in rows if r["did"])
 
@@ -783,37 +798,58 @@ async def _welcome_phase(
     """Welcome the newcomers that are due, oldest first, up to the hourly cap
     and one per founder per tick, each newcomer in its own savepoint (a
     failed welcome undoes both its reply and its message and is reported;
-    the next tick finds the newcomer still unwelcomed)."""
+    the next tick finds the newcomer still unwelcomed).
+
+    A welcome that fails takes no slot and no founder: a few more newcomers
+    than there are slots are read (`WELCOME_SCAN_EXTRA`), so newcomers whose
+    welcome keeps failing cannot hold up the ones behind them (S11-9a)."""
     replies: list[tuple[UUID, str, UUID]] = []
     messages: list[SentMessage] = []
     if not founders:
         summary.welcome_skipped["*"] = "no_founders"
         return replies, messages
-    room = max(0, int(per_hour) - int(await welcomes_in_last_hour(conn, now)))
+    roster_dids = list(roster.values())
+    room = max(0, int(per_hour) - int(await welcomes_in_last_hour(conn, now, roster_dids)))
     if room == 0:
         summary.welcome_skipped["*"] = "hourly_cap"
         return replies, messages
+    slots = min(room, len(founders))
     newcomers = await load_newcomers(
-        conn, list(roster.values()), now, timedelta(minutes=max(0.0, float(delay_minutes))),
-        min(room, len(founders)),
+        conn, roster_dids, now, timedelta(minutes=max(0.0, float(delay_minutes))),
+        slots + WELCOME_SCAN_EXTRA,
     )
     used: set[str] = set()
+    done = 0
     for newcomer in newcomers:
+        if done >= slots:
+            break
+        before = set(used)
         try:
             async with conn.transaction():
                 made = await _tick_welcome(conn, newcomer, founders, used, now, summary)
-        except DuplicatePost:
-            summary.welcome_rejected[newcomer.did] = "duplicate"
-        except HTTPException as exc:
-            summary.welcome_rejected[newcomer.did] = str(exc.detail)
-        except PostValidationError as exc:
-            summary.welcome_rejected[newcomer.did] = str(exc)
-        except Exception as exc:   # noqa: BLE001 — logged; the other newcomers still get theirs
-            logger.exception("founder_heartbeat: welcoming %s failed", newcomer.did)
-            summary.welcome_errors[newcomer.did] = type(exc).__name__
+        except Exception as exc:   # noqa: BLE001 — reported; the other newcomers still get theirs
+            # Rolled back: nothing was written, so nothing may be reported
+            # as written and the founder is free for the next newcomer.
+            used.clear()
+            used.update(before)
+            for record in (summary.welcomed, summary.welcome_reply_ids, summary.welcome_dm_ids,
+                           summary.welcome_dm_blocked):
+                record.pop(newcomer.did, None)
+            if newcomer.did in summary.welcome_held:
+                summary.welcome_held.remove(newcomer.did)
+            if isinstance(exc, DuplicatePost):
+                summary.welcome_rejected[newcomer.did] = "duplicate"
+            elif isinstance(exc, HTTPException):
+                summary.welcome_rejected[newcomer.did] = str(exc.detail)
+            elif isinstance(exc, PostValidationError):
+                summary.welcome_rejected[newcomer.did] = str(exc)
+            else:
+                logger.exception("founder_heartbeat: welcoming %s failed", newcomer.did)
+                summary.welcome_errors[newcomer.did] = type(exc).__name__
         else:
-            if made is None:
-                continue
+            if made is None:   # no founder is free: none will be for the rest either
+                break
+            done += 1
             reply, message = made
             if reply is not None:
                 replies.append(reply)
@@ -1799,7 +1835,7 @@ async def run_tick(
             )
             replies += welcome_replies
             messages += welcome_messages
-            newcomers = await recently_welcomed(conn, now)
+            newcomers = await recently_welcomed(conn, now, list(roster.values()))
         else:
             newcomers = []
         messages += await _message_phase(conn, founders, dm_seed, rng, now, summary)

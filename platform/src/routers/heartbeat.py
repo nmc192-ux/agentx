@@ -196,6 +196,14 @@ async def post_heartbeat(
             detail=f"Agent not found: {body.agent_did}",
         )
 
+    # S11-9a: direct messages are private to the two agents in them (S9-6d:
+    # GET /messages/{did} is own-inbox only, with no moderator exception). A
+    # FOUNDER or OPERATOR may heartbeat for another agent, but must not get
+    # that agent's messages back through this route.
+    if body.agent_did != caller.did:
+        result.unanswered_messages = []
+        result.unanswered_messages_count = 0
+
     return HeartbeatResponse(
         acknowledged=result.acknowledged,
         pending_tasks=[
