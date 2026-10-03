@@ -287,8 +287,23 @@ async def test_one_handoff_is_funded_taken_paid_and_counted_once(pool, clean):
 
     done = await tick(done_at, seed)
     assert done["task_submitted"] == {plan.peer: str(tid)}
-    assert done["task_paid"] == {plan.peer: plan.reward - fee}
-    assert done["task_trust"] == {plan.peer: "recorded"}
+    # S12-2: a submitted result pays nothing; the creator founder approves it
+    # on its next turn (this tick if it comes later in the roster and is awake).
+    approved, approved_at = done, done_at
+    if not done["task_approved"]:
+        (task,) = await tasks(pool)
+        assert task["status"] == "in_review" and task["escrowed_reward"] == plan.reward - fee
+        assert await ledger(pool, tid, "escrow_release") == []
+        assert await balance(pool, peer) == START
+        assert await completed_events(pool) == []
+        for _ in range(48):
+            approved_at += timedelta(minutes=30)
+            approved = await tick(approved_at, seed)
+            if approved["task_approved"]:
+                break
+    assert approved["task_approved"] == {"marcus": str(tid)}
+    assert approved["task_paid"] == {plan.peer: plan.reward - fee}
+    assert approved["task_trust"] == {plan.peer: "recorded"}
     (task,) = await tasks(pool)
     assert task["status"] == "COMPLETED" and task["escrowed_reward"] == 0
     assert await ledger(pool, tid, "escrow_release") == [plan.reward - fee]
@@ -300,9 +315,10 @@ async def test_one_handoff_is_funded_taken_paid_and_counted_once(pool, clean):
     }]
     assert await pool.fetchval(
         "SELECT COUNT(*) FROM task_results WHERE task_id = $1", tid) == 1
+    done_at = approved_at
 
     again = await tick(done_at + timedelta(hours=1), seed)
-    assert again["task_submitted"] == {} and again["task_posted"] == {}
+    assert again["task_submitted"] == {} and again["task_approved"] == {}
     assert await ledger(pool, tid, "escrow_release") == [plan.reward - fee]
     assert len(await completed_events(pool)) == 1
     assert await total_tokens(pool) == supply
@@ -452,6 +468,18 @@ async def test_a_task_another_agent_took_first_is_left_alone(pool, clean, monkey
     assert await balance(pool, nova) == START - plan.reward and await balance(pool, peer) == START
     assert await total_tokens(pool) == supply
 
+    # S12-2: the outsider submits a result. No founder approves a result that
+    # did not come from a founder; it is left to the automatic release.
+    await task_service.submit_result(task["task_id"], OUTSIDER, {"output": "junk"})
+    for hours in (1, 4, 9, 14, 20):
+        summary = await tick(late + timedelta(hours=hours), seed)
+        assert summary["task_approved"] == {} and summary["task_paid"] == {}
+    assert (await tasks(pool))[0]["status"] == "in_review"
+    assert await ledger(pool, task["task_id"], "escrow_release") == []
+    assert await balance(pool, OUTSIDER) == START
+    assert await completed_events(pool) == []
+    assert await total_tokens(pool) == supply
+
 
 # ── Limits ────────────────────────────────────────────────────────────────────
 
@@ -510,7 +538,7 @@ async def test_three_days_of_ticks_keep_every_rule(pool, clean):
         peer_name = next(n for n in FOUNDER_NAMES if DEV[n] == r["executor_agent_did"])
         assert r["task_type"] in PERSONAS[peer_name].capabilities
         assert ft.TASK_REWARD_RANGE[0] <= r["reward"] <= ft.TASK_REWARD_RANGE[1] <= cap
-        assert r["status"] in ("assigned", "COMPLETED")
+        assert r["status"] in ("assigned", "in_review", "COMPLETED")
         key = (r["requester_agent_did"], hb["day"])
         by_creator_day[key] = by_creator_day.get(key, 0) + 1
         posted_at = datetime.fromisoformat(hb["at"])

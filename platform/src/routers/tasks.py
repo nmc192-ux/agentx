@@ -2,7 +2,7 @@
 AgentX Platform — Tasks Router
 ═══════════════════════════════
 Direct-assignment tasks (/tasks/create, /tasks/route, /tasks/{id}/update) and
-the marketplace (/tasks, /tasks/{id}/bid | accept | result).
+the marketplace (/tasks, /tasks/{id}/bid | accept | result | approve | reject).
 
 Trust boundary (Sprint 9, S9-6a): every POST requires a JWT and the acting
 agent is ALWAYS the JWT caller. Identity fields in the body
@@ -13,11 +13,19 @@ only accepted when they name the caller; anything else fails closed with 403.
                      reward the wallet cannot cover is refused with 400)
   bid              — the caller is the bidder; a creator cannot bid on their own task
   accept           — the task's creator only
-  result           — the assigned executor only, once (pays the escrow once)
+  result           — the assigned executor only; the task goes 'in_review' and
+                     nothing is paid (S12-2)
+  approve          — the task's creator only, while 'in_review': pays the escrow
+                     to the executor, once
+  reject           — the task's creator only, while 'in_review': back to
+                     'assigned', no token moves
+  results (GET)    — the task's creator or executor only
   cancel           — the task's creator only, while 'open' (refunds reward + fee once)
   update           — the task's executor (or a FOUNDER, for the system worker),
                      direct tasks only, forward status changes only
-GET endpoints stay public reads.
+The other GET endpoints stay public reads. A result the creator leaves
+unanswered is released to the executor after AUTO_RELEASE_DAYS by a scheduled
+job (task_service.release_overdue_result) — there is no route for that.
 
 Rate limit (S9-8a2): create, route and POST /tasks share one per-agent budget
 (5/min, 30/hr, 100/day) — a task can be cancelled for free, so creation is
@@ -46,6 +54,7 @@ from ..models.task import (
     TaskBid,
     TaskBidResponse,
     TaskCreate as MarketplaceTaskCreate,
+    TaskReject,
     TaskResult,
     TaskResponse as MarketplaceTaskResponse,
     TaskResultResponse,
@@ -64,8 +73,9 @@ VALID_TASK_STATUSES = {"PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"}
 # Direct-task lifecycle for POST /tasks/{id}/update: current status → statuses
 # it may move to. COMPLETED / FAILED are final (each records a trust event, so
 # re-opening a task would let an executor farm them). Marketplace statuses
-# ('open', 'assigned') are absent on purpose: those tasks finish through
-# POST /tasks/{id}/result, which is what releases the escrow.
+# ('open', 'assigned', 'in_review') are absent on purpose: those tasks finish
+# through POST /tasks/{id}/result and the creator's approval, which is what
+# releases the escrow.
 ALLOWED_STATUS_TRANSITIONS = {
     "PENDING": {"PENDING", "IN_PROGRESS", "COMPLETED", "FAILED"},
     "IN_PROGRESS": {"IN_PROGRESS", "COMPLETED", "FAILED"},
@@ -361,10 +371,13 @@ async def marketplace_submit_result(
     request: Request,
     agent: AgentRecord = Depends(get_current_agent),
 ):
-    """Executor submits the result; trust score is updated on success.
+    """Executor submits the result for the creator's review.
 
-    Only the assigned executor may submit, and only once: the escrowed reward
-    is released in the same transaction that completes the task (409 after).
+    Only the assigned executor may submit. The task becomes 'in_review' and
+    nothing is paid: the escrowed reward is released when the creator approves
+    (POST /tasks/{task_id}/approve), or automatically once the creator has
+    left the result unanswered for the automatic-release period. A second
+    submit while one is under review answers 409.
     """
     executor_did = _require_self(agent, body.agent_did, "agent_did")
     try:
@@ -372,6 +385,84 @@ async def marketplace_submit_result(
             task_id=task_id,
             agent_did=executor_did,
             result_payload=body.result_payload,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except task_service.TaskConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.get(
+    "/{task_id}/results",
+    response_model=list[TaskResultResponse],
+    summary="Read the results submitted for a marketplace task",
+)
+async def marketplace_list_results(
+    task_id: UUID,
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """The task's results, newest first. Only the task's creator (who has to
+    approve or reject) and its executor may read them (403 otherwise)."""
+    try:
+        return await task_service.list_results(task_id=task_id, caller_did=agent.did)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/approve",
+    status_code=status.HTTP_200_OK,
+    response_model=TaskResultResponse,
+    summary="Approve the submitted result and release the reward",
+)
+async def marketplace_approve_result(
+    task_id: UUID,
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """Creator approves the result under review: the escrowed reward is paid
+    to the executor and the task becomes 'COMPLETED', in one transaction.
+
+    Only the task's creator may approve (403 otherwise), only while a result
+    is under review (409 otherwise — so a reward is never paid twice).
+    """
+    try:
+        return await task_service.approve_result(task_id=task_id, caller_did=agent.did)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except task_service.TaskConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/reject",
+    status_code=status.HTTP_200_OK,
+    response_model=TaskResultResponse,
+    summary="Reject the submitted result and send the task back to its executor",
+)
+async def marketplace_reject_result(
+    task_id: UUID,
+    request: Request,
+    body: Optional[TaskReject] = None,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """Creator rejects the result under review: the task goes back to
+    'assigned' and the same executor may submit again. No token moves — the
+    reward stays in escrow.
+
+    Only the task's creator may reject (403 otherwise), only while a result
+    is under review (409 otherwise).
+    """
+    try:
+        return await task_service.reject_result(
+            task_id=task_id, caller_did=agent.did, note=body.reason if body else None,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
@@ -562,7 +653,7 @@ async def update_task(
                 detail=(
                     f"Task cannot be updated here (status={existing['status']}); "
                     "finished tasks are final and marketplace tasks are completed "
-                    "via POST /tasks/{task_id}/result"
+                    "via POST /tasks/{task_id}/result and the creator's approval"
                 ),
             )
         if status_value is not None and status_value not in allowed:

@@ -5,7 +5,7 @@ The pure half of the founder task loop: WHO hands a small paid task to WHOM,
 WHEN, for WHAT skill and HOW MUCH, and when the peer finishes it. The
 heartbeat job (`jobs.founder_heartbeat`) applies these rules and moves the
 money through the marketplace services only (`task_service.create_task`,
-`submit_bid`, `submit_result`): every token goes through the reviewed
+`submit_bid`, `submit_result`, `approve_result`): every token goes through the reviewed
 escrow → fee → release path, and the job itself never writes a balance.
 
 Rules (sprint spec, design point 8):
@@ -21,8 +21,10 @@ Rules (sprint spec, design point 8):
     (D2 is unchanged: an outside agent that still got there first simply
     keeps the task; the founders leave it alone).
   • The peer submits its result on a later tick, `TASK_RESULT_DELAY_MINUTES`
-    after the handoff; the escrow pays it then, and `task_completed` is
-    counted by the existing S9-9b rules (one per task, inside the caps).
+    after the handoff; the task is then under review (S12-2). The creator
+    founder approves it on its next turn; the escrow pays the peer then, and
+    `task_completed` is counted by the existing S9-9b rules (one per task,
+    inside the caps).
   • Only founders take part: a handoff goes only to a founder the guard
     accepted this tick, and only handoffs posted BY such founders are ever
     finished — never an outside agent's task, whatever its payload says.

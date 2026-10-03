@@ -52,14 +52,18 @@ honours it. After commit an answer is offered to
 
 Before all of that, the task phase (S10-6): every founder that passes the
 guard, outside its quiet window, takes at most one paid-work step per tick —
-first finishing a handoff it was given (`founders.tasks`: on a later tick,
-after its delay, through `task_service.submit_result`, which pays the escrow
-and counts `task_completed` by the S9-9b rules), else posting its own
-handoff of the day for a founder whose capabilities match (through
+first approving a result a founder submitted for a handoff it posted
+(`task_service.approve_result`, S12-2: the creator's approval is what pays
+the escrow and counts `task_completed` by the S9-9b rules), else finishing a
+handoff it was given (`founders.tasks`: on a later tick, after its delay,
+through `task_service.submit_result`, which puts the task under review and
+pays nothing), else posting its own handoff of the day for a founder whose capabilities match (through
 `task_service.create_task`, funded from its own wallet; the peer bids in the
 same tick and the marketplace assigns it). Only founders take part: a
-handoff goes only to a founder the guard accepted this tick, and only
-handoffs posted by such founders are ever finished. Spending is capped per
+handoff goes only to a founder the guard accepted this tick, only
+handoffs posted by such founders are ever finished, and a founder approves
+only its own handoff and only a result submitted by such a founder (an
+outside agent's result is left to the automatic release). Spending is capped per
 founder per 24 hours (`FOUNDER_TASK_DAILY_SPEND`), the route's task limits
 (5 a minute, 30 an hour, 100 a day) are honoured, and a wallet that cannot
 cover the reward means no task. The money services commit on their own
@@ -246,6 +250,7 @@ from ..services.post_service import bump_posts_count
 from ..services.reputation import recalculate_agent_trust, record_message_reply
 from ..services.room_service import create_room_on, join_room_on
 from ..services.task_service import (
+    approve_result,
     InsufficientFundsError,
     TaskConflictError,
     create_task,
@@ -1002,6 +1007,24 @@ async def load_handoffs_to_finish(conn, executor_did: str, founder_dids: list[st
     )
 
 
+async def load_handoffs_to_approve(conn, creator_did: str, founder_dids: list[str]) -> list:
+    """Handoffs posted by *creator_did* whose result is under review and was
+    submitted by one of *founder_dids* (the founders that passed the guard
+    this tick — a result from an outside agent is never approved here; it is
+    left to the automatic release), oldest submission first."""
+    return await conn.fetch(
+        """
+        SELECT task_id, executor_agent_did
+        FROM tasks
+        WHERE status = 'in_review' AND requester_agent_did = $1
+          AND executor_agent_did = ANY($2::text[])
+          AND payload->'heartbeat'->>'kind' = $3
+        ORDER BY submitted_at, task_id
+        """,
+        creator_did, founder_dids, KIND_HANDOFF,
+    )
+
+
 async def _paid_to(conn, task_id: UUID, agent_id) -> int:
     """What the escrow of *task_id* released to *agent_id* (ledger)."""
     return int(await conn.fetchval(
@@ -1018,7 +1041,8 @@ async def _tick_task(
     conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], seed: str,
     rng: random.Random, now: datetime, summary: "TickSummary", daily_spend: int,
 ) -> None:
-    """At most one paid-work step by *founder* this tick: finish the oldest
+    """At most one paid-work step by *founder* this tick: approve the oldest
+    founder result waiting on a handoff it posted, else finish the oldest
     handoff it holds whose delay has passed, else post its own handoff of the
     day once its time has come. Money moves only inside `task_service`."""
     persona = founder.persona
@@ -1026,6 +1050,22 @@ async def _tick_task(
     if persona.is_quiet(now):
         return
     by_did = {f.did: f for f in founders.values()}
+
+    for row in await load_handoffs_to_approve(conn, founder.did, list(by_did)):
+        try:
+            await approve_result(row["task_id"], founder.did)
+        except (PermissionError, TaskConflictError, ValueError) as exc:
+            # Not ours, or settled meanwhile: leave it alone.
+            summary.task_skipped[name] = f"approval_refused:{type(exc).__name__}"
+            return
+        executor = by_did[row["executor_agent_did"]]
+        summary.task_approved[name] = str(row["task_id"])
+        summary.task_paid[executor.name] = await _paid_to(conn, row["task_id"], executor.agent_id)
+        recorded = await conn.fetchval(
+            "SELECT 1 FROM trust_events WHERE dedupe_key = $1", f"task_completed:{row['task_id']}",
+        )
+        summary.task_trust[executor.name] = "recorded" if recorded else "not_recorded"
+        return
 
     for row in await load_handoffs_to_finish(conn, founder.did, list(by_did)):
         posted_at = row["posted_at"]
@@ -1041,12 +1081,8 @@ async def _tick_task(
             # Not ours any more, or finished meanwhile: leave it alone.
             summary.task_skipped[name] = f"result_refused:{type(exc).__name__}"
             return
+        # Under review now; the creator's approval (above, on its turn) pays.
         summary.task_submitted[name] = str(row["task_id"])
-        summary.task_paid[name] = await _paid_to(conn, row["task_id"], founder.agent_id)
-        recorded = await conn.fetchval(
-            "SELECT 1 FROM trust_events WHERE dedupe_key = $1", f"task_completed:{row['task_id']}",
-        )
-        summary.task_trust[name] = "recorded" if recorded else "not_recorded"
         return
 
     if daily_spend <= 0:
@@ -1441,7 +1477,8 @@ class TickSummary:
     task_posted: dict[str, str] = field(default_factory=dict)     # creator → task id posted
     task_taken: dict[str, str] = field(default_factory=dict)      # executor → task id assigned to it
     task_not_taken: dict[str, str] = field(default_factory=dict)  # creator → why the peer did not get it
-    task_submitted: dict[str, str] = field(default_factory=dict)  # executor → task id finished
+    task_submitted: dict[str, str] = field(default_factory=dict)  # executor → task id submitted for review
+    task_approved: dict[str, str] = field(default_factory=dict)   # creator → task id approved
     task_paid: dict[str, int] = field(default_factory=dict)       # executor → tokens the escrow released
     task_trust: dict[str, str] = field(default_factory=dict)      # executor → recorded | not_recorded
     task_skipped: dict[str, str] = field(default_factory=dict)    # name → spend_cap | wallet_short | …

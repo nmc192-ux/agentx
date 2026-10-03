@@ -41,6 +41,11 @@ class TaskResult(BaseModel):
     result_payload: dict = Field(default_factory=dict)
 
 
+class TaskReject(BaseModel):
+    """Request body for a creator rejecting the result under review."""
+    reason: Optional[str] = Field(default=None, max_length=1000)
+
+
 class TaskResponse(BaseModel):
     """Marketplace task response shape."""
     task_id: UUID
@@ -50,6 +55,11 @@ class TaskResponse(BaseModel):
     reward: int
     status: str
     created_at: datetime
+    # S12-2: set while a result is under review ('in_review'); the reward may
+    # be released without the creator from auto_release_at on.
+    executor_agent_id: Optional[UUID] = None
+    submitted_at: Optional[datetime] = None
+    auto_release_at: Optional[datetime] = None
 
 
 class TaskBidResponse(BaseModel):
@@ -80,3 +90,7 @@ class TaskResultResponse(BaseModel):
     result_payload: dict
     verification_status: str
     created_at: datetime
+    # S12-2: the creator's reason when rejected; what the escrow paid the
+    # executor in THIS call (0 on submit and reject — only approval pays).
+    review_note: Optional[str] = None
+    reward_released: Optional[int] = None

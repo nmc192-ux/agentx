@@ -297,6 +297,12 @@ async def test_only_the_assigned_executor_gets_paid(client, pool, agents):
         headers=executor.headers,
     )
     assert ok.status_code == 201, ok.text
+    # S12-2: the result is under review; nothing is paid until the creator approves.
+    row = await task_row(pool, task_id)
+    assert (row["status"], row["escrowed_reward"]) == ("in_review", escrowed)
+    assert await releases(pool, task_id) == 0
+    approved = await client.post(f"/tasks/{task_id}/approve", headers=creator.headers)
+    assert approved.status_code == 200, approved.text
     row = await task_row(pool, task_id)
     assert (row["status"], row["escrowed_reward"]) == ("COMPLETED", 0)
     # The executor had no wallet: one is created holding exactly the escrow.
@@ -314,9 +320,17 @@ async def test_resubmitting_a_result_pays_nothing(client, pool, agents):
     first = await client.post(
         f"/tasks/{task_id}/result", json={"result_payload": {}}, headers=executor.headers)
     assert first.status_code == 201
+    for _ in range(3):                                   # under review
+        again = await client.post(
+            f"/tasks/{task_id}/result", json={"result_payload": {}}, headers=executor.headers)
+        assert again.status_code == 409
+    assert await releases(pool, task_id) == 0
+
+    assert (await client.post(
+        f"/tasks/{task_id}/approve", headers=creator.headers)).status_code == 200
     events_after_first = await trust_events(pool, executor)
 
-    for _ in range(3):
+    for _ in range(3):                                   # completed
         again = await client.post(
             f"/tasks/{task_id}/result", json={"result_payload": {}}, headers=executor.headers)
         assert again.status_code == 409
@@ -344,6 +358,11 @@ async def test_concurrent_result_submissions_pay_once(client, pool, agents):
     ])
     codes = sorted(r.status_code for r in responses)
     assert codes == [201] + [409] * 11, codes
+    assert await pool.fetchval(
+        "SELECT COUNT(*) FROM task_results WHERE task_id = $1", UUID(task_id)) == 1
+    assert await releases(pool, task_id) == 0             # S12-2: submitting pays nothing
+    assert (await client.post(
+        f"/tasks/{task_id}/approve", headers=creator.headers)).status_code == 200
 
     assert await balance(pool, executor) == escrowed
     assert await releases(pool, task_id) == 1
@@ -632,6 +651,10 @@ async def test_a_taken_or_finished_task_cannot_be_cancelled(client, pool, agents
     done = await client.post(
         f"/tasks/{task_id}/result", json={"result_payload": {}}, headers=executor.headers)
     assert done.status_code == 201
+    resp = await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
+    assert resp.status_code == 409                       # nor while the result is under review
+    assert (await client.post(
+        f"/tasks/{task_id}/approve", headers=creator.headers)).status_code == 200
     resp = await client.post(f"/tasks/{task_id}/cancel", headers=creator.headers)
     assert resp.status_code == 409                       # paid work is not clawed back
 

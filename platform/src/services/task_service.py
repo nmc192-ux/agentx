@@ -9,7 +9,11 @@ Business logic for the open marketplace:
   list_tasks()              — discover available tasks
   submit_bid()              — agent bids on a task
   assign_task()             — creator accepts a bid
-  submit_result()           — executor submits task result
+  submit_result()           — executor submits task result (held for review)
+  approve_result()          — creator approves the result; the reward is paid
+  reject_result()           — creator sends the result back to the executor
+  release_overdue_result()  — pays a result the creator left unanswered
+  list_results()            — the task's results, for its creator and executor
   cancel_task()             — creator withdraws a task nobody took (refund)
   suggest_agents_for_task() — rank agents by capability fit (Phase 5)
 
@@ -20,9 +24,13 @@ Who may do what (Sprint 9, S9-6a) — the *_did arguments are the authenticated
 caller, resolved by the router from the JWT, never from the request body:
   submit_bid()    — any agent except the task's creator
   assign_task()   — the task's creator only
-  submit_result() — the assigned executor only, once: the task must be
-                    'assigned'; completing it and paying the escrow commit in
-                    one transaction, so a reward can never be paid twice.
+  submit_result() — the assigned executor only; the task must be 'assigned'.
+                    It moves to 'in_review' and NOTHING is paid.
+  approve_result() / reject_result() — the task's creator only; the task must
+                    be 'in_review'.
+  release_overdue_result() — no caller identity: for the scheduled job only
+                    (no route calls it); the database clock decides.
+  list_results()  — the task's creator or executor only.
   cancel_task()   — the task's creator only, 'open' tasks only, refunded once.
 Errors: PermissionError → 403, TaskConflictError → 409, InsufficientFundsError
 → 400, other ValueError → 404 / 422 (see routers/tasks.py).
@@ -33,11 +41,21 @@ in ONE transaction; a wallet that cannot cover a non-zero reward means no task
 (it used to be created anyway, advertising a reward nobody would be paid).
 cancel_task() gives the escrow and the fee back in the transaction that marks
 the task 'cancelled'.
+
+Creator approval (Sprint 12, S12-2, decision D2c): the escrow leaves in exactly
+one place, _pay_reviewed_result(), reached only from approve_result() (the
+creator) and release_overdue_result() (AUTO_RELEASE_DAYS after submission with
+the creator silent). Both hold the task's row lock, require 'in_review' and
+move the task to 'COMPLETED' in the transaction that pays, so a reward is paid
+once however approvals, rejections and the automatic release race. A rejection
+moves no token: the reward stays in escrow and the same executor may submit
+again (a creator cannot get the reward back by rejecting).
 """
 from __future__ import annotations
 
 import json
 import logging
+from datetime import timedelta
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
@@ -54,7 +72,10 @@ from ..models.task import (  # noqa: E402
 )
 from ..models.capability import EligibleAgentResponse  # noqa: E402
 from ..services.reputation import record_task_completed  # noqa: E402
+from .auto_release import AUTO_RELEASE_DAYS  # noqa: E402
 from .token_service import InsufficientFundsError  # noqa: E402,F401  (re-exported for the router)
+
+REVIEW_NOTE_MAX_CHARS = 1000
 
 
 class TaskConflictError(ValueError):
@@ -72,6 +93,8 @@ def _decode_json(value) -> dict:
 
 
 def _row_to_task(row) -> TaskResponse:
+    # submitted_at only means something while the result is under review.
+    submitted_at = row.get("submitted_at") if row["status"] == "in_review" else None
     return TaskResponse(
         task_id=row["task_id"],
         creator_agent_id=row["creator_agent_id"],
@@ -80,6 +103,11 @@ def _row_to_task(row) -> TaskResponse:
         reward=row["reward"],
         status=row["status"],
         created_at=row["created_at"],
+        executor_agent_id=row.get("executor_agent_id"),
+        submitted_at=submitted_at,
+        auto_release_at=(
+            submitted_at + timedelta(days=AUTO_RELEASE_DAYS) if submitted_at else None
+        ),
     )
 
 
@@ -105,7 +133,7 @@ def _row_to_assignment(row) -> TaskAssignmentResponse:
     )
 
 
-def _row_to_result(row) -> TaskResultResponse:
+def _row_to_result(row, reward_released: int | None = None) -> TaskResultResponse:
     return TaskResultResponse(
         result_id=row["result_id"],
         task_id=row["task_id"],
@@ -113,6 +141,8 @@ def _row_to_result(row) -> TaskResultResponse:
         result_payload=_decode_json(row.get("result_payload")),
         verification_status=row["verification_status"],
         created_at=row["created_at"],
+        review_note=row.get("review_note"),
+        reward_released=reward_released,
     )
 
 
@@ -235,7 +265,9 @@ async def list_tasks(status: str = "open", limit: int = 50) -> list[TaskResponse
                 payload,
                 reward,
                 status,
-                created_at
+                created_at,
+                executor_agent_id,
+                submitted_at
             FROM tasks
             WHERE status = $1
             ORDER BY created_at DESC
@@ -452,23 +484,22 @@ async def submit_result(
     result_payload: dict,
 ) -> TaskResultResponse:
     """
-    Executor submits task result. In ONE transaction:
+    Executor submits a task result for the creator's review. In ONE
+    transaction:
       - locks the task row
       - checks the caller is the assigned executor and the task is 'assigned'
-      - inserts task_results row, marks task_assignments completed
-      - marks the task COMPLETED
-      - releases the escrowed reward to the executor's wallet
-    then records the trust event for task_completed.
+      - inserts the task_results row ('pending')
+      - moves the task to 'in_review' and stamps submitted_at (database clock)
 
-    Because the status check, the status change and the payout share one
-    locked transaction, a result can be accepted (and paid) only once, however
-    many times or however concurrently it is submitted. If the payout fails,
-    everything rolls back and the task stays 'assigned'.
+    NOTHING is paid here (S12-2): the reward stays in escrow until the creator
+    approves (approve_result) or AUTO_RELEASE_DAYS pass with the creator
+    silent (release_overdue_result). A second submit while the first is under
+    review is refused; after a rejection the executor may submit again.
 
     Raises:
         ValueError: task or agent not found.
         PermissionError: *agent_did* is not the task's assigned executor.
-        TaskConflictError: the task is not awaiting a result (already
+        TaskConflictError: the task is not awaiting a result (under review,
             completed, or not a marketplace task).
     """
     async with transaction() as conn:
@@ -505,63 +536,303 @@ async def submit_result(
             VALUES (gen_random_uuid(), $1, $2, $3::jsonb, 'pending')
             RETURNING
                 result_id, task_id, agent_id,
-                result_payload, verification_status, created_at
+                result_payload, verification_status, created_at, review_note
             """,
             task_id,
             agent_row["agent_id"],
             json.dumps(result_payload),
         )
 
-        # Mark assignment completed if one exists
-        await conn.execute(
-            """
-            UPDATE task_assignments
-            SET
-                status       = 'completed',
-                completed_at = CURRENT_TIMESTAMP
-            WHERE task_id = $1 AND agent_id = $2
-            """,
-            task_id,
-            agent_row["agent_id"],
-        )
-
-        # Update task status to COMPLETED
         await conn.execute(
             """
             UPDATE tasks
-            SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP
+            SET status       = 'in_review',
+                submitted_at = CURRENT_TIMESTAMP,
+                updated_at   = CURRENT_TIMESTAMP
             WHERE task_id = $1
             """,
             task_id,
         )
 
-        # Phase 8: Release escrowed reward to executor's wallet — same
-        # transaction, so "completed" and "paid" cannot come apart.
-        from .token_service import release_task_escrow
-        released = await release_task_escrow(
-            task_id, agent_row["agent_id"], conn=conn
-        )
+    return _row_to_result(dict(result_row), reward_released=0)
 
-    # Record reputation event outside the transaction to avoid nested locks
-    # (existing direct-call path — preserved for backward compatibility).
+
+async def _lock_task_for_review(conn, task_id: UUID, caller_did: str, action: str):
+    """Lock the task and check that *caller_did* is its creator and that a
+    result is under review. Returns the locked task row."""
+    task_row = await conn.fetchrow(
+        """
+        SELECT task_id, status, creator_agent_id, executor_agent_id, executor_agent_did
+        FROM tasks WHERE task_id = $1
+        FOR UPDATE
+        """,
+        task_id,
+    )
+    if task_row is None:
+        raise ValueError(f"Task not found: {task_id}")
+
+    caller_id = await conn.fetchval(
+        "SELECT agent_id FROM agents WHERE agent_did = $1",
+        caller_did,
+    )
+    # A direct task has no marketplace creator (NULL), so nobody passes this.
+    if caller_id is None or caller_id != task_row["creator_agent_id"]:
+        raise PermissionError(f"Only the task creator can {action} a result")
+    if task_row["status"] != "in_review":
+        raise TaskConflictError(
+            f"Task has no result under review (status={task_row['status']})"
+        )
+    return task_row
+
+
+async def _pay_reviewed_result(conn, task_row) -> tuple[dict, int]:
+    """
+    THE place a task reward leaves escrow for the executor. The caller holds
+    the task's row lock and has checked status == 'in_review'.
+
+    In the caller's transaction: marks the result under review 'verified',
+    completes the assignment, moves the task to 'COMPLETED' and releases the
+    escrow to the task's executor (read from the locked row, never from a
+    caller). Returns (result row, amount released).
+    """
+    task_id = task_row["task_id"]
+    executor_id = task_row["executor_agent_id"]
+    if executor_id is None:
+        raise TaskConflictError("Task has no executor to pay")
+
+    result_row = await conn.fetchrow(
+        """
+        UPDATE task_results
+           SET verification_status = 'verified'
+         WHERE result_id = (
+                SELECT result_id FROM task_results
+                 WHERE task_id = $1 AND agent_id = $2
+                   AND verification_status = 'pending'
+                 ORDER BY created_at DESC, result_id
+                 LIMIT 1
+               )
+        RETURNING
+            result_id, task_id, agent_id,
+            result_payload, verification_status, created_at, review_note
+        """,
+        task_id,
+        executor_id,
+    )
+    if result_row is None:
+        # 'in_review' without a pending result from the executor: pay nothing.
+        raise TaskConflictError("Task has no pending result to pay for")
+
+    await conn.execute(
+        """
+        UPDATE task_assignments
+        SET
+            status       = 'completed',
+            completed_at = CURRENT_TIMESTAMP
+        WHERE task_id = $1 AND agent_id = $2
+        """,
+        task_id,
+        executor_id,
+    )
+
+    updated = await conn.fetchval(
+        """
+        UPDATE tasks
+        SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP
+        WHERE task_id = $1 AND status = 'in_review'
+        RETURNING task_id
+        """,
+        task_id,
+    )
+    if updated is None:
+        raise TaskConflictError("Task has no result under review")
+
+    # Same transaction, so "completed" and "paid" cannot come apart.
+    from .token_service import release_task_escrow
+    released = await release_task_escrow(task_id, executor_id, conn=conn)
+    return dict(result_row), released
+
+
+async def _after_payment(task_id: UUID, executor_did: str | None, released: int, source: str) -> None:
+    """Trust event and bus events for a task that was just paid (outside the
+    transaction, as before S12-2)."""
     # S9-9b: counted once per task, and only if the escrow paid a reward.
     await record_task_completed(task_id)
 
-    # Phase 7: Publish TASK_COMPLETED event alongside existing direct calls
     await publish_event(
         EventType.TASK_COMPLETED,
-        {"task_id": str(task_id)},
-        agent_did,
+        {"task_id": str(task_id), "released_by": source},
+        executor_did,
     )
-
-    # Phase 8.5: Publish TASK_REWARD_RELEASED (fire-and-forget)
     await publish_event(
         EventType.TASK_REWARD_RELEASED,
-        {"task_id": str(task_id), "released": released},
-        agent_did,
+        {"task_id": str(task_id), "released": released, "released_by": source},
+        executor_did,
     )
 
-    return _row_to_result(dict(result_row))
+
+async def approve_result(task_id: UUID, caller_did: str) -> TaskResultResponse:
+    """
+    Creator approves the result under review; the escrowed reward is paid to
+    the executor and the task becomes 'COMPLETED' — one locked transaction,
+    so it happens once however many approvals (or an approval and the
+    automatic release) race.
+
+    Raises:
+        ValueError: task not found.
+        PermissionError: *caller_did* is not the task's creator.
+        TaskConflictError: the task has no result under review.
+    """
+    async with transaction() as conn:
+        task_row = await _lock_task_for_review(conn, task_id, caller_did, "approve")
+        result_row, released = await _pay_reviewed_result(conn, task_row)
+
+    await _after_payment(task_id, task_row["executor_agent_did"], released, "creator")
+    return _row_to_result(result_row, reward_released=released)
+
+
+async def reject_result(
+    task_id: UUID,
+    caller_did: str,
+    note: str | None = None,
+) -> TaskResultResponse:
+    """
+    Creator rejects the result under review. The result is marked 'rejected'
+    (with *note*, the reason shown to the executor) and the task goes back to
+    'assigned': the same executor may submit again, and the automatic-release
+    period starts afresh with that new submission.
+
+    No token moves: the reward stays in escrow, so rejecting never returns it
+    to the creator.
+
+    Raises:
+        ValueError: task not found.
+        PermissionError: *caller_did* is not the task's creator.
+        TaskConflictError: the task has no result under review.
+    """
+    note = (note or "").strip()[:REVIEW_NOTE_MAX_CHARS] or None
+    async with transaction() as conn:
+        task_row = await _lock_task_for_review(conn, task_id, caller_did, "reject")
+
+        result_row = await conn.fetchrow(
+            """
+            UPDATE task_results
+               SET verification_status = 'rejected',
+                   review_note         = $3
+             WHERE result_id = (
+                    SELECT result_id FROM task_results
+                     WHERE task_id = $1 AND agent_id = $2
+                       AND verification_status = 'pending'
+                     ORDER BY created_at DESC, result_id
+                     LIMIT 1
+                   )
+            RETURNING
+                result_id, task_id, agent_id,
+                result_payload, verification_status, created_at, review_note
+            """,
+            task_id,
+            task_row["executor_agent_id"],
+            note,
+        )
+        if result_row is None:
+            raise TaskConflictError("Task has no pending result to reject")
+
+        await conn.execute(
+            """
+            UPDATE tasks
+            SET status       = 'assigned',
+                submitted_at = NULL,
+                updated_at   = CURRENT_TIMESTAMP
+            WHERE task_id = $1 AND status = 'in_review'
+            """,
+            task_id,
+        )
+
+    return _row_to_result(dict(result_row), reward_released=0)
+
+
+async def release_overdue_result(task_id: UUID) -> int:
+    """
+    Pay a result the creator has left unanswered for AUTO_RELEASE_DAYS, so a
+    silent creator cannot withhold the reward (decision D2c). Returns the
+    amount released.
+
+    For the scheduled job only — no route calls this and it takes no caller
+    and no time: with the task row locked, the DATABASE clock is compared
+    with the submitted_at the database stamped. A task not under review, not
+    yet due, or with no submission time is refused and nothing moves.
+
+    Raises:
+        ValueError: task not found.
+        TaskConflictError: nothing under review, or the period has not passed.
+    """
+    async with transaction() as conn:
+        task_row = await conn.fetchrow(
+            """
+            SELECT task_id, status, creator_agent_id, executor_agent_id, executor_agent_did,
+                   COALESCE(
+                       submitted_at <= CURRENT_TIMESTAMP - make_interval(days => $2),
+                       FALSE
+                   ) AS due
+            FROM tasks WHERE task_id = $1
+            FOR UPDATE
+            """,
+            task_id,
+            AUTO_RELEASE_DAYS,
+        )
+        if task_row is None:
+            raise ValueError(f"Task not found: {task_id}")
+        if task_row["status"] != "in_review":
+            raise TaskConflictError(
+                f"Task has no result under review (status={task_row['status']})"
+            )
+        if not task_row["due"]:
+            raise TaskConflictError(
+                f"The creator still has time to answer ({AUTO_RELEASE_DAYS} days from submission)"
+            )
+        _, released = await _pay_reviewed_result(conn, task_row)
+
+    logger.info(
+        "task_service: task %s released automatically after %d days (%d tokens)",
+        task_id, AUTO_RELEASE_DAYS, released,
+    )
+    await _after_payment(task_id, task_row["executor_agent_did"], released, "auto_release")
+    return released
+
+
+async def list_results(task_id: UUID, caller_did: str) -> list[TaskResultResponse]:
+    """The results submitted for a task, newest first — for its creator (who
+    has to judge them) and its executor only.
+
+    Raises:
+        ValueError: task not found.
+        PermissionError: *caller_did* is neither the creator nor the executor.
+    """
+    async with get_db() as conn:
+        task_row = await conn.fetchrow(
+            "SELECT creator_agent_id, executor_agent_id FROM tasks WHERE task_id = $1",
+            task_id,
+        )
+        if task_row is None:
+            raise ValueError(f"Task not found: {task_id}")
+        caller_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            caller_did,
+        )
+        if caller_id is None or caller_id not in (
+            task_row["creator_agent_id"], task_row["executor_agent_id"],
+        ):
+            raise PermissionError("Only the task's creator or executor can read its results")
+        rows = await conn.fetch(
+            """
+            SELECT result_id, task_id, agent_id,
+                   result_payload, verification_status, created_at, review_note
+            FROM task_results
+            WHERE task_id = $1
+            ORDER BY created_at DESC, result_id
+            """,
+            task_id,
+        )
+    return [_row_to_result(dict(r)) for r in rows]
 
 
 async def cancel_task(task_id: UUID, caller_did: str) -> TaskResponse:

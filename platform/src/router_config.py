@@ -86,20 +86,6 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # proposal model (decision O10, debate + consensus in rooms) — a design
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
-
-    # HELD OFF BY DECISION (DrJ, D2 answer "b+c", cycle 63; engine step E0):
-    # the escrow holes were fixed in S9-6a / S9-7b (see the `tasks` note under
-    # ``ENABLED_IN_SPRINT_9``), but the design still pays the reward the moment
-    # the executor submits a result, and the first bid with confidence >= 0.3 is
-    # auto-accepted. So any agent can bid on a paid task, submit anything and
-    # collect the creator's tokens; the creator never approves the work. DrJ
-    # chose to keep `tasks` off until creator approval with an automatic
-    # release after a quiet period exists (engine step E1). It sits in Tier A so
-    # that a short `DISABLED_ROUTERS` emergency value cannot switch it on by
-    # leaving it out. The founder heartbeat's paid-task loop calls the task
-    # services directly, not this route, and is unaffected. Move it back to
-    # ``ENABLED_IN_SPRINT_9`` in the E1 commit, once approval ships.
-    "tasks",
 ]
 
 # ── Tier B — parity hold. Audit-cleared, but OFF in production today. ──────────
@@ -145,9 +131,7 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #   agentbus      — sender from the JWT; S9-6: an envelope whose `agent_id`
 #                   names someone else is refused (403) and inboxes show the
 #                   authenticated sender, so agents cannot impersonate others.
-#   tasks         — (back in Tier A since E0, held off by decision D2b until
-#                   creator approval ships; the record below still stands.)
-#                   was Tier A (S9-6): no endpoint authenticated and every
+#   tasks         — was Tier A (S9-6): no endpoint authenticated and every
 #                   identity came from the body, so an anonymous caller could
 #                   escrow any agent's tokens and release them to itself.
 #                   Fixed in S9-6a: every POST needs a JWT and acts as the JWT
@@ -158,10 +142,19 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   executor (or FOUNDER) only, direct tasks only, forward
 #                   status changes only. Proven against real Postgres in
 #                   tests/integration/test_task_escrow_db.py.
-#                   Known and NOT changed (design, see PLAN / HUMAN_ACTIONS D2):
-#                   the first bid with confidence >= 0.3 is auto-accepted and
-#                   the reward is paid when the result is submitted, with no
-#                   creator approval of the result.
+#                   Held off again at E0 (decision D2b) because the reward
+#                   was paid the moment any result was submitted. Fixed in
+#                   S12-2 (E1, decision D2c) and enabled again: a result puts
+#                   the task 'in_review' and pays nothing; the creator
+#                   approves (pays the executor, once) or rejects (back to
+#                   'assigned', no token moves); a result left unanswered for
+#                   AUTO_RELEASE_DAYS is released by the scheduled job, by
+#                   the database clock. Proven against real Postgres in
+#                   tests/integration/test_task_approval_db.py.
+#                   Known and NOT changed: the first bid with confidence
+#                   >= 0.3 is auto-accepted (bids are S12-5), and an assigned
+#                   task has no deadline, so an executor who never delivers
+#                   keeps the reward locked in escrow (HUMAN_ACTIONS D10).
 #   contracts     — was Tier A (S9-6): any agent could dispute any contract in
 #                   any state and freeze its escrow for good; no route ever
 #                   released the escrow; the creator could bid on and win
@@ -324,6 +317,7 @@ ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
     "collectives", "agentbus", "contracts", "verifications", "markets",
     "wallets", "stakes", "economy", "agent_economy", "governance",
+    "tasks",   # S12-2 (E1): back on once creator approval shipped
 ]
 
 # The effective repo default = all three tiers. Order is cosmetic; gating is by

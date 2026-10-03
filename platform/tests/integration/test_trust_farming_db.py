@@ -95,13 +95,16 @@ async def a_day_later(pool, *agents: Agent) -> None:
 # ── Flow helpers ──────────────────────────────────────────────────────────────
 
 async def paid_task(client, creator: Agent, executor: Agent, reward: int = 100) -> str:
-    """A marketplace task with a funded reward, taken and finished by *executor*."""
+    """A marketplace task with a funded reward, taken and finished by
+    *executor* and approved (so paid, S12-2) by *creator*."""
     task_id = await assigned_task(client, creator, executor, reward)
     resp = await client.post(
         f"/tasks/{task_id}/result", json={"result_payload": {"done": True}},
         headers=executor.headers,
     )
     assert resp.status_code == 201, resp.text
+    resp = await client.post(f"/tasks/{task_id}/approve", headers=creator.headers)
+    assert resp.status_code == 200, resp.text
     return task_id
 
 

@@ -424,7 +424,8 @@ async def test_assign_task_raises_if_bid_not_found():
 # ── submit_result ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_submit_result_inserts_result_and_records_trust():
+async def test_submit_result_holds_the_task_for_review_and_pays_nothing():
+    """S12-2: a result moves the task to 'in_review'; no payout, no trust event."""
     task_id = uuid4()
     agent_id = uuid4()
     result_row = _result_row(task_id=task_id, agent_id=agent_id)
@@ -450,13 +451,111 @@ async def test_submit_result_inserts_result_and_records_trust():
         )
 
     assert result.verification_status == "pending"
-    mock_trust.assert_awaited_once_with(task_id)
-    # assignment + task UPDATE
-    assert conn.execute.await_count == 2
-    # The task row is locked, and the payout runs on the SAME connection
-    # (same transaction) as the status change.
+    assert result.reward_released == 0
+    mock_trust.assert_not_awaited()
+    release.assert_not_awaited()
+    # The task row is locked and only the task UPDATE runs: to 'in_review'.
     assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
-    release.assert_awaited_once_with(task_id, agent_id, conn=conn)
+    assert conn.execute.await_count == 1
+    assert "'in_review'" in conn.execute.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_approve_result_pays_on_the_same_connection_as_the_status_change():
+    task_id, creator_id, executor_id = uuid4(), uuid4(), uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(side_effect=[
+        {"task_id": task_id, "status": "in_review", "creator_agent_id": creator_id,
+         "executor_agent_id": executor_id, "executor_agent_did": "did:agentx:exec-001"},
+        {**_result_row(task_id=task_id, agent_id=executor_id), "verification_status": "verified"},
+    ])
+    conn.fetchval = AsyncMock(side_effect=[creator_id, task_id])   # caller id, task UPDATE
+    conn.execute = AsyncMock()
+    release = AsyncMock(return_value=95)
+
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.task_service.record_task_completed", new=AsyncMock()) as mock_trust,
+        patch("src.services.task_service.publish_event", new=AsyncMock()),
+        patch("src.services.token_service.release_task_escrow", new=release),
+    ):
+        result = await task_service.approve_result(task_id, "did:agentx:creator-001")
+
+    assert result.verification_status == "verified" and result.reward_released == 95
+    assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
+    # Paid to the executor on the locked row, in the caller's transaction.
+    release.assert_awaited_once_with(task_id, executor_id, conn=conn)
+    mock_trust.assert_awaited_once_with(task_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["approve_result", "reject_result"])
+async def test_review_refuses_anyone_but_the_creator(action):
+    task_id, creator_id, executor_id = uuid4(), uuid4(), uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "task_id": task_id, "status": "in_review", "creator_agent_id": creator_id,
+        "executor_agent_id": executor_id, "executor_agent_did": "did:agentx:exec-001"})
+    conn.fetchval = AsyncMock(return_value=executor_id)            # the caller is the executor
+    release = AsyncMock(return_value=95)
+
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.release_task_escrow", new=release),
+        pytest.raises(PermissionError),
+    ):
+        await getattr(task_service, action)(task_id, "did:agentx:exec-001")
+    release.assert_not_awaited()
+    conn.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("task_status", ["open", "assigned", "COMPLETED", "cancelled", "PENDING"])
+@pytest.mark.parametrize("action", ["approve_result", "reject_result"])
+async def test_review_refuses_a_task_with_nothing_under_review(action, task_status):
+    task_id, creator_id = uuid4(), uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "task_id": task_id, "status": task_status, "creator_agent_id": creator_id,
+        "executor_agent_id": uuid4(), "executor_agent_did": "did:agentx:exec-001"})
+    conn.fetchval = AsyncMock(return_value=creator_id)
+    release = AsyncMock(return_value=95)
+
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.release_task_escrow", new=release),
+        pytest.raises(task_service.TaskConflictError),
+    ):
+        await getattr(task_service, action)(task_id, "did:agentx:creator-001")
+    release.assert_not_awaited()
+    conn.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("row", [
+    {"status": "in_review", "due": False},     # the creator still has time
+    {"status": "assigned", "due": True},       # nothing under review
+    {"status": "COMPLETED", "due": True},      # already paid
+])
+async def test_automatic_release_refuses_what_is_not_due(row):
+    task_id = uuid4()
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "task_id": task_id, "creator_agent_id": uuid4(), "executor_agent_id": uuid4(),
+        "executor_agent_did": "did:agentx:exec-001", **row})
+    release = AsyncMock(return_value=95)
+
+    with (
+        patch("src.services.task_service.transaction", return_value=_tx_context(conn)),
+        patch("src.services.token_service.release_task_escrow", new=release),
+        pytest.raises(task_service.TaskConflictError),
+    ):
+        await task_service.release_overdue_result(task_id)
+    release.assert_not_awaited()
+    conn.execute.assert_not_awaited()
+    # The period is decided by the database clock, with the row locked.
+    sql = conn.fetchrow.await_args.args[0]
+    assert "CURRENT_TIMESTAMP" in sql and "FOR UPDATE" in sql
 
 
 @pytest.mark.asyncio
