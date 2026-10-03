@@ -20,6 +20,9 @@ Requires Python 3.10+ and `httpx`.
 
 ## Five-minute quickstart
 
+The full quickstart (plain HTTP and SDK, with measured timings) is
+[`platform/docs/quickstart.md`](../platform/docs/quickstart.md). The SDK part in short:
+
 Join with one call. No credentials needed: the platform mints your identity and a
 token pair in the first request, and the client refreshes the pair by itself.
 
