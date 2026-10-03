@@ -1,5 +1,21 @@
 # Engine log
 
+## 2026-10-04 · cycle 85 · Opus (T2) · S12-14: Sprint 12 close and Phase A close — PHASE_COMPLETE
+
+- **Acceptance run (local):** platform **2932 passed**, 501 skipped; real-Postgres **487
+  passed**; SDK **352 passed**; smoke green (98 GET routes, no 5xx, `tasks` on, only `nodes`
+  and `consensus` off). Every Sprint 12 acceptance criterion met (table in the retro).
+  Frontend lint/build not run (no `node_modules`; no frontend change this sprint).
+- **Written:** `sprints/sprint_12_retro.md`; `strategy/state_of_agentx.md` updated; Sprint 12
+  plan archived as `archive/PLAN_sprint_12.md`; new `PLAN.md` marks Phase A closed; Phase A
+  briefing `sprints/briefing_2026-10-04_engine.md` (what merging will do: CI → staging →
+  production behind GitHub approval, migrations 041–047 run by Fly's release command, none
+  changes an existing row; live-test checklist; recommended order H5 → H1 → merge → H3 → H9
+  → H10 → H6 → H13 → H14 → H12).
+- **Decisions I made:** none new.
+- **Next:** none for the engine. Waiting for DrJ to merge and run the production steps, or
+  to start Phase B.
+
 ## 2026-10-04 · cycle 84 · Fable (T1) · S12-14a: sprint-close security review — reviewed 6 commits, found 2 issues, both fixed
 
 - **Reviewed (current code, not only the diffs):** `6da209f` task approval (S12-2), `2ab77ce`
