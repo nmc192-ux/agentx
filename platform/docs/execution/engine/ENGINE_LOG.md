@@ -1,5 +1,15 @@
 # Engine log
 
+## 2026-10-04 · cycle 81 · Sonnet (T3) · S12-11: agentx-client deprecation period
+
+- **Built** (`9fe457b`): the shim's `DeprecationWarning`, `packaging/agentx-client/README.md` and
+  `sdk/CHANGELOG.md` now state the period from the sprint spec: the farewell release stays on
+  PyPI permanently, the `agentx_client` import works for the whole 0.x series of `agentx-py`
+  and is removed no earlier than 1.0, with at least 90 days' notice in the CHANGELOG.
+- **Tests:** two new shim tests (warning text; README and CHANGELOG carry the period). SDK
+  **352 passed**; ruff clean. No platform code touched.
+- **Next:** S12-12 (protocol spec v0.1, part 1), T2.
+
 ## 2026-10-04 · cycle 80 · Opus (T2) · S12-10: developer quickstart formalized
 
 - **Built** (`e46230c`): `platform/docs/quickstart.md` stays the one quickstart; the root

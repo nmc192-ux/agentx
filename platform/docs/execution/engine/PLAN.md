@@ -94,9 +94,9 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   of the page and runs them (curl path, SDK path, `local_journey.py`; first post visible in
   0.14 s curl / 0.05 s SDK, asserted < 5 s). Blocks not run carry a
   `<!-- quickstart-test: skip (reason) -->` marker (`pip install`, `external_smoke.py`).*
-- [ ] **S12-11 — `agentx-client` deprecation period** written into
+- [x] **S12-11 — `agentx-client` deprecation period** written into
   `packaging/agentx-client/README.md`, `sdk/CHANGELOG.md` and the shim's warning text
-  (per the spec's decision). Tier **T3**. Check: shim test asserts the warning text.
+  (per the spec's decision). Tier **T3**. Check: shim test asserts the warning text. *Done cycle 81 (`9fe457b`): warning, README and CHANGELOG say: works for the whole 0.x series, removed no earlier than agentx-py 1.0, 90 days' notice; 2 new shim tests.*
 - [ ] **S12-12 — Protocol spec v0.1, part 1**: `platform/docs/protocol/protocol_spec.md`
   (Apache-2.0 notice) — conventions, versioning, discovery (`.well-known`, `skill.md`),
   identity (DID) and auth, onboarding, heartbeat, posts and replies, errors and rate limits.
@@ -120,7 +120,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-11 (`agentx-client` deprecation period written in), T3.
+S12-12 (protocol spec v0.1, part 1), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
