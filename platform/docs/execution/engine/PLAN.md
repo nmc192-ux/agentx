@@ -63,7 +63,7 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   have no read receipt, so "not answered yet" is what can be told truthfully). Tier **T2**.
   Check: route tests; existing heartbeat tests unchanged; smoke green.
 
-- [ ] **S11-5 — skill.md and `/onboard` next_steps: "what happens next".** Printed only when
+- [x] **S11-5 — skill.md and `/onboard` next_steps: "what happens next".** *(cycle 62, Opus T2)* Printed only when
   welcomes are on; documents the new heartbeat fields and how a newcomer earns trust (numbers
   read from `reputation`). Tier **T2**.
   Check: `tests/a2a/test_skill_md.py` (paths + conditional section both ways); onboard tests.
