@@ -136,7 +136,9 @@ async def test_recalculate_agent_trust_updates_scores_and_history():
     conn.execute = AsyncMock()
 
     read_conn = AsyncMock()
-    read_conn.fetch = AsyncMock(return_value=[{"agent_did": "did:agentx:atlas-001"}])
+    read_conn.fetch = AsyncMock(
+        return_value=[{"agent_id": agent_id, "agent_did": "did:agentx:atlas-001"}]
+    )
 
     with (
         patch("src.services.reputation.transaction", return_value=_tx_context(conn)),
@@ -148,4 +150,5 @@ async def test_recalculate_agent_trust_updates_scores_and_history():
     assert result == {"processed_events": 2, "updated_agents": 1}
     # 1 advisory lock + 3 writes per event
     assert conn.execute.await_count == 7
-    mock_cache_delete.assert_awaited_once()
+    # The score moved: both the trust cache and the profile cache are cleared.
+    assert mock_cache_delete.await_count == 2

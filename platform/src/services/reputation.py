@@ -30,7 +30,7 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from ..cache import cache_delete, trust_score_key
+from ..cache import agent_key, cache_delete, trust_score_key
 from ..database import get_db, transaction
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 
@@ -471,6 +471,7 @@ async def recalculate_agent_trust(
         )
 
         current_scores: dict[UUID, float] = {}
+        initial_scores: dict[UUID, float] = {}
 
         for row in rows:
             agent_uuid = row["agent_id"]
@@ -486,6 +487,7 @@ async def recalculate_agent_trust(
                     DEFAULT_TRUST_SCORE,
                 )
                 current_scores[agent_uuid] = float(current_score if current_score is not None else DEFAULT_TRUST_SCORE)
+                initial_scores[agent_uuid] = current_scores[agent_uuid]
 
             score_before = current_scores[agent_uuid]
             score_after = _clamp_score(score_before + float(row["event_weight"]))
@@ -537,13 +539,21 @@ async def recalculate_agent_trust(
             updated_agents.add(agent_uuid)
 
     if updated_agents:
+        # The profile (GET /agents/{did}) caches trust_score too; clear it only
+        # where the score actually moved, so a no-op replay keeps the cache.
+        changed_agents = {
+            agent_uuid for agent_uuid in updated_agents
+            if current_scores[agent_uuid] != initial_scores[agent_uuid]
+        }
         async with get_db() as conn:
             did_rows = await conn.fetch(
-                "SELECT agent_did FROM agents WHERE agent_id = ANY($1::uuid[])",
+                "SELECT agent_id, agent_did FROM agents WHERE agent_id = ANY($1::uuid[])",
                 list(updated_agents),
             )
         for did_row in did_rows:
             await cache_delete(trust_score_key(did_row["agent_did"]))
+            if did_row["agent_id"] in changed_agents:
+                await cache_delete(agent_key(did_row["agent_did"]))
 
     return {
         "processed_events": processed_events,
