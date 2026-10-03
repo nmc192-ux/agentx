@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -38,6 +38,15 @@ class ContractResultCreate(BaseModel):
 
 class ContractDisputeCreate(BaseModel):
     reason: str = Field(..., min_length=1)
+
+
+class ContractSettleRequest(BaseModel):
+    """A FOUNDER's ruling on a disputed contract. The whole escrow goes one
+    way; the body names no payee and no amount (anything else → 422)."""
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["pay_contractor", "refund_creator"]
+    note: str = Field(..., min_length=1, max_length=2000)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -87,3 +96,23 @@ class ContractDisputeResponse(BaseModel):
     reason: str
     status: str
     created_at: datetime
+    resolution: Optional[str] = None
+    resolved_by_did: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    resolution_note: Optional[str] = None
+
+
+class ContractSettlementResponse(BaseModel):
+    contract: ContractResponse
+    dispute: ContractDisputeResponse
+    outcome: str
+    amount: int
+    paid_to_did: str
+
+
+class ContractDisputeFile(BaseModel):
+    """What a FOUNDER reads before ruling: the contract, its disputes and
+    whatever the contractor submitted."""
+    contract: ContractResponse
+    disputes: List[ContractDisputeResponse]
+    results: List[ContractResultResponse]

@@ -14,6 +14,9 @@ Public API
   complete_contract(contract_id, caller_did)      → ContractResponse
   cancel_contract(contract_id, caller_did)        → ContractResponse
   open_dispute(contract_id, caller_did, reason)   → ContractDisputeResponse
+  settle_dispute(contract_id, caller_did, outcome, note)
+                                                  → ContractSettlementResponse
+  get_dispute_file(contract_id, caller_did)       → ContractDisputeFile
 
 Design notes
 ────────────
@@ -21,18 +24,25 @@ Design notes
       open → assigned → submitted → completed
       open → cancelled                      (creator; escrow refunded)
       assigned | submitted → disputed       (creator or contractor)
+      disputed → completed | cancelled      (a FOUNDER's ruling; escrow paid
+                                             to the contractor / refunded)
 • Money rules (Sprint 9, S9-6b). The budget is escrowed from the creator's
   wallet in the SAME transaction that creates the contract: no funds, no
   contract (it used to be soft-fail, which let a contract advertise a budget
-  nobody had paid in). The escrow leaves in exactly two ways, each once:
-  to the contractor when the creator completes a submitted contract, or back
-  to the creator when the creator cancels a contract nobody was assigned to.
+  nobody had paid in). The escrow leaves in exactly three ways, each once:
+  to the contractor when the creator completes a submitted contract, back
+  to the creator when the creator cancels a contract nobody was assigned to,
+  or — for a disputed contract only — to whichever of the two a FOUNDER
+  rules for (``settle_dispute``, Sprint 12, S12-3).
 • Every state change locks the contract row (``SELECT … FOR UPDATE``) before
   it reads the status, so concurrent calls are serialised: the second caller
   sees the first one's committed status and is refused. Status change and
   payout commit together or not at all.
-• A disputed contract keeps its escrow: nothing resolves a dispute yet
-  (arbitration is an open design question — HUMAN_ACTIONS D3).
+• A disputed contract keeps its escrow until a FOUNDER settles it (decision
+  D3b). The FOUNDER role is read from the database inside the settling
+  transaction, not taken from the caller; a FOUNDER who is a party to the
+  contract cannot rule on it; the whole escrow goes to the contractor or to
+  the creator, never anywhere else and never split.
 • One bid per (contract_id, bidder_id); the creator cannot bid on their own
   contract.
 • Errors: PermissionError → 403, ContractConflictError → 409, other
@@ -52,10 +62,12 @@ from ..models.contract import (
     ContractBidCreate,
     ContractBidResponse,
     ContractCreate,
+    ContractDisputeFile,
     ContractDisputeResponse,
     ContractResponse,
     ContractResultCreate,
     ContractResultResponse,
+    ContractSettlementResponse,
 )
 from .token_service import _record_transaction
 
@@ -125,6 +137,10 @@ def _row_to_dispute(row) -> ContractDisputeResponse:
         reason=row["reason"],
         status=row["status"],
         created_at=row["created_at"],
+        resolution=row.get("resolution"),
+        resolved_by_did=row.get("resolved_by_did"),
+        resolved_at=row.get("resolved_at"),
+        resolution_note=row.get("resolution_note"),
     )
 
 
@@ -255,6 +271,30 @@ _CONTRACT_COLS = """
 """
 
 _DISPUTABLE_STATUSES = ("assigned", "submitted")
+
+_DISPUTE_COLS = """
+    dispute_id, contract_id, initiator_did, reason, status, created_at,
+    resolution, resolved_by_did, resolved_at, resolution_note
+"""
+
+# A FOUNDER's ruling → (who is paid, the contract's final status, ledger type).
+_SETTLEMENTS = {
+    "pay_contractor": ("contractor", "completed", "contract_dispute_release"),
+    "refund_creator": ("creator", "cancelled", "contract_dispute_refund"),
+}
+
+
+async def _is_active_founder(conn, did: str, *, hold: bool = False) -> bool:
+    """True only if *did* is an ACTIVE agent whose role, in the database right
+    now, is FOUNDER. Anything else — unknown, suspended, any other role — is
+    False. ``hold=True`` share-locks the agent row, so the role cannot be
+    changed under the caller's transaction before it commits."""
+    row = await conn.fetchrow(
+        "SELECT governance_role::text AS role, status::text AS status "
+        "FROM agents WHERE agent_did = $1" + (" FOR SHARE" if hold else ""),
+        did,
+    )
+    return row is not None and row["role"] == "FOUNDER" and row["status"] == "ACTIVE"
 
 
 async def _publish(event_type: EventType, payload: dict, caller_did: str) -> None:
@@ -809,8 +849,8 @@ async def open_dispute(
 
     Only the two parties (creator or assigned contractor) may dispute, and
     only while work is in flight ('assigned' or 'submitted'). The contract
-    moves to 'disputed' and its escrow stays where it is: nothing resolves a
-    dispute yet (HUMAN_ACTIONS D3), so this must not be open to outsiders.
+    moves to 'disputed' and its escrow stays where it is until a FOUNDER
+    settles it (``settle_dispute``), so this must not be open to outsiders.
 
     Args:
         contract_id: UUID of the disputed contract.
@@ -882,3 +922,160 @@ async def open_dispute(
         dispute.dispute_id, contract_id, caller_did,
     )
     return dispute
+
+
+async def settle_dispute(
+    contract_id: UUID,
+    caller_did: str,
+    outcome: str,
+    note: str,
+) -> ContractSettlementResponse:
+    """
+    A FOUNDER settles a disputed contract (decision D3b; Sprint 12, S12-3).
+
+    ``outcome='pay_contractor'`` pays the whole escrow to the contractor and
+    the contract ends 'completed'; ``outcome='refund_creator'`` returns it to
+    the creator and the contract ends 'cancelled'. Escrow, contract status and
+    the ruling on the dispute row change in ONE transaction with the contract
+    row locked, so however often or however concurrently this is called the
+    escrow moves once; a failure anywhere rolls all of it back.
+
+    Refused (nothing changes) unless every one of these holds:
+      • the caller is, in the database at this moment, an ACTIVE FOUNDER;
+      • the caller is neither the creator nor the contractor;
+      • the contract is 'disputed' and has an open dispute on record;
+      • the party to be paid still exists.
+
+    Args:
+        contract_id: UUID of the disputed contract.
+        caller_did:  DID of the caller (the authenticated agent).
+        outcome:     'pay_contractor' or 'refund_creator'.
+        note:        The FOUNDER's reason; kept on the dispute row.
+
+    Raises:
+        ValueError:            contract not found, unknown outcome, empty note.
+        PermissionError:       caller is not an active FOUNDER, or is a party.
+        ContractConflictError: contract is not disputed (e.g. already
+                               settled), has no open dispute, or the party to
+                               be paid no longer exists.
+    """
+    if outcome not in _SETTLEMENTS:
+        raise ValueError(f"Unknown settlement outcome: {outcome!r}")
+    if not note or not note.strip():
+        raise ValueError("A settlement needs a note giving the reason")
+    payee_side, final_status, tx_type = _SETTLEMENTS[outcome]
+
+    async with transaction() as conn:
+        if not await _is_active_founder(conn, caller_did, hold=True):
+            raise PermissionError("Only a FOUNDER can settle a disputed contract")
+
+        contract = await _lock_contract(conn, contract_id)
+        if caller_did in (contract["creator_did"], contract["contractor_did"]):
+            raise PermissionError(
+                "A party to the contract cannot settle its dispute"
+            )
+        if contract["status"] != "disputed":
+            raise ContractConflictError(
+                f"Only a disputed contract can be settled (status={contract['status']})"
+            )
+
+        # The payee is one of the two parties named on the locked row — never
+        # anything the caller supplies.
+        payee_did = contract[f"{payee_side}_did"]
+        payee_id = contract[f"{payee_side}_id"]
+        if payee_did is not None and payee_id is None:
+            payee_id = await conn.fetchval(
+                "SELECT agent_id FROM agents WHERE agent_did = $1", payee_did
+            )
+        if payee_did is None or payee_id is None:
+            raise ContractConflictError(
+                f"The contract's {payee_side} no longer exists and cannot be paid"
+            )
+
+        dispute_row = await conn.fetchrow(
+            f"""
+            UPDATE contract_disputes
+               SET status          = 'resolved',
+                   resolution      = $2,
+                   resolved_by_did = $3,
+                   resolved_at     = CURRENT_TIMESTAMP,
+                   resolution_note = $4
+             WHERE contract_id = $1
+               AND status      = 'open'
+            RETURNING {_DISPUTE_COLS}
+            """,
+            contract_id,
+            outcome,
+            caller_did,
+            note.strip(),
+        )
+        if dispute_row is None:
+            raise ContractConflictError(
+                "Contract has no open dispute on record; it cannot be settled"
+            )
+
+        amount = await _settle_contract_escrow(conn, contract_id, payee_id, tx_type)
+
+        updated = await conn.fetchrow(
+            f"""
+            UPDATE contracts
+               SET status = $2
+             WHERE contract_id = $1
+               AND status      = 'disputed'
+            RETURNING {_CONTRACT_COLS}
+            """,
+            contract_id,
+            final_status,
+        )
+
+    logger.info(
+        "contract_service: dispute %s on contract %s settled by %s: %s "
+        "(%d to %s)",
+        dispute_row["dispute_id"], contract_id, caller_did, outcome, amount, payee_did,
+    )
+    return ContractSettlementResponse(
+        contract=_row_to_contract(updated),
+        dispute=_row_to_dispute(dispute_row),
+        outcome=outcome,
+        amount=amount,
+        paid_to_did=payee_did,
+    )
+
+
+async def get_dispute_file(contract_id: UUID, caller_did: str) -> ContractDisputeFile:
+    """
+    The contract, its disputes and its submitted results — what a FOUNDER
+    reads before ruling. Only an active FOUNDER or one of the two parties.
+
+    Raises:
+        ValueError:      contract not found.
+        PermissionError: caller is neither a FOUNDER nor a party.
+    """
+    async with get_db() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {_CONTRACT_COLS} FROM contracts WHERE contract_id = $1",
+            contract_id,
+        )
+        if row is None:
+            raise ValueError(f"Contract not found: {contract_id}")
+        if caller_did not in (row["creator_did"], row["contractor_did"]) and not (
+            await _is_active_founder(conn, caller_did)
+        ):
+            raise PermissionError(
+                "Only a FOUNDER or a party to the contract can read its disputes"
+            )
+        disputes = await conn.fetch(
+            f"SELECT {_DISPUTE_COLS} FROM contract_disputes "
+            "WHERE contract_id = $1 ORDER BY created_at, dispute_id",
+            contract_id,
+        )
+        results = await conn.fetch(
+            "SELECT result_id, contract_id, contractor_did, result_payload, submitted_at "
+            "FROM contract_results WHERE contract_id = $1 ORDER BY submitted_at, result_id",
+            contract_id,
+        )
+    return ContractDisputeFile(
+        contract=_row_to_contract(row),
+        disputes=[_row_to_dispute(d) for d in disputes],
+        results=[_row_to_result(r) for r in results],
+    )

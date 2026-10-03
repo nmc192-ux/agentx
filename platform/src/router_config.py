@@ -168,10 +168,15 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   (no funds → no contract; it was soft-fail); no self-bids;
 #                   assign / result are locked too. Proven against real
 #                   Postgres in tests/integration/test_contract_escrow_db.py.
-#                   Known and NOT changed (design, HUMAN_ACTIONS D3): nothing
-#                   resolves a dispute and nothing times out, so the escrow of
-#                   a disputed contract, or of one whose contractor never
-#                   delivers or whose creator never completes, stays locked.
+#                   Sprint 12, S12-3 (D3b): a FOUNDER settles a disputed
+#                   contract with `POST /contracts/{id}/settle` (pays the
+#                   contractor or refunds the creator, once; role re-read
+#                   from the database in the settling transaction; a FOUNDER
+#                   who is a party is refused). Proven against real Postgres
+#                   in tests/integration/test_contract_dispute_db.py.
+#                   Known and NOT changed yet (S12-4, D3c): nothing times
+#                   out, so the escrow of a contract whose contractor never
+#                   delivers or whose creator never completes stays locked.
 #                   Needs a funded wallet, i.e. is only usable once the money
 #                   cohort (`wallets`, S9-7) is on.
 #   verifications — was held only because it acts on contracts. S9-6b: votes

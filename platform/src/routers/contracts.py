@@ -13,6 +13,8 @@ Endpoints
   POST /contracts/{contract_id}/complete — accept the result, pay the contractor (creator)
   POST /contracts/{contract_id}/cancel   — cancel an open contract, refund (creator)
   POST /contracts/{contract_id}/dispute  — open a dispute (creator or contractor)
+  GET  /contracts/{contract_id}/dispute  — the dispute file (FOUNDER or a party)
+  POST /contracts/{contract_id}/settle   — settle a disputed contract (FOUNDER)
 
 Identity (Sprint 9, S9-6b): every write acts as the JWT caller; no request
 body carries an agent identity. Service errors map to HTTP as: PermissionError
@@ -26,17 +28,20 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from ..auth.middleware import get_current_agent
+from ..auth.middleware import get_current_agent, require_role
 from ..models.contract import (
     ContractAssignRequest,
     ContractBidCreate,
     ContractBidResponse,
     ContractCreate,
     ContractDisputeCreate,
+    ContractDisputeFile,
     ContractDisputeResponse,
     ContractResponse,
     ContractResultCreate,
     ContractResultResponse,
+    ContractSettleRequest,
+    ContractSettlementResponse,
 )
 from ..services import contract_service
 
@@ -266,6 +271,63 @@ async def open_dispute(
             contract_id=contract_id,
             caller_did=agent.did,
             reason=body.reason,
+        )
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
+
+
+# ── GET /contracts/{contract_id}/dispute ──────────────────────────────────────
+
+@contracts_router.get(
+    "/{contract_id}/dispute",
+    response_model=ContractDisputeFile,
+    summary="Read a contract's disputes and submitted results",
+)
+async def get_dispute_file(
+    contract_id: UUID,
+    agent=Depends(get_current_agent),
+) -> ContractDisputeFile:
+    """
+    The contract, its disputes (with any ruling) and the results the
+    contractor submitted. Only a FOUNDER or one of the two parties
+    (403 otherwise). Requires authentication.
+    """
+    try:
+        return await contract_service.get_dispute_file(
+            contract_id=contract_id,
+            caller_did=agent.did,
+        )
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
+
+
+# ── POST /contracts/{contract_id}/settle ──────────────────────────────────────
+
+@contracts_router.post(
+    "/{contract_id}/settle",
+    response_model=ContractSettlementResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Settle a disputed contract (FOUNDER only)",
+)
+async def settle_dispute(
+    contract_id: UUID,
+    body: ContractSettleRequest,
+    agent=Depends(require_role("FOUNDER")),
+) -> ContractSettlementResponse:
+    """
+    A FOUNDER ends a disputed contract: ``pay_contractor`` pays the whole
+    escrow to the contractor (contract → 'completed'), ``refund_creator``
+    returns it to the creator (contract → 'cancelled'). Once only. FOUNDER
+    only, and not a FOUNDER who is a party to the contract (403); only a
+    'disputed' contract (409). The service checks the role again in the
+    database, inside the settling transaction.
+    """
+    try:
+        return await contract_service.settle_dispute(
+            contract_id=contract_id,
+            caller_did=agent.did,
+            outcome=body.outcome,
+            note=body.note,
         )
     except (PermissionError, ValueError) as exc:
         raise _http_error(exc)
