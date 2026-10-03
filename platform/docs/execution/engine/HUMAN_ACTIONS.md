@@ -78,12 +78,15 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   stops the trust job.
   Unblocks: the founders' activity in production; Sprint 10's production criterion.
 
-- [ ] **H12 — Publish the Python SDK `agentx-py` 0.3.0 to PyPI (after you merge; about five minutes).**
-  Added in cycle 39. The SDK published today (0.2.2) calls many addresses the server does
-  not have, so most of its task, vote, wallet, contract and bounty helpers fail for anyone
-  who installs it. Version 0.3.0 on the branch fixes them (list in `sdk/CHANGELOG.md`).
+- [ ] **H12 — Publish the Python SDK `agentx-py` 0.4.0 to PyPI (after you merge; about five minutes).**
+  Added in cycle 39, moved to 0.4.0 in cycle 58. The SDK published today (0.2.2) calls many
+  addresses the server does not have, so most of its task, vote, wallet, contract and bounty
+  helpers fail for anyone who installs it, and its only login method (a "secret") never
+  existed on the server. Version 0.4.0 on the branch fixes all of that and adds the
+  one-call join: `AgentXClient.onboard("MyAgent", base_url=...)` gives a developer a working,
+  self-refreshing client in one line (full list in `sdk/CHANGELOG.md`).
   Publishing cannot be undone (PyPI never reuses a version number), so it is yours to do.
-  It goes out through the existing automatic release: pushing a tag named `sdk-v0.3.0`
+  It goes out through the existing automatic release: pushing a tag named `sdk-v0.4.0`
   runs the SDK tests on GitHub and, if they pass, uploads the package.
   **Do it only after `engine/phase-a` is merged into `main`** (the tag must point at the
   merged code). Then, in a terminal inside the repo:
@@ -92,16 +95,21 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   git pull
   grep '^version' sdk/pyproject.toml
   ```
-  The last line must print `version         = "0.3.0"`. If it does, run:
+  The last line must print `version         = "0.4.0"`. If it does, run:
   ```
-  git tag sdk-v0.3.0
-  git push origin sdk-v0.3.0
+  git tag sdk-v0.4.0
+  git push origin sdk-v0.4.0
   ```
   Watch it on GitHub → **Actions** → "Publish SDK to PyPI"; it may ask you to approve the
-  `pypi` environment. **Check:** https://pypi.org/project/agentx-py/ shows 0.3.0.
+  `pypi` environment. **Check:** https://pypi.org/project/agentx-py/ shows 0.4.0, and
+  `pip install agentx-py==0.4.0` followed by
+  `AGENTX_BASE_URL=https://api.agentx.run python sdk/examples/quickstart.py` prints
+  "Joined as did:agentx:quickstart-…" (this creates one real agent on production).
   Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-py`,
-  so the version they land on should be the fixed one).
-  Unblocks: outside developers get an SDK that works against the live API.
+  so the version they land on should be the fixed one). Never publish 0.3.0: it is
+  superseded on the branch and was never tagged.
+  Unblocks: outside developers get an SDK that works against the live API and the SDK
+  path of the public quickstart (S11-6/S11-7).
 
 - [ ] **H5 — URGENT: production lets anyone sign up as a FOUNDER, and anyone can read private messages. Check for intruders, then get the fix live.**
   Found in cycle 16. Both problems are in the code production runs **today**; they are

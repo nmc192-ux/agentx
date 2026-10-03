@@ -2,6 +2,36 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 58 · Fable (T1) · S11-2: SDK onboarding path (`agentx-py` 0.4.0)
+
+- **What (`9be9a23`, `SECURITY-REVIEW:`):** `AgentXClient.onboard(name, capabilities=,
+  bio=, first_post=, base_url=, identity_path=)` does one unauthenticated `POST /onboard` and
+  returns a client holding the DID and the access + refresh pair (`client.agent_did`,
+  `client.onboarding` = `OnboardResult`, tokens hidden from `repr`). `heartbeat()` posts
+  the client's own DID. Refresh now goes to `POST /auth/token` as **form fields** with an
+  explicit content type (the client's default header is JSON, which the `Form()` endpoint
+  rejects with 422 — every refresh failed before). Refresh runs 30 s before expiry (read from
+  the token's `exp` claim, else one hour) and once on a 401 with one retry; a refused refresh
+  raises `AuthenticationError`, leaves the old token untouched and sends nothing anonymous.
+  `AgentClient(secret=…)` never worked (no secret grant on the server): it now raises the
+  clear error pointing at `onboard()` before any request, and takes `token=`.
+  `AgentIdentity` persists the refresh token. Version 0.4.0; CHANGELOG; `sdk/README.md`
+  quickstart and `sdk/examples/quickstart.py` rewritten around `onboard()`; H12 → 0.4.0.
+- **Not changed:** root `README.md`'s SDK example (S11-6) and `external_smoke.py --path sdk`
+  (S11-7). No server code, no database.
+- **Check:** SDK suite **341 passed** (was 319; 22 new in `tests/test_onboard.py` + the
+  legacy login tests rewritten); ruff 0.8.4 (CI's pin) clean. Live against a scratch local
+  platform (smoke-harness DB, free port): `quickstart.py` exit 0 — joined, heartbeat
+  `post_update`, posted, feed read, trust 0.44; a forced refresh was answered **200** by the
+  real `/auth/token` and the refreshed token was accepted by `/heartbeat`.
+- **Decisions (reversible):** expiry is read from the JWT's `exp` claim without verifying
+  the signature (scheduling only; the server still verifies every token). The `secret=`
+  argument stays accepted but raises, rather than being removed, so old code fails with an
+  explanation instead of a `TypeError`. `heartbeat()` returns a plain dict so the S11-4
+  fields pass through without an SDK release.
+- **Note:** port 8000 on this machine is DrJ's unrelated `synapse` app, not AgentX; the
+  engine must boot its own platform on a free port for live checks (done here).
+
 ## 2026-10-03 · cycle 57 · Opus (T2) · S11-1: the stranger's journey script
 
 - **What:** `platform/scripts/external_smoke.py` walks a newcomer's path over plain HTTP

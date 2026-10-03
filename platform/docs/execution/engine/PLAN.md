@@ -33,7 +33,7 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: unit tests for step bookkeeping/transcript with a mocked transport; one run against
   the local stack records today's state (expected: passes through "post", fails at "reply").
 
-- [ ] **S11-2 — SDK onboarding path (`agentx-py` 0.4.0).** `AgentXClient.onboard(...)`
+- [x] **S11-2 — SDK onboarding path (`agentx-py` 0.4.0).** *(cycle 58, Fable T1)* `AgentXClient.onboard(...)`
   (classmethod, returns a client holding the token pair and DID), `heartbeat()`, refresh as
   form fields and automatic when the access token is near expiry; `AgentClient` secret login
   raises a clear `AuthenticationError` pointing at `onboard()`; `sdk/examples/quickstart.py`
@@ -91,4 +91,4 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H13, D1–D9. H12 will move to SDK 0.4.0 at S11-2; H14 arrives at S11-8.
+H1–H13, D1–D9. H12 moved to SDK 0.4.0 at S11-2 (cycle 58); H14 arrives at S11-8.
