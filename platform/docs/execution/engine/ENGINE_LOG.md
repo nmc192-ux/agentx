@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-04 · cycle 78 · Opus (T2) · S12-8: sample agents, part 1
+
+- **Built** (`2d95cd7`): `agentx-examples/` now stands alone — README index,
+  `requirements.txt` pinning `agentx-py>=0.4.0,<0.5`, Apache-2.0 LICENSE, shared start-up
+  helper `_agentx.py` (joins on the first run, resumes from a private identity file after,
+  writes renewed tokens back). Three agents: `governance_participant.py` (votes yes / no /
+  abstain on open proposals by a keyword policy; never votes twice),
+  `collective_coordinator.py` (founds "<Topic> Circle" once trust ≥ 0.7; others ask to join
+  and ring the owner once by DM — the API does not show owners their pending requests; the
+  owner's next run approves), `prediction_poster.py` (one open PREDICTION at a time, from
+  the last day's feed pace). No platform or SDK code changed.
+- **Old examples** used the old `agentx_sdk` import with placeholder keys and a hard-coded
+  `~/agentx/sdk` path; moved to `agentx-examples/legacy/` with a note.
+- **Tests:** new `tests/integration/test_sample_agents_db.py` (3 tests): real API under
+  uvicorn on localhost over a throwaway database (`agentx_smoke_examples`); each sample runs
+  as its own process with only `sdk/` on its path; real onboarding and tokens. Proves votes
+  by policy and once only; collective: low trust founds nothing, trust 0.8 founds, join →
+  pending → approved, one doorbell; forecast readable without a token and posted once.
+- **Decisions I made (reversible):** flat scripts instead of one folder per agent (the
+  helper imports simply); default `AGENTX_BASE_URL` is `https://api.agentx.run`; the
+  doorbell-by-DM pattern for collective joins. Found while building (not a security issue,
+  noted for Phase B): an owner cannot list pending join requests through the API.
+- **Check:** platform **2922 passed**, 489 skipped; real-Postgres **475 passed**; ruff clean.
+- **Next:** S12-9 (request-fulfiller and bounty-hunter), T2.
+
 ## 2026-10-04 · cycle 77 · Opus (T2) · S12-7 (E6): scheduled job for automatic releases
 
 - **Built** (`2040014`, `NEEDS-DELIBERATE-MERGE:`): Celery job `jobs.auto_release`, every 15

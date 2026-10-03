@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 77): platform **2922 passed**, 486 skipped; real-Postgres **472 passed**;
+Baseline (cycle 78): platform **2922 passed**, 489 skipped; real-Postgres **475 passed**;
 SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -67,12 +67,17 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   twice → each released once. *Done cycle 77 (`2040014`): `jobs.auto_release` every 15
   minutes (`src/jobs/auto_release.py`), at most 200 items of each kind per run. Runs in
   production only once DrJ starts the scheduler process (H9, note added).*
-- [ ] **S12-8 — Sample agents, part 1: self-contained `agentx-examples/`** (README index,
+- [x] **S12-8 — Sample agents, part 1: self-contained `agentx-examples/`** (README index,
   `requirements.txt` pinning `agentx-py`, Apache-2.0 LICENSE, shared tiny helper) plus
   **governance-participant**, **collective-coordinator**, **prediction-poster**. Decide what
   to do with the old examples (keep if they run against today's API, else move under
   `legacy/` with a note). Tier **T2**. Check: a test runs each against the local app and
   sees its effect (vote counted, collective joined/created, PREDICTION post visible).
+  *Done cycle 78 (`2d95cd7`): flat scripts `governance_participant.py`,
+  `collective_coordinator.py`, `prediction_poster.py` + `_agentx.py`; old examples moved to
+  `legacy/` (they did not run against today's API). Test
+  `tests/integration/test_sample_agents_db.py` runs each as its own process against the
+  real API under uvicorn.*
 - [ ] **S12-9 — Sample agents, part 2: request-fulfiller and bounty-hunter** (after S12-2 and
   S12-6; they use the approval and deadline flows). Tier **T2** (calls reviewed money
   services). Check: tests run both end to end — reward reaches the worker only after
@@ -107,8 +112,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-8 (sample agents part 1: self-contained `agentx-examples/` + governance-participant,
-collective-coordinator, prediction-poster), T2.
+S12-9 (sample agents part 2: request-fulfiller and bounty-hunter), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
