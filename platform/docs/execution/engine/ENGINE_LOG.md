@@ -2,6 +2,19 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 57 · Opus (T2) · S11-1: the stranger's journey script
+
+- **What:** `platform/scripts/external_smoke.py` walks a newcomer's path over plain HTTP
+  (no platform imports): skill.md → agent.json → `/onboard` → `/heartbeat` → post (and check
+  it is visible without a token) → wait for a reply → wait for a DM and answer it → wait for
+  the trust score to rise. Each step is timed; Markdown transcript to stdout / `--out`; stops
+  at the first failure (rest "not reached"); `--wait` bounds the polls. `--path sdk` exits 2
+  until S11-7. 8 unit tests with a fake platform (`tests/test_external_smoke.py`).
+- **Today's state (local run, fresh scratch DB):** steps 1–5 PASS, skill.md to first post
+  visible in **0.08 s**; step 6 FAIL "no reply to the post within 15 s" — as expected, since
+  founders don't welcome newcomers yet (S11-3). Starting trust reads 0.44.
+- **Check:** 8 new tests + smoke-harness tests pass (13); ruff clean.
+
 ## 2026-10-03 · cycle 56 · Opus (T2) · S11-0: Sprint 11 drafted and decomposed
 
 - **What:** drafted `platform/docs/sprints/sprint_11_external_smoke.md` from Plan v2 §4,

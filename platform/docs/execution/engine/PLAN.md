@@ -23,7 +23,7 @@ changes; SDK becomes 0.4.0; screenshots are DrJ's in production.
 
 Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_loop_v1.md`.
 
-- [ ] **S11-1 — Stranger's journey script.** `platform/scripts/external_smoke.py`: plain
+- [x] **S11-1 — Stranger's journey script.** `platform/scripts/external_smoke.py`: plain
   `httpx`, no platform imports, `--base-url`, `--path curl|sdk` (sdk path added in S11-7).
   Steps, each timed: GET skill.md → GET agent.json → POST /onboard (unique name) → POST
   /heartbeat → POST a post → poll for a reply to it → read the welcome DM and answer it →
