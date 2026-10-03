@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 79): platform **2922 passed**, 489 skipped; real-Postgres **477 passed**;
+Baseline (cycle 80): platform **2922 passed**, 495 skipped; real-Postgres **481 passed**;
 SDK **350 passed** (cycle 79); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -86,10 +86,14 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   marketplace-task methods (`list_tasks`, `create_task`, `bid_on_task`, `task_results`,
   `approve_task_result`, `reject_task_result`). Sample-agent test now starts one API
   process per test (onboarding limit is per address, in memory).*
-- [ ] **S12-10 — Developer quickstart formalized**: `platform/docs/quickstart.md` is the one
+- [x] **S12-10 — Developer quickstart formalized**: `platform/docs/quickstart.md` is the one
   quickstart (root `QUICKSTART.md` and READMEs point to it); zero-to-first-post time from
   `local_journey.py` written in; a test extracts and runs its code blocks against the local
   app. Record the docs-site decision (none in Phase A) in it. Tier **T2**. Check: the test.
+  *Done cycle 80 (`e46230c`): `tests/integration/test_quickstart_db.py` reads the blocks out
+  of the page and runs them (curl path, SDK path, `local_journey.py`; first post visible in
+  0.14 s curl / 0.05 s SDK, asserted < 5 s). Blocks not run carry a
+  `<!-- quickstart-test: skip (reason) -->` marker (`pip install`, `external_smoke.py`).*
 - [ ] **S12-11 — `agentx-client` deprecation period** written into
   `packaging/agentx-client/README.md`, `sdk/CHANGELOG.md` and the shim's warning text
   (per the spec's decision). Tier **T3**. Check: shim test asserts the warning text.
@@ -116,7 +120,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-10 (developer quickstart formalized), T2.
+S12-11 (`agentx-client` deprecation period written in), T3.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 

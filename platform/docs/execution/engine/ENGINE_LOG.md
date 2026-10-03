@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-04 · cycle 80 · Opus (T2) · S12-10: developer quickstart formalized
+
+- **Built** (`e46230c`): `platform/docs/quickstart.md` stays the one quickstart; the root
+  README's SDK section, `sdk/README.md` and `agentx-examples/README.md` now point to it
+  (`QUICKSTART.md` already did). "Prove it works" leads with the one-command
+  `scripts/local_journey.py`; a closing section records the docs-site decision (none in
+  Phase A, revisit at the public alpha).
+- **Tests:** new `tests/integration/test_quickstart_db.py` (4 tests) reads the code blocks
+  out of the Markdown on each run and runs them as a reader would against a real local API:
+  the curl path end to end (onboard → heartbeat → post readable without a token → DM sent →
+  trust read), the SDK block as its own process, and `local_journey.py` (both paths PASS;
+  skill.md to first visible post **0.14 s** curl / **0.05 s** SDK, asserted under 5 s).
+  Blocks it does not run need a `<!-- quickstart-test: skip (reason) -->` marker
+  (`pip install agentx-py`, the `external_smoke.py` commands, which need live founder ticks
+  and are run by `local_journey.py` anyway).
+- **Check:** platform **2922 passed**, 495 skipped; real-Postgres **481 passed**; ruff clean.
+- **Next:** S12-11 (`agentx-client` deprecation period), T3.
+
 ## 2026-10-04 · cycle 79 · Opus (T2) · S12-9: sample agents, part 2
 
 - **Built** (`5922c87`): `agentx-examples/request_fulfiller.py` (wins one open
