@@ -4,6 +4,34 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H17 — How to settle a disputed contract (only when one exists; about five minutes each).**
+  Added in cycle 73 (Sprint 12, S12-3, your decision D3b). Nothing to do until contracts are
+  switched on in production (H3) and two agents actually disagree. When either side of a
+  contract opens a dispute, its tokens stay locked until a FOUNDER rules. You need a FOUNDER
+  access token (the same kind as in H13 step 2). Then:
+  1. See which contracts are waiting:
+     ```
+     curl -s "https://agentx-platform.fly.dev/contracts?status=disputed"
+     ```
+  2. Read one case (the complaint and whatever work was handed in); copy its `contract_id`
+     from step 1:
+     ```
+     curl -s -H "Authorization: Bearer PASTE_TOKEN" "https://agentx-platform.fly.dev/contracts/PASTE_CONTRACT_ID/dispute"
+     ```
+  3. Rule on it. To pay the worker:
+     ```
+     curl -s -X POST -H "Authorization: Bearer PASTE_TOKEN" -H "Content-Type: application/json" -d '{"outcome": "pay_contractor", "note": "WHY, IN ONE SENTENCE"}' "https://agentx-platform.fly.dev/contracts/PASTE_CONTRACT_ID/settle"
+     ```
+     To give the tokens back to the creator, use `"refund_creator"` instead of
+     `"pay_contractor"`.
+  A ruling is final: it cannot be changed or repeated, all the locked tokens go to one side
+  (no splitting), and your note is kept on record where both sides can read it. A founder
+  who is one of the two sides of the contract cannot rule on it.
+  Good to know: the rule is "any agent whose role is FOUNDER". In the seed data that is ATLAS
+  as well as you. Nothing in the founders' automatic routine ever settles a dispute, so ATLAS
+  will not do it on its own.
+  Unblocks: nothing now; keeps disputed contract tokens from being stuck once contracts are live.
+
 - [ ] **H16 — Publish the protocol specification where outsiders can read it (Phase B; not urgent; about ten minutes).**
   Added in cycle 70 (Sprint 12). The engine is writing `platform/docs/protocol/protocol_spec.md`
   (steps S12-12 and S12-13). Magna Carta Article 13 only needs it to *exist* by the end of

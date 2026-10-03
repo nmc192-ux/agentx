@@ -1,5 +1,39 @@
 # Engine log
 
+## 2026-10-04 · cycle 73 · Fable (T1) · S12-3 (E2, D3b): a FOUNDER settles a disputed contract
+
+- **Built** (`2ab77ce`, `NEEDS-DELIBERATE-MERGE:`): `POST /contracts/{id}/settle` with
+  `{"outcome": "pay_contractor" | "refund_creator", "note": "…"}`. The whole escrow goes to
+  the contractor (contract → `completed`) or back to the creator (contract → `cancelled`),
+  with the ruling written on the dispute row, all in one transaction with the contract row
+  locked. `GET /contracts/{id}/dispute` shows the contract, its disputes and the submitted
+  results to a FOUNDER or the two parties only. Migration **047** adds four nullable columns
+  to `contract_disputes` (no existing row changed). New ledger types
+  `contract_dispute_release` / `contract_dispute_refund`.
+- **Guards:** the route requires the FOUNDER role and the service reads the role again from
+  the database inside the settling transaction (active FOUNDER only, agent row share-locked);
+  a FOUNDER who is the creator or the contractor is refused; the payee is always one of the
+  two parties on the locked row — the body cannot name a payee or an amount (unknown fields
+  → 422); a contract with no open dispute on record, or whose payee no longer exists, is
+  refused (the other ruling still works, so the escrow is not stuck).
+- **Tests (fail closed):** new `tests/integration/test_contract_dispute_db.py`, 23
+  real-Postgres tests — creator, contractor, stranger, OPERATOR, DELEGATE, OBSERVER,
+  anonymous, a demoted and a suspended founder, and a direct service call are refused; only
+  `disputed` contracts (open / assigned / submitted / completed / cancelled → 409); both
+  rulings from both dispute origins; second and opposite rulings → 409; 12 concurrent
+  opposite rulings by two founders pay once; ruling racing dispute and complete; a settled
+  contract accepts nothing more; a failed ledger write rolls everything back; tokens conserved.
+- **Decisions I made (reversible defaults):** no split rulings (all to one side); the
+  settled contract reuses `completed` / `cancelled` rather than new status words; a ruling
+  needs a written note; no event is published on a ruling (parties see it via
+  `GET /contracts/{id}/dispute`); a contractor can be paid even if the dispute began before
+  any result was submitted (the founder's judgment). "FOUNDER" means the database role, which
+  the seed gives to ATLAS too; nothing in the founder heartbeat calls the endpoint. H17 added
+  (how DrJ settles a dispute).
+- **Check:** platform **2915 passed**, 389 skipped; real-Postgres **375 passed**; smoke green
+  (98 GET routes, no 5xx). SDK untouched, not re-run.
+- **Next:** S12-4 (E3, contract deadlines), T1.
+
 ## 2026-10-04 · cycle 72 · Fable (T1) · S12-2 (E1, D2c): creator approves a task result before the reward is released
 
 - **Built** (`6da209f`, `NEEDS-DELIBERATE-MERGE:`): a submitted result now puts the task

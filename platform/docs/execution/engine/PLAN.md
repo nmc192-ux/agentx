@@ -5,8 +5,8 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 72): platform **2915 passed**, 366 skipped; real-Postgres **352 passed**;
-SDK **345 passed**; smoke green (97 GET routes, `tasks` on). Automatic-release period **N = 7 days**
+Baseline (cycle 73): platform **2915 passed**, 389 skipped; real-Postgres **375 passed**;
+SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
 
@@ -30,9 +30,13 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   `task_service.release_overdue_result` (for S12-7), migration 046. Reject sends the task
   back to the same executor; the reward never returns to the creator by rejecting (D10 open,
   not blocking).*
-- [ ] **S12-3 (E2, D3b) — FOUNDER settles a disputed contract**: one FOUNDER-only action
+- [x] **S12-3 (E2, D3b) — FOUNDER settles a disputed contract**: one FOUNDER-only action
   that pays the contractor or refunds the creator, on the ledger. Tier **T1** (moves tokens,
   role-gated). Check: non-founder → 403; only `disputed` contracts; once only; ledger balances.
+  *Done cycle 73 (`2ab77ce`): `POST /contracts/{id}/settle` (`pay_contractor` → `completed`,
+  `refund_creator` → `cancelled`), `GET /contracts/{id}/dispute` (FOUNDER or a party),
+  migration 047 (ruling recorded on the dispute row). Role re-read from the database in the
+  settling transaction; a FOUNDER who is a party is refused. H17 added.*
 - [ ] **S12-4 (E3, D3c) — Contract deadlines.** Creator reclaims after the deadline with no
   delivery; contractor releasable N days after delivery if the creator is silent; disputed
   contracts excluded (go to S12-3). Tier **T1** (moves tokens). Check: real-Postgres tests
@@ -88,8 +92,8 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-3 (E2, FOUNDER settles a disputed contract), T1.
+S12-4 (E3, contract deadlines), T1.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H16 open; D1–D9 answered cycle 63; D10 open (not blocking).
+H1–H17 open; D1–D9 answered cycle 63; D10 open (not blocking).
