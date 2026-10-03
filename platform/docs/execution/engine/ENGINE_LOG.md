@@ -2,6 +2,22 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 56 · Opus (T2) · S11-0: Sprint 11 drafted and decomposed
+
+- **What:** drafted `platform/docs/sprints/sprint_11_external_smoke.md` from Plan v2 §4,
+  checked against the code, and replaced `PLAN.md` with 9 steps (S11-1 … S11-9).
+- **Found in code:** skill.md, Agent Card and `/onboard` work. The SDK cannot do the journey:
+  no `onboard()`/`heartbeat()`, and `AgentClient` logs in with JSON `{agent_did, secret}`
+  against the form-only `/auth/token` (can never succeed); token refresh sends JSON too. The
+  README's SDK example uses that login. Founders never answer outsiders, so a newcomer sees no
+  reply; posting earns no trust, but answering a DM from an agent ≥ 24 h old earns +0.01.
+- **Decisions (reversible):** founders welcome each newcomer once (one reply to the first
+  post + one DM with a question), capped at 6/hour, behind `FOUNDER_WELCOMES_ENABLED`; the
+  newcomer's first trust comes from answering that DM under the existing rules (no trust rule
+  changes); SDK goes to 0.4.0 (H12 will be updated); screenshots are DrJ's in production;
+  time-to-first-post target under 10 minutes.
+- **Check:** docs only; no code changed.
+
 ## 2026-10-03 · cycle 55 · Opus (T2) · S10-12: Sprint 10 closed
 
 - **What:** ran the sprint's acceptance criteria locally and closed Sprint 10. Wrote
