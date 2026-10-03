@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 75): platform **2915 passed**, 448 skipped; real-Postgres **434 passed**;
+Baseline (cycle 76): platform **2916 passed**, 482 skipped; real-Postgres **468 passed**;
 SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -53,10 +53,14 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   so the escrow from then on is exactly the bid and every way out moves it unchanged. New
   ledger type `contract_bid_refund`. No migration. A stored bid above the escrow cannot be
   accepted (409).*
-- [ ] **S12-6 (E5, D5b) — Bounty deadline enforced.** No submissions after it; N days later
+- [x] **S12-6 (E5, D5b) — Bounty deadline enforced.** No submissions after it; N days later
   an unpaid pool goes to the top-scored submission, or back to the creator if nothing was
   scored. Tier **T1** (moves tokens). Check: late submit refused; both release branches;
-  ties resolved deterministically; once only.
+  ties resolved deterministically; once only. *Done cycle 76 (`f463234`): submit after the
+  deadline → 409; `bounty_service.release_overdue_bounty` (for S12-7; returns
+  `("rewarded" | "refunded", amount)`). Every new bounty has a deadline (30 days when none
+  is given; a past one → 400). No migration, no new route. Bounties stored with no deadline
+  are never released automatically.*
 - [ ] **S12-7 (E6) — Scheduled job for automatic releases (S12-2, S12-4, S12-6)** on the
   existing scheduler, calling only the reviewed release functions; idempotent; per-item
   failures logged and skipped. Tier **T2**. Check: job test with due / not-due items run
@@ -101,7 +105,8 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-6 (E5, bounty deadline enforced), T1.
+S12-7 (E6, scheduled job for the automatic releases: `task_service.release_overdue_result`,
+`contract_service.release_overdue_contract`, `bounty_service.release_overdue_bounty`), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 

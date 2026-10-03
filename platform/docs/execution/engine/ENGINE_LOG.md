@@ -1,5 +1,45 @@
 # Engine log
 
+## 2026-10-04 · cycle 76 · Fable (T1) · S12-6 (E5, D5b): bounty deadline enforced
+
+- **Built** (`f463234`, `NEEDS-DELIBERATE-MERGE:`): a bounty takes no submission after its
+  deadline (409). `bounty_service.release_overdue_bounty` releases a pool still held
+  `AUTO_RELEASE_DAYS` (7) after the deadline: to the top-scored submission (bounty →
+  `rewarded`), or back to the creator if nothing payable was scored (bounty → `cancelled`).
+  No route calls it (the job is S12-7). Both rules use the database clock against the stored
+  deadline, with the bounty row locked. The winner pick and the payout are now one shared
+  piece of code for the creator's own distribute and the automatic release, so the two cannot
+  disagree: highest score, then earliest submission, then id. New ledger types
+  `bounty_auto_release` / `bounty_deadline_refund`. No migration, no new route.
+- **Guards:** every new bounty has a deadline — 30 days from creation when none is given —
+  so a new bounty's pool can no longer stay locked for ever; a deadline not in the future is
+  refused (400) and nothing is escrowed; a deadline sent with no time zone is read as UTC; no
+  route changes a deadline. The creator's own entry, an unscored entry, a half-scored row
+  and an entry under another bounty can never be the automatic winner; a winner whose
+  account is gone is skipped for the next payable one; with nothing scored and no creator
+  left, nothing moves.
+- **Tests (fail closed):** new `tests/integration/test_bounty_deadline_db.py`, 34
+  real-Postgres tests — late submit refused whatever the request says; creator still scores,
+  pays and cancels after the deadline; release refused before the deadline, at 7 d − 1 min,
+  with no deadline, and for paid / cancelled bounties; paid at 7 d + 1 min, once; both
+  branches; ties (earliest, then id) give the same pick every time; score 0 counts as
+  scored; no HTTP path releases (creator, submitter, FOUNDER, anonymous); 12 concurrent
+  releases pay once; release racing distribute, racing a last-minute score and racing cancel
+  each end in one outcome; a failed ledger write rolls everything back and the next run
+  succeeds; tokens conserved. Older mocked tests gained the new `deadline_passed` column; one
+  new mocked test.
+- **Decisions I made (reversible defaults):** default deadline of 30 days
+  (`DEFAULT_BOUNTY_DAYS`) for a bounty created without one; no upper limit on a deadline the
+  creator names (it is shown to everyone before they submit); a refunded bounty uses the
+  existing status `cancelled` (no new status); the creator may still score and pay after
+  the deadline and even after the 7 days, until the job runs; bounties already stored with
+  no deadline are left alone (bounties are not live, so there should be none in
+  production). The catch DrJ was told about under D5 stands: a creator who scores nothing
+  gets the pool back after the 7 days even if agents submitted. No human action needed.
+- **Check:** platform **2916 passed**, 482 skipped; real-Postgres **468 passed**; smoke green
+  (98 GET routes, no 5xx). SDK untouched, not re-run.
+- **Next:** S12-7 (E6, scheduled job for the automatic releases), T2.
+
 ## 2026-10-04 · cycle 75 · Fable (T1) · S12-5 (E4, D4b): pay the accepted bid, refund the rest
 
 - **Built** (`a089956`, `NEEDS-DELIBERATE-MERGE:`): the accepted bid is now the price. When
