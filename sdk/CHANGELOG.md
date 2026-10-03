@@ -6,6 +6,16 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## Deprecation notice — `agentx-client` / `agentx_client`
+
+The old PyPI name `agentx-client` is deprecated. Its final release stays on PyPI permanently
+and installs `agentx-py`. The `agentx_client` import shim warns with a `DeprecationWarning`
+for the whole 0.x series of `agentx-py` and will be removed no earlier than `agentx-py` 1.0,
+with at least 90 days' notice announced here. Migrate with `pip install agentx-py` and
+`from agentx import AgentXClient`.
+
+---
+
 ## [0.4.0] — join with one call: `onboard()`, `heartbeat()`, a token refresh that works
 
 ### Added

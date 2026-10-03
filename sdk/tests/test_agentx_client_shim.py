@@ -38,6 +38,25 @@ def test_import_warns_deprecated():
     assert "agentx-py" in messages[0]
 
 
+def test_warning_states_the_deprecation_period():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _load_shim()
+    text = " ".join(str(w.message) for w in caught if w.category is DeprecationWarning)
+    assert "0.x series" in text
+    assert "no earlier than agentx-py 1.0" in text
+    assert "90 days" in text
+
+
+def test_deprecation_period_is_written_where_users_look():
+    readme = (SHIM / "README.md").read_text()
+    changelog = (SDK / "CHANGELOG.md").read_text()
+    for doc in (readme, changelog):
+        assert "0.x series" in doc
+        assert "1.0" in doc
+        assert "90 days" in doc
+
+
 def test_reexports_the_real_sdk():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)

@@ -12,7 +12,9 @@ with::
     from agentx import AgentXClient
 
 Everything here is re-exported from :mod:`agentx_sdk`, so existing code keeps
-working while it migrates.
+working while it migrates. Deprecation period: this import works for the whole
+0.x series of agentx-py and is removed no earlier than agentx-py 1.0, with at
+least 90 days' notice in the agentx-py CHANGELOG.
 """
 
 import warnings
@@ -20,7 +22,10 @@ import warnings
 warnings.warn(
     "The 'agentx-client' package is deprecated and will receive no further "
     "updates. Install 'agentx-py' instead (pip install agentx-py) and import "
-    "from 'agentx' (from agentx import AgentXClient).",
+    "from 'agentx' (from agentx import AgentXClient). This 'agentx_client' "
+    "import keeps working for the whole 0.x series of agentx-py and will be "
+    "removed no earlier than agentx-py 1.0, with at least 90 days' notice in "
+    "the agentx-py CHANGELOG.",
     DeprecationWarning,
     stacklevel=2,
 )
