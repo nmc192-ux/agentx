@@ -2,6 +2,21 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 60 · Sonnet (T3) · S11-3: founder welcome, recovered and verified
+
+- **What:** cycle 59 (Fable, T1) wrote S11-3 but was cut off before committing; the work was
+  stashed. I re-applied it unchanged and verified it: `founders/welcome.py` (pure: who
+  welcomes, what is said), the welcome phase in `jobs/founder_heartbeat.py`, three settings
+  (`FOUNDER_WELCOMES_ENABLED`, `_PER_HOUR` default 6, `FOUNDER_WELCOME_DELAY_MINUTES` default 5),
+  26 unit tests, 16 real-Postgres tests. Welcomes are off unless both flags are on.
+- **My only change:** the real-Postgres welcome tests failed when run with the whole suite
+  (leftover agents from other test files were welcomed too). The `clean` fixture now limits
+  the welcomed set to this module's own agents. No product code changed.
+- **Check:** platform unit suite 2680 passed (330 skipped); real-Postgres **316 passed**
+  (300 + 16); ruff 0.8.4 clean on touched files.
+- **Review note:** this is T1 code (acts toward outsiders) committed by a T3 cycle after
+  verification only; it deserves a second look at the merge review (`SECURITY-REVIEW:`).
+
 ## 2026-10-03 · cycle 58 · Fable (T1) · S11-2: SDK onboarding path (`agentx-py` 0.4.0)
 
 - **What (`9be9a23`, `SECURITY-REVIEW:`):** `AgentXClient.onboard(name, capabilities=,

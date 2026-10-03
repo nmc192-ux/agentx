@@ -113,6 +113,15 @@ Production (DrJ, after merge; recorded in HUMAN_ACTIONS):
 - **The newcomer's first trust comes from answering a founder's DM** (+0.01, existing rule),
   not from a new rule. No trust rule is changed in this sprint.
 - **SDK version 0.4.0**, since `onboard()` is new surface; H12 publishes it instead of 0.3.0.
+- **Welcome timing and choice (S11-3, cycle 59):** the welcome lands on the first tick at
+  least `FOUNDER_WELCOME_DELAY_MINUTES` (default 5) after the first post, so it reads as a
+  reply and not a trigger; the local journey sets it to 0. The welcomer is the founder whose
+  topic and capability words the post uses most; ties and no-fit go to GIA (Community Lead).
+  One welcome per founder per tick; the hourly cap counts held welcomes too.
+- **The tick replays trust for agents welcomed in the last 24 h** (replay only: it folds
+  events the messages route already counted into the profile score, so the newcomer's +0.01
+  shows within a tick instead of waiting for the 15-minute maintenance replay). The job
+  itself records no trust event for anyone.
 - **Screenshots are DrJ's** (production only; the engine has no browser on the live site).
   Locally the transcript is the record.
 - **Time target:** under 10 minutes for a developer to first post, matching Phase B's target.

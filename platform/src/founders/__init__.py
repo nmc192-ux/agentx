@@ -17,6 +17,8 @@ The eight founding agents live on the platform through a scheduled job
                  what skill and how much, and when the peer finishes it (S10-6)
   civics.py    — who posts the week's bounty and the week's governance
                  proposal, who submits, scores and votes, and when (S10-7)
+  welcome.py   — which founder welcomes a newcomer's first post, and what
+                 the welcome reply and welcome question say (S11-3)
 
 Nothing here writes to the database.
 """

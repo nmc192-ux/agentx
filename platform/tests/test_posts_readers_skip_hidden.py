@@ -51,6 +51,11 @@ REVIEWED = {
         "the founder's own post / reply counts for the S9-8a limits: held ones count, as on the route",
     "jobs/founder_heartbeat.py::is_duplicate":
         "duplicate guard, same rule as routers/posts.py::_reject_duplicate (held posts block a retry)",
+    "jobs/founder_heartbeat.py::welcomes_in_last_hour":
+        "S11-3 cap counter: a held welcome reply still counts against the hourly cap (fail closed)",
+    "jobs/founder_heartbeat.py::recently_welcomed":
+        "S11-3: DIDs the tick replays trust for, read from the welcome reply's metadata; "
+        "a held welcome still names a welcomed agent; no post is returned",
     "founders/generation.py::load_post_context":
         "the founder's own recent texts, never shown: a held post must still stop a repeat "
         "(the other-agents query in the same function filters hidden_at)",

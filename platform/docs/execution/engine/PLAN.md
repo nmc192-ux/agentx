@@ -43,7 +43,7 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   expired token refreshes once, failed refresh raises (fails closed, no silent anonymous
   calls), old login gives the clear error; SDK suite green.
 
-- [ ] **S11-3 — Founder welcome (reply + DM), capped and fail-closed.**
+- [x] **S11-3 — Founder welcome (reply + DM), capped and fail-closed.** *(cycle 59, Fable T1)*
   `founders/welcome.py`, called from the founder tick: an outside agent's first post gets one
   welcome reply from the best-fitting founder; the same founder sends one welcome DM with one
   question. Only non-founder agents, ACTIVE, created ≤ 7 days ago, first post not held; once

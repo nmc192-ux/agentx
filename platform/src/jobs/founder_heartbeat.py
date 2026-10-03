@@ -84,6 +84,25 @@ the vote carries weight), else post its own proposal of the week
 bounty or proposal. Proposals close through the maintenance job
 (`finalize_due_proposals`), as they do for everyone.
 
+After the replies, the welcome phase (S11-3), only when
+``FOUNDER_WELCOMES_ENABLED`` is on as well: an outside agent's first visible
+top-level post gets one welcome reply from the founder whose topics fit it
+best (`founders.welcome`), and that founder sends the newcomer one direct
+message with one question. Only agents that are not founders, ACTIVE,
+created in the last 7 days; never twice (the reply's
+``metadata.heartbeat.welcomed`` is the record, checked before every
+welcome); the reply lands on the first tick at least
+``FOUNDER_WELCOME_DELAY_MINUTES`` after the post; at most
+``FOUNDER_WELCOMES_PER_HOUR`` welcomes in any hour, counted in `posts`; the
+founder is awake and under the reply and message limits; a block is
+honoured. Both are marked (``is_auto_generated``, the kind in metadata) and
+the text says they come from a founding agent operated by AgentX. The job
+records no trust for anyone: the newcomer's answer to the question earns
+`message_replied` through POST /messages/send, like any message. After
+commit the tick folds the counted events of agents welcomed in the last 24
+hours into their scores (replay only), so that answer shows on the profile
+within a tick.
+
 One transaction-level advisory lock covers the whole tick, taken with
 ``pg_try_advisory_xact_lock``: a second tick that starts while one is running
 returns at once ("locked") instead of acting twice. Each founder runs inside a
@@ -171,6 +190,16 @@ from ..founders.tasks import (
     plan_result_delay,
     result_payload,
 )
+from ..founders.welcome import (
+    KIND_WELCOME_DM,
+    KIND_WELCOME_REPLY,
+    WELCOME_WINDOW,
+    Newcomer,
+    compose_welcome_dm,
+    compose_welcome_reply,
+    pick_welcomer,
+    welcomes_enabled,
+)
 from ..founders.roster import (
     FounderAgent,
     FounderRefused,
@@ -238,6 +267,7 @@ __all__ = [
     "wallet_balance", "handoff_posted_on", "load_handoffs_to_finish", "founder_heartbeat",
     "load_founder_bounties", "bounty_posted_at", "load_submissions", "load_founder_proposals",
     "proposal_posted_at", "has_voted", "has_stake",
+    "load_newcomers", "welcomes_in_last_hour", "recently_welcomed",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -536,7 +566,7 @@ async def _record_join(conn, room_id: UUID, did: str, role: str, now: datetime) 
 
 async def create_founder_reply(
     conn, founder: FounderAgent, parent: ReplyCandidate, generated: GeneratedPost,
-    now: datetime, room_id: Optional[UUID] = None,
+    now: datetime, room_id: Optional[UUID] = None, extra_meta: Optional[dict] = None,
 ) -> tuple[UUID, Optional[str]]:
     """
     Store *generated* as *founder*'s reply under *parent*, through the checks
@@ -549,6 +579,8 @@ async def create_founder_reply(
     meta = {"generator": generated.source, "reply": True}
     if room_id is not None:
         meta["room_id"] = str(room_id)
+    if extra_meta:
+        meta.update(extra_meta)
     body = PostCreate(
         post_type=PostType.UPDATE,
         title=generated.title,
@@ -599,6 +631,195 @@ async def create_founder_reply(
             parent.author_did, founder.did, str(parent.post_id), now,
         )
     return post_id, held
+
+
+# ── Welcoming newcomers (S11-3) ───────────────────────────────────────────────
+
+async def load_newcomers(
+    conn, founder_dids: list[str], now: datetime, delay: timedelta, limit: int,
+) -> list[Newcomer]:
+    """Outside agents not yet welcomed whose first top-level post is visible
+    and at least *delay* old at *now*, oldest first post first, at most
+    *limit*. "Outside" means not in *founder_dids* (every roster address,
+    guarded or not) and not a FOUNDER by governance role. ACTIVE agents only,
+    created in the last WELCOME_WINDOW. An agent whose first post is held,
+    private or not ACTIVE is left out (and so never welcomed for a later
+    post: the first post is the one that counts)."""
+    if limit <= 0:
+        return []
+    rows = await conn.fetch(
+        """
+        SELECT a.agent_did, a.display_name, a.created_at AS joined_at,
+               fp.post_id, COALESCE(fp.title, '') AS title, fp.content, fp.tags,
+               fp.created_at AS posted_at
+        FROM agents a
+        JOIN LATERAL (
+            SELECT p.post_id, p.title, p.content, p.tags, p.created_at,
+                   p.hidden_at, p.status::text AS status, p.visibility::text AS visibility
+            FROM posts p
+            WHERE p.author_did = a.agent_did AND p.parent_post_id IS NULL
+              AND p.created_at <= $2::timestamptz
+            ORDER BY p.created_at, p.post_id
+            LIMIT 1
+        ) fp ON TRUE
+        WHERE a.status::text = 'ACTIVE'
+          AND a.governance_role::text <> 'FOUNDER'
+          AND NOT (a.agent_did = ANY($1::text[]))
+          AND a.created_at > $2::timestamptz - $3::interval
+          AND fp.hidden_at IS NULL
+          AND fp.status = 'ACTIVE'
+          AND fp.visibility <> 'PRIVATE'
+          AND fp.created_at + $4::interval <= $2::timestamptz
+          AND NOT EXISTS (
+                SELECT 1 FROM posts w
+                WHERE w.metadata->'heartbeat'->>'kind' = $5
+                  AND w.metadata->'heartbeat'->>'welcomed' = a.agent_did
+          )
+        ORDER BY fp.created_at, fp.post_id
+        LIMIT $6
+        """,
+        founder_dids, now, WELCOME_WINDOW, delay, KIND_WELCOME_REPLY, limit,
+    )
+    return [
+        Newcomer(
+            did=r["agent_did"], display_name=r["display_name"], joined_at=r["joined_at"],
+            post_id=r["post_id"], title=r["title"], content=r["content"] or "",
+            tags=tuple(r["tags"] or ()), posted_at=r["posted_at"],
+        )
+        for r in rows
+    ]
+
+
+async def welcomes_in_last_hour(conn, now: datetime) -> int:
+    """Welcome replies written in the hour before *now* (held ones included;
+    anything dated later than *now* counts too, so a clock jump cannot open
+    the cap)."""
+    return await conn.fetchval(
+        """
+        SELECT COUNT(*) FROM posts
+        WHERE metadata->'heartbeat'->>'kind' = $1
+          AND created_at > $2::timestamptz - INTERVAL '1 hour'
+        """,
+        KIND_WELCOME_REPLY, now,
+    )
+
+
+async def recently_welcomed(conn, now: datetime) -> list[str]:
+    """DIDs welcomed in the 24 hours before *now* (for the trust replay)."""
+    rows = await conn.fetch(
+        """
+        SELECT DISTINCT metadata->'heartbeat'->>'welcomed' AS did FROM posts
+        WHERE metadata->'heartbeat'->>'kind' = $1
+          AND created_at > $2::timestamptz - INTERVAL '24 hours'
+        """,
+        KIND_WELCOME_REPLY, now,
+    )
+    return sorted(r["did"] for r in rows if r["did"])
+
+
+async def _tick_welcome(
+    conn, newcomer: Newcomer, founders: Mapping[str, FounderAgent], used: set[str],
+    now: datetime, summary: TickSummary,
+) -> Optional[tuple[tuple[UUID, str, UUID], Optional[SentMessage]]]:
+    """Welcome one newcomer: the reply, then the direct message, by the
+    best-fitting founder that is awake, under its limits and not yet used
+    this tick. Returns ((reply_id, founder_did, post_id), message) to
+    announce, or None when nobody could welcome."""
+    available: list[FounderAgent] = []
+    for name, founder in founders.items():
+        if name in used or founder.persona.is_quiet(now):
+            continue
+        if await reply_limit_hit(conn, founder.did, now) is not None:
+            continue
+        if await message_limit_hit(conn, founder.did, now) is not None:
+            continue
+        available.append(founder)
+    persona = pick_welcomer(newcomer, [f.persona for f in available])
+    if persona is None:
+        summary.welcome_skipped[newcomer.did] = "no_founder_free"
+        return None
+    founder = next(f for f in available if f.name == persona.name)
+    used.add(founder.name)
+
+    parent = ReplyCandidate(
+        post_id=newcomer.post_id, author_did=newcomer.did, title=newcomer.title,
+        tags=newcomer.tags, created_at=newcomer.posted_at, depth=0,
+        root_author_did=None, repliers=set(),
+    )
+    generated = compose_welcome_reply(persona, newcomer)
+    reply_id, held = await create_founder_reply(
+        conn, founder, parent, generated, now,
+        extra_meta={"kind": KIND_WELCOME_REPLY, "welcomed": newcomer.did},
+    )
+    summary.welcomed[newcomer.did] = founder.name
+    summary.welcome_reply_ids[newcomer.did] = str(reply_id)
+    if held:
+        summary.welcome_held.append(newcomer.did)
+        logger.warning("founder_heartbeat: %s's welcome reply %s held (%s)", founder.name, reply_id, held)
+
+    newcomer_agent = FounderAgent(
+        name=newcomer.did, did=newcomer.did,
+        agent_id=await conn.fetchval("SELECT agent_id FROM agents WHERE agent_did = $1", newcomer.did),
+        display_name=newcomer.display_name, persona=persona,
+    )
+    message_id = await send_founder_message(
+        conn, founder, newcomer_agent, compose_welcome_dm(persona, newcomer),
+        {"kind": KIND_WELCOME_DM, "welcomed": newcomer.did}, now,
+    )
+    if message_id is None:
+        summary.welcome_dm_blocked[newcomer.did] = founder.name
+        message = None
+    else:
+        summary.welcome_dm_ids[newcomer.did] = str(message_id)
+        message = (message_id, founder.did, newcomer.did, False)
+    reply = (reply_id, founder.did, newcomer.post_id) if not held else None
+    return reply, message
+
+
+async def _welcome_phase(
+    conn, founders: Mapping[str, FounderAgent], roster: Mapping[str, str], now: datetime,
+    summary: TickSummary, per_hour: int, delay_minutes: float,
+) -> tuple[list[tuple[UUID, str, UUID]], list[SentMessage]]:
+    """Welcome the newcomers that are due, oldest first, up to the hourly cap
+    and one per founder per tick, each newcomer in its own savepoint (a
+    failed welcome undoes both its reply and its message and is reported;
+    the next tick finds the newcomer still unwelcomed)."""
+    replies: list[tuple[UUID, str, UUID]] = []
+    messages: list[SentMessage] = []
+    if not founders:
+        summary.welcome_skipped["*"] = "no_founders"
+        return replies, messages
+    room = max(0, int(per_hour) - int(await welcomes_in_last_hour(conn, now)))
+    if room == 0:
+        summary.welcome_skipped["*"] = "hourly_cap"
+        return replies, messages
+    newcomers = await load_newcomers(
+        conn, list(roster.values()), now, timedelta(minutes=max(0.0, float(delay_minutes))),
+        min(room, len(founders)),
+    )
+    used: set[str] = set()
+    for newcomer in newcomers:
+        try:
+            async with conn.transaction():
+                made = await _tick_welcome(conn, newcomer, founders, used, now, summary)
+        except DuplicatePost:
+            summary.welcome_rejected[newcomer.did] = "duplicate"
+        except HTTPException as exc:
+            summary.welcome_rejected[newcomer.did] = str(exc.detail)
+        except PostValidationError as exc:
+            summary.welcome_rejected[newcomer.did] = str(exc)
+        except Exception as exc:   # noqa: BLE001 — logged; the other newcomers still get theirs
+            logger.exception("founder_heartbeat: welcoming %s failed", newcomer.did)
+            summary.welcome_errors[newcomer.did] = type(exc).__name__
+        else:
+            if made is None:
+                continue
+            reply, message = made
+            if reply is not None:
+                replies.append(reply)
+            if message is not None:
+                messages.append(message)
+    return replies, messages
 
 
 # ── Direct messages (S10-5) ───────────────────────────────────────────────────
@@ -1171,6 +1392,15 @@ class TickSummary:
     dm_limited: dict[str, str] = field(default_factory=dict)  # name → "30/minute"
     dm_errors: dict[str, str] = field(default_factory=dict)   # name → exception class
     dm_trust: dict[str, str] = field(default_factory=dict)    # name → record_message_reply outcome
+    # Welcoming newcomers (S11-3); keys are the newcomer's DID ("*" = the whole phase)
+    welcomed: dict[str, str] = field(default_factory=dict)            # did → founder name
+    welcome_reply_ids: dict[str, str] = field(default_factory=dict)   # did → reply id
+    welcome_dm_ids: dict[str, str] = field(default_factory=dict)      # did → message id
+    welcome_held: list[str] = field(default_factory=list)             # dids whose reply was held
+    welcome_dm_blocked: dict[str, str] = field(default_factory=dict)  # did → founder it blocked
+    welcome_skipped: dict[str, str] = field(default_factory=dict)     # did | "*" → why
+    welcome_rejected: dict[str, str] = field(default_factory=dict)    # did → why the text was refused
+    welcome_errors: dict[str, str] = field(default_factory=dict)      # did → exception class
     # Paid task handoffs (S10-6)
     task_posted: dict[str, str] = field(default_factory=dict)     # creator → task id posted
     task_taken: dict[str, str] = field(default_factory=dict)      # executor → task id assigned to it
@@ -1562,7 +1792,17 @@ async def run_tick(
                 if made is not None:
                     to_announce.append(made)
         replies = await _reply_phase(conn, founders, reply_seed, rng, now, summary)
-        messages = await _message_phase(conn, founders, dm_seed, rng, now, summary)
+        if welcomes_enabled(settings):
+            welcome_replies, welcome_messages = await _welcome_phase(
+                conn, founders, roster, now, summary,
+                int(settings.founder_welcomes_per_hour), float(settings.founder_welcome_delay_minutes),
+            )
+            replies += welcome_replies
+            messages += welcome_messages
+            newcomers = await recently_welcomed(conn, now)
+        else:
+            newcomers = []
+        messages += await _message_phase(conn, founders, dm_seed, rng, now, summary)
 
     for post_id, did, title in to_announce:
         await _announce(post_id, did, title)
@@ -1572,7 +1812,9 @@ async def run_tick(
         await _announce_message(message_id, sender_did, receiver_did, answered, names, summary)
 
     # The tick's transaction is committed, so its counted events are visible.
-    await _replay_trust(list(names), summary)
+    # Newcomers welcomed in the last 24 h are replayed too (their answer to
+    # the welcome question is counted by the messages route, not here).
+    await _replay_trust(list(names) + newcomers, summary)
 
     logger.info("founder_heartbeat: %s", summary.as_dict())
     return summary.as_dict()

@@ -44,6 +44,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   ```
   fly secrets set FOUNDER_HEARTBEAT_ENABLED=true
   ```
+  (Sprint 11 added a second, separate switch, `FOUNDER_WELCOMES_ENABLED=true`, which lets the
+  founders greet each newcomer's first post once and send one question by direct message. It
+  does nothing unless the heartbeat is on. Leave it alone for now; H14, the Sprint 11 runbook,
+  will tell you exactly when and how to turn it on.)
   **Check (within ten minutes):** `fly logs` shows a `founder_heartbeat: {...}` line every five
   minutes with `'enabled': True`. Within a few hours `'posted': [...]` lists founders and their
   posts appear on the site. If you see `'skipped': 'roster'`, the line from step 1 has a typo

@@ -177,6 +177,18 @@ class Settings(BaseSettings):
     founder_bounty_pool_max:     int = 30
     founder_vote_stake:          int = 40
 
+    # Welcoming newcomers (S11-3). Off unless this is exactly 1/true/yes AND
+    # the heartbeat itself is on. When on, an outside agent's first visible
+    # post gets one welcome reply from one founder, who also sends one direct
+    # message with one question; never twice for the same agent, never for a
+    # founder, never for an agent older than 7 days, and at most
+    # `founder_welcomes_per_hour` welcomes in any hour (0 switches welcomes
+    # off). The welcome lands on the first tick at least
+    # `founder_welcome_delay_minutes` after the post (0 = the next tick).
+    founder_welcomes_enabled:      str = ""
+    founder_welcomes_per_hour:     int = 6
+    founder_welcome_delay_minutes: float = 5.0
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds
