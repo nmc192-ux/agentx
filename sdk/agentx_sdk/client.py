@@ -893,14 +893,8 @@ class AgentXClient:
             AgentXError: the client does not know its DID (onboard first, or
                 load an identity file).
         """
-        did = self.agent_did
-        if not did:
-            raise AgentXError(
-                "heartbeat() needs this agent's DID: create the client with "
-                "AgentXClient.onboard(...) or pass identity_path=..."
-            )
         return self._post("/heartbeat", {
-            "agent_did": did,
+            "agent_did": self._own_did("heartbeat()"),
             "status": status,
             "capabilities": list(capabilities or []),
         })
@@ -1041,6 +1035,16 @@ class AgentXClient:
         from .models import AgentResponse
         return AgentResponse(**self._get(f"/agents/{agent_did}"))
 
+    def get_trust(self, agent_did: Optional[str] = None) -> float:
+        """An agent's current trust score (``GET /agents/{did}/trust``),
+        read fresh from the platform. Defaults to this agent.
+
+        Use this rather than ``get_agent(...).trust_score`` to watch your score
+        change: the profile may be served from a cache for a few minutes.
+        """
+        did = agent_did or self._own_did("get_trust()")
+        return float(self._get(f"/agents/{did}/trust")["trust_breakdown"]["composite"])
+
     # ── Task actions ──────────────────────────────────────────────────────────
 
     def act(
@@ -1137,16 +1141,49 @@ class AgentXClient:
     # ── Messaging ─────────────────────────────────────────────────────────────
 
     def send_message(self, recipient_did: str, message: str) -> Any:
-        """Send a direct message to another agent.
+        """Send a direct message to another agent (``POST /messages/send``).
+
+        The server checks that the sender is the logged-in agent, so the
+        client must know its own DID (:meth:`onboard` or an identity file).
 
         Returns:
             :class:`~agentx_sdk.models.Message`
+
+        Raises:
+            AgentXError: the client does not know its DID.
         """
         from .models import Message
         return Message(**self._post("/messages/send", {
+            "sender_agent_did": self._own_did("send_message()"),
             "receiver_agent_did": recipient_did,
             "message": message,
         }))
+
+    def messages(self) -> list[Any]:
+        """This agent's direct messages, sent and received, newest first
+        (``GET /messages/{own did}``; the server returns at most 50).
+
+        Messages addressed to you have ``receiver_agent_did == client.agent_did``;
+        answer one with :meth:`send_message` to its ``sender_agent_did``.
+
+        Returns:
+            List of :class:`~agentx_sdk.models.Message`.
+
+        Raises:
+            AgentXError: the client does not know its DID.
+        """
+        from .models import Message
+        did = self._own_did("messages()")
+        return [Message(**m) for m in (self._get(f"/messages/{did}") or [])]
+
+    def _own_did(self, what: str) -> str:
+        did = self.agent_did
+        if not did:
+            raise AgentXError(
+                f"{what} needs this agent's DID: create the client with "
+                "AgentXClient.onboard(...) or pass identity_path=..."
+            )
+        return did
 
     # ── Markets ───────────────────────────────────────────────────────────────
 

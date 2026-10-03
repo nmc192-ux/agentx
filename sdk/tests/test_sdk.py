@@ -314,9 +314,65 @@ class TestMessages:
             "message":            "Hello",
             "created_at":         "2024-01-01T00:00:00",
         }
-        respx.post(f"{BASE}/messages/send").mock(return_value=httpx.Response(200, json=payload))
-        msg = make_client().send_message("did:agentx:you", "Hello")
+        route = respx.post(f"{BASE}/messages/send").mock(
+            return_value=httpx.Response(201, json=payload)
+        )
+        client = make_client()
+        client.identity = AgentIdentity(agent_did="did:agentx:me", api_key="test-key")
+        msg = client.send_message("did:agentx:you", "Hello")
         assert msg.message == "Hello"
+        # The server refuses a send whose sender_agent_did is not the caller.
+        sent = json.loads(route.calls.last.request.content)
+        assert sent == {
+            "sender_agent_did": "did:agentx:me",
+            "receiver_agent_did": "did:agentx:you",
+            "message": "Hello",
+        }
+
+    @respx.mock
+    def test_send_message_without_did_raises_before_sending(self):
+        route = respx.post(f"{BASE}/messages/send")
+        with pytest.raises(AgentXError, match="send_message"):
+            make_client().send_message("did:agentx:you", "Hello")
+        assert not route.called
+
+    @respx.mock
+    def test_messages_reads_own_inbox(self):
+        row = {
+            "message_id":         str(uuid4()),
+            "sender_agent_did":   "did:agentx:you",
+            "receiver_agent_did": "did:agentx:me",
+            "message":            "Welcome!",
+            "created_at":         "2024-01-01T00:00:00",
+        }
+        route = respx.get(f"{BASE}/messages/did:agentx:me").mock(
+            return_value=httpx.Response(200, json=[row])
+        )
+        client = make_client()
+        client.identity = AgentIdentity(agent_did="did:agentx:me", api_key="test-key")
+        msgs = client.messages()
+        assert route.called
+        assert [m.message for m in msgs] == ["Welcome!"]
+        assert msgs[0].receiver_agent_did == client.agent_did
+
+    @respx.mock
+    def test_get_trust_reads_composite_for_self(self):
+        respx.get(f"{BASE}/agents/did:agentx:me/trust").mock(
+            return_value=httpx.Response(200, json={
+                "agent_did": "did:agentx:me", "trust_score": 0.44,
+                "trust_breakdown": {"composite": 0.45},
+            })
+        )
+        client = make_client()
+        client.identity = AgentIdentity(agent_did="did:agentx:me", api_key="test-key")
+        assert client.get_trust() == 0.45
+
+    @respx.mock
+    def test_messages_without_did_raises_before_sending(self):
+        route = respx.get(url__regex=rf"{BASE}/messages/.*")
+        with pytest.raises(AgentXError, match="messages"):
+            make_client().messages()
+        assert not route.called
 
 
 class TestBounties:

@@ -29,7 +29,13 @@ Usage (from ``platform/``):
     .venv/bin/python scripts/external_smoke.py --base-url http://localhost:8000 \\
         --wait 120 --out /tmp/journey.md
 
-``--path sdk`` (the same journey through ``agentx-py``) arrives in S11-7.
+``--path sdk`` (S11-7) walks the same journey through ``agentx-py``: skill.md and
+the Agent Card are still read over plain HTTP (that is how a developer finds the
+platform), then every later step uses the SDK (``AgentXClient.onboard``,
+``heartbeat``, ``posts.create`` / ``posts.replies``, ``messages`` /
+``send_message``, ``get_trust``). The visibility check stays tokenless HTTP. The
+SDK is imported from the installed ``agentx-py`` or, failing that, from this
+repo's ``sdk/`` folder.
 
 The script creates one real agent, one post and one message on the target. Run
 it against production only as described in HUMAN_ACTIONS (H14).
@@ -42,6 +48,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import httpx
@@ -102,12 +109,19 @@ class Journey:
                 step.status, step.detail = FAIL, str(exc)
             except httpx.HTTPError as exc:
                 step.status, step.detail = FAIL, f"HTTP error: {exc.__class__.__name__}: {exc}"
+            except Exception as exc:  # noqa: BLE001 — SDK errors (AgentXError and kin)
+                if not self._is_sdk_error(exc):
+                    raise
+                step.status, step.detail = FAIL, f"SDK error: {exc.__class__.__name__}: {exc}"
             step.seconds = self.clock() - start
             if step.name == "post" and step.status == PASS:
                 self.first_post_seconds = self.clock() - t0
             if step.status == FAIL:
                 return False
         return True
+
+    def _is_sdk_error(self, exc: Exception) -> bool:
+        return False
 
     def _auth(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}
@@ -150,20 +164,19 @@ class Journey:
     def step_onboard(self) -> str:
         body = self._expect(self.client.post("/onboard", json={
             "name": self.name,
-            "capabilities": ["research", "writing"],
-            "bio": "External smoke test agent (scripts/external_smoke.py).",
+            "capabilities": CAPABILITIES,
+            "bio": BIO,
         }), 201)
         self.did, self.token = body.get("agent_did", ""), body.get("token", "")
         if not self.did or not self.token:
             raise StepFailed("onboard response lacks agent_did or token")
-        trust = self._expect(self.client.get(f"/agents/{self.did}/trust"), 200)
-        self.trust_start = _trust_of(trust)
+        self.trust_start = self._read_trust()
         return f"{self.did}, starting trust {self.trust_start}"
 
     def step_heartbeat(self) -> str:
         body = self._expect(self.client.post(
             "/heartbeat", headers=self._auth(),
-            json={"agent_did": self.did, "capabilities": ["research", "writing"]},
+            json={"agent_did": self.did, "capabilities": CAPABILITIES},
         ), 200)
         if not body.get("acknowledged"):
             raise StepFailed("heartbeat not acknowledged")
@@ -172,11 +185,8 @@ class Journey:
     def step_post(self) -> str:
         body = self._expect(self.client.post("/posts", headers=self._auth(), json={
             "post_type": "UPDATE",
-            "title": "Hello from a new agent",
-            "content": (
-                "I just joined AgentX through skill.md. I research and write; "
-                "happy to help with summaries and literature checks."
-            ),
+            "title": POST_TITLE,
+            "content": POST_TEXT,
             "tags": ["introduction"],
         }), 201)
         self.post_id = str(body.get("post_id", ""))
@@ -184,8 +194,7 @@ class Journey:
             raise StepFailed("post response lacks post_id")
         if body.get("hidden"):
             raise StepFailed(f"post {self.post_id} was held for review")
-        # Visible to a stranger: no token.
-        self._expect(self.client.get(f"/posts/{self.post_id}"), 200)
+        self._check_visible()
         return f"post {self.post_id} visible without a token"
 
     def step_reply(self) -> str:
@@ -212,7 +221,7 @@ class Journey:
         self._expect(self.client.post("/messages/send", headers=self._auth(), json={
             "sender_agent_did": self.did,
             "receiver_agent_did": sender,
-            "message": "Thanks for the welcome! I mostly do research summaries.",
+            "message": REPLY_TEXT,
         }), 201)
         return f"message from {sender}: {_clip(text)}; answered"
 
@@ -220,10 +229,19 @@ class Journey:
         start = self.trust_start or 0.0
 
         def check() -> Optional[str]:
-            body = self._expect(self.client.get(f"/agents/{self.did}/trust"), 200)
-            now = _trust_of(body)
+            now = self._read_trust()
             return f"trust {start} -> {now}" if now > start else None
         return self._poll(check, "rise in trust score")
+
+    def _read_trust(self) -> float:
+        return _trust_of(self._expect(self.client.get(f"/agents/{self.did}/trust"), 200))
+
+    def _check_visible(self) -> None:
+        """The post is visible to a stranger: plain GET, no token."""
+        self._expect(self.client.get(f"/posts/{self.post_id}"), 200)
+
+    def close(self) -> None:
+        pass
 
     # ── transcript ───────────────────────────────────────────────────────────
 
@@ -265,6 +283,106 @@ def _clip(text: str, n: int = 80) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
+REPLY_TEXT = "Thanks for the welcome! I mostly do research summaries."
+POST_TITLE = "Hello from a new agent"
+POST_TEXT = (
+    "I just joined AgentX through skill.md. I research and write; "
+    "happy to help with summaries and literature checks."
+)
+CAPABILITIES = ["research", "writing"]
+BIO = "External smoke test agent (scripts/external_smoke.py)."
+
+
+@dataclass
+class SdkJourney(Journey):
+    """The same journey through ``agentx-py`` (``--path sdk``).
+
+    ``onboard`` is ``AgentXClient.onboard`` (tests pass a stand-in).
+    """
+    path: str = "sdk"
+    onboard: Optional[Callable[..., Any]] = None
+    sdk: Any = None
+
+    def __post_init__(self) -> None:
+        agentx = _import_sdk()
+        self._sdk_errors = (agentx.AgentXError,)
+        if self.onboard is None:
+            self.onboard = agentx.AgentXClient.onboard
+
+    def _is_sdk_error(self, exc: Exception) -> bool:
+        return isinstance(exc, self._sdk_errors)
+
+    def step_onboard(self) -> str:
+        self.sdk = self.onboard(
+            self.name, capabilities=CAPABILITIES, bio=BIO, base_url=self.base_url,
+            log_level="WARNING",
+        )
+        self.did = self.sdk.agent_did or ""
+        if not self.did:
+            raise StepFailed("AgentXClient.onboard returned a client without a DID")
+        self.trust_start = self._read_trust()
+        return f"{self.did}, starting trust {self.trust_start}"
+
+    def step_heartbeat(self) -> str:
+        body = self.sdk.heartbeat(capabilities=CAPABILITIES)
+        if not body.get("acknowledged"):
+            raise StepFailed("heartbeat not acknowledged")
+        return f"suggested_action={body.get('suggested_action')}"
+
+    def step_post(self) -> str:
+        body = self.sdk.posts.create("UPDATE", POST_TITLE, POST_TEXT, tags=["introduction"])
+        self.post_id = str(body.get("post_id", ""))
+        if not self.post_id:
+            raise StepFailed("post response lacks post_id")
+        if body.get("hidden"):
+            raise StepFailed(f"post {self.post_id} was held for review")
+        self._check_visible()
+        return f"post {self.post_id} visible without a token"
+
+    def step_reply(self) -> str:
+        def check() -> Optional[str]:
+            for reply in self.sdk.posts.replies(self.post_id).get("posts", []):
+                if reply.get("author_did") != self.did:
+                    who = reply.get("author_name") or reply.get("author_did")
+                    return f"reply from {who}: {_clip(reply.get('content', ''))}"
+            return None
+        return self._poll(check, "reply to the post")
+
+    def step_dm(self) -> str:
+        def check() -> Optional[Any]:
+            for msg in self.sdk.messages():
+                if msg.receiver_agent_did == self.did and msg.sender_agent_did != self.did:
+                    return msg
+            return None
+        msg = self._poll(check, "direct message")
+        self.sdk.send_message(msg.sender_agent_did, REPLY_TEXT)
+        return f"message from {msg.sender_agent_did}: {_clip(msg.message)}; answered"
+
+    def _read_trust(self) -> float:
+        return self.sdk.get_trust()
+
+    def close(self) -> None:
+        if self.sdk is not None:
+            self.sdk.close()
+
+
+def _import_sdk() -> Any:
+    """``agentx`` from the environment, else from this repo's ``sdk/``."""
+    try:
+        import agentx
+    except ImportError:
+        sdk_dir = Path(__file__).resolve().parents[2] / "sdk"
+        sys.path.insert(0, str(sdk_dir))
+        import agentx
+    if not hasattr(getattr(agentx, "AgentXClient", None), "onboard"):
+        # e.g. platform/agentx_sdk (the deprecated embedded SDK) shadowing the real one
+        raise SystemExit(
+            f"--path sdk needs agentx-py 0.4.0 or later; got {agentx.__file__}. "
+            "Run from platform/ as `.venv/bin/python scripts/external_smoke.py`."
+        )
+    return agentx
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--base-url", required=True, help="e.g. http://localhost:8000")
@@ -275,18 +393,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--out", help="also write the transcript to this file")
     args = ap.parse_args(argv)
 
-    if args.path == "sdk":
-        print("--path sdk is not implemented yet (Sprint 11, step S11-7).", file=sys.stderr)
-        return 2
     if not args.base_url.startswith(("http://", "https://")):
         print("--base-url must start with http:// or https://", file=sys.stderr)
         return 2
 
     base = args.base_url.rstrip("/")
     with httpx.Client(base_url=base, timeout=30.0) as client:
-        journey = Journey(base, client, path=args.path, wait=args.wait,
-                          poll_interval=args.poll_interval)
-        ok = journey.run()
+        cls = SdkJourney if args.path == "sdk" else Journey
+        journey = cls(base, client, wait=args.wait, poll_interval=args.poll_interval)
+        try:
+            ok = journey.run()
+        finally:
+            journey.close()
     text = journey.transcript()
     print(text)
     if args.out:

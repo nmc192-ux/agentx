@@ -4,10 +4,12 @@ The journey runs against a fake platform (httpx.MockTransport); these tests pin
 the step bookkeeping, the stop-at-first-failure rule, polling and the transcript.
 """
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
 import httpx
+import pytest
 
 _PATH = Path(__file__).resolve().parent.parent / "scripts" / "external_smoke.py"
 _spec = importlib.util.spec_from_file_location("external_smoke", _PATH)
@@ -27,6 +29,7 @@ class FakePlatform:
         self.reply, self.dm, self.trust_rises, self.hidden = reply, dm, trust_rises, hidden
         self.trust = 0.1
         self.answered = False
+        self.sent: dict = {}
         self.calls: list[str] = []
 
     def __call__(self, req: httpx.Request) -> httpx.Response:
@@ -37,7 +40,8 @@ class FakePlatform:
         if path == "/.well-known/agent.json":
             return httpx.Response(200, json={"name": "AgentX"})
         if path == "/onboard":
-            return httpx.Response(201, json={"agent_did": DID, "token": "tok"})
+            return httpx.Response(201, json={"agent_did": DID, "token": "tok",
+                                             "refresh_token": "rtok"})
         if path == f"/agents/{DID}/trust":
             return httpx.Response(200, json={"trust_breakdown": {"composite": self.trust}})
         if path == "/heartbeat":
@@ -54,14 +58,20 @@ class FakePlatform:
                       "content": "Welcome!"}] if self.reply else []
             return httpx.Response(200, json={"posts": posts})
         if path == f"/messages/{DID}":
-            msgs = [{"sender_agent_did": FOUNDER, "receiver_agent_did": DID,
-                     "message": "What do you research?"}] if self.dm else []
+            msgs = [{"message_id": "22222222-2222-2222-2222-222222222222",
+                     "sender_agent_did": FOUNDER, "receiver_agent_did": DID,
+                     "message": "What do you research?",
+                     "created_at": "2026-10-04T00:00:00Z"}] if self.dm else []
             return httpx.Response(200, json=msgs)
         if path == "/messages/send":
+            self.sent = json.loads(req.content)
             self.answered = True
             if self.trust_rises:
                 self.trust = 0.11
-            return httpx.Response(201, json={"message_id": "m1"})
+            return httpx.Response(201, json={
+                "message_id": "33333333-3333-3333-3333-333333333333",
+                "created_at": "2026-10-04T00:00:01Z", **self.sent,
+            })
         return httpx.Response(404, json={"detail": "nope"})
 
 
@@ -152,4 +162,76 @@ def test_pipes_in_detail_do_not_break_the_table():
 
 def test_bad_arguments_exit_2():
     assert smoke.main(["--base-url", "localhost:8000"]) == 2
-    assert smoke.main(["--base-url", "http://x", "--path", "sdk"]) == 2
+
+
+# ── --path sdk (S11-7) ───────────────────────────────────────────────────────
+
+_SDK_DIR = Path(__file__).resolve().parents[2] / "sdk"
+
+
+@pytest.fixture(autouse=True)
+def _real_sdk(request, monkeypatch):
+    """The SDK tests import agentx-py from the repo's sdk/ folder. Earlier
+    tests may have loaded platform/agentx_sdk (the deprecated embedded SDK)
+    under the same name; hide it for the test, restore it after."""
+    if "sdk" not in request.node.name:
+        return
+    for name in list(sys.modules):
+        if name.split(".")[0] in ("agentx", "agentx_sdk"):
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.syspath_prepend(str(_SDK_DIR))
+
+
+def _sdk_journey(platform, wait=10.0):
+    """The SDK path against the same fake platform: the SDK's own httpx client
+    gets the mock transport through the onboard stand-in."""
+    agentx = smoke._import_sdk()
+    transport = httpx.MockTransport(platform)
+
+    def onboard(name, **kw):
+        real_client = httpx.Client
+        httpx.Client = lambda **ckw: real_client(transport=transport, **ckw)
+        try:
+            return agentx.AgentXClient.onboard(name, **kw)
+        finally:
+            httpx.Client = real_client
+
+    clock = FakeClock()
+    client = httpx.Client(base_url="http://test", transport=transport)
+    return smoke.SdkJourney("http://test", client, wait=wait, poll_interval=2.0,
+                            clock=clock, sleep=clock.sleep, name="smoke-sdk",
+                            onboard=onboard)
+
+
+def test_sdk_journey_passes_and_answers_as_itself():
+    platform = FakePlatform()
+    j = _sdk_journey(platform)
+    try:
+        assert j.run() is True, j.transcript()
+    finally:
+        j.close()
+    assert [s.status for s in j.steps] == [smoke.PASS] * len(smoke.STEP_NAMES)
+    assert platform.sent["sender_agent_did"] == DID
+    assert platform.sent["receiver_agent_did"] == FOUNDER
+    assert "0.1 -> 0.11" in j.steps[-1].detail
+    assert "**Path:** sdk" in j.transcript()
+
+
+def test_sdk_journey_reports_sdk_errors_as_step_failures():
+    def platform(req):
+        if req.url.path == "/onboard":
+            return httpx.Response(409, json={"detail": "name taken"})
+        return FakePlatform()(req)
+    j = _sdk_journey(platform)
+    assert j.run() is False
+    by_name = {s.name: s for s in j.steps}
+    assert by_name["agent_card"].status == smoke.PASS
+    assert by_name["onboard"].status == smoke.FAIL
+    assert "SDK error" in by_name["onboard"].detail
+    assert by_name["heartbeat"].status == smoke.NOT_REACHED
+
+
+def test_sdk_journey_without_dm_fails_at_dm():
+    j = _sdk_journey(FakePlatform(dm=False), wait=4.0)
+    assert j.run() is False
+    assert j.steps[6].status == smoke.FAIL and "direct message" in j.steps[6].detail
