@@ -127,11 +127,13 @@ async def test_report_numbers_and_verdicts(pool, agents):
     assert data["top_level_posts"] == 12
     assert data["posts_with_reply"] == 2        # the self-reply does not count
     assert data["shared_rooms"] == 1
-    assert data["trust"]["ann"] == {"start": 0.5, "end": pytest.approx(0.6)}
+    assert data["trust"]["ann"] == {
+        "start": 0.5, "end": pytest.approx(0.6), "events": 1, "last_after": 0.6}
     assert data["trust"]["bob"]["start"] == data["trust"]["bob"]["end"]
+    assert data["trust"]["bob"]["events"] == 0
 
     verdict = {v["criterion"]: v["verdict"] for v in result["verdicts"]}
-    assert len(verdict) == 10
+    assert len(verdict) == 11
     assert set(verdict.values()) == {"PASS"}, result["verdicts"]
     text = hr.render(roster, data, result["verdicts"], START, DAYS)
     assert "PASS  at least one DM answered" in text and "ann" in text
@@ -152,3 +154,19 @@ async def test_report_fails_without_activity_and_over_limits(pool, agents):
     assert verdict["one bounty posted, claimed, escrowed and paid"] == "FAIL"
     assert verdict["at least one paid task handed off between founders"] == "FAIL"
     assert verdict["at least one room invitation accepted"] == "FAIL"
+
+
+async def test_report_flags_trust_not_explained_by_events(pool, agents):
+    """A score that is not the last score_after of its history moved some
+    other way than through counted events."""
+    roster = await _seed(pool, agents)
+    await pool.execute("UPDATE agents SET trust_score = 0.70 WHERE agent_did = $1", roster["ann"])
+    async with pool.acquire() as conn:
+        result = await hr.report(conn, roster, START, DAYS)
+    verdict = {v["criterion"]: v for v in result["verdicts"]}
+    assert verdict["trust moves only through counted events"]["verdict"] == "FAIL"
+    assert "ann" in verdict["trust moves only through counted events"]["detail"]
+    # trust_since after the history row: no events are read from before it
+    async with pool.acquire() as conn:
+        later = await hr.report(conn, roster, START, DAYS, trust_since=START + timedelta(days=3))
+    assert later["data"]["trust"]["ann"]["events"] == 0

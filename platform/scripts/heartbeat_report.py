@@ -14,6 +14,14 @@ reports correctly). Task handoffs are dated by the tick time kept in their
 payload. Bounties, proposals and votes are rare weekly events and are counted
 over everything the founders have ever done, not just the window.
 
+Trust is read from ``agent_reputation_history``, which the database stamps
+with its own clock: trust start is the first ``score_before`` at or after
+``--trust-since`` (default: the window start). A simulated window in the
+future (scripts/simulate_heartbeat.py) passes the real moment it began.
+Trust "only moves through counted events" when every founder's score is the
+last ``score_after`` of its history since then (each history row belongs to
+a trust event), or unchanged when it has none.
+
 Usage:
   python scripts/heartbeat_report.py --dsn postgresql://localhost/agentx --days 7
   python scripts/heartbeat_report.py --dsn ... --founder-dids "$FOUNDER_DIDS" --app-env production
@@ -41,6 +49,7 @@ MAX_POSTS_PER_DAY = 30
 MAX_POSTS_PER_HOUR = 10
 # "~30 %" of founder posts get a founder reply; accept a wide band.
 REPLY_SHARE_MIN, REPLY_SHARE_MAX = 0.10, 0.60
+TRUST_ROUNDING = 0.006
 
 KIND_DM_ANSWER = "dm_answer"
 KIND_HANDOFF = "handoff"
@@ -52,9 +61,13 @@ def _day_index(ts: datetime, start: datetime, days: int) -> Optional[int]:
     return i if 0 <= i < days and ts >= start else None
 
 
-async def collect(conn, roster: Mapping[str, str], start: datetime, days: int) -> dict[str, Any]:
+async def collect(
+    conn, roster: Mapping[str, str], start: datetime, days: int,
+    trust_since: Optional[datetime] = None,
+) -> dict[str, Any]:
     """Read everything the report needs; returns plain data (no verdicts)."""
     end = start + timedelta(days=days)
+    trust_since = trust_since or start
     dids = list(roster.values())
     name_of = {d: n for n, d in roster.items()}
 
@@ -141,7 +154,7 @@ async def collect(conn, roster: Mapping[str, str], start: datetime, days: int) -
         dids, KIND_PROPOSAL,
     )
 
-    trust: dict[str, dict[str, Optional[float]]] = {}
+    trust: dict[str, dict[str, Any]] = {}
     for n, did in roster.items():
         row = await conn.fetchrow(
             """SELECT a.agent_id,
@@ -151,16 +164,18 @@ async def collect(conn, roster: Mapping[str, str], start: datetime, days: int) -
             did,
         )
         if row is None:
-            trust[n] = {"start": None, "end": None}
+            trust[n] = {"start": None, "end": None, "events": 0, "last_after": None}
             continue
-        first = await conn.fetchval(
-            """SELECT score_before FROM agent_reputation_history
-                WHERE agent_id = $1 AND created_at >= $2 ORDER BY created_at LIMIT 1""",
-            row["agent_id"], start,
+        hist = await conn.fetch(
+            """SELECT score_before, score_after FROM agent_reputation_history
+                WHERE agent_id = $1 AND created_at >= $2 ORDER BY created_at, history_id""",
+            row["agent_id"], trust_since,
         )
         trust[n] = {
-            "start": float(first) if first is not None else row["now_score"],
+            "start": float(hist[0]["score_before"]) if hist else row["now_score"],
             "end": row["now_score"],
+            "events": len(hist),
+            "last_after": float(hist[-1]["score_after"]) if hist else None,
         }
 
     return {
@@ -242,6 +257,17 @@ def verdicts(data: Mapping[str, Any], days: int) -> list[dict[str, Any]]:
              if v["start"] is not None and v["end"] is not None and abs(v["end"] - v["start"]) > 1e-9]
     add("trust scores spread (not all equal)", len(set(ends)) >= 2,
         f"{len(set(ends))} distinct scores; {len(moved)} founder(s) moved over the window")
+
+    # Scores are stored to two decimals; history keeps the full value.
+    unexplained = [
+        n for n, v in data["trust"].items() if v["end"] is not None and (
+            abs(v["end"] - v["start"]) > 1e-9 if v["last_after"] is None
+            else abs(v["end"] - v["last_after"]) > TRUST_ROUNDING)
+    ]
+    events = sum(v["events"] for v in data["trust"].values())
+    add("trust moves only through counted events", not unexplained,
+        f"{events} counted event(s) explain every score" if not unexplained
+        else f"score not explained by its trust events: {', '.join(unexplained)}")
     return out
 
 
@@ -263,16 +289,19 @@ def render(roster: Mapping[str, str], data: Mapping[str, Any], checks: list[dict
     for n in roster:
         t = data["trust"][n]
         fmt = lambda v: "n/a" if v is None else f"{v:.2f}"  # noqa: E731
-        lines.append(f"  {n:<10} {fmt(t['start'])} -> {fmt(t['end'])}")
+        lines.append(f"  {n:<10} {fmt(t['start'])} -> {fmt(t['end'])} ({t['events']} event(s))")
     lines += ["", "Acceptance criteria:"]
     lines += [f"  {c['verdict']}  {c['criterion']} — {c['detail']}" for c in checks]
     return "\n".join(lines)
 
 
-async def report(conn, roster: Mapping[str, str], start: datetime, days: int) -> dict[str, Any]:
+async def report(
+    conn, roster: Mapping[str, str], start: datetime, days: int,
+    trust_since: Optional[datetime] = None,
+) -> dict[str, Any]:
     """Collect and judge, inside one read-only transaction."""
     async with conn.transaction(readonly=True):
-        data = await collect(conn, roster, start, days)
+        data = await collect(conn, roster, start, days, trust_since)
     return {"data": data, "verdicts": verdicts(data, days)}
 
 
@@ -282,9 +311,14 @@ async def _main(args: argparse.Namespace) -> int:
              else datetime.now(timezone.utc) - timedelta(days=args.days))
     if start.tzinfo is None:
         start = start.replace(tzinfo=timezone.utc)
+    trust_since = None
+    if args.trust_since:
+        trust_since = datetime.fromisoformat(args.trust_since)
+        if trust_since.tzinfo is None:
+            trust_since = trust_since.replace(tzinfo=timezone.utc)
     conn = await asyncpg.connect(args.dsn)
     try:
-        result = await report(conn, roster, start, args.days)
+        result = await report(conn, roster, start, args.days, trust_since)
     finally:
         await conn.close()
     if args.json:
@@ -299,6 +333,7 @@ def main() -> int:
     p.add_argument("--dsn", required=True)
     p.add_argument("--days", type=int, default=7)
     p.add_argument("--start", help="ISO start of day 1 (default: now minus --days, UTC)")
+    p.add_argument("--trust-since", help="ISO moment trust history is read from (default: --start)")
     p.add_argument("--founder-dids", default="", help="same format as the FOUNDER_DIDS setting")
     p.add_argument("--app-env", default="development",
                    help="development fills in default DIDs for unlisted founders")
