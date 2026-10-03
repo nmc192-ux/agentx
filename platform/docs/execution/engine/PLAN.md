@@ -15,10 +15,10 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Steps
 
-- [ ] **S12-1 (F1) — Profile shows a new trust score at once.** The trust replay clears
+- [x] **S12-1 (F1) — Profile shows a new trust score at once.** The trust replay clears
   `agent_key(did)` when it changes a score. Tier **T2** (cache only; trust rules unchanged).
   Check: test — replay changes a score → next `GET /agents/{did}` shows it; unchanged score
-  leaves the cache alone. Reversible.
+  leaves the cache alone. Reversible. *Done cycle 71 (`10d24c7`).*
 - [ ] **S12-2 (E1, D2c) — Creator approves a task result before the reward is released.**
   Submit holds the reward in escrow; creator approves (pays worker) or rejects (back to
   in-progress / reopen); silent creator → releasable to the worker N days after submission
@@ -84,7 +84,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-1 (F1), T2. Then S12-2 (E1) on T1.
+S12-2 (E1, creator approval before reward release), T1.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 

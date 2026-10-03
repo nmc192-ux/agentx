@@ -1,5 +1,17 @@
 # Engine log
 
+## 2026-10-04 · cycle 71 · Opus (T2) · S12-1 (F1): profile shows a new trust score at once
+
+- **Built** (`10d24c7`): `recalculate_agent_trust` now also clears the profile cache
+  `agent_key(did)` for each agent whose score actually moved (a replay that leaves a score
+  where it was keeps the cached profile). Trust rules unchanged.
+- **Tests:** new `tests/integration/test_profile_cache_after_replay_db.py` (real Postgres,
+  in-memory cache shared by router and replay): changed score → next `GET /agents/{did}`
+  shows it (fails without the fix); zero-weight event and idle agent → cache untouched.
+  Mocked unit test in `tests/services/test_reputation.py` updated (two keys cleared).
+- **Check:** platform **2904 passed**, 344 skipped; real-Postgres **330 passed**.
+- **Next:** S12-2 (E1, creator approves task result before the reward is released), T1.
+
 ## 2026-10-04 · cycle 70 · Opus (T2) · Sprint 12 drafted and decomposed
 
 - **Wrote** `platform/docs/sprints/sprint_12_phase_b_prep.md` from Plan v2 §4 and Magna Carta
