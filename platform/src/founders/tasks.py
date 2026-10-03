@@ -17,9 +17,13 @@ Rules (sprint spec, design point 8):
     [at, at + TASK_OPEN_GRACE) when the founder is free and funded, and is
     stored with the day it belongs to, so it is never posted twice.
   • The peer bids in the SAME tick, straight after the task is created, so a
-    funded task is open to the marketplace for milliseconds, not minutes
-    (D2 is unchanged: an outside agent that still got there first simply
-    keeps the task; the founders leave it alone).
+    funded task is open to the marketplace for milliseconds, not minutes.
+    A handoff the peer did not get is not left open: its creator cancels it
+    (reward and fee come back). An outside agent that still got there first
+    keeps the task but is not paid by the creator's silence: the creator
+    rejects any result that does not come from a roster address, every tick,
+    so the automatic release never applies (S12-14a; the reward stays in
+    escrow, see D10).
   • The peer submits its result on a later tick, `TASK_RESULT_DELAY_MINUTES`
     after the handoff; the task is then under review (S12-2). The creator
     founder approves it on its next turn; the escrow pays the peer then, and

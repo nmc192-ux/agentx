@@ -18,7 +18,9 @@ nothing moves. That also makes the job idempotent and safe to run from several
 processes at once: an item is paid at most once however often it runs.
 
 One item failing is logged and skipped; the rest still run, and the next run
-tries it again.
+tries it again. An item that is refused or fails is still a candidate, so the
+run steps over it when it reads the next page: items that can never be
+released (however many, however old) cannot hold up the ones behind them.
 
 Run once by hand (local):
     cd platform && .venv/bin/python -m src.jobs.auto_release
@@ -39,15 +41,17 @@ from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-# At most this many items of each kind per run; the rest wait 15 minutes.
+# Items of each kind are read a page at a time, at most MAX_PAGES pages per
+# run; the rest wait 15 minutes.
 BATCH_LIMIT = 200
+MAX_PAGES = 5
 
 _DUE_TASKS = """
     SELECT task_id FROM tasks
      WHERE status = 'in_review'
        AND submitted_at <= CURRENT_TIMESTAMP - make_interval(days => $1)
      ORDER BY submitted_at, task_id
-     LIMIT $2
+     LIMIT $2 OFFSET $3
 """
 
 _DUE_CONTRACTS = """
@@ -57,7 +61,7 @@ _DUE_CONTRACTS = """
      GROUP BY c.contract_id
     HAVING MAX(r.submitted_at) <= CURRENT_TIMESTAMP - make_interval(days => $1)
      ORDER BY MAX(r.submitted_at), c.contract_id
-     LIMIT $2
+     LIMIT $2 OFFSET $3
 """
 
 _DUE_BOUNTIES = """
@@ -65,7 +69,7 @@ _DUE_BOUNTIES = """
      WHERE status IN ('open', 'evaluating')
        AND deadline <= CURRENT_TIMESTAMP - make_interval(days => $1)
      ORDER BY deadline, bounty_id
-     LIMIT $2
+     LIMIT $2 OFFSET $3
 """
 
 # kind → (candidate query, service module, its release function)
@@ -76,9 +80,9 @@ _KINDS: dict[str, tuple[str, ModuleType, str]] = {
 }
 
 
-async def _due_ids(query: str) -> list[UUID]:
+async def _due_ids(query: str, offset: int = 0) -> list[UUID]:
     async with get_db() as conn:
-        rows = await conn.fetch(query, AUTO_RELEASE_DAYS, BATCH_LIMIT)
+        rows = await conn.fetch(query, AUTO_RELEASE_DAYS, BATCH_LIMIT, offset)
     return [row[0] for row in rows]
 
 
@@ -86,20 +90,26 @@ async def _release_kind(kind: str) -> dict:
     query, service, function_name = _KINDS[kind]
     release = getattr(service, function_name)
     counts = {"released": 0, "skipped": 0, "failed": 0}
-    for item_id in await _due_ids(query):
-        try:
-            await release(item_id)
-        except ValueError as exc:
-            # The service's refusal (its *ConflictError is a ValueError) or
-            # "not found": settled by somebody else since the query, or no
-            # longer due. The release function moved nothing.
-            logger.info("auto_release: %s %s skipped: %s", kind, item_id, exc)
-            counts["skipped"] += 1
-        except Exception:
-            logger.exception("auto_release: %s %s failed; next run retries", kind, item_id)
-            counts["failed"] += 1
-        else:
-            counts["released"] += 1
+    for _ in range(MAX_PAGES):
+        # Released items have left the candidates; refused and failed ones may
+        # still be there, at the head (oldest first): step over them.
+        item_ids = await _due_ids(query, counts["skipped"] + counts["failed"])
+        for item_id in item_ids:
+            try:
+                await release(item_id)
+            except ValueError as exc:
+                # The service's refusal (its *ConflictError is a ValueError) or
+                # "not found": settled by somebody else since the query, or no
+                # longer due. The release function moved nothing.
+                logger.info("auto_release: %s %s skipped: %s", kind, item_id, exc)
+                counts["skipped"] += 1
+            except Exception:
+                logger.exception("auto_release: %s %s failed; next run retries", kind, item_id)
+                counts["failed"] += 1
+            else:
+                counts["released"] += 1
+        if len(item_ids) < BATCH_LIMIT:
+            break
     return counts
 
 

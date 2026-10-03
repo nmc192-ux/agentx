@@ -209,8 +209,8 @@ async def test_an_item_settled_after_the_query_is_skipped(client, pool, agents, 
 
     real_due_ids = auto_release._due_ids
 
-    async def due_then_approved(query: str):
-        ids = await real_due_ids(query)
+    async def due_then_approved(query: str, offset: int = 0):
+        ids = await real_due_ids(query, offset)
         if UUID(task_id) in ids:
             resp = await client.post(f"/tasks/{task_id}/approve", headers=creator.headers)
             assert resp.status_code == 200, resp.text
@@ -223,4 +223,97 @@ async def test_an_item_settled_after_the_query_is_skipped(client, pool, agents, 
     assert summary["tasks"] == {"released": 0, "skipped": 1, "failed": 0}
     assert (await task_row(pool, task_id))["status"] == "COMPLETED"
     assert await balance(pool, worker) == reward > 0
+    assert await total_tokens(pool) == before
+
+
+async def test_stuck_items_at_the_head_do_not_starve_a_due_item(client, pool, agents, monkeypatch):
+    """S12-14a: with a page of one and the two oldest candidates failing every
+    time, the due item behind them is still released in the same run."""
+    from src.jobs import auto_release
+    from src.services import task_service
+
+    creator = await agents("creator", START_BALANCE, age_days=2)
+    stuck_a, stuck_b, fine_worker = [await agents(n, 0) for n in ("stuck-a", "stuck-b", "fine")]
+    before = await total_tokens(pool)
+    stuck = [await in_review_task(client, creator, w) for w in (stuck_a, stuck_b)]
+    fine = await in_review_task(client, creator, fine_worker)
+    await submitted_ago(pool, stuck[0], f"{AUTO_RELEASE_DAYS} days 3 minutes")
+    await submitted_ago(pool, stuck[1], f"{AUTO_RELEASE_DAYS} days 2 minutes")
+    await submitted_ago(pool, fine, DUE)
+
+    real_release = task_service.release_overdue_result
+
+    async def flaky(task_id: UUID):
+        if str(task_id) == stuck[0]:
+            raise RuntimeError("ledger unavailable")
+        if str(task_id) == stuck[1]:
+            raise task_service.TaskConflictError("refused")
+        return await real_release(task_id)
+
+    monkeypatch.setattr(task_service, "release_overdue_result", flaky)
+    monkeypatch.setattr(auto_release, "BATCH_LIMIT", 1)
+    summary = await _run()
+
+    assert summary["tasks"] == {"released": 1, "skipped": 1, "failed": 1}
+    assert (await task_row(pool, fine))["status"] == "COMPLETED"
+    assert await balance(pool, fine_worker) > 0
+    for task_id in stuck:
+        assert (await task_row(pool, task_id))["status"] == "in_review"
+    assert await total_tokens(pool) == before
+
+
+async def test_old_items_the_rules_exclude_are_never_released(client, pool, agents):
+    """S12-14a: however old they are, the job pays nothing for a delivery
+    that is disputed, a result the creator rejected, a task that was only
+    backdated (no result under review), or a bounty with no deadline."""
+    creator = await agents("creator", START_BALANCE * 4, age_days=2)
+    contractor, worker, idle_worker, hunter = [
+        await agents(n, 0) for n in ("contractor", "worker", "idle-worker", "hunter")
+    ]
+    before = await total_tokens(pool)
+    old = f"{AUTO_RELEASE_DAYS * 10} days"
+
+    disputed = await submitted_contract(client, creator, contractor)
+    resp = await client.post(
+        f"/contracts/{disputed}/dispute", json={"reason": "not what was asked"},
+        headers=creator.headers,
+    )
+    assert resp.status_code == 201, resp.text
+    await age_delivery(pool, disputed, old)
+
+    rejected = await in_review_task(client, creator, worker)
+    resp = await client.post(
+        f"/tasks/{rejected}/reject", json={"reason": "empty"}, headers=creator.headers)
+    assert resp.status_code == 200, resp.text
+    # Even with a submission time forced back onto the row.
+    await submitted_ago(pool, rejected, old)
+
+    undelivered = await in_review_task(client, creator, idle_worker)
+    await pool.execute(
+        "UPDATE task_results SET verification_status = 'rejected' WHERE task_id = $1",
+        UUID(undelivered),
+    )
+    await submitted_ago(pool, undelivered, old)   # 'in_review', due, nothing pending
+
+    no_deadline = await open_bounty(client, creator)
+    sub = await submit(client, no_deadline, hunter)
+    await evaluate(client, no_deadline, sub, creator, 0.9)
+    await move_bounty_deadline(pool, no_deadline, None)
+
+    creator_before = await balance(pool, creator)
+    for _ in range(2):
+        summary = await _run()
+        assert summary["errors"] == []
+        assert summary["contracts"] == {"released": 0, "skipped": 0, "failed": 0}
+        assert summary["bounties"] == {"released": 0, "skipped": 0, "failed": 0}
+        # The task with nothing pending is a candidate; the service refuses it.
+        assert summary["tasks"] == {"released": 0, "skipped": 1, "failed": 0}
+
+    assert (await contract_row(pool, disputed))["status"] == "disputed"
+    assert (await task_row(pool, rejected))["status"] == "assigned"
+    assert (await task_row(pool, undelivered))["status"] == "in_review"
+    assert (await bounty_row(pool, no_deadline))["status"] == "evaluating"
+    for agent in (contractor, worker, idle_worker, hunter):
+        assert await balance(pool, agent) in (0, None)
+    assert await balance(pool, creator) == creator_before
     assert await total_tokens(pool) == before

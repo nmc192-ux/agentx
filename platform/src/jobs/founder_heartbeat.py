@@ -62,8 +62,12 @@ pays nothing), else posting its own handoff of the day for a founder whose capab
 same tick and the marketplace assigns it). Only founders take part: a
 handoff goes only to a founder the guard accepted this tick, only
 handoffs posted by such founders are ever finished, and a founder approves
-only its own handoff and only a result submitted by such a founder (an
-outside agent's result is left to the automatic release). Spending is capped per
+only its own handoff and only a result submitted by such a founder. A
+handoff that left the founders' hands is closed before anything else (S12-14a):
+one still open on a later look is cancelled (reward and fee come back), and a
+result an address outside the roster submitted is rejected, tick after tick,
+so the creator is never "silent" and the automatic release never pays it.
+Spending is capped per
 founder per 24 hours (`FOUNDER_TASK_DAILY_SPEND`), the route's task limits
 (5 a minute, 30 an hour, 100 a day) are honoured, and a wallet that cannot
 cover the reward means no task. The money services commit on their own
@@ -251,7 +255,9 @@ from ..services.reputation import recalculate_agent_trust, record_message_reply
 from ..services.room_service import create_room_on, join_room_on
 from ..services.task_service import (
     approve_result,
+    cancel_task,
     InsufficientFundsError,
+    reject_result,
     TaskConflictError,
     create_task,
     submit_bid,
@@ -936,6 +942,13 @@ async def send_founder_message(
 
 # ── Paid task handoffs (S10-6) ────────────────────────────────────────────────
 
+# At most this many of one founder's stray handoffs are closed per tick.
+STRAY_HANDOFF_LIMIT = 20
+STRAY_RESULT_NOTE = (
+    "This task was a handoff between founding agents and was not open to other agents; "
+    "the result is not accepted."
+)
+
 # When a task happened, in the tick's own time: a handoff carries the tick
 # moment it was posted at (payload.heartbeat.at); anything else is dated by
 # the database. The 7-day simulation (S10-10) relies on this.
@@ -1011,7 +1024,7 @@ async def load_handoffs_to_approve(conn, creator_did: str, founder_dids: list[st
     """Handoffs posted by *creator_did* whose result is under review and was
     submitted by one of *founder_dids* (the founders that passed the guard
     this tick — a result from an outside agent is never approved here; it is
-    left to the automatic release), oldest submission first."""
+    rejected by `_close_stray_handoffs`), oldest submission first."""
     return await conn.fetch(
         """
         SELECT task_id, executor_agent_did
@@ -1023,6 +1036,58 @@ async def load_handoffs_to_approve(conn, creator_did: str, founder_dids: list[st
         """,
         creator_did, founder_dids, KIND_HANDOFF,
     )
+
+
+async def load_stray_handoffs(conn, creator_did: str, roster_dids: list[str]) -> list:
+    """Handoffs posted by *creator_did* that are out of the founders' hands:
+    still 'open' (the peer's bid did not take it, so any agent could), or
+    under review with a result from an address outside *roster_dids* (every
+    roster address, guarded this tick or not). Oldest first, a bounded page."""
+    return await conn.fetch(
+        """
+        SELECT task_id, status
+        FROM tasks
+        WHERE requester_agent_did = $1
+          AND payload->'heartbeat'->>'kind' = $3
+          AND (status = 'open'
+               OR (status = 'in_review' AND NOT (executor_agent_did = ANY($2::text[]))))
+        ORDER BY created_at, task_id
+        LIMIT $4
+        """,
+        creator_did, roster_dids, KIND_HANDOFF, STRAY_HANDOFF_LIMIT,
+    )
+
+
+async def _close_stray_handoffs(
+    conn, founder: FounderAgent, roster_dids: list[str], summary: "TickSummary",
+) -> None:
+    """Keep *founder*'s handoff rewards away from outside agents (S12-14a).
+
+    A handoff is paid work between founders. Since S12-2 a result the creator
+    leaves unanswered is paid by the automatic release, and a founder never
+    answered an outside agent's result — so whoever got hold of a handoff
+    (a bid that beat the peer's, or a handoff left open because the peer's
+    bid failed) was paid for anything it submitted. Here the creator answers:
+      • a handoff still open is cancelled — reward and fee come back;
+      • a result from outside the roster is rejected — no token moves, the
+        reward stays in escrow, and the release period starts again with
+        every new submission, which is rejected in turn.
+    Money moves only inside `task_service`; a refusal there (settled
+    meanwhile, taken meanwhile) is left for the next tick."""
+    for row in await load_stray_handoffs(conn, founder.did, roster_dids):
+        task_id = row["task_id"]
+        try:
+            if row["status"] == "open":
+                await cancel_task(task_id, founder.did)
+                summary.task_withdrawn.setdefault(founder.name, []).append(str(task_id))
+            else:
+                await reject_result(task_id, founder.did, STRAY_RESULT_NOTE)
+                summary.task_rejected.setdefault(founder.name, []).append(str(task_id))
+        except (PermissionError, TaskConflictError, ValueError) as exc:
+            logger.info(
+                "founder_heartbeat: %s could not close stray handoff %s: %s",
+                founder.name, task_id, exc,
+            )
 
 
 async def _paid_to(conn, task_id: UUID, agent_id) -> int:
@@ -1040,16 +1105,25 @@ async def _paid_to(conn, task_id: UUID, agent_id) -> int:
 async def _tick_task(
     conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], seed: str,
     rng: random.Random, now: datetime, summary: "TickSummary", daily_spend: int,
+    roster_dids: Optional[list[str]] = None,
 ) -> None:
     """At most one paid-work step by *founder* this tick: approve the oldest
     founder result waiting on a handoff it posted, else finish the oldest
     handoff it holds whose delay has passed, else post its own handoff of the
-    day once its time has come. Money moves only inside `task_service`."""
+    day once its time has come. Money moves only inside `task_service`.
+
+    Before the step, quiet hours or not, handoffs of its own that left the
+    founders' hands are closed (`_close_stray_handoffs`). *roster_dids* is
+    every roster address; without it only the founders guarded this tick
+    count as founders (more is rejected, never less)."""
     persona = founder.persona
     name = founder.name
+    by_did = {f.did: f for f in founders.values()}
+    if roster_dids is None:
+        roster_dids = list(by_did)
+    await _close_stray_handoffs(conn, founder, roster_dids, summary)
     if persona.is_quiet(now):
         return
-    by_did = {f.did: f for f in founders.values()}
 
     for row in await load_handoffs_to_approve(conn, founder.did, list(by_did)):
         try:
@@ -1125,6 +1199,8 @@ async def _tick_task(
         await submit_bid(task.task_id, peer.did, TASK_BID_CONFIDENCE, plan.reward)
     except (PermissionError, ValueError) as exc:
         summary.task_not_taken[name] = f"bid_refused:{type(exc).__name__}"
+        # Not the peer's: do not leave it open for whoever bids next.
+        await _close_stray_handoffs(conn, founder, roster_dids, summary)
         return
     executor = await conn.fetchval(
         "SELECT executor_agent_did FROM tasks WHERE task_id = $1 AND status = 'assigned'",
@@ -1134,11 +1210,13 @@ async def _tick_task(
         summary.task_taken[peer.name] = str(task.task_id)
     else:
         summary.task_not_taken[name] = "taken_by_other" if executor else "not_assigned"
+        await _close_stray_handoffs(conn, founder, roster_dids, summary)
 
 
 async def _task_phase(
     conn, founders: Mapping[str, FounderAgent], seed: str, rng: random.Random,
     now: datetime, summary: "TickSummary", daily_spend: int,
+    roster_dids: Optional[list[str]] = None,
 ) -> None:
     """Every founder that passes the guard gets one paid-work step, in the
     fixed roster order. Each runs in its own savepoint on the tick's
@@ -1146,7 +1224,9 @@ async def _task_phase(
     for name, founder in founders.items():
         try:
             async with conn.transaction():
-                await _tick_task(conn, founder, founders, seed, rng, now, summary, daily_spend)
+                await _tick_task(
+                    conn, founder, founders, seed, rng, now, summary, daily_spend, roster_dids,
+                )
         except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
             logger.exception("founder_heartbeat: %s's task step failed", name)
             summary.task_errors[name] = type(exc).__name__
@@ -1481,6 +1561,8 @@ class TickSummary:
     task_approved: dict[str, str] = field(default_factory=dict)   # creator → task id approved
     task_paid: dict[str, int] = field(default_factory=dict)       # executor → tokens the escrow released
     task_trust: dict[str, str] = field(default_factory=dict)      # executor → recorded | not_recorded
+    task_withdrawn: dict[str, list[str]] = field(default_factory=dict)  # creator → open handoffs cancelled
+    task_rejected: dict[str, list[str]] = field(default_factory=dict)   # creator → outside results rejected
     task_skipped: dict[str, str] = field(default_factory=dict)    # name → spend_cap | wallet_short | …
     task_errors: dict[str, str] = field(default_factory=dict)     # name → exception class
     # The week's bounty (S10-7)
@@ -1838,6 +1920,7 @@ async def run_tick(
         names = {f.did: name for name, f in founders.items()}
         await _task_phase(
             conn, founders, task_seed, rng, now, summary, int(settings.founder_task_daily_spend),
+            list(roster.values()),
         )
         await _civic_phase(
             conn, founders, roster, civic_seed, now, summary,

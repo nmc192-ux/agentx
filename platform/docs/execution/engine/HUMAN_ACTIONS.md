@@ -500,6 +500,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Engine recommendation: (b), as one extra money step after S12-4** (same pattern, small).
   Reply via a resume note: "D10: a" / "D10: b" / "D10: c".
   Unblocks: nothing; the engine continues with S12-3.
+  Added in cycle 84 (security review): case 1 now also covers the founders' own small paid
+  tasks. If an outside agent grabs one before the intended founder (a window of milliseconds),
+  the founder now rejects whatever that agent hands in, so it is never paid — but those 5–20
+  tokens stay locked until you choose (b) or (c). Before cycle 84 the outside agent was paid
+  automatically after 7 days, whatever it handed in.
 
 - [x] **D9 — Founder posts: written by an AI model (costs money) or from templates (free)? (not blocking)**
   **Answered by DrJ (cycle 63 note): a — templates only; no model calls, no spend. Nothing to set.**

@@ -36,7 +36,7 @@ def test_the_job_calls_only_the_reviewed_release_functions():
 
 @pytest.mark.asyncio
 async def test_a_failing_query_does_not_stop_the_other_kinds():
-    async def due_ids(query):
+    async def due_ids(query, offset=0):
         if query is auto_release._DUE_CONTRACTS:
             raise RuntimeError("db down")
         return []
@@ -79,3 +79,50 @@ def test_standalone_run_closes_pool_and_cache_even_on_error():
     ):
         auto_release.auto_release()
     assert calls == ["init", "cache", "pool"]
+
+
+@pytest.mark.asyncio
+async def test_items_that_are_always_refused_do_not_hold_up_the_queue():
+    """S12-14a: the oldest candidates can never be released (refused, or
+    failing, every time). They stay candidates, so the run steps over them and
+    still reaches the items behind — and stops after MAX_PAGES pages."""
+    from src.services import task_service
+
+    stuck = [uuid4() for _ in range(3)]
+    fine = [uuid4() for _ in range(4)]
+    paid: list = []
+
+    async def due_ids(query, offset=0):
+        # What the database would answer: everything not yet paid, oldest first.
+        candidates = [i for i in stuck + fine if i not in paid]
+        return candidates[offset:offset + auto_release.BATCH_LIMIT]
+
+    async def release(item_id):
+        if item_id is stuck[0]:
+            raise RuntimeError("boom")
+        if item_id in stuck:
+            raise task_service.TaskConflictError("no pending result")
+        paid.append(item_id)
+        return 1
+
+    with (
+        patch.object(auto_release, "BATCH_LIMIT", 2),
+        patch.object(auto_release, "_due_ids", new=due_ids),
+        patch.object(task_service, "release_overdue_result", new=release),
+    ):
+        counts = await auto_release._release_kind("tasks")
+        assert counts == {"released": 4, "skipped": 2, "failed": 1}
+        assert paid == fine
+
+        # Bounded: with nothing but stuck items the run ends after MAX_PAGES pages.
+        paid.clear()
+        fine.clear()
+        stuck.extend(uuid4() for _ in range(40))
+        counts = await auto_release._release_kind("tasks")
+    assert counts["released"] == 0
+    assert counts["skipped"] + counts["failed"] == auto_release.MAX_PAGES * 2
+
+
+def test_every_candidate_query_is_paged():
+    for query, _, _ in auto_release._KINDS.values():
+        assert "LIMIT $2 OFFSET $3" in query

@@ -19,7 +19,9 @@ What is proven:
     for one task the second plan of the day is refused and one escrow exists
   • an outside agent's task is never bid on and never finished, whatever its
     payload claims; a peer the guard refuses gets no task; a task another
-    agent took first is left alone
+    agent took first is never finished by a founder — and (S12-14a) never
+    paid by the creator's silence: the creator rejects an outside result
+    every tick, and a handoff left open is cancelled and refunded
   • the route's task limit and quiet hours hold
   • three simulated days of ticks keep every rule and conserve tokens
 
@@ -45,6 +47,7 @@ from src.founders import tasks as ft
 from src.founders.generation import GeneratedPost
 from src.founders.personas import FOUNDER_NAMES, PERSONAS
 from src.founders.roster import founder_roster
+from src.jobs import auto_release as ar
 from src.jobs import founder_heartbeat as fh
 from src.services import task_service
 
@@ -468,17 +471,190 @@ async def test_a_task_another_agent_took_first_is_left_alone(pool, clean, monkey
     assert await balance(pool, nova) == START - plan.reward and await balance(pool, peer) == START
     assert await total_tokens(pool) == supply
 
-    # S12-2: the outsider submits a result. No founder approves a result that
-    # did not come from a founder; it is left to the automatic release.
-    await task_service.submit_result(task["task_id"], OUTSIDER, {"output": "junk"})
-    for hours in (1, 4, 9, 14, 20):
+    # S12-2 / S12-14a: the outsider submits a result. The creator founder does
+    # not stay silent (silence is what the automatic release pays): it rejects
+    # the result, awake or in its quiet hours, however often it comes back.
+    for round_, hours in enumerate((1, 4, 9, 14, 20)):
+        await task_service.submit_result(task["task_id"], OUTSIDER, {"output": f"junk {round_}"})
         summary = await tick(late + timedelta(hours=hours), seed)
         assert summary["task_approved"] == {} and summary["task_paid"] == {}
-    assert (await tasks(pool))[0]["status"] == "in_review"
+        assert summary["task_rejected"] == {"nova": [str(task["task_id"])]}
+        (row,) = await tasks(pool)
+        assert row["status"] == "assigned" and row["escrowed_reward"] == task["escrowed_reward"]
+    verdicts = await pool.fetch(
+        "SELECT verification_status, review_note FROM task_results WHERE task_id = $1",
+        task["task_id"],
+    )
+    assert len(verdicts) == 5
+    assert {(v["verification_status"], v["review_note"]) for v in verdicts} == {
+        ("rejected", fh.STRAY_RESULT_NOTE),
+    }
+
+    # A result the release job finds 8 days old the moment after it arrives
+    # is still not paid once the founder has had its tick.
+    await task_service.submit_result(task["task_id"], OUTSIDER, {"output": "junk again"})
+    await tick(late + timedelta(hours=21), seed)
+    await pool.execute(
+        "UPDATE tasks SET submitted_at = CURRENT_TIMESTAMP - INTERVAL '8 days' "
+        "WHERE task_id = $1 AND submitted_at IS NOT NULL", task["task_id"],
+    )
+    assert (await ar.run_auto_release())["errors"] == []
+    assert (await tasks(pool))[0]["status"] == "assigned"
     assert await ledger(pool, task["task_id"], "escrow_release") == []
     assert await balance(pool, OUTSIDER) == START
     assert await completed_events(pool) == []
     assert await total_tokens(pool) == supply
+
+
+async def test_a_handoff_the_peer_did_not_get_is_withdrawn_at_once(pool, clean, monkeypatch):
+    """The peer's bid is refused: the funded handoff is not left open for
+    whoever bids next — the creator cancels it in the same tick and gets the
+    reward and the fee back."""
+    seed = find_seed("nova")
+    plan = ft.plan_task(PERSONAS["nova"], DAY_START.date(), seed)
+    nova = DEV["nova"]
+    await fund(pool, *FOUNDER_DIDS, OUTSIDER)
+    supply = await total_tokens(pool)
+
+    real_bid, fail = task_service.submit_bid, [True]
+
+    async def refused(task_id, agent_did, confidence, bid_price):
+        if fail:
+            raise ValueError("Bidding agent not found")
+        return await real_bid(task_id, agent_did, confidence, bid_price)
+
+    monkeypatch.setattr(fh, "submit_bid", refused)
+    posted = await tick(plan.at + timedelta(minutes=1), seed)
+    (task,) = await tasks(pool)
+    assert posted["task_not_taken"] == {"nova": "bid_refused:ValueError"}
+    assert posted["task_withdrawn"] == {"nova": [str(task["task_id"])]}
+    assert task["status"] == "cancelled" and task["escrowed_reward"] == 0 and task["task_fee"] == 0
+    assert await balance(pool, nova) == START
+    assert await total_tokens(pool) == supply
+
+    # Nobody can take it now, and the day's handoff is not posted again.
+    with pytest.raises(ValueError):
+        await task_service.submit_bid(task["task_id"], OUTSIDER, 0.95, 1)
+    fail.clear()
+    again = await tick(plan.at + timedelta(minutes=11), seed)
+    assert again["task_posted"] == {} and len(await tasks(pool)) == 1
+    assert await balance(pool, OUTSIDER) == START
+
+
+async def test_a_handoff_left_open_by_a_failure_is_withdrawn_on_the_next_tick(
+    pool, clean, monkeypatch,
+):
+    """The tick dies between posting the handoff and the peer's bid (a lost
+    connection, say). The task is open and funded; the creator's next tick,
+    even in its quiet hours, cancels it before an outsider's result could
+    ever be paid."""
+    seed = find_seed("nova")
+    plan = ft.plan_task(PERSONAS["nova"], DAY_START.date(), seed)
+    nova = DEV["nova"]
+    await fund(pool, *FOUNDER_DIDS, OUTSIDER)
+    supply = await total_tokens(pool)
+
+    real_bid, fail = task_service.submit_bid, [True]
+
+    async def broken(task_id, agent_did, confidence, bid_price):
+        if fail:
+            raise RuntimeError("connection lost")
+        return await real_bid(task_id, agent_did, confidence, bid_price)
+
+    monkeypatch.setattr(fh, "submit_bid", broken)
+    at = plan.at + timedelta(minutes=1)
+    crashed = await fh.run_tick(
+        now=at, generator=SilentGenerator(), rng=random.Random(5), task_seed=seed,
+        roster=DEV, settings=ON,
+    )
+    assert crashed["task_errors"] == {"nova": "RuntimeError"}
+    (task,) = await tasks(pool)
+    assert task["status"] == "open" and await balance(pool, nova) == START - plan.reward
+    fail.clear()
+
+    quiet = next(
+        at + timedelta(minutes=5 + 30 * k) for k in range(96)
+        if PERSONAS["nova"].is_quiet(at + timedelta(minutes=5 + 30 * k))
+    )
+    summary = await tick(quiet, seed)
+    assert summary["task_withdrawn"] == {"nova": [str(task["task_id"])]}
+    (task,) = await tasks(pool)
+    assert task["status"] == "cancelled" and task["escrowed_reward"] == 0
+    assert await balance(pool, nova) == START
+    assert await balance(pool, OUTSIDER) == START
+    assert await total_tokens(pool) == supply
+
+
+async def test_an_outsider_that_takes_an_open_handoff_is_never_paid_by_silence(
+    pool, clean, monkeypatch,
+):
+    """The whole attack, end to end: a handoff is left open, an outside agent
+    takes it before the creator's next tick and submits junk, and eight days
+    pass. The automatic release pays it nothing."""
+    seed = find_seed("nova")
+    plan = ft.plan_task(PERSONAS["nova"], DAY_START.date(), seed)
+    nova = DEV["nova"]
+    await fund(pool, *FOUNDER_DIDS, OUTSIDER)
+    supply = await total_tokens(pool)
+
+    real_bid, fail = task_service.submit_bid, [True]
+
+    async def broken(task_id, agent_did, confidence, bid_price):
+        if fail:
+            raise RuntimeError("connection lost")
+        return await real_bid(task_id, agent_did, confidence, bid_price)
+
+    monkeypatch.setattr(fh, "submit_bid", broken)
+    at = plan.at + timedelta(minutes=1)
+    await fh.run_tick(
+        now=at, generator=SilentGenerator(), rng=random.Random(5), task_seed=seed,
+        roster=DEV, settings=ON,
+    )
+    fail.clear()
+    (task,) = await tasks(pool)
+    tid = task["task_id"]
+    await task_service.submit_bid(tid, OUTSIDER, 0.95, 1)        # auto-assigned
+    await task_service.submit_result(tid, OUTSIDER, {"output": "junk"})
+
+    summary = await tick(at + timedelta(minutes=5), seed)
+    assert summary["task_rejected"] == {"nova": [str(tid)]} and summary["task_approved"] == {}
+    await pool.execute(
+        "UPDATE tasks SET updated_at = CURRENT_TIMESTAMP - INTERVAL '8 days', "
+        "submitted_at = submitted_at - INTERVAL '8 days' WHERE task_id = $1", tid,
+    )
+    assert (await ar.run_auto_release())["errors"] == []
+    assert (await tasks(pool))[0]["status"] == "assigned"
+    assert await ledger(pool, tid, "escrow_release") == []
+    assert await balance(pool, OUTSIDER) == START and await balance(pool, nova) == START - plan.reward
+    assert await completed_events(pool) == []
+    assert await total_tokens(pool) == supply
+
+
+async def test_a_founders_result_is_not_rejected_while_the_guard_refuses_it(pool, clean):
+    """"Outside" means outside the roster. A founder the guard refuses for a
+    while (its row is not ACTIVE) is not an outsider: its result waits."""
+    seed = find_seed("marcus")
+    plan = ft.plan_task(PERSONAS["marcus"], DAY_START.date(), seed)
+    peer = DEV[plan.peer]
+    await fund(pool, *FOUNDER_DIDS)
+    at = plan.at + timedelta(minutes=1)
+    await tick(at, seed)
+    (task,) = await tasks(pool)
+    assert task["executor_agent_did"] == peer
+    await task_service.submit_result(task["task_id"], peer, {"summary": "done"})
+
+    await pool.execute("UPDATE agents SET status = 'SUSPENDED' WHERE agent_did = $1", peer)
+    try:
+        for k in range(1, 30):
+            summary = await tick(at + timedelta(minutes=30 * k), seed)
+            assert summary["task_rejected"] == {} and summary["task_approved"] == {}
+    finally:
+        await pool.execute("UPDATE agents SET status = 'ACTIVE' WHERE agent_did = $1", peer)
+    (task,) = await tasks(pool)
+    assert task["status"] == "in_review"
+    assert await pool.fetchval(
+        "SELECT verification_status FROM task_results WHERE task_id = $1", task["task_id"],
+    ) == "pending"
 
 
 # ── Limits ────────────────────────────────────────────────────────────────────
