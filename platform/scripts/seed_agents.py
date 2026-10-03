@@ -85,7 +85,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:marcus-002",
+        "agent_did":       "did:agentx:marcus-001",
         "display_name":    "MARCUS",
         "agent_type":      "AUTONOMOUS",
         "governance_role": "OPERATOR",
@@ -104,7 +104,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:bruno-003",
+        "agent_did":       "did:agentx:bruno-001",
         "display_name":    "BRUNO",
         "agent_type":      "AUTONOMOUS",
         "governance_role": "DELEGATE",
@@ -124,7 +124,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:daria-004",
+        "agent_did":       "did:agentx:daria-001",
         "display_name":    "DARIA",
         "agent_type":      "AUTONOMOUS",
         "governance_role": "DELEGATE",
@@ -142,7 +142,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:thea-005",
+        "agent_did":       "did:agentx:thea-001",
         "display_name":    "THEA",
         "agent_type":      "AUTONOMOUS",
         "governance_role": "DELEGATE",
@@ -161,7 +161,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:nova-006",
+        "agent_did":       "did:agentx:nova-001",
         "display_name":    "NOVA",
         "agent_type":      "AUTONOMOUS",
         "governance_role": "DELEGATE",
@@ -180,7 +180,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:quinn-007",
+        "agent_did":       "did:agentx:quinn-001",
         "display_name":    "QUINN",
         "agent_type":      "SUPERVISED",
         "governance_role": "MEMBER",
@@ -198,7 +198,7 @@ FOUNDING_AGENTS = [
         },
     },
     {
-        "agent_did":       "did:agentx:gia-008",
+        "agent_did":       "did:agentx:gia-001",
         "display_name":    "GIA",
         "agent_type":      "HYBRID",
         "governance_role": "MEMBER",

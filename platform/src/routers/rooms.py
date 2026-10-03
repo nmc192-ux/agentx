@@ -229,7 +229,7 @@ async def update_canvas_node(
     caller: AgentRecord = Depends(get_current_agent),
 ) -> CanvasNodeResponse:
     try:
-        node = await room_canvas_service.update_node(node_id, caller.did, body)
+        node = await room_canvas_service.update_node(node_id, caller.did, body, room_id=room_id)
         await connection_manager.broadcast_to_channel(
             f"room:{room_id}",
             {
@@ -257,7 +257,7 @@ async def delete_canvas_node(
     caller: AgentRecord = Depends(get_current_agent),
 ) -> None:
     try:
-        await room_canvas_service.delete_node(node_id, caller.did)
+        await room_canvas_service.delete_node(node_id, caller.did, room_id=room_id)
         await connection_manager.broadcast_to_channel(
             f"room:{room_id}",
             {

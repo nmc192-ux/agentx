@@ -93,12 +93,29 @@ def _db_row(task_id: str = TASK_ID, status: str = "open") -> MagicMock:
     return row
 
 
-@pytest.fixture
-def client():
+def _a2a_app(caller_did=None):
+    """App with only the A2A router; logged in as ``caller_did`` if given."""
     from src.a2a.router import a2a_router
+    from src.auth.middleware import get_current_agent_optional
     app = FastAPI()
     app.include_router(a2a_router)
-    return TestClient(app)
+    if caller_did is not None:
+        caller = MagicMock()
+        caller.did = caller_did
+        app.dependency_overrides[get_current_agent_optional] = lambda: caller
+    return app
+
+
+@pytest.fixture
+def client():
+    """Logged in as AGENT_DID."""
+    return TestClient(_a2a_app(caller_did=AGENT_DID))
+
+
+@pytest.fixture
+def anon_client():
+    """No login override: the real token check runs."""
+    return TestClient(_a2a_app())
 
 
 def _rpc_body(method: str, params: dict, req_id: Any = 1) -> dict:
@@ -222,7 +239,7 @@ class TestHandleMessageSend:
             new_callable=AsyncMock,
             return_value=mock_task,
         ):
-            result = await handle_message_send(_send_params())
+            result = await handle_message_send(_send_params(), caller_did=AGENT_DID)
 
         assert "id" in result
         assert result["status"]["state"] == "submitted"
@@ -236,7 +253,7 @@ class TestHandleMessageSend:
             new_callable=AsyncMock,
             return_value=mock_task,
         ) as mock_create:
-            await handle_message_send(_send_params("Analyse revenue data"))
+            await handle_message_send(_send_params("Analyse revenue data"), caller_did=AGENT_DID)
 
         call_kwargs = mock_create.call_args.kwargs
         assert "Analyse revenue data" in call_kwargs["payload"]["text"]
@@ -250,7 +267,7 @@ class TestHandleMessageSend:
             new_callable=AsyncMock,
             return_value=mock_task,
         ) as mock_create:
-            await handle_message_send(_send_params())
+            await handle_message_send(_send_params(), caller_did=AGENT_DID)
 
         assert mock_create.call_args.kwargs["task_type"] == "a2a_request"
 
@@ -263,7 +280,7 @@ class TestHandleMessageSend:
             new_callable=AsyncMock,
             return_value=mock_task,
         ) as mock_create:
-            await handle_message_send(_send_params())
+            await handle_message_send(_send_params(), caller_did=AGENT_DID)
 
         assert mock_create.call_args.kwargs["reward"] == 0
 
@@ -271,7 +288,7 @@ class TestHandleMessageSend:
     async def test_invalid_params_raises_value_error(self):
         from src.a2a.handler import handle_message_send
         with pytest.raises(ValueError, match="Invalid message/send params"):
-            await handle_message_send({"bad_field": "no_message"})
+            await handle_message_send({"bad_field": "no_message"}, caller_did=AGENT_DID)
 
     @pytest.mark.asyncio
     async def test_completed_task_has_artifact(self):
@@ -282,11 +299,42 @@ class TestHandleMessageSend:
             new_callable=AsyncMock,
             return_value=mock_task,
         ):
-            result = await handle_message_send(_send_params())
+            result = await handle_message_send(_send_params(), caller_did=AGENT_DID)
 
         # completed state maps artifacts
         assert result["status"]["state"] == "completed"
         assert len(result.get("artifacts", [])) > 0
+
+
+    @pytest.mark.asyncio
+    async def test_creator_is_the_authenticated_caller(self):
+        from src.a2a.handler import handle_message_send
+        with patch(
+            "src.a2a.handler.task_service.create_task",
+            new_callable=AsyncMock,
+            return_value=_mock_task(),
+        ) as mock_create:
+            params = {"message": _text_message()}   # no caller_did in metadata
+            await handle_message_send(params, caller_did="did:agentx:me-001")
+
+        assert mock_create.call_args.kwargs["creator_agent_did"] == "did:agentx:me-001"
+
+    @pytest.mark.asyncio
+    async def test_metadata_naming_another_agent_is_refused(self):
+        """S9-6d: metadata.caller_did used to BE the creator, with no login."""
+        from src.a2a.handler import handle_message_send
+        with patch(
+            "src.a2a.handler.task_service.create_task",
+            new_callable=AsyncMock,
+            return_value=_mock_task(),
+        ) as mock_create:
+            with pytest.raises(PermissionError):
+                await handle_message_send(
+                    _send_params(caller_did="did:agentx:victim-001"),
+                    caller_did="did:agentx:me-001",
+                )
+
+        mock_create.assert_not_awaited()
 
 
 # ── handle_tasks_get ──────────────────────────────────────────────────────────
@@ -418,6 +466,19 @@ class TestA2AJsonRpcEndpoint:
         data = resp.json()
         assert data["error"]["code"] == JSONRPCError.INVALID_PARAMS
 
+    def test_internal_error_does_not_echo_exception_text(self, client):
+        """S9-6e: the exception text went back to the caller as `data`."""
+        boom = RuntimeError('relation "secret_table" does not exist; host=db.internal')
+        with patch("src.a2a.handler.get_db", side_effect=boom):
+            resp = client.post("/a2a", json=_rpc_body("tasks/get", {"id": TASK_ID}))
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["error"]["code"] == JSONRPCError.INTERNAL_ERROR
+        assert "secret_table" not in resp.text
+        assert "db.internal" not in resp.text
+        assert set(data["error"]["data"]) == {"request_id"}
+
     def test_jsonrpc_version_always_2_0(self, client):
         resp = client.post("/a2a", json=_rpc_body("unknown/x", {}))
         assert resp.json()["jsonrpc"] == "2.0"
@@ -429,3 +490,67 @@ class TestA2AJsonRpcEndpoint:
         assert resp.status_code == 200
         # id absent or null in response
         assert resp.json().get("id") is None
+
+
+# ── POST /a2a — who may create tasks (S9-6d) ──────────────────────────────────
+
+class TestA2AMessageSendNeedsLogin:
+    """message/send creates a task, so it needs a Bearer token and the task
+    belongs to the token's agent. tasks/get stays public."""
+
+    @staticmethod
+    def _send(client, params, headers=None):
+        with patch(
+            "src.a2a.handler.task_service.create_task",
+            new_callable=AsyncMock,
+            return_value=_mock_task(),
+        ) as mock_create:
+            resp = client.post("/a2a", json=_rpc_body("message/send", params, req_id=7),
+                               headers=headers)
+        return resp, mock_create
+
+    def test_no_token_is_401_and_creates_nothing(self, anon_client):
+        resp, mock_create = self._send(anon_client, _send_params(caller_did="did:agentx:victim-001"))
+        assert resp.status_code == 401
+        assert resp.headers["www-authenticate"] == "Bearer"
+        data = resp.json()
+        assert data["id"] == 7
+        assert "result" not in data
+        assert "Authentication required" in data["error"]["message"]
+        mock_create.assert_not_awaited()
+
+    def test_no_token_without_caller_did_is_401_too(self, anon_client):
+        """There is no anonymous fallback identity any more."""
+        resp, mock_create = self._send(anon_client, {"message": _text_message()})
+        assert resp.status_code == 401
+        mock_create.assert_not_awaited()
+
+    def test_bad_token_is_401_and_creates_nothing(self, anon_client):
+        resp, mock_create = self._send(
+            anon_client, _send_params(), headers={"Authorization": "Bearer not-a-real-token"},
+        )
+        assert resp.status_code == 401
+        mock_create.assert_not_awaited()
+
+    def test_metadata_naming_another_agent_is_403_and_creates_nothing(self, client):
+        resp, mock_create = self._send(client, _send_params(caller_did="did:agentx:victim-001"))
+        assert resp.status_code == 403
+        assert "result" not in resp.json()
+        mock_create.assert_not_awaited()
+
+    def test_task_is_created_as_the_logged_in_agent(self, client):
+        resp, mock_create = self._send(client, {"message": _text_message()})
+        assert resp.status_code == 200
+        assert resp.json()["result"]["status"]["state"] == "submitted"
+        assert mock_create.call_args.kwargs["creator_agent_did"] == AGENT_DID
+
+    def test_tasks_get_stays_public(self, anon_client):
+        row = _db_row(task_id=TASK_ID)
+        with patch("src.a2a.handler.get_db", return_value=_db_ctx(row)):
+            resp = anon_client.post("/a2a", json=_rpc_body("tasks/get", {"id": TASK_ID}))
+        assert resp.status_code == 200
+        assert resp.json()["result"]["id"] == TASK_ID
+
+    def test_agent_cards_tell_callers_to_bring_a_bearer_token(self, anon_client):
+        card = anon_client.get("/.well-known/agent.json").json()
+        assert "bearer" in [s.lower() for s in card["authentication"]["schemes"]]

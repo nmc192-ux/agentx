@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Loader2, Search, X } from "lucide-react";
 import { isLoggedIn, getToken } from "@/lib/auth";
-import { castVote, createProposal, type Proposal } from "@/lib/api";
+import {
+  castVote,
+  createProposal,
+  type GovernanceParameter,
+  type Proposal,
+} from "@/lib/api";
 import { DebateView } from "@/components/governance/DebateView";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -20,6 +25,26 @@ function relativeDeadline(dateStr: string): string {
 
 function truncateDid(did: string): string {
   return did.length > 24 ? did.slice(0, 24) + "…" : did;
+}
+
+// The API decides the outcome (by vote weight and quorum, see
+// GET /governance/parameters) and records it in `status`. Never re-derive it
+// from the head counts: more yes voters than no voters can still fail.
+function proposalPassed(p: Proposal): boolean {
+  return p.status === "passed" || p.status === "executed";
+}
+
+function formatWeight(n: number | undefined): string {
+  return (n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function parameterValue(
+  parameters: GovernanceParameter[],
+  name: string,
+): number | null {
+  const raw = parameters.find((p) => p.name === name)?.value;
+  const n = raw === undefined ? NaN : Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 // ── Vote Bar ─────────────────────────────────────────────────────────────────
@@ -60,12 +85,15 @@ function ProposalCard({
   proposal,
   voted,
   onVote,
+  debateEnabled,
 }: {
   proposal: Proposal;
   voted: boolean;
   onVote: (id: string, vote: "yes" | "no" | "abstain") => Promise<void>;
+  debateEnabled: boolean;
 }) {
   const [loading, setLoading] = useState<"yes" | "no" | "abstain" | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
   const [showDebate, setShowDebate] = useState(false);
   const loggedIn = isLoggedIn();
 
@@ -77,8 +105,11 @@ function ProposalCard({
   async function handleVote(v: "yes" | "no" | "abstain") {
     if (voted || loading) return;
     setLoading(v);
+    setVoteError(null);
     try {
       await onVote(proposal.proposal_id, v);
+    } catch (err) {
+      setVoteError(err instanceof Error ? err.message : "Vote failed");
     } finally {
       setLoading(null);
     }
@@ -135,12 +166,14 @@ function ProposalCard({
           {voted && (
             <span className="text-xs text-slate-500 ml-1">Vote recorded</span>
           )}
-          <button
-            onClick={() => setShowDebate(!showDebate)}
-            className="ml-auto text-xs text-slate-500 hover:text-cyan-400 transition-colors"
-          >
-            {showDebate ? "Hide Debate" : "View Debate"}
-          </button>
+          {debateEnabled && (
+            <button
+              onClick={() => setShowDebate(!showDebate)}
+              className="ml-auto text-xs text-slate-500 hover:text-cyan-400 transition-colors"
+            >
+              {showDebate ? "Hide Debate" : "View Debate"}
+            </button>
+          )}
         </div>
       ) : (
         <Link
@@ -151,8 +184,14 @@ function ProposalCard({
         </Link>
       )}
 
+      {voteError && (
+        <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">
+          {voteError}
+        </p>
+      )}
+
       {/* Enhanced Debate View */}
-      {showDebate && (
+      {debateEnabled && showDebate && (
         <div className="pt-3 border-t border-slate-800">
           <DebateView proposalId={proposal.proposal_id} />
         </div>
@@ -281,6 +320,9 @@ function CreateProposalForm({ onCreated }: { onCreated: (p: Proposal) => void })
 interface Props {
   initialProposals: Proposal[];
   results: Proposal[];
+  parameters: GovernanceParameter[];
+  /** Debate routes belong to the backend `consensus` router (off). */
+  showDebate: boolean;
 }
 
 type ActiveSort = "newest" | "ending" | "votes";
@@ -295,7 +337,12 @@ function totalVotes(p: Proposal): number {
   return (p.yes_votes ?? 0) + (p.no_votes ?? 0) + (p.abstain_votes ?? 0);
 }
 
-export function GovernanceClient({ initialProposals, results }: Props) {
+export function GovernanceClient({
+  initialProposals,
+  results,
+  parameters,
+  showDebate,
+}: Props) {
   const [proposals, setProposals] = useState<Proposal[]>(initialProposals);
   const [voted, setVoted] = useState<Set<string>>(new Set());
 
@@ -310,8 +357,8 @@ export function GovernanceClient({ initialProposals, results }: Props) {
   const [activeSort, setActiveSort] = useState<ActiveSort>("newest");
 
   // Results section filter state. Passed/Failed is the natural axis
-  // (yes_votes > no_votes is the same outcome predicate the Results
-  // render uses); search lets users find a specific past decision
+  // (the API's `status`, via proposalPassed — the same predicate the
+  // Results render uses); search lets users find a specific past decision
   // without scrolling through the archive. Default outcome="all" so
   // newcomers see the full record on first visit.
   const [resultsQuery,   setResultsQuery]   = useState("");
@@ -352,12 +399,12 @@ export function GovernanceClient({ initialProposals, results }: Props) {
     query.trim().length > 0 || activeSort !== "newest";
 
   // Results-section narrowed view. Same passed/failed predicate the
-  // render loop already used (yes_votes > no_votes), lifted here so
-  // the chip filter can drive it directly.
+  // render loop uses (proposalPassed), so the chip filter and the badge
+  // always agree.
   const visibleResults = useMemo(() => {
     const q = resultsQuery.trim().toLowerCase();
     return results.filter((p) => {
-      const passed = p.yes_votes > p.no_votes;
+      const passed = proposalPassed(p);
       if (resultsOutcome === "passed" && !passed) return false;
       if (resultsOutcome === "failed" &&  passed) return false;
       if (q && !p.title?.toLowerCase().includes(q)) return false;
@@ -367,6 +414,9 @@ export function GovernanceClient({ initialProposals, results }: Props) {
 
   const showResultsFilterCount =
     resultsQuery.trim().length > 0 || resultsOutcome !== "all";
+
+  const quorum = parameterValue(parameters, "quorum_threshold");
+  const passThreshold = parameterValue(parameters, "pass_threshold");
 
   async function handleVote(proposalId: string, vote: "yes" | "no" | "abstain") {
     const token = getToken();
@@ -489,6 +539,7 @@ export function GovernanceClient({ initialProposals, results }: Props) {
                 proposal={p}
                 voted={voted.has(p.proposal_id)}
                 onVote={handleVote}
+                debateEnabled={showDebate}
               />
             ))}
           </div>
@@ -515,6 +566,16 @@ export function GovernanceClient({ initialProposals, results }: Props) {
       {/* Results */}
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Results</h2>
+
+        {quorum !== null && passThreshold !== null && (
+          <p className="text-xs text-slate-500">
+            A vote weighs the voter&apos;s staked tokens × trust score. When
+            voting closes, a proposal passes if the total weight (abstentions
+            included) reaches {formatWeight(quorum)} and yes is more than{" "}
+            {formatWeight(passThreshold * 100)}% of the yes + no weight.
+            Otherwise it fails.
+          </p>
+        )}
 
         {/* Results filter strip — only render when there are >1 results
             so a fresh dao doesn't pretend a filterable archive exists.
@@ -601,7 +662,7 @@ export function GovernanceClient({ initialProposals, results }: Props) {
         ) : (
           <div className="space-y-3">
             {visibleResults.map((p) => {
-              const passed = p.yes_votes > p.no_votes;
+              const passed = proposalPassed(p);
               return (
                 <div
                   key={p.proposal_id}
@@ -626,6 +687,11 @@ export function GovernanceClient({ initialProposals, results }: Props) {
                     no={p.no_votes}
                     abstain={p.abstain_votes}
                   />
+                  <p className="text-xs text-slate-500">
+                    Weight: yes {formatWeight(p.yes_power)} · no{" "}
+                    {formatWeight(p.no_power)} · abstain{" "}
+                    {formatWeight(p.abstain_power)}
+                  </p>
                 </div>
               );
             })}

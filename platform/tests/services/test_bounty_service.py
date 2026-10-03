@@ -8,9 +8,12 @@ Covers:
   submit_solution        — validates open bounty, inserts submission
   evaluate_submission    — validates creator, scores submission
   distribute_rewards     — finds winner, credits wallet, records reward
+  cancel_bounty          — creator only, no submissions, refunds the pool
   list_submissions       — lists submissions for a bounty
 
-All DB and event calls are mocked; no live DB/Redis required.
+All DB and event calls are mocked; no live DB/Redis required. The money rules
+(paid once under concurrency, tokens conserved) are proven against real
+Postgres in tests/integration/test_bounty_escrow_db.py.
 """
 from __future__ import annotations
 
@@ -42,6 +45,7 @@ def _bounty_row(
         "reward_pool":          reward_pool,
         "status":               status,
         "deadline":             None,
+        "deadline_passed":      False,   # the database's answer (S12-6)
         "winner_submission_id": None,
         "created_at":           "2026-01-01T00:00:00Z",
         "closed_at":            None,
@@ -88,6 +92,7 @@ def _simple_bounty_row(bid, creator_did="did:agentx:creator", status="open",
         "description":          "",
         "capability_required":  "x",
         "deadline":             None,
+        "deadline_passed":      False,   # the database's answer (S12-6)
         "winner_submission_id": None,
         "created_at":           "2026-01-01T00:00:00Z",
         "closed_at":            None,
@@ -117,6 +122,15 @@ async def _fake_transaction_with(conn):
     yield conn
 
 
+@pytest.fixture(autouse=True)
+def ledger():
+    """The ledger insert (token_service._record_transaction) is not under test here."""
+    with patch(
+        "src.services.markets.bounty_service._record_transaction", new_callable=AsyncMock
+    ) as mock:
+        yield mock
+
+
 @asynccontextmanager
 async def _fake_db_with(conn):
     yield conn
@@ -144,6 +158,38 @@ class TestCreateBounty:
         assert result.title == "Test Bounty"
 
     @pytest.mark.asyncio
+    async def test_create_bounty_records_escrow_against_the_bounty(self, ledger):
+        bid = uuid4()
+        wallet = _wallet_row()
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [_agent_row(), wallet, _bounty_row(bounty_id=bid)]
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with patch("src.services.markets.bounty_service.publish_event", new_callable=AsyncMock):
+                data = BountyCreate(title="T", capability_required="x", reward_pool=250)
+                await bounty_service.create_bounty("did:agentx:creator", data)
+
+        ledger.assert_awaited_once()
+        kwargs = ledger.await_args.kwargs
+        assert kwargs["from_wallet"] == wallet["wallet_id"]
+        assert kwargs["to_wallet"] is None
+        assert kwargs["amount"] == 250
+        assert kwargs["tx_type"] == "bounty_escrow"
+        assert kwargs["related_id"] == bid
+
+    @pytest.mark.asyncio
+    async def test_create_bounty_refused_for_unknown_agent(self):
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=None)   # no such agent
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            data = BountyCreate(title="T", capability_required="x", reward_pool=100)
+            with pytest.raises(ValueError, match="Creator agent not found"):
+                await bounty_service.create_bounty("did:agentx:ghost", data)
+
+        assert conn.fetchrow.await_count == 1          # nothing debited, nothing inserted
+
+    @pytest.mark.asyncio
     async def test_create_bounty_raises_on_insufficient_funds(self):
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
@@ -158,7 +204,7 @@ class TestCreateBounty:
                 await bounty_service.create_bounty("did:agentx:creator", data)
 
     @pytest.mark.asyncio
-    async def test_create_bounty_raises_wallet_not_found(self):
+    async def test_create_bounty_raises_when_caller_has_no_wallet(self):
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
             _agent_row(),
@@ -168,7 +214,7 @@ class TestCreateBounty:
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
             data = BountyCreate(title="T", capability_required="x", reward_pool=100)
-            with pytest.raises(ValueError, match="Wallet not found"):
+            with pytest.raises(ValueError, match="Insufficient funds: .* has no wallet"):
                 await bounty_service.create_bounty("did:agentx:creator", data)
 
     @pytest.mark.asyncio
@@ -262,9 +308,9 @@ class TestListBounties:
         with patch("src.services.markets.bounty_service.get_db", lambda: _fake_db_with(conn)):
             await bounty_service.list_bounties()
 
-        # Only the query string, no extra positional params
+        # Only the query string plus the default page (limit, offset)
         call_args = conn.fetch.call_args[0]
-        assert len(call_args) == 1  # just the query
+        assert call_args[1:] == (50, 0)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -301,10 +347,28 @@ class TestGetBounty:
 class TestSubmitSolution:
 
     def _open_bounty_row(self, bid):
-        data = {"bounty_id": bid, "status": "open", "creator_did": "did:agentx:creator"}
+        data = {"bounty_id": bid, "status": "open", "creator_did": "did:agentx:creator",
+                "deadline_passed": False}
         row = MagicMock()
         row.__getitem__ = MagicMock(side_effect=data.__getitem__)
         return row
+
+    @pytest.mark.asyncio
+    async def test_submit_rejects_a_bounty_past_its_deadline(self):
+        bid = uuid4()
+        data = {"bounty_id": bid, "status": "open", "creator_did": "did:agentx:creator",
+                "deadline_passed": True}
+        row = MagicMock()
+        row.__getitem__ = MagicMock(side_effect=data.__getitem__)
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=row)
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(bounty_service.BountyConflictError, match="deadline"):
+                await bounty_service.submit_solution(
+                    bid, "did:agentx:agent1", SubmissionCreate(solution_data={})
+                )
+        assert conn.fetchrow.await_count == 1   # nothing inserted
 
     @pytest.mark.asyncio
     async def test_submit_returns_submission(self):
@@ -334,10 +398,40 @@ class TestSubmitSolution:
         conn.fetchrow = AsyncMock(return_value=row)
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
-            with pytest.raises(ValueError, match="not open"):
+            with pytest.raises(bounty_service.BountyConflictError, match="not open"):
                 await bounty_service.submit_solution(
                     bid, "did:agentx:agent1", SubmissionCreate(solution_data={})
                 )
+
+    @pytest.mark.asyncio
+    async def test_submit_rejects_the_bounty_creator(self):
+        bid = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=self._open_bounty_row(bid))
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(PermissionError, match="own bounty"):
+                await bounty_service.submit_solution(
+                    bid, "did:agentx:creator", SubmissionCreate(solution_data={})
+                )
+
+        assert conn.fetchrow.await_count == 1          # no submission inserted
+
+    @pytest.mark.asyncio
+    async def test_submit_locks_the_bounty_row(self):
+        bid = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [
+            self._open_bounty_row(bid), _agent_row(), _submission_row(bounty_id=bid),
+        ]
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with patch("src.services.markets.bounty_service.publish_event", new_callable=AsyncMock):
+                await bounty_service.submit_solution(
+                    bid, "did:agentx:agent1", SubmissionCreate(solution_data={})
+                )
+
+        assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
 
     @pytest.mark.asyncio
     async def test_submit_raises_on_missing_bounty(self):
@@ -431,10 +525,23 @@ class TestEvaluateSubmission:
         conn.fetchrow = AsyncMock(return_value=self._bounty(bid, "did:agentx:real-creator"))
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
-            with pytest.raises(ValueError, match="Only the bounty creator"):
+            with pytest.raises(PermissionError, match="Only the bounty creator"):
                 await bounty_service.evaluate_submission(
                     bid, uuid4(), "did:agentx:interloper", 0.5
                 )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("closed_status", ["rewarded", "cancelled", "closed"])
+    async def test_evaluate_refused_once_the_bounty_is_closed(self, closed_status):
+        bid = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=self._bounty(bid, status=closed_status))
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(bounty_service.BountyConflictError, match="cannot be evaluated"):
+                await bounty_service.evaluate_submission(bid, uuid4(), "did:agentx:creator", 0.5)
+
+        assert conn.fetchrow.await_count == 1          # no score written
 
     @pytest.mark.asyncio
     async def test_evaluate_raises_on_missing_bounty(self):
@@ -525,9 +632,10 @@ class TestDistributeRewards:
         conn.fetchrow.side_effect = [
             _simple_bounty_row(bid),
             self._winner_row(sid, recipient_id),
-            _wallet_row(),
             self._reward_row(bid, sid, recipient_id),
+            _wallet_row(),
         ]
+        conn.fetchval = AsyncMock(return_value=bid)    # status-guarded close succeeded
         conn.execute = AsyncMock()
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
@@ -538,6 +646,69 @@ class TestDistributeRewards:
         assert result.recipient_did == "did:agentx:winner"
 
     @pytest.mark.asyncio
+    async def test_distribute_locks_the_row_and_pays_the_winner_from_escrow(self, ledger):
+        bid, sid, recipient_id = uuid4(), uuid4(), uuid4()
+        wallet = _wallet_row()
+
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [
+            _simple_bounty_row(bid),
+            self._winner_row(sid, recipient_id),
+            self._reward_row(bid, sid, recipient_id),
+            wallet,
+        ]
+        conn.fetchval = AsyncMock(return_value=bid)
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with patch("src.services.markets.bounty_service.publish_event", new_callable=AsyncMock):
+                await bounty_service.distribute_rewards(bid, "did:agentx:creator")
+
+        calls = conn.fetchrow.await_args_list
+        assert "FOR UPDATE" in calls[0].args[0]
+        # the winner query can never pick the creator's own submission
+        assert "submitter_did  <> $2" in calls[1].args[0]
+        assert calls[1].args[1:] == (bid, "did:agentx:creator")
+        # the close is status-guarded
+        assert "status IN ('open', 'evaluating')" in conn.fetchval.await_args.args[0]
+        # wallet credit: created if missing, credited with the pool
+        assert "ON CONFLICT (agent_id) DO UPDATE" in calls[3].args[0]
+        assert calls[3].args[1:] == (500, recipient_id)
+        kwargs = ledger.await_args.kwargs
+        assert (kwargs["from_wallet"], kwargs["to_wallet"]) == (None, wallet["wallet_id"])
+        assert (kwargs["amount"], kwargs["tx_type"], kwargs["related_id"]) == (500, "bounty_reward", bid)
+
+    @pytest.mark.asyncio
+    async def test_distribute_pays_nothing_if_the_guarded_close_matches_no_row(self, ledger):
+        bid, sid = uuid4(), uuid4()
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [_simple_bounty_row(bid), self._winner_row(sid)]
+        conn.fetchval = AsyncMock(return_value=None)   # someone else closed it first
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(bounty_service.BountyConflictError, match="already distributed"):
+                await bounty_service.distribute_rewards(bid, "did:agentx:creator")
+
+        assert conn.fetchrow.await_count == 2          # no reward row, no wallet credit
+        ledger.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_distribute_payout_failure_propagates(self):
+        """No soft-fail: if the credit fails, the whole transaction must roll back."""
+        bid, sid, recipient_id = uuid4(), uuid4(), uuid4()
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [
+            _simple_bounty_row(bid),
+            self._winner_row(sid, recipient_id),
+            self._reward_row(bid, sid, recipient_id),
+            RuntimeError("wallet write failed"),
+        ]
+        conn.fetchval = AsyncMock(return_value=bid)
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(RuntimeError, match="wallet write failed"):
+                await bounty_service.distribute_rewards(bid, "did:agentx:creator")
+
+    @pytest.mark.asyncio
     async def test_distribute_rejects_non_creator(self):
         bid = uuid4()
         conn = AsyncMock()
@@ -546,20 +717,26 @@ class TestDistributeRewards:
         )
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
-            with pytest.raises(ValueError, match="Only the bounty creator"):
+            with pytest.raises(PermissionError, match="Only the bounty creator"):
                 await bounty_service.distribute_rewards(bid, "did:agentx:other")
 
+        assert conn.fetchrow.await_count == 1          # stopped before any payout
+
     @pytest.mark.asyncio
-    async def test_distribute_raises_when_already_rewarded(self):
+    @pytest.mark.parametrize("closed_status", ["rewarded", "cancelled", "closed"])
+    async def test_distribute_raises_when_already_closed(self, closed_status, ledger):
         bid = uuid4()
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(
-            return_value=_simple_bounty_row(bid, status="rewarded")
+            return_value=_simple_bounty_row(bid, status=closed_status)
         )
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
-            with pytest.raises(ValueError, match="already distributed"):
+            with pytest.raises(bounty_service.BountyConflictError, match="cannot be distributed"):
                 await bounty_service.distribute_rewards(bid, "did:agentx:creator")
+
+        assert conn.fetchrow.await_count == 1          # stopped before any payout
+        ledger.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_distribute_raises_on_no_evaluated_submissions(self):
@@ -568,7 +745,7 @@ class TestDistributeRewards:
         conn.fetchrow.side_effect = [_simple_bounty_row(bid), None]
 
         with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
-            with pytest.raises(ValueError, match="No evaluated submissions"):
+            with pytest.raises(bounty_service.BountyConflictError, match="No evaluated submissions"):
                 await bounty_service.distribute_rewards(bid, "did:agentx:creator")
 
     @pytest.mark.asyncio
@@ -590,9 +767,10 @@ class TestDistributeRewards:
         conn.fetchrow.side_effect = [
             _simple_bounty_row(bid),
             self._winner_row(sid, recipient_id),
-            _wallet_row(),
             self._reward_row(bid, sid, recipient_id),
+            _wallet_row(),
         ]
+        conn.fetchval = AsyncMock(return_value=bid)    # status-guarded close succeeded
         conn.execute = AsyncMock()
 
         publish_mock = AsyncMock()
@@ -602,6 +780,85 @@ class TestDistributeRewards:
 
         publish_mock.assert_called_once()
         assert publish_mock.call_args[0][0].value == "BOUNTY_REWARD_DISTRIBUTED"
+        payload = publish_mock.call_args[0][1]
+        assert payload["recipient_id"] == str(recipient_id)   # discovery_consumer reads it
+        assert payload["amount"] == 500
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# cancel_bounty
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestCancelBounty:
+
+    @pytest.mark.asyncio
+    async def test_cancel_refunds_the_creator(self, ledger):
+        bid = uuid4()
+        bounty = _simple_bounty_row(bid)
+        wallet = _wallet_row()
+        conn = AsyncMock()
+        conn.fetchrow.side_effect = [bounty, _simple_bounty_row(bid, status="cancelled"), wallet]
+        conn.fetchval = AsyncMock(return_value=None)   # no submissions
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            result = await bounty_service.cancel_bounty(bid, "did:agentx:creator")
+
+        assert result.status == "cancelled"
+        calls = conn.fetchrow.await_args_list
+        assert "FOR UPDATE" in calls[0].args[0]
+        assert "AND status    = 'open'" in calls[1].args[0]
+        assert calls[2].args[1:] == (500, bounty["creator_id"])
+        kwargs = ledger.await_args.kwargs
+        assert (kwargs["from_wallet"], kwargs["to_wallet"]) == (None, wallet["wallet_id"])
+        assert (kwargs["amount"], kwargs["tx_type"], kwargs["related_id"]) == (500, "bounty_refund", bid)
+
+    @pytest.mark.asyncio
+    async def test_cancel_rejects_non_creator(self, ledger):
+        bid = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=_simple_bounty_row(bid))
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(PermissionError, match="Only the bounty creator"):
+                await bounty_service.cancel_bounty(bid, "did:agentx:other")
+
+        ledger.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", ["evaluating", "rewarded", "cancelled"])
+    async def test_cancel_only_an_open_bounty(self, status, ledger):
+        bid = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=_simple_bounty_row(bid, status=status))
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(bounty_service.BountyConflictError, match="Only an open bounty"):
+                await bounty_service.cancel_bounty(bid, "did:agentx:creator")
+
+        ledger.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cancel_refused_once_there_are_submissions(self, ledger):
+        bid = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=_simple_bounty_row(bid))
+        conn.fetchval = AsyncMock(return_value=1)      # a submission exists
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(bounty_service.BountyConflictError, match="has submissions"):
+                await bounty_service.cancel_bounty(bid, "did:agentx:creator")
+
+        assert conn.fetchrow.await_count == 1          # status untouched, nothing refunded
+        ledger.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cancel_raises_on_missing_bounty(self):
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=None)
+
+        with patch("src.services.markets.bounty_service.transaction", lambda: _fake_transaction_with(conn)):
+            with pytest.raises(ValueError, match="Bounty not found"):
+                await bounty_service.cancel_bounty(uuid4(), "did:agentx:creator")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

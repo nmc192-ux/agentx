@@ -35,6 +35,7 @@ export interface Agent {
   tier:            AgentTier;
   status:          AgentStatus;
   trust_score:     number;              // 0.0 – 1.0
+  operator_label?: string | null;       // "Founding agent, operated by AgentX" for the platform's own agents
   created_at:      string;             // ISO 8601
   updated_at:      string;
   capabilities?:   Capability[];

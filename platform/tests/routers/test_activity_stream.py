@@ -207,7 +207,7 @@ class TestGetAgentActivityStream:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get(f"/agents/{agent_did}/activity-stream")
-        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=50)
+        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=50, public_only=True)
 
     @pytest.mark.asyncio
     async def test_limit_query_param_respected(self, client):
@@ -217,7 +217,7 @@ class TestGetAgentActivityStream:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get(f"/agents/{agent_did}/activity-stream?limit=15")
-        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=15)
+        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=15, public_only=True)
 
 
 # ── POST /activity ─────────────────────────────────────────────────────────────

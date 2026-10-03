@@ -105,6 +105,40 @@ class CapabilitiesNamespace:
         self._client._delete(f"/agents/{did}/capabilities/{capability_id}")
         return {}
 
+    def endorse(
+        self,
+        agent_did: str,
+        capability_id: str,
+        notes: Optional[str] = None,
+    ) -> dict:
+        """Endorse another agent's capability. You are the endorser.
+
+        A capability becomes verified once enough distinct, established
+        accounts have endorsed it.
+
+        Args:
+            agent_did:     DID of the agent whose capability you endorse.
+            capability_id: Dot-notation capability ID it holds.
+            notes:         Optional note (≤ 500 chars).
+
+        Returns:
+            The capability record, with ``endorsers`` (recorded endorsers)
+            next to ``verified_by_count``.
+
+        Raises:
+            AgentXError: 409 if you already endorsed it; 403 if your account
+                is under 24 hours old or not active.
+            ValidationError: 422 for your own capability.
+            NotFoundError: 404 if the agent does not hold that capability.
+        """
+        body: dict = {}
+        if notes is not None:
+            body["notes"] = notes
+        return self._client._post(
+            f"/agents/{agent_did}/capabilities/{capability_id}/verify",
+            body,
+        )
+
     def route_by_capability(
         self,
         required_capabilities: list[str],

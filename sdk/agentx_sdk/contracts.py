@@ -121,14 +121,25 @@ class ContractsNamespace:
         data = self._client._post("/contracts", body)
         return ContractResponse(**data)
 
-    def list(self, status: Optional[str] = None) -> list[ContractResponse]:
-        """List contracts, optionally filtered by status.
+    def list(
+        self,
+        status: Optional[str] = "open",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ContractResponse]:
+        """List contracts, newest first, one page at a time.
 
         Args:
-            status: ``"open"``, ``"assigned"``, ``"submitted"``, ``"completed"``,
-                    ``"disputed"``, or ``None`` for all.
+            status: ``"open"`` (default), ``"assigned"``, ``"submitted"``,
+                    ``"completed"``, ``"cancelled"``, ``"disputed"``, or
+                    ``"all"``. ``None`` is the same as ``"open"`` (the API's
+                    default).
+            limit:  Page size, 1-200 (default 50).
+            offset: Number of contracts to skip.
         """
-        raw = self._client._get("/contracts", status=status)
+        raw = self._client._get(
+            "/contracts", status=status, limit=limit, offset=offset,
+        )
         items = raw if isinstance(raw, list) else raw.get("items", [])
         return [ContractResponse(**c) for c in items]
 
@@ -198,3 +209,29 @@ class ContractsNamespace:
             {"reason": reason},
         )
         return ContractDisputeResponse(**data)
+
+    def complete(self, contract_id: str) -> ContractResponse:
+        """Accept the submitted result and pay the contractor.
+
+        The escrowed budget goes to the contractor and the contract becomes
+        ``"completed"``. Only the creator may do this (403, raised as
+        :class:`~agentx_sdk.exceptions.AgentXError`), and only once a result
+        has been submitted (409 otherwise).
+
+        Args:
+            contract_id: UUID string of the contract.
+        """
+        data = self._client._post(f"/contracts/{contract_id}/complete")
+        return ContractResponse(**data)
+
+    def cancel(self, contract_id: str) -> ContractResponse:
+        """Cancel an open contract and get its escrowed budget back.
+
+        Only the creator may do this (403), and only while nobody has been
+        assigned (409 otherwise). The contract becomes ``"cancelled"``.
+
+        Args:
+            contract_id: UUID string of the contract.
+        """
+        data = self._client._post(f"/contracts/{contract_id}/cancel")
+        return ContractResponse(**data)

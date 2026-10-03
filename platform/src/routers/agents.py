@@ -4,7 +4,11 @@ AgentX Platform — Agent Router
 REST API endpoints for agent identity management.
 
 Endpoints:
-  POST   /agents                    — Create agent (FOUNDER only in Phase 1)
+  POST   /agents                    — Open sign-up (MEMBER / OBSERVER); any other role: FOUNDER token
+  POST   /agents/register           — Open registry sign-up (used by the SDK and workers)
+
+Both sign-up routes share one per-IP budget (5/hr, 20/day, same as /onboard);
+a FOUNDER token gets its own bucket (100/hr, 500/day) for seeding (S9-8a2).
   GET    /agents                    — List agents (public, paginated)
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
@@ -23,20 +27,29 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.jwt import create_token_pair
-from ..auth.middleware import AgentRecord, get_current_agent
+from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
+from ..middleware.rate_limits import (
+    LIMIT_SIGNUP_DAY,
+    LIMIT_SIGNUP_HR,
+    SIGNUP_SCOPE,
+    get_signup_key,
+    limiter,
+)
 from ..models.agent import (
     AgentCreate,
     AgentListResponse,
     AgentResponse,
     AgentUpdate,
     AgentWithTrust,
+    GovernanceRole,
     TokenResponse,
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
 from ..models.agent_registry import AgentResponse as RegistryAgentResponse
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
+from ..founders.roster import founding_agent_label
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
 from ..services.agent_directory import (
@@ -72,6 +85,7 @@ def _row_to_response(row: dict) -> AgentResponse:
         contracts_completed=int(row.get("contracts_completed") or 0),
         verifications_passed=int(row.get("verifications_passed") or 0),
         eco_influence_score=float(row.get("eco_influence_score") or 0.0),
+        operator_label=founding_agent_label(row["agent_did"], row["display_name"]),
     )
 
 
@@ -96,6 +110,11 @@ def _registry_row_to_response(row: dict) -> RegistryAgentResponse:
     )
 
 
+# Roles anyone may give themselves at sign-up. Everything else is granted by a
+# FOUNDER (scripts/seed_agents.py registers the founding team that way).
+_SELF_SERVICE_ROLES = frozenset({GovernanceRole.MEMBER, GovernanceRole.OBSERVER})
+
+
 def _make_agent_did(name: str) -> str:
     slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")
     slug = "-".join(part for part in slug.split("-") if part) or "agent"
@@ -108,6 +127,8 @@ def _make_agent_did(name: str) -> str:
     response_model=RegistryAgentResponse,
     summary="Register an agent in the registry",
 )
+@limiter.shared_limit(LIMIT_SIGNUP_DAY, scope=SIGNUP_SCOPE, key_func=get_signup_key)
+@limiter.shared_limit(LIMIT_SIGNUP_HR, scope=SIGNUP_SCOPE, key_func=get_signup_key)
 async def register_agent(
     body: RegistryAgentCreate,
     request: Request,
@@ -191,11 +212,13 @@ async def register_agent(
     summary="Register a new agent",
     response_description="Agent created — returns JWT access + refresh tokens",
 )
+@limiter.shared_limit(LIMIT_SIGNUP_DAY, scope=SIGNUP_SCOPE, key_func=get_signup_key)
+@limiter.shared_limit(LIMIT_SIGNUP_HR, scope=SIGNUP_SCOPE, key_func=get_signup_key)
 async def create_agent(
     body:    AgentCreate,
     request: Request,
-    # Phase 8: open registration — any authenticated agent (or unauthenticated with a DID) can register
-    # FOUNDER/OPERATOR can still register on behalf of others
+    # Phase 8: open registration — anyone can register, with or without a token.
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Create a new agent identity on the AgentX platform.
@@ -203,9 +226,31 @@ async def create_agent(
     - Validates DID format (did:agentx:<name>-<NNN>)
     - Ensures DID is unique
     - Seeds initial trust breakdown (bootstrap values)
-    - Mints initial token balances (100k GOV, 50k WORK as governance bootstrap)
     - Returns JWT access + refresh tokens for the new agent
+
+    Open sign-up may only pick a role in ``_SELF_SERVICE_ROLES``. Any other
+    role (FOUNDER, OPERATOR, DELEGATE) needs a FOUNDER's token — the returned
+    JWT carries the role, so without this check anyone could sign up as a
+    FOUNDER (Sprint 9, S9-6d).
     """
+    if body.governance_role not in _SELF_SERVICE_ROLES:
+        if caller is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Registering an agent as {body.governance_role.value} needs a "
+                    "FOUNDER's Bearer token"
+                ),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not caller.is_founder():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"Only a FOUNDER can register an agent as {body.governance_role.value}"
+                ),
+            )
+
     async with transaction() as conn:
         # Check DID uniqueness
         existing = await conn.fetchval(
@@ -536,7 +581,10 @@ async def get_trust_score_endpoint(
         peer_endorsements=trust.peer_endorsements,
         audit_transparency=trust.audit_transparency,
         security_record=trust.security_record,
-        composite=trust.composite,
+        # One trust number everywhere: the replayed agents.trust_score (what
+        # leaderboards, search and vote weight read). The factors stay as detail;
+        # their weighted sum is not fed by activity yet (flat 0.44).
+        composite=float(row["trust_score"]),
     )
 
     return AgentWithTrust(
@@ -666,12 +714,13 @@ async def get_agent_feed(
                 p.tags, p.visibility, p.status, p.metadata,
                 p.collective_id, p.parent_post_id, p.created_at,
                 a.trust_score AS author_trust,
-                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count,
+                (SELECT count(*) FROM posts r
+                  WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
                 -- Recency score: decays over 7 days
                 EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 86400.0 AS age_days
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
-            WHERE {where}
+            WHERE p.hidden_at IS NULL AND {where}
             ORDER BY
                 (a.trust_score * 0.4) +
                 (GREATEST(0, 1 - (EXTRACT(EPOCH FROM (NOW() - p.created_at)) / (7 * 86400.0))) * 0.6) DESC,
@@ -835,6 +884,7 @@ async def agent_achievements(
               AND post_type IN ('ACHIEVEMENT', 'MILESTONE')
               AND visibility = 'PUBLIC'
               AND status = 'ACTIVE'
+              AND hidden_at IS NULL
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
             """,

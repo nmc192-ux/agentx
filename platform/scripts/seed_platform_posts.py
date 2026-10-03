@@ -13,10 +13,18 @@ PUBLIC visibility. It is safe to re-run; already-registered agents are
 reused via their returned 200/201 payload, and posts are skipped if the
 exact title already exists for that agent (best-effort dedupe).
 
+One cohort only. This script used to offer ``--variant`` to register "a fresh
+cohort" under new DIDs when the old agents could not log in; run against
+production, that is how Nova, Atlas and the others came to exist two to four
+times (cleaned up by scripts/dedupe_founders.py, Sprint 9 S9-10). The founder
+personas now use the same DIDs as every other seed (did:agentx:<name>-001), so
+a re-run finds them (409) instead of adding to them.
+
 Usage:
-  python scripts/seed_platform_posts.py \\
-      --base-url https://agentx-platform.fly.dev \\
-      --posts-per-agent 2
+  python scripts/seed_platform_posts.py --posts-per-agent 2
+
+  # Another server (never the default):
+  python scripts/seed_platform_posts.py --base-url https://…
 
   # Dry run (show what would be created, do nothing):
   python scripts/seed_platform_posts.py --dry-run
@@ -59,11 +67,9 @@ SEED_AGENTS: list[dict] = [
     {"slug": "lyra",     "display": "Lyra",    "bio": "Product agent — discovery, growth."},
 ]
 
-# Default suffix so re-runs share the same DIDs regardless of environment.
-# Override with --variant (e.g. --variant=002) to register a fresh cohort on
-# production, where the client_credentials grant is disabled and existing
-# agents can't get a new token from the /auth endpoints.
-DEFAULT_DID_SUFFIX = "-seed-001"
+# One suffix, the one every seed and runner uses, so a re-run meets the same
+# DIDs in every environment. There is deliberately no way to change it.
+DEFAULT_DID_SUFFIX = "-001"
 
 
 @dataclass
@@ -331,7 +337,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Seed AgentX with demo content")
     parser.add_argument(
         "--base-url",
-        default="https://agentx-platform.fly.dev",
+        default="http://localhost:8000",
         help="API base URL",
     )
     parser.add_argument("--dry-run", action="store_true")
@@ -341,18 +347,8 @@ def main() -> int:
         default=2,
         help="Cap on posts created per seed agent (uses template order)",
     )
-    parser.add_argument(
-        "--variant",
-        default=DEFAULT_DID_SUFFIX.lstrip("-"),
-        help=(
-            "DID suffix tag (e.g. seed-001, seed-002). In production the "
-            "/auth/token client_credentials grant is disabled, so existing "
-            "agents can't be re-authenticated; bump --variant to create a "
-            "fresh cohort without colliding with previous runs."
-        ),
-    )
     args = parser.parse_args()
-    suffix = f"-{args.variant.lstrip('-')}"
+    suffix = DEFAULT_DID_SUFFIX
 
     print(f"→ Target: {args.base_url}")
     if args.dry_run:

@@ -11,11 +11,13 @@ Endpoints:
   POST /a2a
        → JSON-RPC 2.0 endpoint for A2A method calls:
            message/send  — submit a task from an external A2A agent
+                           (only while the `tasks` router is on)
            tasks/get     — retrieve a task by ID
 
 Both Agent Card endpoints are publicly accessible (no auth required).
-The JSON-RPC endpoint validates the envelope but currently accepts
-unauthenticated calls (external A2A agents may not have a platform token).
+On the JSON-RPC endpoint ``tasks/get`` is public; ``message/send`` creates a
+task, so it needs the Bearer token the Agent Cards advertise and the task
+belongs to that agent (an agent without one gets it from POST /onboard).
 
 References:
   https://google.github.io/A2A/specification/
@@ -26,11 +28,16 @@ from __future__ import annotations
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, status
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
+from ..auth.middleware import AgentRecord, get_current_agent_optional
+from ..config import get_settings
 from ..database import get_db
 from .agent_card import AgentCard, generate_agent_card, generate_platform_card
+from .base_url import public_base_url
 from .handler import handle_message_send, handle_tasks_get
 from .jsonrpc import JSONRPCError, JSONRPCRequest, JSONRPCResponse
 
@@ -51,13 +58,18 @@ a2a_router = APIRouter(tags=["A2A"])
         "Compliant with the Google A2A protocol specification v0.3."
     ),
 )
-async def platform_agent_card() -> JSONResponse:
+async def platform_agent_card(request: Request) -> JSONResponse:
     """Serve the platform-level A2A Agent Card."""
-    card = generate_platform_card()
+    card = generate_platform_card(
+        base_url=public_base_url(request),
+        router_enabled=get_settings().router_enabled,
+        a2a_methods=available_methods(),
+    )
     return JSONResponse(
         content=card.model_dump(exclude_none=True),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=300"},
+        # The card prints the host it was asked on.
+        headers={"Cache-Control": "public, max-age=300", "Vary": "Host"},
     )
 
 
@@ -73,7 +85,7 @@ async def platform_agent_card() -> JSONResponse:
         "by their DID. Compliant with the Google A2A protocol specification v0.3."
     ),
 )
-async def agent_agent_card(agent_did: str) -> JSONResponse:
+async def agent_agent_card(agent_did: str, request: Request) -> JSONResponse:
     """Serve an individual agent's A2A Agent Card.
 
     Fetches the agent's record from the database and builds the Agent Card
@@ -116,6 +128,7 @@ async def agent_agent_card(agent_did: str) -> JSONResponse:
         specialization=row.get("specialization"),
         capabilities_list=caps,
         bio=row.get("bio"),
+        base_url=public_base_url(request),
     )
 
     logger.debug("a2a: served card for %s", agent_did)
@@ -123,17 +136,36 @@ async def agent_agent_card(agent_did: str) -> JSONResponse:
     return JSONResponse(
         content=card.model_dump(exclude_none=True),
         media_type="application/json",
-        headers={"Cache-Control": "public, max-age=60"},
+        headers={"Cache-Control": "public, max-age=60", "Vary": "Host"},
     )
 
 
 # ── JSON-RPC 2.0 endpoint ─────────────────────────────────────────────────────
 
-# Method registry — maps A2A method names to handler coroutines
+# Method registry — maps A2A method names to (handler coroutine, needs login).
+# A method that needs a login is called with the caller's DID; it never takes
+# the acting agent from the request body.
 _METHODS = {
-    "message/send": handle_message_send,
-    "tasks/get":    handle_tasks_get,
+    "message/send": (handle_message_send, True),
+    "tasks/get":    (handle_tasks_get, False),
 }
+
+# A method that only makes sense while a gated router is on. `message/send`
+# publishes a marketplace task: with the `tasks` router off no route lists it
+# or lets anyone bid, so the task would sit in the table unseen (S9-13a).
+_METHOD_NEEDS_ROUTER = {
+    "message/send": "tasks",
+}
+
+
+def available_methods() -> list[str]:
+    """The A2A methods this deployment answers (router gating applied)."""
+    settings = get_settings()
+    return [
+        name for name in _METHODS
+        if name not in _METHOD_NEEDS_ROUTER
+        or settings.router_enabled(_METHOD_NEEDS_ROUTER[name])
+    ]
 
 
 @a2a_router.post(
@@ -141,16 +173,20 @@ _METHODS = {
     summary="A2A JSON-RPC 2.0 endpoint",
     description=(
         "Accepts JSON-RPC 2.0 requests compliant with the A2A protocol. "
-        "Supported methods: ``message/send``, ``tasks/get``. "
+        "Supported methods: ``message/send`` (Bearer token required), ``tasks/get``. "
         "Returns JSON-RPC 2.0 response envelopes."
     ),
 )
-async def a2a_jsonrpc(request: Request) -> JSONResponse:
+async def a2a_jsonrpc(
+    request: Request,
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+) -> JSONResponse:
     """Handle an A2A JSON-RPC 2.0 request.
 
     Parses the JSON-RPC envelope, dispatches to the appropriate handler,
-    and returns a JSON-RPC 2.0 response.  All errors are returned as
-    JSON-RPC error objects (never as HTTP error status codes), per spec.
+    and returns a JSON-RPC 2.0 response.  Protocol errors are returned as
+    JSON-RPC error objects with HTTP 200, per spec.  Authentication failures
+    also carry HTTP 401 / 403, as the A2A specification asks of servers.
     """
     # ── Parse request body ────────────────────────────────────────────────────
     try:
@@ -177,32 +213,63 @@ async def a2a_jsonrpc(request: Request) -> JSONResponse:
     logger.info("a2a: JSON-RPC %s (id=%s)", rpc.method, rpc.id)
 
     # ── Dispatch to handler ───────────────────────────────────────────────────
-    handler = _METHODS.get(rpc.method)
-    if handler is None:
+    handler, needs_login = _METHODS.get(rpc.method, (None, False))
+    methods = available_methods()
+    if handler is None or rpc.method not in methods:
+        # Checked before the login: a switched-off method is refused for
+        # everyone, and nothing is created.
         resp = JSONRPCResponse.err(
             rpc.id,
             JSONRPCError.METHOD_NOT_FOUND,
-            f"Method not found: '{rpc.method}'",
-            data={"available_methods": list(_METHODS.keys())},
+            f"Method not found: '{rpc.method}'"
+            if handler is None
+            else f"Method not available on this deployment: '{rpc.method}'",
+            data={"available_methods": methods},
         )
         return JSONResponse(content=resp.model_dump(exclude_none=True))
 
+    if needs_login and caller is None:
+        resp = JSONRPCResponse.err(
+            rpc.id,
+            JSONRPCError.INVALID_REQUEST,
+            f"Authentication required: '{rpc.method}' needs a valid Bearer token",
+        )
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=resp.model_dump(exclude_none=True),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
-        result = await handler(rpc.params)
+        if needs_login:
+            result = await handler(rpc.params, caller_did=caller.did)
+        else:
+            result = await handler(rpc.params)
         resp = JSONRPCResponse.ok(rpc.id, result)
+    except PermissionError as exc:
+        resp = JSONRPCResponse.err(rpc.id, JSONRPCError.INVALID_REQUEST, str(exc))
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content=resp.model_dump(exclude_none=True),
+        )
     except ValueError as exc:
         resp = JSONRPCResponse.err(
             rpc.id,
             JSONRPCError.INVALID_PARAMS,
             str(exc),
         )
-    except Exception as exc:
-        logger.exception("a2a: internal error in method %s", rpc.method)
+    except Exception:
+        # S9-6e: the exception text (SQL, internals) used to go back to the
+        # caller as `data`; it stays in the log, the caller gets the request id.
+        request_id = getattr(request.state, "request_id", None)
+        logger.exception(
+            "a2a: internal error in method %s (request_id=%s)", rpc.method, request_id,
+        )
         resp = JSONRPCResponse.err(
             rpc.id,
             JSONRPCError.INTERNAL_ERROR,
             "Internal error",
-            data=str(exc),
+            data={"request_id": request_id},
         )
 
     return JSONResponse(content=resp.model_dump(exclude_none=True))

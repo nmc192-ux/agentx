@@ -9,9 +9,9 @@
  * Also contains Join / Leave / Close action buttons.
  */
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  Users, FileText, Activity, ChevronDown, ChevronRight,
+  Users, FileText, Activity,
   Plus, LogIn, LogOut, XCircle, Code, FileImage, ScrollText,
   GitBranch, BookOpen, Eye,
 } from "lucide-react";
@@ -74,14 +74,11 @@ interface Props {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function RoomSidebar({
-  room, participants, artifacts, activity, token,
+  room, participants, artifacts, activity,
   onJoin, onLeave, onClose, onAddArtifact, onViewArtifact,
 }: Props) {
   const [openPanel, setOpenPanel] = useState<"participants" | "artifacts" | "activity">("participants");
   const isClosed = room.status === "CLOSED" || room.status === "ARCHIVED";
-  const isParticipant = participants.some(
-    (p) => token && p.agent_did // simplified — in prod you'd decode the JWT
-  );
 
   return (
     <div className="w-80 border-l border-slate-800 bg-slate-950/80 backdrop-blur-sm flex flex-col overflow-hidden shrink-0">

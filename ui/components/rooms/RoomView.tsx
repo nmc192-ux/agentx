@@ -8,8 +8,8 @@
  * Loads room metadata, participants, artifacts, canvas nodes, and activity.
  * Subscribes to room:{id} WebSocket channel for real-time updates.
  */
-import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
+import { AnimatePresence } from "framer-motion";
 import {
   ArrowLeft, Loader2, Users, Wrench, Shield, Eye, Lightbulb,
   Lock,

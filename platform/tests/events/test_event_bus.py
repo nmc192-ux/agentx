@@ -256,51 +256,56 @@ class TestAckEvent:
 class TestReputationHandler:
 
     @pytest.mark.asyncio
-    async def test_task_completed_calls_record_event(self):
-        """Patch at the source module since reputation_handler uses a lazy import."""
+    async def test_task_completed_reports_the_task_not_the_claimed_agent(self):
+        """S9-9b: the handler passes the task id on; who earns what is read
+        from the task row, never from the bus message.
+        Patch at the source module since reputation_handler uses a lazy import."""
         event = AgentXEvent(
             event_type=EventType.TASK_COMPLETED,
-            payload={"task_id": "t1"},
+            payload={"task_id": "t1", "agent_did": "did:agentx:someone-else-001"},
             source_agent_did="did:agentx:atlas-001",
         )
-        mock_record_event = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record_event):
+        mock_record = AsyncMock(return_value="recorded")
+        with patch("src.services.reputation.record_task_completed", new=mock_record):
             from src.events.handlers.reputation_handler import handle
             await handle(event)
 
-        mock_record_event.assert_awaited_once()
-        call_args = mock_record_event.await_args
-        assert call_args.args[0] == "did:agentx:atlas-001"
-        assert call_args.args[1] == "task_completed"
+        mock_record.assert_awaited_once_with("t1", source="event_bus")
 
     @pytest.mark.asyncio
-    async def test_task_failed_calls_record_event_with_task_failed(self):
+    async def test_task_failed_changes_no_trust(self):
+        """A failure costs trust only when the executor reports it (the route
+        records that); a bus message cannot take trust from anyone."""
         event = AgentXEvent(
             event_type=EventType.TASK_FAILED,
             payload={"task_id": "t2"},
             source_agent_did="did:agentx:atlas-001",
         )
-        mock_record_event = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record_event):
+        mock_event = AsyncMock()
+        mock_completed = AsyncMock()
+        with (
+            patch("src.services.reputation.record_event", new=mock_event),
+            patch("src.services.reputation.record_task_completed", new=mock_completed),
+        ):
             from src.events.handlers.reputation_handler import handle
             await handle(event)
 
-        mock_record_event.assert_awaited_once()
-        assert mock_record_event.await_args.args[1] == "task_failed"
+        mock_event.assert_not_awaited()
+        mock_completed.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_skips_if_no_agent_did(self):
+    async def test_skips_if_no_task_id(self):
         event = AgentXEvent(
             event_type=EventType.TASK_COMPLETED,
-            payload={"task_id": "t3"},
-            source_agent_did=None,
+            payload={},
+            source_agent_did="did:agentx:atlas-001",
         )
-        mock_record_event = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record_event):
+        mock_record = AsyncMock()
+        with patch("src.services.reputation.record_task_completed", new=mock_record):
             from src.events.handlers.reputation_handler import handle
             await handle(event)
 
-        mock_record_event.assert_not_awaited()
+        mock_record.assert_not_awaited()
 
 
 # ── feed_handler ──────────────────────────────────────────────────────────────

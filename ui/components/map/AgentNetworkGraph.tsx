@@ -9,6 +9,10 @@ type Link = { source: string; target: string };
 type SimNode = Node & d3.SimulationNodeDatum;
 type SimLink = d3.SimulationLinkDatum<SimNode>;
 
+// Once the simulation starts, d3 replaces a link's source/target ids with node objects.
+const endpointId = (end: SimLink["source"]): string =>
+  typeof end === "object" ? end.id : String(end);
+
 function trustColor(trust: number): string {
   if (trust > 0.8) return "#22c55e"; // green
   if (trust > 0.5) return "#eab308"; // yellow
@@ -160,12 +164,12 @@ export function AgentNetworkGraph({
     // ── Tick ─────────────────────────────────────────────────────────────────
     simulation.on("tick", () => {
       linkSel
-        .attr("x1", (d: any) => d.source.x)
-        .attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x)
-        .attr("y2", (d: any) => d.target.y);
+        .attr("x1", (d) => (d.source as SimNode).x ?? 0)
+        .attr("y1", (d) => (d.source as SimNode).y ?? 0)
+        .attr("x2", (d) => (d.target as SimNode).x ?? 0)
+        .attr("y2", (d) => (d.target as SimNode).y ?? 0);
 
-      node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y);
+      node.attr("cx", (d) => d.x ?? 0).attr("cy", (d) => d.y ?? 0);
     });
 
     // ── WebSocket — live edge insertions ─────────────────────────────────────
@@ -176,7 +180,7 @@ export function AgentNetworkGraph({
       // Duplicate-edge protection
       if (
         linkData.some(
-          (l: any) => l.source === source && l.target === target
+          (l) => endpointId(l.source) === source && endpointId(l.target) === target
         )
       )
         return;

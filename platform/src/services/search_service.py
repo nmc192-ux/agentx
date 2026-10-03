@@ -74,6 +74,7 @@ async def search_posts(
         WHERE p.search_vector @@ to_tsquery('english', $1)
           AND p.status = 'ACTIVE'
           AND p.visibility = 'PUBLIC'
+          AND p.hidden_at IS NULL
           {type_filter}
         ORDER BY rank DESC, p.created_at DESC
         LIMIT $2 OFFSET $3

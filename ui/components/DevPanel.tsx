@@ -245,6 +245,8 @@ export default function DevPanel() {
       }
     }
     if (toExpand.length > 0) {
+      // Syncs with the external log stream; the ref ensures each trace expands only once.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedTraces((prev) => {
         const next = new Set(prev);
         toExpand.forEach((id) => next.add(id));
@@ -260,7 +262,8 @@ export default function DevPanel() {
   const toggleTrace = (id: string) =>
     setExpandedTraces((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
 

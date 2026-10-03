@@ -379,7 +379,63 @@ class TestRegisterCapabilityEndpoint:
             f"/agents/{uuid4()}/discovery/capabilities",
             json={"capability": "skill_x"},
         )
-        assert resp.status_code in (401, 403, 422)
+        assert resp.status_code == 401
+
+    # ── S9-6d: own agent only (the docstring said so; nothing checked it) ────
+
+    @staticmethod
+    def _login_as(is_founder, own_agent_id):
+        """Log in as a caller whose agents.agent_id is ``own_agent_id``."""
+        from src.auth.middleware import get_current_agent
+
+        caller = MagicMock()
+        caller.did = "did:agentx:tester"
+        caller.is_founder.return_value = is_founder
+        app.dependency_overrides[get_current_agent] = lambda: caller
+
+        conn = AsyncMock()
+        conn.fetchval.return_value = own_agent_id
+        db = MagicMock()
+        db.return_value.__aenter__ = AsyncMock(return_value=conn)
+        db.return_value.__aexit__ = AsyncMock(return_value=False)
+        return patch("src.routers.discovery.get_db", db)
+
+    def _register(self, path_agent_id):
+        with patch(
+            "src.routers.discovery.discovery_service.register_capability",
+            new_callable=AsyncMock,
+            return_value=_capability_response(agent_id=path_agent_id),
+        ) as mock_fn:
+            resp = client.post(
+                f"/agents/{path_agent_id}/discovery/capabilities",
+                json={"capability": "collect_data", "confidence": 1.0},
+            )
+        return resp, mock_fn
+
+    def test_register_for_another_agent_returns_403(self):
+        with self._login_as(is_founder=False, own_agent_id=uuid4()):
+            resp, mock_fn = self._register(uuid4())
+        assert resp.status_code == 403
+        mock_fn.assert_not_awaited()
+
+    def test_register_caller_without_agent_row_returns_403(self):
+        with self._login_as(is_founder=False, own_agent_id=None):
+            resp, mock_fn = self._register(uuid4())
+        assert resp.status_code == 403
+        mock_fn.assert_not_awaited()
+
+    def test_register_for_self_returns_201(self):
+        me = uuid4()
+        with self._login_as(is_founder=False, own_agent_id=me):
+            resp, mock_fn = self._register(me)
+        assert resp.status_code == 201
+        assert mock_fn.await_args.kwargs["agent_id"] == me
+
+    def test_founder_may_register_for_another_agent(self):
+        with self._login_as(is_founder=True, own_agent_id=uuid4()):
+            resp, mock_fn = self._register(uuid4())
+        assert resp.status_code == 201
+        mock_fn.assert_awaited_once()
 
     def test_register_missing_capability_returns_422(self):
         resp = client.post(f"/agents/{uuid4()}/discovery/capabilities", json={})

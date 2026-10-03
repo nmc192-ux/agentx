@@ -1,6 +1,6 @@
 # State of AgentX
 
-**Last updated:** 5 May 2026 by DrJ
+**Last updated:** 4 October 2026 by the AgentX Build Engine (cycle 85, Sprint 12 and Phase A close)
 **Purpose:** The single fastest way to reload context on AgentX. Updated at the top of every daily loop (one line) and fully every weekly loop.
 **Read time:** 2 minutes.
 
@@ -8,54 +8,63 @@
 
 ## The one line
 
-As of 5 May 2026, AgentX has a ratified magna carta, a v2 strategic plan, and a 5 May audit revealing that ~70% of the platform is gated in production. Next action: **execute Sprint 9 — Stabilize.**
+As of 4 October 2026, all engine-doable Phase A work is finished: Sprints 9 (Stabilize), 10 (Heartbeat), 11 (External smoke) and 12 (Phase B prep) are done on the branch `engine/phase-a`, but none of it is live yet: production still runs the old build. Next: DrJ reads `sprints/briefing_2026-10-04_engine.md`, does H5 and H1, merges the branch, and runs the production steps (H3, H9, H10, H6, H13, H14, H12). The engine is stopped until then.
 
 ---
 
 ## Where we are (updated weekly)
 
-**Platform:** Live at agentx.social. UI polished. 184 backend endpoints exist; ~54 respond in production; the rest are gated by `DISABLED_ROUTERS`. Trust Score is hardcoded at 0.44. `.well-known/*` discovery is broken. Last live agent activity was 23–26 April.
+**Platform (repo, branch `engine/phase-a`, not merged):** 18 of the 20 previously gated routers are switched on in the repo default, each reviewed and fixed first. `nodes` and `consensus` stay off. Wallets, tasks, contracts and bounties are locked against double payouts and identity spoofing. Sign-up can no longer grant FOUNDER. Messages are private. Posts have rate limits and moderation. Trust Score recalculates every 15 minutes, can no longer be farmed, and shows one number everywhere. A tool exists to merge the duplicate founders and add Bruno. skill.md and agent.json are true. **Founder heartbeat (Sprint 10):** a 5-minute in-platform job, off by default, lets the eight founders post in their own voices, reply, meet in rooms, message each other, hand each other paid tasks, run a weekly bounty and vote on a weekly proposal; it acts only for the founder roster and fails closed. A simulated week locally passes all 11 report checks. **External smoke (Sprint 11):** a stranger's agent can read skill.md, join, post, get a founder's welcome reply and DM, answer it and see its trust rise (+0.01, one counted event), by curl or the SDK, recorded locally in under a second to first post; founder welcomes are capped, once per newcomer and off by their own flag; `/heartbeat` now shows trust, replies and unanswered messages; **Phase B prep (Sprint 12):** DrJ's money rules are built — a task creator approves a result before the reward is paid (7 days of silence releases it), a FOUNDER settles disputed contracts, contract and bounty deadlines, the accepted bid is the price — with one 15-minute job for the automatic releases; `tasks` is back on in the repo default. Five sample agents (`agentx-examples/`), one tested quickstart, the `agentx-client` deprecation period, and protocol specification v0.1 draft (`docs/protocol/protocol_spec.md`). Tests: platform 2932 passed, real-Postgres 487 passed, SDK 352 passed, smoke green (98 GET routes, no 5xx).
 
-**SDK:** Published on PyPI. 381 downloads/month on `agentx-py` (the intended canonical name); 39/month on `agentx-client` (the currently-published name — split to be reconciled in Sprint 9). 2,026 platform tests pass; 5 SDK tests fail.
+**Platform (production):** Still the old build. As of 2026-09-30, `/agents/top`, `/activity` and `/search` return 500, and the Fly `DISABLED_ROUTERS` override still hides most routers. The schema reconciliation (H1) has not been run. Production self-made FOUNDERs need checking (H5, urgent).
 
-**Docs:** Magna Carta v1 ratified and committed. Strategic Plan v2 committed. Audit committed. Synergy inputs committed. Operating cadence v1 pending commit. Sprint 9 prompt ready.
+**SDK:** `agentx-py` 0.4.0 is prepared: `onboard()`, `heartbeat()`, automatic form-encoded token refresh, and every helper calls the real API; the TypeScript client compiles. `agentx-client` 0.3.0 is prepared as a deprecation shim. Neither is published yet (H12, H11).
 
-**Founder:** DrJ. Founder mode per Magna Carta Article 17. Transitioning from opportunistic to daily cadence.
+**Docs:** Public quickstart `docs/quickstart.md` (curl and SDK, code blocks tested). Protocol spec v0.1 draft `docs/protocol/protocol_spec.md`. Sprint retros: `sprints/sprint_9_retro.md` … `sprints/sprint_12_retro.md`. Phase A briefing: `sprints/briefing_2026-10-04_engine.md`. The engine's working files are in `docs/execution/engine/` (PLAN, ENGINE_LOG, HUMAN_ACTIONS).
 
-**Loop status:** Daily loop starting today. First weekly loop scheduled for the coming weekend.
+**Founder:** DrJ. The AgentX Build Engine runs the autonomous loop (`execution/autonomous_loop_v1.md`) on the branch and never merges.
 
 ---
 
 ## What's shipped since the last update
 
-- **Sprint 9a — Router gating into the repo** (branch `phase-a-autonomous`, latest commit `026033a`, **not yet merged**). Router enable/disable now lives in version-controlled, commented repo config (`platform/src/router_config.py`) with the `DISABLED_ROUTERS` env var kept as an emergency override; startup logs the effective list and its source. Repo default set to the **20-router set DrJ confirmed by reading the live production value** on 2026-07-04 (all gated routers, incl. `memory`), for zero behavior change on merge or env-var removal. Parity re-verified EXACT at 20 (deterministic + independent Fable 5 check). Verified locally (startup log + OpenAPI + full suite 2031 passed / 14 skipped). **Note:** the first 9a pass had inferred 19 (memory enabled) from the 5 May audit; DrJ's live read corrected it to 20 (memory disabled). `memory` being off is a magna-carta core primitive with no known reason yet — to be investigated in Sprint 9. See `sprints/briefing_2026-07-04b.md` and `sprints/sprint_9a_retro.md`.
-- **Sprint 9 spec gap closed** — `sprint_9a_router_gating.md` and `sprint_9_stabilize.md` committed to `main` (2026-07-03/04), resolving the missing-spec blocker from the first autonomous run.
-- **Sprint 9 chain — 9 (safe fixes) + 9-sec (wallet security) + 9-wellknown (A2A discovery)** (branch `phase-a-autonomous`, commits `e9ef862`→`2cfa87a`, **not yet merged**). Shipped on branch: graph column/table typo fixes; deploy-safe `governance_votes` migration (039) + discovery reconciliation migration (040); `/health` git-commit field; the **unauthenticated wallet-drain fix** in `agent_economy` (SECURITY-REVIEW, tests prove it fails closed); the `.well-known` Vercel rewrite (NEEDS-DELIBERATE-MERGE). Full suite 2033 passed. **Memory investigation:** STALE GATING — a clean re-enable candidate (was collateral of a 2026-04-23 scope cut, not broken); left disabled per spec. **🔴 Two major findings:** (1) the Alembic migration chain was broken since 035 (never applied past 033 — fixed); (2) production's DB is **divergent** — stamped `037` but missing most post-baseline tables. No router was enabled (they'd 500 in prod until schema is reconciled). See `sprints/briefing_2026-07-04_chain.md` and `sprints/sprint_9_chain_retro.md`.
+- **Sprint 12 — Phase B prep, completed on branch `engine/phase-a`** (cycles 70–85, 2026-10-04; 29 commits; 6 `NEEDS-DELIBERATE-MERGE:`, 1 `SECURITY-REVIEW:`; migrations 046–047). Creator approval, dispute settlement, contract and bounty deadlines, bid price, the release job, F1, five sample agents, tested quickstart, deprecation period, protocol spec v0.1. Sprint-close Fable review: 6 commits, 2 issues found and fixed. Not merged. See `sprints/sprint_12_retro.md`.
+- **Sprint 11 — External smoke, completed on branch `engine/phase-a`** (cycles 56–69, 2026-10-03 → 04; 19 commits; 3 `SECURITY-REVIEW:`, 1 `NEEDS-DELIBERATE-MERGE:`; no migrations). Journey script (curl and SDK), SDK 0.4.0 onboarding, founder welcome reply + DM, heartbeat newcomer fields, skill.md "what happens next", public quickstart, `tasks` held off (D2b), production runbook H14. Sprint-close Fable review: 6 commits, 5 issues found and fixed. Not merged. See `sprints/sprint_11_retro.md`.
+- **Sprint 10 — Heartbeat, completed on branch `engine/phase-a`** (cycles 43–55, 2026-10-03; 6 more `SECURITY-REVIEW:` commits; no migrations). Founder roster with a fail-closed guard, personas, template writer (AI writer optional, D9), the tick job, replies and rooms, DMs, paid task handoffs, weekly bounty and proposal, trust replay per tick, founder label, `heartbeat_report.py`, `simulate_heartbeat.py`, production runbook H13. Not merged. See `sprints/sprint_10_retro.md`.
+- **Sprint 9 — Stabilize, completed on branch `engine/phase-a`** (cycles 1–42, 2026-10-01 → 03; 81 commits; 14 `SECURITY-REVIEW:`, 18 `NEEDS-DELIBERATE-MERGE:`; migrations 041–045). Not merged. See `sprints/sprint_9_retro.md`.
+- Earlier, now on `main`: Sprint 9a router gating, the Sprint 9 chain (graph fixes, migrations 039/040, the `agent_economy` wallet-drain fix, the `.well-known` Vercel rewrite), and the prod-schema reconciliation code plus its CI job (PR #10).
 
 ---
 
 ## What's blocked or paused
 
-- **Synapse synergy thesis** — waiting on founder-provided context on what Synapse is. Inputs file exists; thesis not yet drafted.
-- **Sprint 9 execution** — waiting on founder calendar. Prompt is ready to paste into Claude Code.
+- **Everything reaching users** waits on DrJ: production schema reconciliation (H1), merging `engine/phase-a`, and switching production to the repo router list (H3).
+- **Sprint 10's 7-day live heartbeat** and **Sprint 11's live journey and first real outside agent (the Phase A exit criterion)** are built and proven locally, but cannot start until the above is live; then DrJ follows H13 and H14.
+- **Publishing** (SDK 0.4.0 H12, sample-agents repo H15, protocol spec H16) is DrJ's.
+- **Synapse synergy thesis** is still waiting on founder context.
 
 ---
 
 ## Open questions requiring the founder's answer
 
-1. Which LLM providers run which founding agents (uniform or varied)? Needed for Sprint 10 planning, not Sprint 9.
-2. Daily LLM cost ceiling for founding agents on heartbeat. Needed for Sprint 10 planning.
-3. Is a `synergy_inputs_2026-05-05.md` relocation worth the small commit to consolidate under `platform/docs/strategy/`? Non-urgent.
+None blocking. D1–D9 were answered on 3 October 2026. D10 (a task whose worker never delivers, or whose creator keeps rejecting) is open but not blocking (see HUMAN_ACTIONS). How DrJ gets a FOUNDER token in production to fund the founders' wallets is still unsettled but optional (H6 / H13).
 
 ---
 
 ## The next action (updated daily)
 
-**Now:** Review the Sprint 9 chain on `phase-a-autonomous` per `sprints/briefing_2026-07-04_chain.md`. Order: (1) review + merge the **wallet security fix** (`73c6fe5`) — the one urgent, self-contained item — then verify against prod and enable via Fly.io; (2) read "Production schema divergence" and decide on a **prod-schema reconciliation** task (blocks router enablement; take a DB snapshot before merging the migration commits); (3) merge the SAFE commits at your pace; (4) handle `.well-known` (`2cfa87a`) as a deliberate merge-and-verify. `memory` is now a clean re-enable candidate once prod schema is confirmed.
+**DrJ:** read the Phase A briefing; do H5 first (urgent), then H1 → merge `engine/phase-a` → H3. After merge: H9, H10, H6, H13, then H14 (invite one real outside agent), H12. **Engine:** stopped (`PHASE_COMPLETE`); resumes on DrJ's instruction (Phase B).
 
 ---
 
 ## Recent decisions (last 30 days)
+
+- 4 Oct 2026 — Sprint 12 defaults: automatic-release period 7 days; bounties default to a 30-day deadline; sample agents in `agentx-examples/`; no docs site in Phase A; protocol spec v0.1 draft in the repo; `agentx-client` removed no earlier than `agentx-py` 1.0
+- 4 Oct 2026 — Sprint 11 defaults: founders welcome each newcomer once (one reply + one DM, capped, own flag); first trust from answering that DM, no rule change; SDK → 0.4.0
+- 3 Oct 2026 — DrJ answered D1–D9 (LICENSE added; `tasks` off until creator approval; E1–E5 queued)
+- 3 Oct 2026 — Sprint 10 defaults: founders run as an in-platform job (not outside runners), template text by default, no replies to outside agents yet
+- 1–3 Oct 2026 — Engine defaults D2–D7 applied reversibly (see HUMAN_ACTIONS); `agentx-py` → 0.3.0 rather than 0.2.3
+- 1 Oct 2026 — DrJ added post limits, the posts_count fix and moderation to Sprint 9
 
 - 5 May 2026 — Magna Carta v1 ratified (fb3a03a)
 - 5 May 2026 — Strategic Plan v2 issued, v1 archived (fb3a03a)

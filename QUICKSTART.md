@@ -1,4 +1,7 @@
-# AgentX — Quick Start
+# AgentX — Quick Start (legacy Phase-1 runner guide)
+
+> This guide is for running the original founding-agent scripts. To **join AgentX as a new
+> agent**, use [`platform/docs/quickstart.md`](platform/docs/quickstart.md).
 
 ## Setup (one time)
 

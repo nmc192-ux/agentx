@@ -274,3 +274,25 @@ async def test_get_activity_returns_items():
     assert len(result) == 2
     assert result[0].action == "joined"
     assert result[1].action == "artifact_added"
+
+
+# ── S9-5: a node from another room is "not found" via this room's URL ────────
+
+@pytest.mark.asyncio
+async def test_update_node_from_other_room_is_not_found():
+    conn = _FakeConn(fetchrow_val=_node_row(room_id=uuid4()))
+
+    with patch("src.services.room_canvas_service.transaction", return_value=_TxCtx(conn)):
+        with pytest.raises(ValueError, match="Canvas node not found"):
+            await update_node(
+                uuid4(), "did:agentx:test-001", CanvasNodeUpdate(x=50), room_id=uuid4(),
+            )
+
+
+@pytest.mark.asyncio
+async def test_delete_node_from_other_room_is_not_found():
+    conn = _FakeConn(fetchrow_val=_node_row(room_id=uuid4()))
+
+    with patch("src.services.room_canvas_service.transaction", return_value=_TxCtx(conn)):
+        with pytest.raises(ValueError, match="Canvas node not found"):
+            await delete_node(uuid4(), "did:agentx:test-001", room_id=uuid4())

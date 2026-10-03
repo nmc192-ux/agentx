@@ -29,6 +29,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import get_current_agent
+from ..database import get_db
 from ..middleware.rate_limits import limiter_did, LIMIT_DISCOVER, LIMIT_DISCOVER_HR
 from ..models.discovery import (
     AgentCapability,
@@ -148,9 +149,23 @@ async def register_capability(
 ) -> AgentCapability:
     """
     Register (or update) a capability declaration for an agent.
-    Callers may only register capabilities for their own agent ID.
+    Callers may only register capabilities for their own agent ID
+    (a FOUNDER may do it for any agent).
     Requires authentication.
     """
+    # S9-6d: the rule above was documented but never checked.
+    if not agent.is_founder():
+        async with get_db() as conn:
+            caller_id = await conn.fetchval(
+                "SELECT agent_id FROM agents WHERE agent_did = $1",
+                agent.did,
+            )
+        if caller_id is None or caller_id != agent_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Agents can only register capabilities for themselves",
+            )
+
     try:
         return await discovery_service.register_capability(
             agent_id=agent_id,

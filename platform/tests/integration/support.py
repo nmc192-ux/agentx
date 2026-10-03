@@ -1,0 +1,38 @@
+"""
+Shared helpers for the real-Postgres integration tests (fixtures are in
+conftest.py). Sprint 9, S9-6a / S9-6b / S9-6c / S9-7a.
+"""
+from __future__ import annotations
+
+from uuid import UUID
+
+START_BALANCE = 1_000
+
+
+class Agent:
+    def __init__(self, did: str, agent_id: UUID, role: str):
+        self.did, self.agent_id, self.role = did, agent_id, role
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {"X-Test-Caller": self.did}
+
+
+async def balance(pool, agent: Agent) -> int | None:
+    return await pool.fetchval("SELECT balance FROM wallets WHERE agent_id = $1", agent.agent_id)
+
+
+async def total_tokens(pool) -> int:
+    """Every token in existence: all wallets (treasury included) + task escrow
+    + contract escrow + bounty escrow (the pool of a bounty not yet paid out
+    or refunded) + stakes not yet released or slashed."""
+    return await pool.fetchval(
+        """
+        SELECT (SELECT COALESCE(SUM(balance), 0) FROM wallets)
+             + (SELECT COALESCE(SUM(escrowed_reward), 0) FROM tasks)
+             + (SELECT COALESCE(SUM(escrowed_budget), 0) FROM contracts)
+             + (SELECT COALESCE(SUM(reward_pool), 0) FROM capability_bounties
+                 WHERE status IN ('open', 'evaluating'))
+             + (SELECT COALESCE(SUM(amount), 0) FROM stakes WHERE released_at IS NULL)
+        """
+    )

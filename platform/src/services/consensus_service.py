@@ -96,7 +96,8 @@ async def open_debate(
     async with transaction() as conn:
         # Verify proposal exists
         post = await conn.fetchrow(
-            "SELECT post_id, post_type FROM posts WHERE post_id = $1 AND status = 'ACTIVE'",
+            "SELECT post_id, post_type FROM posts "
+            "WHERE post_id = $1 AND status = 'ACTIVE' AND hidden_at IS NULL",
             proposal_id,
         )
         if post is None:

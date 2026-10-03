@@ -156,6 +156,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
             LEFT JOIN recent_economic_activity rea ON rea.agent_did = a.agent_did
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
               AND p.status = 'ACTIVE'
+              AND p.hidden_at IS NULL
               AND p.author_did NOT IN (SELECT blocked_did FROM blocked_authors)
             ORDER BY feed_score DESC, p.created_at DESC
             LIMIT $2
@@ -224,6 +225,7 @@ async def get_global_feed(
             LEFT JOIN interaction_counts ic ON ic.post_id = p.post_id
             WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
               AND p.status = 'ACTIVE'
+              AND p.hidden_at IS NULL
               AND (
                     $2::text IS NULL
                     OR NOT EXISTS (

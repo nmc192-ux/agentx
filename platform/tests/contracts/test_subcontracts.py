@@ -5,11 +5,13 @@ Covers:
   subcontract_service.spawn_subcontract()
   POST /contracts/{id}/subcontract  (router)
 
-All DB and service calls are fully mocked.
+All DB and service calls are fully mocked. The real-database proof (parent
+row locked, child escrowed from the caller's own wallet) is in
+tests/integration/test_agent_economy_db.py.
 """
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -19,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 
 from src.main import app
 from src.models.agent_economy import SubcontractCreate, SubcontractResponse
+from src.services.contract_service import ContractConflictError
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -63,13 +66,25 @@ def _child_contract(parent_id=None):
     )
 
 
-def _mock_get_db(row):
+def _mock_transaction(row):
+    """Stand-in for database.transaction(): the parent SELECT returns *row*."""
     @asynccontextmanager
     async def _ctx():
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value=row)
         yield conn
     return _ctx
+
+
+@contextmanager
+def _mock_create(child):
+    """Patch the two contract_service calls spawn_subcontract makes."""
+    mocks = {
+        "create_contract_in_transaction": AsyncMock(return_value=child),
+        "announce_contract_created": AsyncMock(return_value=None),
+    }
+    with patch.multiple("src.services.subcontract_service.contract_service", **mocks):
+        yield mocks
 
 
 @pytest.fixture
@@ -107,11 +122,8 @@ class TestSpawnSubcontract:
         parent_row = _parent_row(contract_id=parent_id, status="assigned")
         child = _child_contract(parent_id)
 
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
-            with patch(
-                "src.services.subcontract_service.contract_service.create_contract",
-                new=AsyncMock(return_value=child),
-            ):
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
+            with _mock_create(child):
                 from src.services.subcontract_service import spawn_subcontract
 
                 result = await spawn_subcontract(
@@ -128,7 +140,7 @@ class TestSpawnSubcontract:
 
     @pytest.mark.asyncio
     async def test_parent_not_found_raises_value_error(self):
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(None)):
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(None)):
             from src.services.subcontract_service import spawn_subcontract
 
             with pytest.raises(ValueError, match="not found"):
@@ -141,17 +153,17 @@ class TestSpawnSubcontract:
                 )
 
     @pytest.mark.asyncio
-    async def test_non_contractor_raises_value_error(self):
+    async def test_non_contractor_raises_permission_error(self):
         parent_id = uuid4()
         parent_row = _parent_row(
             contract_id=parent_id,
             contractor_did="did:agentx:real_contractor",
             status="assigned",
         )
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
             from src.services.subcontract_service import spawn_subcontract
 
-            with pytest.raises(ValueError, match="contractor"):
+            with pytest.raises(PermissionError, match="contractor"):
                 await spawn_subcontract(
                     parent_contract_id=parent_id,
                     caller_did="did:agentx:impostor",
@@ -159,17 +171,17 @@ class TestSpawnSubcontract:
                 )
 
     @pytest.mark.asyncio
-    async def test_open_parent_raises_value_error(self):
+    async def test_open_parent_raises_conflict(self):
         parent_id = uuid4()
         parent_row = _parent_row(
             contract_id=parent_id,
             contractor_did="did:agentx:contractor",
             status="open",  # not yet assigned
         )
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
             from src.services.subcontract_service import spawn_subcontract
 
-            with pytest.raises(ValueError, match="open"):
+            with pytest.raises(ContractConflictError, match="open"):
                 await spawn_subcontract(
                     parent_contract_id=parent_id,
                     caller_did="did:agentx:contractor",
@@ -185,11 +197,8 @@ class TestSpawnSubcontract:
             status="submitted",
         )
         child = _child_contract(parent_id)
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
-            with patch(
-                "src.services.subcontract_service.contract_service.create_contract",
-                new=AsyncMock(return_value=child),
-            ):
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
+            with _mock_create(child):
                 from src.services.subcontract_service import spawn_subcontract
 
                 result = await spawn_subcontract(
@@ -206,11 +215,8 @@ class TestSpawnSubcontract:
         parent_row = _parent_row(contract_id=parent_id, status="assigned")
         child = _child_contract(parent_id)
 
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
-            with patch(
-                "src.services.subcontract_service.contract_service.create_contract",
-                new=AsyncMock(return_value=child),
-            ) as mock_create:
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
+            with _mock_create(child) as mocks:
                 from src.services.subcontract_service import spawn_subcontract
 
                 await spawn_subcontract(
@@ -219,8 +225,8 @@ class TestSpawnSubcontract:
                     data=SubcontractCreate(title="T", description="D", budget=50),
                 )
 
-        _, kwargs = mock_create.call_args
-        assert str(parent_id) in kwargs["data"].payload["parent_contract_id"]
+        data = mocks["create_contract_in_transaction"].call_args.args[2]
+        assert data.payload["parent_contract_id"] == str(parent_id)
 
     @pytest.mark.asyncio
     async def test_extra_payload_merged(self):
@@ -228,11 +234,8 @@ class TestSpawnSubcontract:
         parent_row = _parent_row(contract_id=parent_id, status="assigned")
         child = _child_contract(parent_id)
 
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
-            with patch(
-                "src.services.subcontract_service.contract_service.create_contract",
-                new=AsyncMock(return_value=child),
-            ) as mock_create:
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
+            with _mock_create(child) as mocks:
                 from src.services.subcontract_service import spawn_subcontract
 
                 await spawn_subcontract(
@@ -244,8 +247,31 @@ class TestSpawnSubcontract:
                     ),
                 )
 
-        _, kwargs = mock_create.call_args
-        assert kwargs["data"].payload.get("custom") == "val"
+        data = mocks["create_contract_in_transaction"].call_args.args[2]
+        assert data.payload.get("custom") == "val"
+        assert data.payload["parent_contract_id"] == str(parent_id)
+
+    @pytest.mark.asyncio
+    async def test_payload_cannot_overwrite_the_parent_reference(self):
+        parent_id = uuid4()
+        parent_row = _parent_row(contract_id=parent_id, status="assigned")
+        child = _child_contract(parent_id)
+
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
+            with _mock_create(child) as mocks:
+                from src.services.subcontract_service import spawn_subcontract
+
+                await spawn_subcontract(
+                    parent_contract_id=parent_id,
+                    caller_did="did:agentx:contractor",
+                    data=SubcontractCreate(
+                        title="T", description="D", budget=50,
+                        payload={"parent_contract_id": str(uuid4())},
+                    ),
+                )
+
+        data = mocks["create_contract_in_transaction"].call_args.args[2]
+        assert data.payload["parent_contract_id"] == str(parent_id)
 
     @pytest.mark.asyncio
     async def test_child_contract_type_is_subcontract(self):
@@ -253,11 +279,8 @@ class TestSpawnSubcontract:
         parent_row = _parent_row(contract_id=parent_id, status="assigned")
         child = _child_contract(parent_id)
 
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
-            with patch(
-                "src.services.subcontract_service.contract_service.create_contract",
-                new=AsyncMock(return_value=child),
-            ) as mock_create:
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
+            with _mock_create(child) as mocks:
                 from src.services.subcontract_service import spawn_subcontract
 
                 await spawn_subcontract(
@@ -266,21 +289,21 @@ class TestSpawnSubcontract:
                     data=SubcontractCreate(title="T", description="D", budget=50),
                 )
 
-        _, kwargs = mock_create.call_args
-        assert kwargs["data"].contract_type == "subcontract"
+        data = mocks["create_contract_in_transaction"].call_args.args[2]
+        assert data.contract_type == "subcontract"
 
     @pytest.mark.asyncio
-    async def test_completed_parent_raises_value_error(self):
+    async def test_completed_parent_raises_conflict(self):
         parent_id = uuid4()
         parent_row = _parent_row(
             contract_id=parent_id,
             contractor_did="did:agentx:contractor",
             status="completed",
         )
-        with patch("src.services.subcontract_service.get_db", new=_mock_get_db(parent_row)):
+        with patch("src.services.subcontract_service.transaction", new=_mock_transaction(parent_row)):
             from src.services.subcontract_service import spawn_subcontract
 
-            with pytest.raises(ValueError):
+            with pytest.raises(ContractConflictError):
                 await spawn_subcontract(
                     parent_contract_id=parent_id,
                     caller_did="did:agentx:contractor",
@@ -378,5 +401,39 @@ class TestSubcontractRouter:
         resp = await client.post(
             f"/contracts/{parent_id}/subcontract",
             json={"title": "T", "description": "D"},  # missing budget
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_not_the_contractor_returns_403(self, client):
+        parent_id = uuid4()
+        with patch(
+            "src.routers.agent_economy.subcontract_service.spawn_subcontract",
+            new=AsyncMock(side_effect=PermissionError("Only the assigned contractor")),
+        ):
+            resp = await client.post(
+                f"/contracts/{parent_id}/subcontract",
+                json={"title": "Sub task", "description": "D", "budget": 100},
+            )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_parent_in_wrong_state_returns_409(self, client):
+        parent_id = uuid4()
+        with patch(
+            "src.routers.agent_economy.subcontract_service.spawn_subcontract",
+            new=AsyncMock(side_effect=ContractConflictError("Cannot sub-contract")),
+        ):
+            resp = await client.post(
+                f"/contracts/{parent_id}/subcontract",
+                json={"title": "Sub task", "description": "D", "budget": 100},
+            )
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_budget_over_the_column_range_returns_422(self, client):
+        resp = await client.post(
+            f"/contracts/{uuid4()}/subcontract",
+            json={"title": "T", "description": "D", "budget": 2**63},
         )
         assert resp.status_code == 422

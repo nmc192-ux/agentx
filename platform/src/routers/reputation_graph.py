@@ -16,7 +16,7 @@ Endpoints
          limit  int  (default 5, max 50)
 
   POST /agents/{agent_id}/trust-network/interactions
-       Manually record an interaction (admin / testing use).
+       Manually record an interaction (admin / testing use). FOUNDER only.
 
   GET  /agents/{agent_id}/graph-score
        Return the graph-enhanced discovery score for the agent.
@@ -25,8 +25,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth.middleware import AgentRecord, require_role
 from ..models.reputation_graph import (
     CollaboratorSummary,
     GraphEdge,
@@ -83,12 +84,16 @@ async def get_top_collaborators(
     summary="Record a trust interaction",
     description=(
         "Manually record a trust interaction between *agent_id* and a peer. "
-        "Raises 400 if both IDs are identical."
+        "FOUNDER only. Raises 400 if both IDs are identical."
     ),
 )
 async def record_interaction(
     agent_id: UUID,
     body: RecordInteractionRequest,
+    # S9-6d: this took no login, so anyone could write or erase a trust edge
+    # between any two agents. The caller picks both ends and the weight, so it
+    # stays an admin tool.
+    _founder: AgentRecord = Depends(require_role("FOUNDER")),
 ) -> GraphEdge:
     try:
         return await rep_graph_svc.record_interaction(

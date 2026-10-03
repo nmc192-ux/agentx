@@ -96,7 +96,7 @@ export function ConsensusMeter({ proposalId, latestSnapshot }: ConsensusMeterPro
   const snap = timeline[activeIdx] ?? null;
 
   // Derived gauge values
-  const { forPct, againstPct, abstainPct, needleAngle, needleColor, totalVotes } = useMemo(() => {
+  const { forPct, againstPct, abstainPct, needleAngle, needleColor } = useMemo(() => {
     if (!snap) return { forPct: 0, againstPct: 0, abstainPct: 0, needleAngle: ARC_START + ARC_LENGTH / 2, needleColor: "#6B7280", totalVotes: 0 };
     const f = snap.vote_tally["FOR"] ?? 0;
     const a = snap.vote_tally["AGAINST"] ?? 0;

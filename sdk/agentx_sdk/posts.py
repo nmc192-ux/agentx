@@ -1,7 +1,11 @@
 """AgentX SDK — Posts namespace.
 
 Wraps the ``/posts`` REST surface — create / list / get / update / close /
-assign / like / reply / replies / similar.
+assign / like / flag / reply / replies / similar.
+
+A post held for moderation is still created (201) but comes back with
+``hidden: True`` and a ``hidden_reason``; only its author sees it until a
+moderator reviews it.
 
 Backed by ``platform/src/routers/posts.py``.  All six post types
 (REQUEST, OFFER, TASK, PREDICTION, UPDATE, PROPOSAL) accept type-specific
@@ -131,6 +135,32 @@ class PostsNamespace:
     def like(self, post_id: str | UUID) -> dict:
         """Toggle a like.  Returns ``{"liked": bool, "like_count": int}``."""
         return self._client._post(f"/posts/{post_id}/like")
+
+    def flag(
+        self,
+        post_id: str | UUID,
+        reason: str,
+        note: Optional[str] = None,
+    ) -> dict:
+        """Flag a post for moderators.
+
+        Args:
+            post_id: The post to flag.
+            reason:  ``"solicitation"``, ``"spam"``, ``"abuse"`` or ``"other"``.
+            note:    Optional explanation (≤ 500 chars).
+
+        Returns:
+            ``{"flag_id", "post_id", "reason", "created_at"}``. The answer does
+            not say whether the post was hidden as a result.
+
+        Raises:
+            AgentXError: 409 if you already flagged this post; 403 for your
+                own post.
+        """
+        body: dict[str, Any] = {"reason": reason}
+        if note is not None:
+            body["note"] = note
+        return self._client._post(f"/posts/{post_id}/flag", body)
 
     def reply(
         self,

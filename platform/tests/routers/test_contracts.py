@@ -8,7 +8,12 @@ Covers:
   POST /contracts/{id}/bid              -- submit bid (requires auth)
   POST /contracts/{id}/assign           -- assign contract (requires auth)
   POST /contracts/{id}/result           -- submit result (requires auth)
+  POST /contracts/{id}/complete         -- accept result, pay contractor (requires auth)
+  POST /contracts/{id}/cancel           -- cancel open contract, refund (requires auth)
   POST /contracts/{id}/dispute          -- open dispute (requires auth)
+
+Sprint 9, S9-6b: every write needs a JWT and acts as the JWT caller; the
+service's PermissionError → 403 and ContractConflictError → 409.
 """
 from __future__ import annotations
 
@@ -205,7 +210,20 @@ class TestListContracts:
             resp = await client.get("/contracts?status=all")
 
         assert resp.status_code == 200
-        mock_svc.assert_awaited_once_with(status=None)
+        mock_svc.assert_awaited_once_with(status=None, limit=50, offset=0)
+
+    @pytest.mark.asyncio
+    async def test_page_size_is_capped(self, client):
+        with patch(
+            "src.routers.contracts.contract_service.list_contracts",
+            new=AsyncMock(return_value=[]),
+        ) as mock_svc:
+            too_big = await client.get("/contracts?limit=100000")
+            ok = await client.get("/contracts?limit=200&offset=40")
+
+        assert too_big.status_code == 422
+        assert ok.status_code == 200
+        mock_svc.assert_awaited_once_with(status="open", limit=200, offset=40)
 
 
 # -- POST /contracts/{id}/bid -------------------------------------------------
@@ -298,12 +316,12 @@ class TestAssignContract:
         assert resp.status_code in (401, 403)
 
     @pytest.mark.asyncio
-    async def test_returns_400_if_not_creator(self, client):
+    async def test_returns_403_if_not_creator(self, client):
         from src.auth.middleware import get_current_agent
 
         with patch(
             "src.routers.contracts.contract_service.assign_contract",
-            new=AsyncMock(side_effect=ValueError("Only the contract creator")),
+            new=AsyncMock(side_effect=PermissionError("Only the contract creator")),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
             try:
@@ -314,7 +332,7 @@ class TestAssignContract:
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
 
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
 
 # -- POST /contracts/{id}/result ----------------------------------------------
@@ -352,12 +370,12 @@ class TestSubmitResult:
         assert resp.status_code in (401, 403)
 
     @pytest.mark.asyncio
-    async def test_returns_400_if_not_contractor(self, client):
+    async def test_returns_403_if_not_contractor(self, client):
         from src.auth.middleware import get_current_agent
 
         with patch(
             "src.routers.contracts.contract_service.submit_result",
-            new=AsyncMock(side_effect=ValueError("Only the assigned contractor")),
+            new=AsyncMock(side_effect=PermissionError("Only the assigned contractor")),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
             try:
@@ -368,7 +386,7 @@ class TestSubmitResult:
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
 
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
 
 # -- POST /contracts/{id}/dispute ---------------------------------------------
@@ -424,3 +442,118 @@ class TestOpenDispute:
                 app.dependency_overrides.pop(get_current_agent, None)
 
         assert resp.status_code == 404
+
+
+# -- POST /contracts/{id}/complete and /cancel --------------------------------
+
+class TestCompleteAndCancel:
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("action,final", [("complete", "completed"), ("cancel", "cancelled")])
+    async def test_returns_200_and_acts_as_the_jwt_caller(self, client, action, final):
+        from src.auth.middleware import get_current_agent
+        contract_id = uuid4()
+
+        with patch(
+            f"src.routers.contracts.contract_service.{action}_contract",
+            new=AsyncMock(return_value=_contract(status=final)),
+        ) as mock_svc:
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent("did:agentx:me-001")
+            try:
+                # A body naming someone else changes nothing: there is no body.
+                resp = await client.post(
+                    f"/contracts/{contract_id}/{action}",
+                    json={"caller_did": "did:agentx:victim-001"},
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == final
+        mock_svc.assert_awaited_once_with(contract_id=contract_id, caller_did="did:agentx:me-001")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("action", ["complete", "cancel"])
+    async def test_requires_auth(self, client, action):
+        with patch(
+            f"src.routers.contracts.contract_service.{action}_contract", new=AsyncMock(),
+        ) as mock_svc:
+            resp = await client.post(f"/contracts/{uuid4()}/{action}")
+
+        assert resp.status_code == 401
+        mock_svc.assert_not_awaited()
+
+
+# -- Error mapping, every write endpoint ---------------------------------------
+
+_WRITES = [
+    # (path suffix, service function, request body)
+    ("bid",      "submit_bid",        {"bid_amount": 10}),
+    ("assign",   "assign_contract",   {"bid_id": str(uuid4())}),
+    ("result",   "submit_result",     {"result_payload": {}}),
+    ("complete", "complete_contract", None),
+    ("cancel",   "cancel_contract",   None),
+    ("dispute",  "open_dispute",      {"reason": "late"}),
+]
+
+
+def _errors():
+    from src.services.contract_service import ContractConflictError
+    return [
+        (PermissionError("Only the contract creator can do that"), 403),
+        (ContractConflictError("Contract is not in submitted state (status=completed)"), 409),
+        (ValueError("Contract not found: x"), 404),
+        (ValueError("Something else is wrong"), 400),
+    ]
+
+
+class TestErrorMapping:
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("suffix,func,body", _WRITES)
+    async def test_service_errors_map_to_http(self, client, suffix, func, body):
+        from src.auth.middleware import get_current_agent
+
+        app.dependency_overrides[get_current_agent] = lambda: _make_agent()
+        try:
+            for error, expected in _errors():
+                with patch(
+                    f"src.routers.contracts.contract_service.{func}",
+                    new=AsyncMock(side_effect=error),
+                ):
+                    resp = await client.post(f"/contracts/{uuid4()}/{suffix}", json=body)
+                assert resp.status_code == expected, (suffix, error, resp.text)
+        finally:
+            app.dependency_overrides.pop(get_current_agent, None)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("suffix,func,body", _WRITES)
+    async def test_every_write_needs_a_login(self, client, suffix, func, body):
+        with patch(
+            f"src.routers.contracts.contract_service.{func}", new=AsyncMock(),
+        ) as mock_svc:
+            resp = await client.post(f"/contracts/{uuid4()}/{suffix}", json=body)
+
+        assert resp.status_code == 401
+        mock_svc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unfunded_contract_is_a_400_not_a_404(self, client):
+        from src.auth.middleware import get_current_agent
+
+        with patch(
+            "src.routers.contracts.contract_service.create_contract",
+            new=AsyncMock(side_effect=ValueError(
+                "Insufficient funds: the creator's wallet cannot cover a budget of 500 tokens"
+            )),
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent()
+            try:
+                resp = await client.post(
+                    "/contracts", json={"title": "T", "description": "D", "budget": 500},
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 400
+        assert "Insufficient funds" in resp.json()["detail"]

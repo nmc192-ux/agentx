@@ -35,6 +35,7 @@ def _post_row(
     author_did="did:agentx:atlas-001",
     author_name="ATLAS",
     author_trust=0.98,
+    hidden_at=None,
 ):
     return {
         "post_id":      post_id or uuid.uuid4(),
@@ -55,13 +56,15 @@ def _post_row(
         "reply_count":  0,
         "author_name":  author_name,
         "author_trust": author_trust,
+        "hidden_at":     hidden_at,
+        "hidden_reason": "moderator:spam" if hidden_at else None,
     }
 
 
 @pytest.fixture(autouse=True)
 def _reset_post_rate_limiter():
     """
-    POST /posts is limited to 10/min, 100/hour, 500/day per-DID and per-IP via
+    POST /posts is limited to 2/min, 10/hour, 30/day per-DID and per-IP via
     slowapi's memory:// backend.  The in-process counter persists across tests
     in the same pytest session, so adding more POST tests would trip the limiter
     regardless of intent.  Clear the storage before each test.
@@ -428,6 +431,22 @@ class TestGetPost:
             response = await client.get(f"/posts/{pid}")
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_hidden_post_is_404_without_a_login(self, client):
+        """S9-8c: a hidden post is only returned to its author and moderators."""
+        pid = uuid.uuid4()
+        with patch("src.routers.posts.get_db") as mock_db:
+            mock_conn = AsyncMock()
+            mock_conn.fetchrow.return_value = _post_row(
+                post_id=pid, hidden_at=datetime.now(timezone.utc),
+            )
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            response = await client.get(f"/posts/{pid}")
+        assert response.status_code == 404
+        assert "Test content" not in response.text
+
 
 # ── POST /posts/{id}/assign ───────────────────────────────────────────────────
 
@@ -498,6 +517,62 @@ class TestAssignTask:
 
 # ── Input size-limit tests ────────────────────────────────────────────────────
 
+class TestInteractIdentity:
+    """POST /posts/{id}/interact stores the interaction under body.agent_did,
+    so that must be the logged-in agent (S9-6d)."""
+
+    @staticmethod
+    async def _interact(client, body_did, caller=None, headers=None):
+        from src.auth.middleware import get_current_agent
+        from src.models.post_social import PostInteractionResponse
+
+        post_id = uuid.uuid4()
+        stored = PostInteractionResponse(
+            interaction_id=uuid.uuid4(), post_id=post_id, agent_id=uuid.uuid4(),
+            agent_did=body_did, interaction_type="endorse",
+            created_at=datetime.now(timezone.utc),
+        )
+        if caller is not None:
+            app.dependency_overrides[get_current_agent] = lambda: caller
+        try:
+            with (
+                patch("src.routers.posts.add_post_interaction",
+                      new=AsyncMock(return_value=stored)) as mock_add,
+                patch("src.routers.posts.emit_event", new=AsyncMock()),
+            ):
+                resp = await client.post(
+                    f"/posts/{post_id}/interact",
+                    json={"agent_did": body_did, "interaction_type": "endorse"},
+                    headers=headers,
+                )
+        finally:
+            app.dependency_overrides.pop(get_current_agent, None)
+        return resp, mock_add
+
+    async def test_other_agents_did_is_403_and_stores_nothing(self, client):
+        caller = _make_caller(did="did:agentx:mallory-001", role="MEMBER")
+        resp, mock_add = await self._interact(client, "did:agentx:victim-001", caller)
+        assert resp.status_code == 403
+        mock_add.assert_not_awaited()
+
+    async def test_founder_cannot_act_as_another_agent_either(self, client):
+        caller = _make_caller(did="did:agentx:atlas-001", role="FOUNDER")
+        resp, mock_add = await self._interact(client, "did:agentx:victim-001", caller)
+        assert resp.status_code == 403
+        mock_add.assert_not_awaited()
+
+    async def test_no_token_is_401_and_stores_nothing(self, client):
+        resp, mock_add = await self._interact(client, "did:agentx:victim-001")
+        assert resp.status_code == 401
+        mock_add.assert_not_awaited()
+
+    async def test_own_did_is_201(self, client):
+        caller = _make_caller(did="did:agentx:member-001", role="MEMBER")
+        resp, mock_add = await self._interact(client, "did:agentx:member-001", caller)
+        assert resp.status_code == 201
+        assert mock_add.await_args.args[1].agent_did == "did:agentx:member-001"
+
+
 class TestPostInputLimits:
     """Validate Pydantic field-level size limits: 422 on oversized payloads."""
 
@@ -514,7 +589,7 @@ class TestPostInputLimits:
     def caller(self):
         return _make_caller()
 
-    # ── title limit (max 500 chars) ────────────────────────────────────────
+    # ── title limit (max 200 chars) ────────────────────────────────────────
 
     @pytest.mark.asyncio
     async def test_title_too_long_returns_422(self, client, caller):
@@ -523,7 +598,7 @@ class TestPostInputLimits:
         try:
             response = await client.post("/posts", json={
                 "post_type": "UPDATE",
-                "title":     "x" * 501,
+                "title":     "x" * 201,
                 "content":   "Valid content",
             })
         finally:
@@ -532,7 +607,7 @@ class TestPostInputLimits:
 
     @pytest.mark.asyncio
     async def test_title_at_limit_is_accepted(self, client, caller):
-        """Exactly 500 chars should pass field validation (DB mock for the rest)."""
+        """Exactly 200 chars should pass field validation (DB mock for the rest)."""
         from src.auth.middleware import get_current_agent
         with (
             patch("src.routers.posts.transaction") as mock_tx,
@@ -546,14 +621,14 @@ class TestPostInputLimits:
             app.dependency_overrides[get_current_agent] = lambda: caller
             response = await client.post("/posts", json={
                 "post_type": "UPDATE",
-                "title":     "x" * 500,
+                "title":     "x" * 200,
                 "content":   "Valid content",
                 "metadata":  {"progress_percent": 0},
             })
         app.dependency_overrides = {}
         assert response.status_code == 201
 
-    # ── content limit (max 10 000 chars) ──────────────────────────────────
+    # ── content limit (max 2 000 chars) ──────────────────────────────────
 
     @pytest.mark.asyncio
     async def test_content_too_long_returns_422(self, client, caller):
@@ -563,7 +638,7 @@ class TestPostInputLimits:
             response = await client.post("/posts", json={
                 "post_type": "UPDATE",
                 "title":     "Fine title",
-                "content":   "x" * 10_001,
+                "content":   "x" * 2_001,
             })
         finally:
             app.dependency_overrides = {}
@@ -585,7 +660,7 @@ class TestPostInputLimits:
             response = await client.post("/posts", json={
                 "post_type": "UPDATE",
                 "title":     "Fine title",
-                "content":   "x" * 10_000,
+                "content":   "x" * 2_000,
                 "metadata":  {"progress_percent": 100},
             })
         app.dependency_overrides = {}

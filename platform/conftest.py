@@ -44,6 +44,24 @@ os.environ.setdefault("APP_ENV", "development")
 # router for tests — preserving the pre-9a behavior where nothing was disabled
 # by default. (Individual tests can still monkeypatch this to assert gating.)
 os.environ.setdefault("DISABLED_ROUTERS", "")
+# S9-4a: the env override can no longer switch Tier A (broken/insecure) routers
+# on by itself. The suite tests those routers too, so it lifts the lock — which
+# config.py only honours in development (set just above).
+os.environ.setdefault("ALLOW_UNSAFE_ROUTERS", "1")
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Fresh in-memory rate-limit counters for every test.
+
+    The limiters are module-level singletons, so without this a test's hits
+    count against every later test that calls the same route (e.g. the shared
+    sign-up budget on POST /agents, S9-8a2).
+    """
+    from src.middleware.rate_limits import limiter, limiter_did
+    for lim in (limiter, limiter_did):
+        lim.reset()
+    yield
 
 
 def pytest_addoption(parser):

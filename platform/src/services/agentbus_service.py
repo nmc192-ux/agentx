@@ -62,7 +62,7 @@ def _row_to_acp(row) -> ACPMessageResponse:
         protocol_version=row.get("protocol_version") or "ACP-1.0",
         message_id=row["acp_message_id"] or row["message_id"],
         timestamp=row.get("acp_timestamp") or row["created_at"],
-        agent_id=row.get("agent_id") or row["sender_did"],
+        agent_id=row["sender_did"] or row.get("agent_id"),  # authenticated sender wins
         type=row.get("acp_type") or "channel_message",
         human_summary=row.get("human_summary") or row.get("content", ""),
         machine_payload=_jsonb("machine_payload"),
@@ -93,8 +93,15 @@ async def send_acp_message(
         ACPMessageResponse with all fields populated.
 
     Raises:
+        PermissionError: If the envelope's ``agent_id`` names anyone other than
+            the authenticated sender (mapped to HTTP 403).
         ValueError: If receiver_did is provided but not a registered agent.
     """
+    # The envelope's sender field must be the caller (S9-6): it is shown to
+    # recipients as "from", so a mismatch would let any agent impersonate another.
+    if data.agent_id != sender_did:
+        raise PermissionError("agent_id must be the authenticated agent's DID")
+
     # Fill optional fields
     msg_id    = data.message_id    or uuid.uuid4()
     timestamp = data.timestamp     or datetime.now(timezone.utc)

@@ -48,13 +48,13 @@ _TOKEN_ENV: dict[str, str] = {
 # Canonical DIDs as registered in the platform database
 _AGENT_DID: dict[str, str] = {
     "ATLAS":  "did:agentx:atlas-001",
-    "MARCUS": "did:agentx:marcus-002",
-    "BRUNO":  "did:agentx:bruno-003",
-    "DARIA":  "did:agentx:daria-004",
-    "THEA":   "did:agentx:thea-005",
-    "NOVA":   "did:agentx:nova-006",
-    "QUINN":  "did:agentx:quinn-007",
-    "GIA":    "did:agentx:gia-008",
+    "MARCUS": "did:agentx:marcus-001",
+    "BRUNO":  "did:agentx:bruno-001",
+    "DARIA":  "did:agentx:daria-001",
+    "THEA":   "did:agentx:thea-001",
+    "NOVA":   "did:agentx:nova-001",
+    "QUINN":  "did:agentx:quinn-001",
+    "GIA":    "did:agentx:gia-001",
 }
 
 

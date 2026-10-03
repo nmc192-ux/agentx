@@ -210,6 +210,28 @@ class TestMintTokens:
         # Ensure execute was called (UPDATE wallets) and fetchrow for INSERT tx
         conn.execute.assert_awaited()
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reason", ["escrow_release", "transfer", "fee", "genesis"])
+    async def test_mint_ledger_label_is_always_mint(self, reason):
+        """S9-7a: the caller's reason must never become the ledger type — a
+        mint could otherwise be recorded as an escrow release or a transfer."""
+        treasury_id = uuid4()
+        conn = AsyncMock()
+        conn.fetchval = AsyncMock(return_value=treasury_id)
+        conn.execute  = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=[
+            _supply_row(minted=100),
+            {"transaction_id": uuid4(), "from_wallet": None, "to_wallet": treasury_id,
+             "amount": 100, "type": "mint", "related_id": None, "timestamp": _now()},
+        ])
+
+        with patch("src.services.economy_service.transaction", return_value=_tx_context(conn)):
+            await economy_service.mint_tokens(100, reason)
+
+        ledger_args = conn.fetchrow.await_args_list[1].args
+        assert "INSERT INTO transactions" in ledger_args[0]
+        assert ledger_args[4] == "mint"
+
 
 # ── collect_task_fee ──────────────────────────────────────────────────────────
 
@@ -231,13 +253,49 @@ class TestCollectTaskFee:
             {"rate_bps": 250},  # SELECT fee policy
             tx_row,             # INSERT transactions RETURNING
         ])
-        conn.fetchval = AsyncMock(return_value=treasury_id)
+        conn.fetchval = AsyncMock(side_effect=[
+            1000,         # SELECT escrowed_reward … FOR UPDATE
+            treasury_id,  # treasury wallet
+        ])
         conn.execute  = AsyncMock()
 
         with patch("src.services.economy_service.transaction", return_value=_tx_context(conn)):
             fee = await economy_service.collect_task_fee(task_id, 1000)
 
         assert fee == 25
+        assert "FOR UPDATE" in conn.fetchval.await_args_list[0].args[0]
+
+    @pytest.mark.asyncio
+    async def test_no_fee_when_the_escrow_is_already_gone(self):
+        """S9-7a: the fee comes out of the escrow. If it was already paid out,
+        crediting the treasury would create tokens — so nothing is taken."""
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value={"rate_bps": 250})
+        conn.fetchval = AsyncMock(return_value=0)   # escrowed_reward now 0
+        conn.execute  = AsyncMock()
+
+        with patch("src.services.economy_service.transaction", return_value=_tx_context(conn)):
+            fee = await economy_service.collect_task_fee(uuid4(), 1000)
+
+        assert fee == 0
+        conn.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fee_is_charged_on_what_is_really_in_escrow(self):
+        treasury_id = uuid4()
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=[
+            {"rate_bps": 250},
+            {"transaction_id": uuid4(), "from_wallet": None, "to_wallet": treasury_id,
+             "amount": 10, "type": "fee", "related_id": None, "timestamp": _now()},
+        ])
+        conn.fetchval = AsyncMock(side_effect=[400, treasury_id])  # 400 left, not 1000
+        conn.execute  = AsyncMock()
+
+        with patch("src.services.economy_service.transaction", return_value=_tx_context(conn)):
+            fee = await economy_service.collect_task_fee(uuid4(), 1000)
+
+        assert fee == 10
 
     @pytest.mark.asyncio
     async def test_returns_zero_when_no_active_policy(self):
@@ -253,7 +311,7 @@ class TestCollectTaskFee:
     async def test_returns_zero_when_no_treasury(self):
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(return_value={"rate_bps": 250})
-        conn.fetchval = AsyncMock(return_value=None)  # no treasury
+        conn.fetchval = AsyncMock(side_effect=[1000, None])  # escrow, then no treasury
 
         with patch("src.services.economy_service.transaction", return_value=_tx_context(conn)):
             fee = await economy_service.collect_task_fee(uuid4(), 1000)
@@ -300,6 +358,23 @@ class TestSlashStake:
 
         assert result.amount == 300
         assert result.stake_id == stake_id
+        # S9-7a: the stake row is locked before released_at is read
+        assert "FOR UPDATE" in conn.fetchrow.await_args_list[0].args[0]
+
+    @pytest.mark.asyncio
+    async def test_slash_refused_when_there_is_no_treasury(self):
+        """S9-7a: with no treasury the tokens would vanish without a record."""
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=_stake_row(amount=300))
+        conn.fetchval = AsyncMock(return_value=None)
+        conn.execute  = AsyncMock()
+
+        with (
+            patch("src.services.economy_service.transaction", return_value=_tx_context(conn)),
+            pytest.raises(ValueError, match="Treasury not initialised"),
+        ):
+            await economy_service.slash_stake(uuid4(), "test")
+        conn.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_slash_transfers_to_treasury(self):
@@ -349,7 +424,7 @@ class TestSlashStake:
 
         with (
             patch("src.services.economy_service.transaction", return_value=_tx_context(conn)),
-            pytest.raises(ValueError, match="already released"),
+            pytest.raises(economy_service.StakeConflictError, match="already released"),
         ):
             await economy_service.slash_stake(stake["stake_id"])
 

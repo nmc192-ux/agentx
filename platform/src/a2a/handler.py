@@ -30,9 +30,6 @@ from .jsonrpc import (
 
 logger = logging.getLogger(__name__)
 
-# DID used when an external A2A caller has not authenticated.
-_ANONYMOUS_DID = "did:agentx:a2a-external-001"
-
 
 def _task_response_to_a2a(task_row) -> A2ATask:
     """Convert a platform TaskResponse to an A2ATask.
@@ -50,6 +47,7 @@ def _task_response_to_a2a(task_row) -> A2ATask:
         "pending":     "submitted",
         "in_progress": "working",
         "assigned":    "working",
+        "in_review":   "working",    # result submitted, creator has not approved yet
         "completed":   "completed",
         "failed":      "failed",
         "cancelled":   "canceled",
@@ -97,7 +95,7 @@ def _task_response_to_a2a(task_row) -> A2ATask:
     )
 
 
-async def handle_message_send(params: dict) -> dict:
+async def handle_message_send(params: dict, caller_did: str) -> dict:
     """Handle an A2A ``message/send`` JSON-RPC call.
 
     Workflow:
@@ -106,14 +104,21 @@ async def handle_message_send(params: dict) -> dict:
       3. Create a platform task via task_service.create_task()
       4. Return an A2ATask in the "submitted" state
 
+    The task's creator is always the authenticated caller. Sprint 9 (S9-6d):
+    it used to be ``metadata.caller_did`` with no login, so anyone could list
+    tasks in any agent's name. A ``caller_did`` in the metadata is still
+    accepted, but only when it is the caller's own DID.
+
     Args:
-        params: Raw JSON-RPC params dict from the request.
+        params:     Raw JSON-RPC params dict from the request.
+        caller_did: DID of the agent whose Bearer token came with the request.
 
     Returns:
         A2ATask serialised as a plain dict.
 
     Raises:
-        ValueError: If params are malformed or task creation fails.
+        ValueError:      If params are malformed or task creation fails.
+        PermissionError: If the metadata names another agent as the caller.
     """
     try:
         send_params = MessageSendParams(**params)
@@ -126,15 +131,10 @@ async def handle_message_send(params: dict) -> dict:
     # Determine task type from the message role / context
     task_type = "a2a_request"
 
-    # Determine caller DID — from metadata if provided, else anonymous
-    caller_did: str = (
-        send_params.metadata.get("caller_did")
-        or message.metadata.get("caller_did")  # type: ignore[attr-defined]
-        if hasattr(message, "metadata")
-        else _ANONYMOUS_DID
-    )
-    if not caller_did:
-        caller_did = _ANONYMOUS_DID
+    for metadata in (send_params.metadata, getattr(message, "metadata", None)):
+        claimed_did = metadata.get("caller_did") if isinstance(metadata, dict) else None
+        if claimed_did is not None and claimed_did != caller_did:
+            raise PermissionError("metadata.caller_did does not match authenticated agent")
 
     logger.info(
         "a2a: message/send from %s — task_type=%s text=%r",
@@ -151,7 +151,7 @@ async def handle_message_send(params: dict) -> dict:
             "parts":          [p.model_dump(exclude_none=True) for p in message.parts],
             "metadata":       send_params.metadata,
         },
-        reward=0,   # external A2A tasks start with no reward
+        reward=0,   # A2A tasks start with no reward
     )
 
     a2a_task = _task_response_to_a2a(task)

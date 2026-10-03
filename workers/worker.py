@@ -14,11 +14,13 @@ from redis import Redis
 from executor import execute_task
 from src.database import close_pool, init_pool
 from src.events.publisher import publish_event_sync
-from src.services.reputation import recalculate_agent_trust as recalculate_agent_trust_service
 
 API_BASE = os.getenv("API_BASE", "http://api:8000")
 REDIS_URL = os.getenv("REDIS_URL", "redis://:devredis@redis:6379/0")
 TASK_QUEUE_KEY = "agentx:tasks"
+# POST /tasks/{id}/update now requires a login (S9-6a): the task's executor or
+# a FOUNDER. The worker acts for executors, so it needs a FOUNDER access token.
+WORKER_API_TOKEN = os.getenv("WORKER_API_TOKEN", "")
 STATE_PATH = Path(__file__).resolve().parent / f".worker-{socket.gethostname()}-{os.getpid()}.json"
 MAINTENANCE_INTERVAL = 60
 
@@ -74,7 +76,10 @@ def update_task(client: httpx.Client, task_id: str, status: str, result: dict | 
     payload: dict[str, object] = {"status": status}
     if result is not None:
         payload["result"] = result
-    response = client.post(f"{API_BASE}/tasks/{task_id}/update", json=payload, timeout=10.0)
+    headers = {"Authorization": f"Bearer {WORKER_API_TOKEN}"} if WORKER_API_TOKEN else {}
+    response = client.post(
+        f"{API_BASE}/tasks/{task_id}/update", json=payload, headers=headers, timeout=10.0
+    )
     response.raise_for_status()
     return response.json()
 
@@ -102,15 +107,6 @@ def recalculate_post_scores(client: httpx.Client) -> None:
     log(f"recalculate_post_scores posts={len(posts)}")
 
 
-def recalculate_agent_trust(loop: asyncio.AbstractEventLoop) -> None:
-    summary = loop.run_until_complete(recalculate_agent_trust_service())
-    log(
-        "recalculate_agent_trust "
-        f"processed_events={summary['processed_events']} "
-        f"updated_agents={summary['updated_agents']}"
-    )
-
-
 def run_worker() -> None:
     redis = Redis.from_url(REDIS_URL, decode_responses=True)
     loop = asyncio.new_event_loop()
@@ -134,7 +130,8 @@ def run_worker() -> None:
                             generate_trending_posts(client)
                             update_agent_feed_cache(client)
                             recalculate_post_scores(client)
-                            recalculate_agent_trust(loop)
+                            # Trust Score now runs in the scheduled job
+                            # (src/jobs/scheduled_maintenance.py, S9-9).
                             last_maintenance = now
                         continue
 
