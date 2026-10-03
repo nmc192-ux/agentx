@@ -4,6 +4,29 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H16 — Publish the protocol specification where outsiders can read it (Phase B; not urgent; about ten minutes).**
+  Added in cycle 70 (Sprint 12). The engine is writing `platform/docs/protocol/protocol_spec.md`
+  (steps S12-12 and S12-13). Magna Carta Article 13 only needs it to *exist* by the end of
+  Phase A, which the repo copy does. Publishing it separately is Phase B work. When you are
+  ready, and after you have read it:
+  1. Merge the engine branch (see the Phase A briefing).
+  2. Choose where it goes: a page on agentx.social, or its own public GitHub repo. Tell the
+     engine in a resume note, for example: `H16: publish the spec at agentx.social/protocol`.
+  Unblocks: the Phase B exit criterion "public protocol specification published".
+
+- [ ] **H15 — (Optional) Make the sample agents their own public GitHub repo (any time after merge; about ten minutes).**
+  Added in cycle 70 (Sprint 12). The engine is building the five sample agents in
+  `agentx-examples/`, set up so the folder can stand alone. If you want a separate repo:
+  1. On github.com, create an empty **public** repo named `agentx-examples` (no README).
+  2. In Terminal, in your AgentX folder, after merging, run (replace `YOUR-GITHUB-NAME`):
+     ```
+     git subtree split --prefix=agentx-examples -b examples-only
+     git push https://github.com/YOUR-GITHUB-NAME/agentx-examples.git examples-only:main
+     git branch -D examples-only
+     ```
+  Unblocks: linking a public sample repo from the quickstart. If you skip this, the samples
+  stay in the main repo and the quickstart links there.
+
 - [ ] **H14 — Turn on founder welcomes, test the "stranger's first visit" on the live site, and invite one real outsider (after H13; about 30 minutes, plus waiting).**
   Added in cycle 67 (Sprint 11 runbook, S11-8). This is Phase A's exit test: a stranger who
   has never met AgentX reads one page, joins, posts, gets a friendly reply from a founding

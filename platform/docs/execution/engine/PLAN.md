@@ -1,54 +1,91 @@
 # Engine PLAN — Phase A, Sprint 12 (Phase B prep)
 
-**Branch:** `engine/phase-a` · **Spec:** not drafted yet (`platform/docs/sprints/sprint_12_phase_b_prep.md`,
-from Plan v2 §4 "Sprint 12 — Phase B prep")
+**Branch:** `engine/phase-a` · **Spec:** `platform/docs/sprints/sprint_12_phase_b_prep.md`
 **Sprint 11 plan (closed):** `archive/PLAN_sprint_11.md` · retro `platform/docs/sprints/sprint_11_retro.md`
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-## Next cycle (T2)
+Baseline (cycle 69): platform **2904 passed**, 342 skipped; real-Postgres **328 passed**;
+SDK **345 passed**; smoke green (93 GET routes). Automatic-release period **N = 7 days**
+(one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
+with fail-closed tests against real Postgres.
 
-Draft the Sprint 12 spec from the plan's sketch (sample agents repo with five reference
-patterns, quickstart formalized, `agentx-client` deprecation period, docs-site decision) and
-the protocol specification scoping the plan assigns to Sprint 12 (Magna Carta Article 13),
-then decompose it here. Place the queued items below in the step list (E1–E5 are T1 each,
-E6 and F1 are T2). Baseline (cycle 69): platform **2904 passed**, 342 skipped; real-Postgres
-**328 passed**; SDK **345 passed**; smoke green (93 GET routes).
+DrJ's D1–D9 (cycle 63): D1 done; D6, D7, D9 no change; D8 handled by `FOUNDER_DIDS`;
+E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F1 are placed below.
 
-## Queued from DrJ's decisions (cycle 63) — to be placed when Sprint 12 is decomposed
+## Steps
 
-DrJ answered D1–D9 (cycle 63 note): D1 a, D2 b+c, D3 b+c, D4 b, D5 b, D6 a, D7 a, D8 a, D9 a.
-D1 is done (root LICENSE). D6, D7, D9: no change. D8 (a): production keeps its addresses and
-lists them in `FOUNDER_DIDS` (already how H13 works). D2 (b): `tasks` stays off in production
-until creator approval ships (HUMAN_ACTIONS H3 note). The rest is code that moves tokens, so
-each is its own **T1** step with a `NEEDS-DELIBERATE-MERGE:` commit and fail-closed tests:
+- [ ] **S12-1 (F1) — Profile shows a new trust score at once.** The trust replay clears
+  `agent_key(did)` when it changes a score. Tier **T2** (cache only; trust rules unchanged).
+  Check: test — replay changes a score → next `GET /agents/{did}` shows it; unchanged score
+  leaves the cache alone. Reversible.
+- [ ] **S12-2 (E1, D2c) — Creator approves a task result before the reward is released.**
+  Submit holds the reward in escrow; creator approves (pays worker) or rejects (back to
+  in-progress / reopen); silent creator → releasable to the worker N days after submission
+  (release function only; the job is S12-7). Founder runners and the founder heartbeat's
+  paid-task loop approve. `tasks` moves back to `ENABLED_IN_SPRINT_9`. Tier **T1** (moves
+  tokens). Check: real-Postgres tests — only creator approves; no pay before approval or N
+  days; no double release; smoke with `tasks` on.
+- [ ] **S12-3 (E2, D3b) — FOUNDER settles a disputed contract**: one FOUNDER-only action
+  that pays the contractor or refunds the creator, on the ledger. Tier **T1** (moves tokens,
+  role-gated). Check: non-founder → 403; only `disputed` contracts; once only; ledger balances.
+- [ ] **S12-4 (E3, D3c) — Contract deadlines.** Creator reclaims after the deadline with no
+  delivery; contractor releasable N days after delivery if the creator is silent; disputed
+  contracts excluded (go to S12-3). Tier **T1** (moves tokens). Check: real-Postgres tests
+  for each branch, wrong caller, early call, double call.
+- [ ] **S12-5 (E4, D4b) — Pay the accepted bid, refund the rest; bids above budget
+  refused.** Tier **T1** (moves tokens). Check: accepted amount paid, escrow remainder
+  refunded to creator, over-budget bid → 422, ledger balances.
+- [ ] **S12-6 (E5, D5b) — Bounty deadline enforced.** No submissions after it; N days later
+  an unpaid pool goes to the top-scored submission, or back to the creator if nothing was
+  scored. Tier **T1** (moves tokens). Check: late submit refused; both release branches;
+  ties resolved deterministically; once only.
+- [ ] **S12-7 (E6) — Scheduled job for automatic releases (S12-2, S12-4, S12-6)** on the
+  existing scheduler, calling only the reviewed release functions; idempotent; per-item
+  failures logged and skipped. Tier **T2**. Check: job test with due / not-due items run
+  twice → each released once.
+- [ ] **S12-8 — Sample agents, part 1: self-contained `agentx-examples/`** (README index,
+  `requirements.txt` pinning `agentx-py`, Apache-2.0 LICENSE, shared tiny helper) plus
+  **governance-participant**, **collective-coordinator**, **prediction-poster**. Decide what
+  to do with the old examples (keep if they run against today's API, else move under
+  `legacy/` with a note). Tier **T2**. Check: a test runs each against the local app and
+  sees its effect (vote counted, collective joined/created, PREDICTION post visible).
+- [ ] **S12-9 — Sample agents, part 2: request-fulfiller and bounty-hunter** (after S12-2 and
+  S12-6; they use the approval and deadline flows). Tier **T2** (calls reviewed money
+  services). Check: tests run both end to end — reward reaches the worker only after
+  creator approval; bounty submission before the deadline.
+- [ ] **S12-10 — Developer quickstart formalized**: `platform/docs/quickstart.md` is the one
+  quickstart (root `QUICKSTART.md` and READMEs point to it); zero-to-first-post time from
+  `local_journey.py` written in; a test extracts and runs its code blocks against the local
+  app. Record the docs-site decision (none in Phase A) in it. Tier **T2**. Check: the test.
+- [ ] **S12-11 — `agentx-client` deprecation period** written into
+  `packaging/agentx-client/README.md`, `sdk/CHANGELOG.md` and the shim's warning text
+  (per the spec's decision). Tier **T3**. Check: shim test asserts the warning text.
+- [ ] **S12-12 — Protocol spec v0.1, part 1**: `platform/docs/protocol/protocol_spec.md`
+  (Apache-2.0 notice) — conventions, versioning, discovery (`.well-known`, `skill.md`),
+  identity (DID) and auth, onboarding, heartbeat, posts and replies, errors and rate limits.
+  Plus a test that every endpoint the spec lists exists in OpenAPI with that method.
+  Tier **T2**. Check: the coverage test.
+- [ ] **S12-13 — Protocol spec v0.1, part 2**: messages, rooms, collectives, governance,
+  the economy endpoints (tasks, contracts, bounties, wallets) including the approval /
+  deadline rules from S12-2..6, the trust *interface* (not the algorithm, per Article 14),
+  and a conformance checklist. Tier **T2**. Check: coverage test extended; spec read-through
+  against the routes.
+- [ ] **S12-14a — Sprint-close security review** of every `SECURITY-REVIEW:` /
+  `NEEDS-DELIBERATE-MERGE:` commit in this sprint built on Opus or Sonnet (S12-2..7 and any
+  other). Tier **T1**.
+- [ ] **S12-14 — Sprint close and Phase A close**: acceptance run, `sprint_12_retro.md`,
+  `state_of_agentx.md`, archive plan, Phase A briefing
+  `briefing_<date>_engine.md` with "What merging will do" and the live-test checklist →
+  `PHASE_COMPLETE`. Tier **T2**.
+- [human] **H15 — Create the public sample-agents repo** from `agentx-examples/` (optional;
+  see HUMAN_ACTIONS). **H16 — Publish the protocol spec** where outsiders can read it
+  (Phase B; see HUMAN_ACTIONS).
 
-- [x] **E0 (D2b) — Hold `tasks` off in the repo default until E1 ships** *(cycle 64, Opus T2, `f64ad84`; placed in Tier A so no env value turns it on)*: move it from
-  `ENABLED_IN_SPRINT_9` back onto the off-list in `src/router_config.py` with the reason;
-  check the founder heartbeat's paid-task loop (it uses the services, not the route) and the
-  smoke/e2e tests still pass. Do this next (Sprint 11, before S11-6): it decides what the
-  merge switches on. Tier **T2** (configuration that only turns a route off).
-- [ ] **E1 (D2c) — Creator approves a task result before the reward is released**; automatic
-  release to the worker N days after submission if the creator stays silent; founder runners
-  and the founder heartbeat's paid-task loop updated to approve. Tier **T1** (moves tokens).
-- [ ] **E2 (D3b) — FOUNDER settles a disputed contract**: one founder-only action that pays
-  the contractor or refunds the creator, on the ledger. Tier **T1** (moves tokens, role-gated).
-- [ ] **E3 (D3c) — Contract deadlines**: creator may reclaim after the deadline with no
-  delivery; contractor paid automatically N days after delivery if the creator is silent;
-  disputes still go to E2. Tier **T1** (moves tokens).
-- [ ] **E4 (D4b) — Pay the accepted bid, refund the rest; bids above budget refused.**
-  Tier **T1** (moves tokens).
-- [ ] **E5 (D5b) — Bounty deadline enforced**: no submissions after it; N days later an
-  unpaid pool goes to the top-scored submission, or back to the creator if nothing was
-  scored (the trade-off flagged in D5 stands as DrJ chose it). Tier **T1** (moves tokens).
-- [ ] **F1 — Public profile shows the new trust score at once** (found cycle 66): the trust
-  replay does not clear the 5-minute `GET /agents/{did}` cache, so a profile can lag
-  `/agents/{did}/trust` by up to 5 minutes. Clear `agent_key(did)` when the replay changes
-  a score. Tier **T2** (cache only; trust rules unchanged).
-- [ ] **E6 — Scheduled job that runs the automatic releases (E1/E3/E5)**, reusing the existing
-  scheduler; calls the reviewed release functions only. Tier **T2**.
-  N for all automatic releases: engine default 7 days, one constant (reversible).
+## Next cycle
+
+S12-1 (F1), T2. Then S12-2 (E1) on T1.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H14 open; D1–D9 answered cycle 63.
+H1–H16 open; D1–D9 answered cycle 63.

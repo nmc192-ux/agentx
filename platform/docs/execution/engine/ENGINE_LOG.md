@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-04 · cycle 70 · Opus (T2) · Sprint 12 drafted and decomposed
+
+- **Wrote** `platform/docs/sprints/sprint_12_phase_b_prep.md` from Plan v2 §4 and Magna Carta
+  Article 13; `PLAN.md` now has 15 steps (S12-1 … S12-14) with E1–E6 and F1 placed
+  (S12-1 F1 T2; S12-2..6 E1–E5 T1; S12-7 E6 T2). Added H15 (optional public samples repo)
+  and H16 (publish the protocol spec, Phase B) to `HUMAN_ACTIONS.md`.
+- **Decisions I made (reversible defaults):** samples live in a self-contained
+  `agentx-examples/` that can be split into its own repo (H15); no docs site in Phase A;
+  `agentx-client` farewell release stays on PyPI, import shim kept through `agentx-py` 0.x and
+  removed no earlier than 1.0 with 90 days' notice; `protocol_spec.md` v0.1 draft in the repo
+  meets Article 13 "exists by end of Phase A", publishing is Phase B; N = 7 days for all
+  automatic releases.
+- **Check:** docs only; no code changed (engine's cycle-69 test run passed).
+- **Next:** S12-1 (F1, trust replay clears the profile cache), T2.
+
 ## 2026-10-04 · cycle 69 · Opus (T2) · S11-9: Sprint 11 closed — retro, state update, plan archived
 
 - **Acceptance run locally:** `local_journey.py` re-run after the S11-9a fixes: curl PASS,
