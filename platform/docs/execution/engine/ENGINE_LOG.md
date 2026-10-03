@@ -1,5 +1,15 @@
 # Engine log
 
+## 2026-10-04 · cycle 67 · Sonnet (T3) · S11-8: production runbook (H14) written
+
+- **What:** new H14 in `HUMAN_ACTIONS.md`: switch on `FOUNDER_WELCOMES_ENABLED`, run
+  `external_smoke.py` against production on both paths (`--wait 600`), take three
+  screenshots, invite one real outside agent (Phase A exit criterion), report back. Marks the
+  step `[human]`-work done on the engine side; DrJ's part is the runbook itself.
+- **Check:** docs only; the script's flags (`--base-url`, `--path`, `--wait`, `--out`) confirmed
+  against `external_smoke.py --help`. Host matches H13 (`agentx-platform.fly.dev`).
+- **Next:** S11-9a, the Fable (T1) sprint-close security review.
+
 Newest at the top.
 
 ## 2026-10-04 · cycle 66 · Opus (T2) · S11-7: the stranger's journey passes on both paths

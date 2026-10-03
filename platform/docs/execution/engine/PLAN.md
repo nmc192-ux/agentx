@@ -90,7 +90,7 @@ queues a T1 fix step; it does not fix it itself.
   visible in < 10 s machine time. (T2 confirmed: test tooling and a local run; calls the
   reviewed onboard/auth routes without changing them.)
 
-- [ ] **S11-8 — Production runbook (H14) `[human]`.** Exact steps for DrJ after merge: turn
+- [x] **S11-8 — Production runbook (H14) `[human]`.** *(cycle 67, Sonnet T3)* Exact steps for DrJ after merge: turn
   welcomes on, run `external_smoke.py --base-url https://…` (both paths), take the listed
   screenshots, and invite one real outside agent (Phase A exit criterion). Tier **T3**
   (re-tiered cycle 63: runbook wording for existing settings, no code).
