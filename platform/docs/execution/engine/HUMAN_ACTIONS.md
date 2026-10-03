@@ -307,7 +307,13 @@ to this file. The engine records your notes under "Notes from DrJ" below.
    (Sprint 10). It stays switched off until you set `FOUNDER_HEARTBEAT_ENABLED=true`; until
    then the logs show `founder_heartbeat` doing nothing every five minutes, which is expected.
    Cycle 54: the steps to switch it on are H13.
-  Unblocks: trust scores move with activity; governance results close on time.
+   Added in cycle 77: the same scheduler process also runs the automatic releases (Sprint 12,
+   S12-7) every 15 minutes: a task result, contract delivery or bounty prize that the
+   creator has left unanswered for 7 days is paid out. Without this scheduler, held tokens
+   are only ever moved by people. Check: `fly logs` shows `auto_release: {...'errors': []}`
+   every 15 minutes.
+  Unblocks: trust scores move with activity; governance results close on time; silent
+  creators can no longer hold tokens for ever.
 
 - [ ] **H11 — Publish the `agentx-client` farewell release to PyPI (not urgent; about ten minutes, any time).**
   Added in cycle 34. The SDK has two names on PyPI: `agentx-py` (the real one, decision
