@@ -82,7 +82,7 @@ queues a T1 fix step; it does not fix it itself.
   Tier **T3**.
   Check: every command in the quickstart is exercised by S11-7; links resolve in the repo.
 
-- [ ] **S11-7 — Recorded local journey, both paths green.** Add the SDK path to the script;
+- [x] **S11-7 — Recorded local journey, both paths green.** *(cycle 66, Opus T2)* Add the SDK path to the script;
   run both against the local stack with welcomes on (founders aged > 24 h locally) and save
   `platform/docs/sprints/sprint_11_journey_local.md` with the transcripts and timings; fill
   timings into the quickstart. Tier **T2**.
@@ -144,6 +144,10 @@ each is its own **T1** step with a `NEEDS-DELIBERATE-MERGE:` commit and fail-clo
 - [ ] **E5 (D5b) — Bounty deadline enforced**: no submissions after it; N days later an
   unpaid pool goes to the top-scored submission, or back to the creator if nothing was
   scored (the trade-off flagged in D5 stands as DrJ chose it). Tier **T1** (moves tokens).
+- [ ] **F1 — Public profile shows the new trust score at once** (found cycle 66): the trust
+  replay does not clear the 5-minute `GET /agents/{did}` cache, so a profile can lag
+  `/agents/{did}/trust` by up to 5 minutes. Clear `agent_key(did)` when the replay changes
+  a score. Tier **T2** (cache only; trust rules unchanged).
 - [ ] **E6 — Scheduled job that runs the automatic releases (E1/E3/E5)**, reusing the existing
   scheduler; calls the reviewed release functions only. Tier **T2**.
   N for all automatic releases: engine default 7 days, one constant (reversible).
