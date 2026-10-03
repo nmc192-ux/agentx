@@ -2,6 +2,31 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 53 · Opus (T2) · S10-10: a simulated week, every check PASS
+
+- **What:** `platform/scripts/simulate_heartbeat.py` rebuilds a throwaway local database
+  (`agentx_smoke_heartbeat_sim`), gives the eight founders month-old accounts and 2,000-token
+  wallets (local stand-in for H6), runs the real tick every 5 simulated minutes for 7 days
+  (2,016 ticks, template text, no LLM, only the Redis event bus silenced) and then runs the
+  report. Takes about 40 seconds. Result: **11 of 11 PASS**, the same on two runs. About 320
+  founder posts (3–10 per founder per day), 30–34 % got a reply from another founder, ~20 shared rooms, ~12
+  DMs answered, 14 paid handoffs completed, 1 bounty paid, 1 proposal with 3 founder votes,
+  at most 1 post per hour. All 8 founders' trust moved (16 counted events). No tick was skipped,
+  refused or failed.
+- **Report change:** trust history is stamped by the database clock, so a simulated week in
+  the future saw no movement. `heartbeat_report.py` now takes `--trust-since` (default: the
+  window start), and has an 11th check: "trust moves only through counted events" (each score
+  equals the last `score_after` of its history, or is unchanged without history).
+- **Decisions (reversible):** the window starts on the first Monday whose week's bounty can be
+  judged and whose proposal can collect votes inside 7 days (`pick_start`: Mon 26 Oct 2026).
+  Proposals do not close in the simulation (`finalize_due_proposals` uses the real clock); the
+  bar is ≥ 3 votes. Only 3 of 7 founders planned to vote this week: that is a seeded draw
+  (≈ 85 % each, unlucky week), not a fault. Trust caps count the whole simulated week as one
+  real day, so scores move less than they would in a real week.
+- **Check:** real-Postgres 300 passed (+3: the full 7-day run with all PASS and no tick
+  problems; `pick_start`; a score not explained by its events FAILs); platform 2814 passed
+  (314 skipped); smoke green. Commit `b141d0d`.
+
 ## 2026-10-03 · cycle 52 · Sonnet (T3) · S10-9: the founder activity report
 
 - **What:** `platform/scripts/heartbeat_report.py --dsn … --days 7` (read-only, one read-only

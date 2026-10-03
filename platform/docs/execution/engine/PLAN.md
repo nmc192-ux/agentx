@@ -104,7 +104,9 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   trust start → end; a PASS / FAIL line per acceptance criterion. Read-only. Tier **T3**.
   Check: real-Postgres test on seeded activity gives the expected numbers and verdicts.
 
-- [ ] **S10-10 — Local 7-day simulation.** Drive the tick with a fake clock over 7 simulated
+- [x] **S10-10 — Local 7-day simulation.** (cycle 53, `b141d0d`; `scripts/simulate_heartbeat.py`,
+  11/11 PASS in ~40 s; window Mon 26 Oct 2026 chosen so the week's bounty and proposal fit;
+  report gained `--trust-since` and a "trust only through counted events" check — see log.) Drive the tick with a fake clock over 7 simulated
   days on local Postgres (template generator), then run the report. Tier **T2**.
   Check: the report says PASS on every engine-verifiable criterion in the spec; suite,
   real-Postgres suite and smoke green.
