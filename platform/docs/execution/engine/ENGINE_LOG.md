@@ -1,5 +1,40 @@
 # Engine log
 
+## 2026-10-04 · cycle 75 · Fable (T1) · S12-5 (E4, D4b): pay the accepted bid, refund the rest
+
+- **Built** (`a089956`, `NEEDS-DELIBERATE-MERGE:`): the accepted bid is now the price. When
+  the creator accepts a bid (`POST /contracts/{id}/assign`), the escrow above the bid goes
+  back to the creator in the same transaction, with the contract row locked, and the escrow
+  left is exactly the bid. Every existing way out (complete, automatic release, FOUNDER
+  ruling, reclaim) already moves "the whole escrow", so each now moves the bid with no change
+  to its code. New ledger type `contract_bid_refund`. A bid above the budget → 422. No
+  migration, no new route, no new field (`budget` stays what was posted; `escrowed_budget`
+  after assignment is the price).
+- **Guards:** the amount is read from the bid row under the lock — the assign request names
+  only the bid; the bid must belong to that contract; a stored bid that is zero, negative or
+  above the escrow cannot be accepted (409), so nothing is ever drawn from the creator's
+  wallet to cover a bid and a negative bid cannot "refund" more than was held; a bid is
+  measured against the smaller of the advertised budget and what is actually held.
+- **Tests (fail closed):** new `tests/integration/test_contract_bid_price_db.py`, 34
+  real-Postgres tests — over-budget, zero, negative, fractional and non-numeric bids refused
+  and leave no row; the rest refunded once and the ledger adds up to the budget; complete,
+  automatic release, both FOUNDER rulings and reclaim each move the bid; extra fields in the
+  assign body change nothing; another contract's 1-token bid cannot set the price;
+  contractor, stranger, FOUNDER, anonymous cannot assign; assigning again → 409 and no second
+  refund; 8 different bids and 12 copies of one bid accepted at once refund once; assign
+  racing cancel gives one refund; a failed ledger write and a failure after the refund both
+  roll everything back; tokens conserved. Older tests' default bid is now the whole budget
+  (their assertions unchanged); one mocked test updated for the new bid column read.
+- **Decisions I made (reversible defaults):** the rest is refunded at acceptance, not at
+  payout (the creator gets unneeded tokens back sooner, and the reviewed payout paths stay
+  untouched); a bid equal to the budget is allowed; bids cannot be edited (one per agent, as
+  before); the response gained no "agreed price" field; contracts assigned before this
+  change keep their whole budget in escrow and pay it out as before (contracts are not live,
+  so there should be none in production). No human action needed.
+- **Check:** platform **2915 passed**, 448 skipped; real-Postgres **434 passed**; smoke green
+  (98 GET routes, no 5xx). SDK untouched, not re-run.
+- **Next:** S12-6 (E5, bounty deadline enforced), T1.
+
 ## 2026-10-04 · cycle 74 · Fable (T1) · S12-4 (E3, D3c): contract deadlines
 
 - **Built** (`fc39bb9`, `NEEDS-DELIBERATE-MERGE:`): `POST /contracts/{id}/reclaim` — the

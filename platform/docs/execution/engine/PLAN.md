@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 74): platform **2915 passed**, 414 skipped; real-Postgres **400 passed**;
+Baseline (cycle 75): platform **2915 passed**, 448 skipped; real-Postgres **434 passed**;
 SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -46,9 +46,13 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   delivery → `completed`). No migration. Past deadlines refused at creation; no bid or
   assignment after the deadline. A contract with no deadline cannot be reclaimed (dispute
   instead).*
-- [ ] **S12-5 (E4, D4b) — Pay the accepted bid, refund the rest; bids above budget
+- [x] **S12-5 (E4, D4b) — Pay the accepted bid, refund the rest; bids above budget
   refused.** Tier **T1** (moves tokens). Check: accepted amount paid, escrow remainder
-  refunded to creator, over-budget bid → 422, ledger balances.
+  refunded to creator, over-budget bid → 422, ledger balances. *Done cycle 75 (`a089956`):
+  the rest goes back to the creator when the bid is accepted (`POST /contracts/{id}/assign`),
+  so the escrow from then on is exactly the bid and every way out moves it unchanged. New
+  ledger type `contract_bid_refund`. No migration. A stored bid above the escrow cannot be
+  accepted (409).*
 - [ ] **S12-6 (E5, D5b) — Bounty deadline enforced.** No submissions after it; N days later
   an unpaid pool goes to the top-scored submission, or back to the creator if nothing was
   scored. Tier **T1** (moves tokens). Check: late submit refused; both release branches;
@@ -97,7 +101,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-4 (E3, contract deadlines), T1.
+S12-6 (E5, bounty deadline enforced), T1.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
