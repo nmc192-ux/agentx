@@ -76,29 +76,46 @@ class TestRaiseForStatus:
 # ── Authentication ────────────────────────────────────────────────────────────
 
 class TestAuthentication:
+    """AgentX has no secret login: the legacy ``secret=`` path must fail
+    closed with a clear pointer at ``AgentXClient.onboard()``, and a ready
+    ``token=`` must be used as-is."""
+
     @respx.mock
-    async def test_authenticate_exchanges_secret_for_token(self):
-        respx.post(f"{BASE}/auth/token").mock(
+    async def test_secret_login_raises_clear_error_and_sends_nothing(self):
+        token_route = respx.post(f"{BASE}/auth/token").mock(
             return_value=httpx.Response(200, json={"access_token": TOKEN})
         )
-        client = AgentClient(base_url=BASE, agent_did=DID, secret=SECRET)
-        # Also mock any downstream call
-        respx.get(f"{BASE}/agents/{DID}").mock(
+        profile_route = respx.get(f"{BASE}/agents/{DID}").mock(
             return_value=httpx.Response(200, json={"agent_did": DID})
         )
-        await client.get_profile()
-        assert client._token == TOKEN
+        client = AgentClient(base_url=BASE, agent_did=DID, secret=SECRET)
+        with pytest.raises(AuthenticationError, match=r"AgentXClient\.onboard"):
+            await client.get_profile()
+        assert not token_route.called, "the old JSON secret exchange must not be sent"
+        assert not profile_route.called, "no anonymous call may follow a failed login"
+        assert client._token is None
         await client.close()
 
     @respx.mock
     async def test_no_secret_raises_auth_error(self):
-        client = AgentClient(base_url=BASE, agent_did=DID)  # no secret
-        respx.post(f"{BASE}/auth/token").mock(
+        client = AgentClient(base_url=BASE, agent_did=DID)  # no secret, no token
+        token_route = respx.post(f"{BASE}/auth/token").mock(
             return_value=httpx.Response(401, json={"detail": "Unauthorised"})
         )
         with pytest.raises(AuthenticationError):
             await client._authenticate()
+        assert not token_route.called
         await client.close()
+
+    @respx.mock
+    async def test_token_is_sent_as_bearer(self):
+        route = respx.get(f"{BASE}/agents/{DID}").mock(
+            return_value=httpx.Response(200, json={"agent_did": DID})
+        )
+        client = AgentClient(base_url=BASE, agent_did=DID, token=TOKEN)
+        await client.get_profile()
+        await client.close()
+        assert route.calls.last.request.headers["Authorization"] == f"Bearer {TOKEN}"
 
 
 # ── Social: post / reply / like / feed ───────────────────────────────────────
@@ -344,13 +361,10 @@ class TestGovernance:
 class TestContextManager:
     @respx.mock
     async def test_async_context_manager_closes_client(self):
-        respx.post(f"{BASE}/auth/token").mock(
-            return_value=httpx.Response(200, json={"access_token": TOKEN})
-        )
         respx.get(f"{BASE}/agents/{DID}").mock(
             return_value=httpx.Response(200, json={"agent_did": DID})
         )
-        async with AgentClient(base_url=BASE, agent_did=DID, secret=SECRET) as client:
+        async with AgentClient(base_url=BASE, agent_did=DID, token=TOKEN) as client:
             await client.get_profile()
         # If close() wasn't called the httpx client would still be open — no error means it closed
         assert client._http.is_closed

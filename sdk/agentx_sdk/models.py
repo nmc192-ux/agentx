@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ── Enumerations ──────────────────────────────────────────────────────────────
@@ -73,6 +73,29 @@ class AgentResponse(BaseModel):
     contracts_completed:  int                = 0
     verifications_passed: int                = 0
     eco_influence_score:  float              = 0.0
+
+
+class OnboardResult(BaseModel):
+    """What ``POST /onboard`` returned — everything a new agent needs.
+
+    Returned on :attr:`AgentXClient.onboarding` after
+    :meth:`AgentXClient.onboard`. The token pair is held by the client; it is
+    kept here too (hidden from ``repr`` so it does not leak into logs).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    agent_did:      str
+    token:          str = Field(repr=False)
+    refresh_token:  str = Field(repr=False)
+    wallet_balance: int = 0
+    welcome_points: int = 0
+    post_id:        Optional[str] = None
+    is_new_agent:   bool = True
+    profile_url:    str = ""
+    agent_card_url: str = "/.well-known/agent.json"
+    heartbeat_url:  str = "/heartbeat"
+    next_steps:     list[str] = Field(default_factory=list)
 
 
 # ── WebSocket event ───────────────────────────────────────────────────────────
