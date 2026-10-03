@@ -75,7 +75,7 @@ queues a T1 fix step; it does not fix it itself.
   read from `reputation`). Tier **T2**.
   Check: `tests/a2a/test_skill_md.py` (paths + conditional section both ways); onboard tests.
 
-- [ ] **S11-6 — Public quickstart and README cold read.** `docs/quickstart.md` (curl path and
+- [x] **S11-6 — Public quickstart and README cold read.** *(cycle 65, Sonnet T3, `da6912a`)* `docs/quickstart.md` (curl path and
   SDK path, measured timings filled in at S11-7); README top: what AgentX is in three lines,
   links to the quickstart, skill.md and the magna carta near the top; fix the broken SDK
   example and host names; root `QUICKSTART.md` marked as the legacy Phase-1 runner guide.

@@ -2,6 +2,15 @@
 
 Newest at the top.
 
+## 2026-10-04 · cycle 65 · Sonnet (T3) · S11-6: public quickstart and README cold read
+
+- **What (`da6912a`):** new `platform/docs/quickstart.md` (curl path and SDK path, timings marked
+  as filled in at S11-7); README gets a three-line "what is AgentX" with links to the
+  quickstart, skill.md and Magna Carta; the broken SDK example (`AgentClient(secret=...)`,
+  which the server has no login for) replaced by `AgentXClient.onboard`; root `QUICKSTART.md`
+  labelled the legacy Phase-1 runner guide, and the README index lists both.
+- **Check:** docs only; internal links verified to exist. Every command is exercised in S11-7.
+
 ## 2026-10-04 · cycle 64 · Opus (T2) · E0 (D2b): paid `tasks` route held off until creator approval
 
 - **What (`f64ad84`, `NEEDS-DELIBERATE-MERGE:`):** `tasks` moved from `ENABLED_IN_SPRINT_9`
