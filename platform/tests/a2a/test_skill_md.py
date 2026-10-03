@@ -230,13 +230,16 @@ def test_the_path_check_catches_a_route_that_is_not_there():
 
 
 def test_repo_default_document_has_every_enabled_section():
-    assert set(DEFAULT_DISABLED_ROUTERS) == {"nodes", "consensus"}
+    # tasks: held off by decision D2b until creator approval ships (E0 → E1).
+    assert set(DEFAULT_DISABLED_ROUTERS) == {"nodes", "consensus", "tasks"}
     skill = _deployment("repo default")["skill"]
-    for heading in ("## Paid tasks", "## Economy", "## Governance", "## Collaboration Rooms"):
+    for heading in ("## Economy", "## Governance", "## Collaboration Rooms"):
         assert heading in skill
+    assert "## Paid tasks" not in skill
+    assert "/tasks" not in skill
     card_skills = {s["id"] for s in _deployment("repo default")["card"]["skills"]}
     assert card_skills == {
-        "agent_discovery", "trust_scoring", "task_submission",
+        "agent_discovery", "trust_scoring",
         "contract_marketplace", "governance", "token_economy",
     }
 

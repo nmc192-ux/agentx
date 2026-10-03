@@ -75,8 +75,9 @@ def test_full_production_env_value_still_disables_the_social_cohort(monkeypatch)
 
 # ── S9-6: cohort 2 (work) — only the routers whose writes passed review ───────
 
-# tasks: S9-6a; contracts + verifications: S9-6b; markets: S9-6c
-WORK_COHORT_ENABLED = ["collectives", "agentbus", "tasks", "contracts", "verifications", "markets"]
+# contracts + verifications: S9-6b; markets: S9-6c. tasks left Tier A in S9-6a
+# and went back in at E0 (decision D2b), see test_tasks_held_off_until_creator_approval.
+WORK_COHORT_ENABLED = ["collectives", "agentbus", "contracts", "verifications", "markets"]
 
 
 @pytest.mark.parametrize("name", WORK_COHORT_ENABLED)
@@ -90,11 +91,11 @@ def test_work_cohort_enabled_by_default(name, monkeypatch):
 
 def test_fixed_work_routers_can_still_be_switched_off_by_the_kill_switch(monkeypatch):
     """Leaving Tier A does not take a router out of reach of the emergency brake."""
-    monkeypatch.setenv("DISABLED_ROUTERS", "tasks,contracts,verifications,markets")
+    monkeypatch.setenv("DISABLED_ROUTERS", "contracts,verifications,markets")
     monkeypatch.delenv("ALLOW_UNSAFE_ROUTERS", raising=False)
     settings = Settings(_env_file=None)
     assert not any(
-        settings.router_enabled(n) for n in ["tasks", "contracts", "verifications", "markets"]
+        settings.router_enabled(n) for n in ["contracts", "verifications", "markets"]
     )
 
 
@@ -140,7 +141,20 @@ def test_repo_default_now_disables_tier_a_only(monkeypatch):
     """Tier B and Tier C are empty: everything still off is off for a reason
     written next to it in router_config.py."""
     assert set(DEFAULT_DISABLED_ROUTERS) == set(BROKEN_OR_INSECURE_ROUTERS)
-    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"nodes", "consensus"}
+    assert set(BROKEN_OR_INSECURE_ROUTERS) == {"nodes", "consensus", "tasks"}
+
+
+# ── E0 (decision D2b): tasks held off until creator approval ships (E1) ──────
+
+def test_tasks_held_off_until_creator_approval(monkeypatch):
+    """The reward is paid on submission with no creator approval, so DrJ chose
+    to keep `tasks` off. Fails closed: the repo default disables it and no
+    DISABLED_ROUTERS value can switch it on (Tier A lock)."""
+    assert "tasks" in BROKEN_OR_INSECURE_ROUTERS
+    assert "tasks" not in ENABLED_IN_SPRINT_9
+    assert not _settings(monkeypatch, None).router_enabled("tasks")
+    for env_value in ["", "posts", "nodes,consensus", "contracts,markets"]:
+        assert not _settings(monkeypatch, env_value).router_enabled("tasks"), env_value
 
 
 @pytest.mark.parametrize("name", ["nodes", "consensus"])
@@ -176,8 +190,9 @@ def _settings(monkeypatch, disabled, allow_unsafe=None, **kwargs):
 def test_tier_a_is_what_the_plan_says_it_protects():
     assert {"nodes", "consensus"} <= set(BROKEN_OR_INSECURE_ROUTERS)
     # S9-6: token holes found in review. tasks left in S9-6a, contracts in
-    # S9-6b and markets in S9-6c (all fixed).
-    assert "tasks" not in BROKEN_OR_INSECURE_ROUTERS
+    # S9-6b and markets in S9-6c (all fixed). tasks came back at E0 (D2b:
+    # held off until creator approval ships).
+    assert "tasks" in BROKEN_OR_INSECURE_ROUTERS
     assert "contracts" not in BROKEN_OR_INSECURE_ROUTERS
     assert "markets" not in BROKEN_OR_INSECURE_ROUTERS
     # /markets/bounties/auto lives in agent_economy: reviewed and cleared in

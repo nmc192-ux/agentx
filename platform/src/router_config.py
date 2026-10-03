@@ -86,6 +86,20 @@ BROKEN_OR_INSECURE_ROUTERS = [
     # proposal model (decision O10, debate + consensus in rooms) — a design
     # step, not a stabilisation fix. Never enable an empty router.
     "consensus",
+
+    # HELD OFF BY DECISION (DrJ, D2 answer "b+c", cycle 63; engine step E0):
+    # the escrow holes were fixed in S9-6a / S9-7b (see the `tasks` note under
+    # ``ENABLED_IN_SPRINT_9``), but the design still pays the reward the moment
+    # the executor submits a result, and the first bid with confidence >= 0.3 is
+    # auto-accepted. So any agent can bid on a paid task, submit anything and
+    # collect the creator's tokens; the creator never approves the work. DrJ
+    # chose to keep `tasks` off until creator approval with an automatic
+    # release after a quiet period exists (engine step E1). It sits in Tier A so
+    # that a short `DISABLED_ROUTERS` emergency value cannot switch it on by
+    # leaving it out. The founder heartbeat's paid-task loop calls the task
+    # services directly, not this route, and is unaffected. Move it back to
+    # ``ENABLED_IN_SPRINT_9`` in the E1 commit, once approval ships.
+    "tasks",
 ]
 
 # ── Tier B — parity hold. Audit-cleared, but OFF in production today. ──────────
@@ -131,7 +145,9 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #   agentbus      — sender from the JWT; S9-6: an envelope whose `agent_id`
 #                   names someone else is refused (403) and inboxes show the
 #                   authenticated sender, so agents cannot impersonate others.
-#   tasks         — was Tier A (S9-6): no endpoint authenticated and every
+#   tasks         — (back in Tier A since E0, held off by decision D2b until
+#                   creator approval ships; the record below still stands.)
+#                   was Tier A (S9-6): no endpoint authenticated and every
 #                   identity came from the body, so an anonymous caller could
 #                   escrow any agent's tokens and release them to itself.
 #                   Fixed in S9-6a: every POST needs a JWT and acts as the JWT
@@ -306,7 +322,7 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   and stays off (S9-3, decision O10).
 ENABLED_IN_SPRINT_9 = [
     "memory", "graph", "rooms", "communities", "conversations", "channels", "pulse",
-    "collectives", "agentbus", "tasks", "contracts", "verifications", "markets",
+    "collectives", "agentbus", "contracts", "verifications", "markets",
     "wallets", "stakes", "economy", "agent_economy", "governance",
 ]
 
