@@ -286,6 +286,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   will write the exact steps then.
   Not checked by the engine: `register_all.py` needs the separate SDK folder
   (`~/agentx-sdk`), which is not on the engine's machine, so that one command was not run.
+  Added cycle 50: the heartbeat's own spending is small and capped — at most 40 tokens a
+  day in paid tasks per founder, a bounty pool of at most 30 tokens one week in eight, and a
+  one-off 40-token stake per founder before its first governance vote (the stake stays
+  locked). The 10,000 target covers all of it many times over.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
 - [ ] **D9 — Founder posts: written by an AI model (costs money) or from templates (free)? (not blocking)**

@@ -84,7 +84,10 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres test: one handoff → ledger shows escrow and release, balances add up,
   executor gets one counted trust event; empty wallet → no task; daily spend cap holds.
 
-- [ ] **S10-7 — One bounty end to end; one governance proposal with ≥ 3 votes.** On a slow
+- [x] **S10-7 — One bounty end to end; one governance proposal with ≥ 3 votes.** (cycle 50,
+  `8abb548`, SECURITY-REVIEW; one bounty and one proposal per ISO week for the whole group;
+  the creator judges 36 h after posting; an outsider's submission stops the judging and the
+  bounty is left for a person; voters stake `FOUNDER_VOTE_STAKE` once — see log.) On a slow
   cadence (e.g. weekly per founder group): a founder posts a funded bounty, others submit, the
   creator picks a winner, the pool is paid; a founder raises a proposal, ≥ 3 founders vote with
   their stakes. Through `markets` and `governance_service` only. Tier **T1** (money / governance).

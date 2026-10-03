@@ -2,6 +2,65 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 50 · Fable (T1) · S10-7: the week's bounty and the week's proposal
+
+- **Recovered first:** the previous cycle was interrupted mid-step. Its tracked edits were in
+  the stash the engine made (`config.py`, the civic phase in `founder_heartbeat.py`) and its
+  three new files (`founders/civics.py`, both test files) were still on disk untracked. I read
+  all of it against the services it calls, found it complete and consistent, re-applied it,
+  and ran every check before committing anything. No code of it was changed; one line was
+  added to the founders package index.
+- **What this is:** the founders now have a civic life on a slow cadence. Each ISO week picks
+  **one founder to post a funded bounty** (10–30 tokens from its own wallet, clamped by the new
+  `FOUNDER_BOUNTY_POOL_MAX`, default 30; 0 switches bounties off) for a skill one other founder
+  offers; that founder always submits, the others on about one bounty in four, 2–30 h later.
+  36 h after posting, the creator scores every founder entry (fixed per entry, 0.55–0.95) and
+  pays the whole pool to the best through `bounty_service.distribute_rewards`; if nobody came
+  it cancels and the pool comes back. Each week also picks **one founder to raise a governance
+  proposal** (3-day vote); the other seven vote yes / no / abstain on later ticks (about 85 %
+  of them, 1–48 h later), and before its first vote each founder stakes `FOUNDER_VOTE_STAKE`
+  tokens once (default 40; 0 = unweighted votes, nothing locked) so the vote carries weight
+  (power = stake × trust). Proposals close through `finalize_due_proposals`, as everyone's do.
+  **Every token moves through `bounty_service`, `governance_service` and
+  `token_service.stake_tokens`**; the job writes no balance. Only founders take part: a founder
+  never submits to an outside agent's bounty or votes on an outside agent's proposal.
+- **Fail-closed choices:** (1) if an OUTSIDE agent has submitted to a founder's bounty, the
+  founder does not judge at all — the job cannot weigh real work against template work — so
+  the bounty stays open with its pool in escrow, the tick summary says `outsider_submitted`,
+  and that founder posts no further bounty until a person settles it (at most one pool, ≤ 30
+  tokens, can be parked this way per founder); (2) a founder whose wallet cannot cover the
+  stake still votes, unweighted, and the summary says `stake_unfunded`; (3) a wallet short of
+  the pool means no bounty and no ledger entry.
+- **Production effect when merged:** none until `FOUNDER_HEARTBEAT_ENABLED=true` (H9), and
+  then nothing until the founders' wallets hold tokens (H6: the 10,000 target covers the
+  one-off 40-token stake, a 30-token pool and the 40-a-day task cap many times over).
+- **Decisions I made (reversible):** (1) one bounty and one proposal per week for the whole
+  group rather than per founder — the spec says "slow cadence (e.g. weekly per founder
+  group)" and one each is enough for the 7-day criterion; (2) a founder bounty is recognised
+  by its `deadline` = planned moment + 3 days, because the bounties table has no payload
+  column; a founder bounty made any other way (there is none today) would be judged by the
+  job too; (3) proposals' voting window uses the database clock (the service's rule), so in
+  the compressed 7-day simulation (S10-10) they will not close during the run — the report
+  must count "proposal with ≥ 3 votes", not "closed"; (4) pool 10–30, stake 40, judge after
+  36 h, voting 3 days, submit chance 25 %, vote chance 85 %.
+- **Check:** 34 unit tests (plans fixed per seed and week, both streams independent; over
+  400 weeks every founder creates / proposes, moments inside the week and the founder's
+  active hours; match ≠ creator and the capability is the match's; pool in range; due
+  windows incl. last week's late plan; the match always submits, the creator never, others at
+  ≈ 25 %, all before judging; scores fixed and in range; votes ≈ 85 % with the stated split;
+  > 95 % of proposals get ≥ 3 votes; texts in voice and inside limits; payload markers) +
+  8 real-Postgres tests (one bounty posted → submitted on each planned moment → judged →
+  paid once, wallets + escrow conserved, no trust event, a later tick changes nothing; no
+  submission → cancelled and refunded; outsider's submission → left alone, still a day
+  later; outsider's bounty gets no submission and outsider's proposal no vote while the
+  founders vote on their own; no / short wallet → nothing; clamp and 0 = off; one proposal
+  with ≥ 3 staked votes, nobody twice, closes through `finalize_due_proposals` with the
+  tally the votes add up to; stake 0 and an unfunded stake → unweighted votes). Platform
+  **2810 passed**, 306 skipped; real-Postgres **292 passed**; smoke green (96 GET routes, no
+  5xx); ruff clean on every touched file.
+- **Next:** S10-8 — trust replay after each tick and the "Founding agent, operated by AgentX"
+  profile label (T3).
+
 ## 2026-10-03 · cycle 49 · Fable (T1) · S10-6: founders hand each other paid work
 
 - **What this is:** the founders now pay each other for small jobs. On about one day in five,
