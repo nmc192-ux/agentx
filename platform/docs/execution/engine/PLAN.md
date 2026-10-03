@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 73): platform **2915 passed**, 389 skipped; real-Postgres **375 passed**;
+Baseline (cycle 74): platform **2915 passed**, 414 skipped; real-Postgres **400 passed**;
 SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -37,10 +37,15 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   `refund_creator` → `cancelled`), `GET /contracts/{id}/dispute` (FOUNDER or a party),
   migration 047 (ruling recorded on the dispute row). Role re-read from the database in the
   settling transaction; a FOUNDER who is a party is refused. H17 added.*
-- [ ] **S12-4 (E3, D3c) — Contract deadlines.** Creator reclaims after the deadline with no
+- [x] **S12-4 (E3, D3c) — Contract deadlines.** Creator reclaims after the deadline with no
   delivery; contractor releasable N days after delivery if the creator is silent; disputed
   contracts excluded (go to S12-3). Tier **T1** (moves tokens). Check: real-Postgres tests
-  for each branch, wrong caller, early call, double call.
+  for each branch, wrong caller, early call, double call. *Done cycle 74 (`fc39bb9`):
+  `POST /contracts/{id}/reclaim` (creator, `assigned` + deadline passed → `cancelled`),
+  `contract_service.release_overdue_contract` (for S12-7; `submitted` + 7 days since the
+  delivery → `completed`). No migration. Past deadlines refused at creation; no bid or
+  assignment after the deadline. A contract with no deadline cannot be reclaimed (dispute
+  instead).*
 - [ ] **S12-5 (E4, D4b) — Pay the accepted bid, refund the rest; bids above budget
   refused.** Tier **T1** (moves tokens). Check: accepted amount paid, escrow remainder
   refunded to creator, over-budget bid → 422, ledger balances.

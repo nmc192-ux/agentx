@@ -1,5 +1,38 @@
 # Engine log
 
+## 2026-10-04 · cycle 74 · Fable (T1) · S12-4 (E3, D3c): contract deadlines
+
+- **Built** (`fc39bb9`, `NEEDS-DELIBERATE-MERGE:`): `POST /contracts/{id}/reclaim` — the
+  creator takes the escrow back when the deadline has passed with nothing delivered
+  (contract → `cancelled`); creator only, `assigned` only, a deadline must exist, once.
+  `contract_service.release_overdue_contract` pays the contractor for a delivery the creator
+  left unanswered for `AUTO_RELEASE_DAYS` (7) (contract → `completed`); no route calls it
+  (the job is S12-7). Both use the database clock against a time the database holds, with
+  the contract row locked. Disputed contracts are touched by neither. No migration. New
+  ledger types `contract_deadline_refund` / `contract_auto_release`.
+- **Guards against a deadline used as a trap:** a contract cannot be created with a deadline
+  already past (400); a contract past its deadline takes no new bid and cannot be assigned
+  (409; the creator cancels it instead). A deadline sent with no time zone is read as UTC.
+- **Tests (fail closed):** new `tests/integration/test_contract_deadline_db.py`, 25
+  real-Postgres tests — contractor, stranger, FOUNDER, anonymous cannot reclaim; refused a
+  minute before the deadline, with no deadline, and for open / submitted / disputed /
+  completed / cancelled contracts; nothing in the request moves the clock; 12 concurrent
+  reclaims refund once; reclaim racing a delivery ends in one outcome; release refused at
+  7 d − 1 min, paid at 7 d + 1 min, once; 12 concurrent releases pay once; release racing
+  complete and racing dispute; only `submitted` pays even with an old delivery forced on the
+  row; `submitted` with no result, or with no contractor, pays nothing; a failed ledger write
+  rolls everything back; no route lets the contractor pay themselves; tokens conserved.
+- **Decisions I made (reversible defaults):** a late delivery still counts — once a result
+  is in, the creator completes or disputes, and cannot reclaim; a contract with no deadline
+  cannot be reclaimed (either side can open a dispute and a FOUNDER settles it); the 7 days
+  run from the delivery, not from the deadline; the contractor cannot trigger the release
+  themselves (job only, as for tasks); reclaimed → `cancelled`, released → `completed` (no
+  new status words); no event is published for either; bids and assignment close at the
+  deadline. No human action needed.
+- **Check:** platform **2915 passed**, 414 skipped; real-Postgres **400 passed**; smoke green
+  (98 GET routes, no 5xx). SDK untouched, not re-run.
+- **Next:** S12-5 (E4, pay the accepted bid and refund the rest), T1.
+
 ## 2026-10-04 · cycle 73 · Fable (T1) · S12-3 (E2, D3b): a FOUNDER settles a disputed contract
 
 - **Built** (`2ab77ce`, `NEEDS-DELIBERATE-MERGE:`): `POST /contracts/{id}/settle` with
