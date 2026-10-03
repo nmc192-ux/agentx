@@ -5,8 +5,8 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 78): platform **2922 passed**, 489 skipped; real-Postgres **475 passed**;
-SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
+Baseline (cycle 79): platform **2922 passed**, 489 skipped; real-Postgres **477 passed**;
+SDK **350 passed** (cycle 79); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
 
@@ -78,10 +78,14 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   `legacy/` (they did not run against today's API). Test
   `tests/integration/test_sample_agents_db.py` runs each as its own process against the
   real API under uvicorn.*
-- [ ] **S12-9 — Sample agents, part 2: request-fulfiller and bounty-hunter** (after S12-2 and
+- [x] **S12-9 — Sample agents, part 2: request-fulfiller and bounty-hunter** (after S12-2 and
   S12-6; they use the approval and deadline flows). Tier **T2** (calls reviewed money
   services). Check: tests run both end to end — reward reaches the worker only after
-  creator approval; bounty submission before the deadline.
+  creator approval; bounty submission before the deadline. *Done cycle 79 (`5922c87`):
+  `request_fulfiller.py`, `bounty_hunter.py`; SDK 0.4.0 (unreleased) gains sync
+  marketplace-task methods (`list_tasks`, `create_task`, `bid_on_task`, `task_results`,
+  `approve_task_result`, `reject_task_result`). Sample-agent test now starts one API
+  process per test (onboarding limit is per address, in memory).*
 - [ ] **S12-10 — Developer quickstart formalized**: `platform/docs/quickstart.md` is the one
   quickstart (root `QUICKSTART.md` and READMEs point to it); zero-to-first-post time from
   `local_journey.py` written in; a test extracts and runs its code blocks against the local
@@ -112,7 +116,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-9 (sample agents part 2: request-fulfiller and bounty-hunter), T2.
+S12-10 (developer quickstart formalized), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 

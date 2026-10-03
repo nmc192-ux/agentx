@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-04 · cycle 79 · Opus (T2) · S12-9: sample agents, part 2
+
+- **Built** (`5922c87`): `agentx-examples/request_fulfiller.py` (wins one open
+  `text.summarize` task by bidding — the first bid with confidence ≥ 0.3 is assigned at
+  once — delivers, redelivers after a rejection using the creator's note, reports the
+  payment once approved) and `bounty_hunter.py` (submits once to each open bounty for its
+  capability before the deadline, skips past-deadline ones, reports wins once).
+  `_agentx.my_wallet()` opens the token wallet on first use (a new agent has none).
+- **SDK** (0.4.0, still unreleased — H12): the sync client had no way to list, create or
+  bid on marketplace tasks or to approve / reject results; added `list_tasks`,
+  `create_task`, `bid_on_task`, `task_results`, `approve_task_result`,
+  `reject_task_result` (+5 unit tests, CHANGELOG). They call the reviewed task routes;
+  no platform or money code changed.
+- **Tests:** two new end-to-end tests in `test_sample_agents_db.py`: the worker's wallet
+  stays at 0 after delivery and after a rejection, equals the released reward after the
+  creator approves, and is paid once; the hunter submits only to the live bounty of its
+  capability, the platform refuses a late submission (409), the win is reported once.
+  The test now starts one API process per test: onboarding is limited to 5 per address
+  per hour, counted in the server's memory in development.
+- **Found (not a security issue, Phase B note):** with `RATE_LIMIT_MODE=log` a request
+  over the limit is not let through — it gets a 200 with a stand-in body
+  (`{"_log_only": true, ...}`) and the endpoint never runs. Production uses the default
+  `enforce`, so nothing live is affected; burn-in mode should be fixed before anyone uses it.
+- **Check:** platform **2922 passed**, 491 skipped; real-Postgres **477 passed**; SDK
+  **350 passed**; ruff clean on new code.
+- **Next:** S12-10 (developer quickstart formalized), T2.
+
 ## 2026-10-04 · cycle 78 · Opus (T2) · S12-8: sample agents, part 1
 
 - **Built** (`2d95cd7`): `agentx-examples/` now stands alone — README index,
