@@ -41,6 +41,12 @@ Design notes
   to the creator when the creator cancels a contract nobody was assigned to,
   for a disputed contract only — to whichever of the two a FOUNDER rules for
   (``settle_dispute``, Sprint 12, S12-3), and by the two deadline rules below.
+• The price is the accepted bid (decision D4b; Sprint 12, S12-5). A bid above
+  the budget is refused. When the creator accepts a bid, the part of the
+  escrow above the bid goes back to the creator in the assigning transaction
+  and the escrow becomes exactly the bid; from then on every way out above
+  moves that amount, whole, to one side. The amount is read from the bid row
+  under the contract lock; no request names it.
 • Deadlines (decision D3c; Sprint 12, S12-4). A contractor who has not
   delivered by the contract's deadline can lose the job: the creator takes
   the escrow back with ``reclaim_contract``. A creator who leaves a delivery
@@ -63,7 +69,8 @@ Design notes
   the creator, never anywhere else and never split.
 • One bid per (contract_id, bidder_id); the creator cannot bid on their own
   contract.
-• Errors: PermissionError → 403, ContractConflictError → 409, other
+• Errors: PermissionError → 403, ContractConflictError → 409,
+  BidOverBudgetError → 422, other
   ValueError → 404 ("not found") or 400. See routers/contracts.py.
 • Events are fire-and-forget; failures are logged but never bubble up.
 """
@@ -95,6 +102,10 @@ logger = logging.getLogger(__name__)
 
 class ContractConflictError(ValueError):
     """The contract is not in a state that allows the action (→ HTTP 409)."""
+
+
+class BidOverBudgetError(ValueError):
+    """The bid asks for more than the contract's budget (→ HTTP 422)."""
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -268,6 +279,75 @@ async def _settle_contract_escrow(
         related_id=contract_id,
     )
     return escrowed
+
+
+async def _refund_escrow_above_bid(
+    conn,
+    contract_id: UUID,
+    creator_id: UUID,
+    bid_amount: int,
+) -> int:
+    """
+    Cut a contract's escrow down to the accepted bid and return the rest to
+    the creator, inside the caller's transaction. Returns the amount refunded
+    (0 when the bid equals the escrow).
+
+    The caller must hold the contract row lock. The escrow is read here, under
+    that lock, and the UPDATE is conditional on the value read, so the refund
+    and the new escrow always add up to what was held. A bid that is not
+    positive or is above the escrow is refused: nothing is ever taken from
+    the creator's wallet to top the escrow up.
+    """
+    escrowed = await conn.fetchval(
+        "SELECT escrowed_budget FROM contracts WHERE contract_id = $1 FOR UPDATE",
+        contract_id,
+    )
+    if bid_amount <= 0 or escrowed is None or bid_amount > escrowed:
+        raise ContractConflictError(
+            "The bid is above the contract's budget and cannot be accepted"
+        )
+    remainder = escrowed - bid_amount
+    if remainder == 0:
+        return 0
+
+    cut = await conn.fetchval(
+        """
+        UPDATE contracts
+           SET escrowed_budget = $2
+         WHERE contract_id = $1
+           AND escrowed_budget = $3
+        RETURNING contract_id
+        """,
+        contract_id,
+        bid_amount,
+        escrowed,
+    )
+    if cut is None:
+        raise ContractConflictError("Contract escrow changed; try again")
+
+    wallet_row = await conn.fetchrow(
+        """
+        INSERT INTO wallets (agent_id, balance)
+        VALUES ($2, $1)
+        ON CONFLICT (agent_id) DO UPDATE
+            SET balance    = wallets.balance + EXCLUDED.balance,
+                updated_at = CURRENT_TIMESTAMP
+        RETURNING wallet_id
+        """,
+        remainder,
+        creator_id,
+    )
+
+    # Ledger entry: NULL (escrow) → creator wallet
+    await _record_transaction(
+        conn,
+        from_wallet=None,
+        to_wallet=wallet_row["wallet_id"],
+        amount=remainder,
+        tx_type="contract_bid_refund",
+        related_id=contract_id,
+    )
+    return remainder
 
 
 async def _lock_contract(conn, contract_id: UUID):
@@ -496,6 +576,8 @@ async def submit_bid(
                                their own contract and pay themselves).
         ContractConflictError: contract not open or past its deadline, or
                                the caller already bid.
+        BidOverBudgetError:    the bid is above the contract's budget (the
+                               accepted bid is what the contractor is paid).
     """
     async with transaction() as conn:
         contract = await _lock_contract(conn, contract_id)
@@ -507,6 +589,11 @@ async def submit_bid(
             )
         if contract.get("deadline_passed"):
             raise ContractConflictError("Contract deadline has passed; it takes no new bids")
+        if data.bid_amount > min(contract["budget"], contract["escrowed_budget"]):
+            raise BidOverBudgetError(
+                f"Bid of {data.bid_amount} is above the contract's budget of "
+                f"{contract['budget']} tokens"
+            )
 
         bidder_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
@@ -567,20 +654,28 @@ async def assign_contract(
     """
     Creator accepts a bid and assigns the contract to the winning bidder.
 
+    The accepted bid becomes the price (decision D4b; Sprint 12, S12-5): in
+    this same transaction, with the contract row locked, the escrow above the
+    bid is returned to the creator and the escrow left is exactly the bid.
+    The amount is the one stored on the bid row; the request names only the
+    bid. A bid above the escrow cannot be accepted.
+
     Args:
         contract_id: UUID of the contract to assign.
         caller_did:  DID of the caller (must be the contract's creator).
         bid_id:      UUID of the accepted bid.
 
     Returns:
-        Updated ContractResponse with status='assigned'.
+        Updated ContractResponse with status='assigned' and
+        ``escrowed_budget`` equal to the accepted bid.
 
     Raises:
         ValueError:            contract or bid not found.
         PermissionError:       caller is not the creator, or the bid is the
                                creator's own.
         ContractConflictError: contract is not open (e.g. already assigned),
-                               or its deadline has passed.
+                               its deadline has passed, or the bid is above
+                               the escrow.
     """
     async with transaction() as conn:
         contract = await _lock_contract(conn, contract_id)
@@ -598,7 +693,7 @@ async def assign_contract(
 
         bid = await conn.fetchrow(
             """
-            SELECT bid_id, bidder_did, bidder_id
+            SELECT bid_id, bidder_did, bidder_id, bid_amount
             FROM   contract_bids
             WHERE  bid_id = $1 AND contract_id = $2
             """,
@@ -609,6 +704,20 @@ async def assign_contract(
             raise ValueError(f"Bid not found: {bid_id}")
         if bid["bidder_did"] == contract["creator_did"]:
             raise PermissionError("A contract cannot be assigned to its own creator")
+
+        creator_id = contract["creator_id"]
+        if creator_id is None:
+            creator_id = await conn.fetchval(
+                "SELECT agent_id FROM agents WHERE agent_did = $1",
+                caller_did,
+            )
+            if creator_id is None:
+                raise ValueError(f"Creator agent not found: {caller_did}")
+
+        # The accepted bid is the price: return the escrow above it.
+        refunded = await _refund_escrow_above_bid(
+            conn, contract_id, creator_id, bid["bid_amount"]
+        )
 
         # Insert assignment record
         await conn.execute(
@@ -657,8 +766,8 @@ async def assign_contract(
     )
 
     logger.info(
-        "contract_service: contract %s assigned to %s",
-        contract_id, bid["bidder_did"],
+        "contract_service: contract %s assigned to %s for %d (refunded %d to the creator)",
+        contract_id, bid["bidder_did"], bid["bid_amount"], refunded,
     )
     return result
 

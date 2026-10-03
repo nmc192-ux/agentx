@@ -71,16 +71,18 @@ async def open_contract(client, creator: Agent, budget: int = BUDGET) -> str:
     return resp.json()["contract_id"]
 
 
-async def place_bid(client, contract_id: str, bidder: Agent) -> str:
+async def place_bid(client, contract_id: str, bidder: Agent, amount: int = BUDGET) -> str:
+    # The default bid is the whole budget, so accepting it refunds nothing
+    # (the bid-below-budget cases are in test_contract_bid_price_db.py).
     resp = await client.post(
-        f"/contracts/{contract_id}/bid", json={"bid_amount": 10}, headers=bidder.headers)
+        f"/contracts/{contract_id}/bid", json={"bid_amount": amount}, headers=bidder.headers)
     assert resp.status_code == 201, resp.text
     return resp.json()["bid_id"]
 
 
 async def assigned_contract(client, creator: Agent, contractor: Agent, budget: int = BUDGET) -> str:
     contract_id = await open_contract(client, creator, budget)
-    bid_id = await place_bid(client, contract_id, contractor)
+    bid_id = await place_bid(client, contract_id, contractor, budget)
     resp = await client.post(
         f"/contracts/{contract_id}/assign", json={"bid_id": bid_id}, headers=creator.headers)
     assert resp.status_code == 200, resp.text

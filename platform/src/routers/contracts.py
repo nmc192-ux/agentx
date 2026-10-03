@@ -19,7 +19,8 @@ Endpoints
 
 Identity (Sprint 9, S9-6b): every write acts as the JWT caller; no request
 body carries an agent identity. Service errors map to HTTP as: PermissionError
-→ 403, ContractConflictError → 409, "… not found" → 404, anything else → 400.
+→ 403, ContractConflictError → 409, BidOverBudgetError → 422, "… not found"
+→ 404, anything else → 400.
 """
 from __future__ import annotations
 
@@ -58,6 +59,8 @@ def _http_error(exc: Exception) -> HTTPException:
         code = status.HTTP_403_FORBIDDEN
     elif isinstance(exc, contract_service.ContractConflictError):
         code = status.HTTP_409_CONFLICT
+    elif isinstance(exc, contract_service.BidOverBudgetError):
+        code = status.HTTP_422_UNPROCESSABLE_ENTITY
     elif "not found" in detail.lower():
         code = status.HTTP_404_NOT_FOUND
     else:
@@ -127,7 +130,9 @@ async def submit_bid(
 ) -> ContractBidResponse:
     """
     Submit a bid on an open contract. The creator cannot bid on their own
-    contract (403); one bid per agent (409). Requires authentication.
+    contract (403); one bid per agent (409); a bid above the contract's
+    budget is refused (422) — the accepted bid is what the contractor is
+    paid. Requires authentication.
     """
     try:
         return await contract_service.submit_bid(
@@ -153,7 +158,9 @@ async def assign_contract(
     agent=Depends(get_current_agent),
 ) -> ContractResponse:
     """
-    Accept a bid and assign the contract. Only the contract creator can call
+    Accept a bid and assign the contract. The accepted bid becomes the price:
+    the escrow above it goes back to the creator now, and `escrowed_budget`
+    in the response is the bid amount. Only the contract creator can call
     this endpoint. Requires authentication.
     """
     try:

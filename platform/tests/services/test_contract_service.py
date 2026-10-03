@@ -382,12 +382,14 @@ class TestAssignContract:
         bidder_id   = uuid4()
 
         contract_q = _contract_row(contract_id=contract_id, creator_did=CREATOR, status="open")
-        bid_q      = {"bid_id": bid_id, "bidder_did": "did:agentx:bidder", "bidder_id": bidder_id}
+        bid_q      = {"bid_id": bid_id, "bidder_did": "did:agentx:bidder", "bidder_id": bidder_id,
+                      "bid_amount": 1000}
         updated    = _contract_row(contract_id=contract_id, status="assigned",
                                    contractor_did="did:agentx:bidder", contractor_id=bidder_id)
 
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(side_effect=[contract_q, bid_q, updated])
+        conn.fetchval = AsyncMock(return_value=1000)          # escrow == bid: no refund
         conn.execute  = AsyncMock()
 
         with (
