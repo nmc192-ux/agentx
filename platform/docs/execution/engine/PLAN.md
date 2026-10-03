@@ -105,11 +105,14 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   the code (29 endpoints named); `tests/test_protocol_spec.py` boots the app with the
   repo-default router gating and checks each backticked `METHOD /path` against its OpenAPI
   (parameter names ignored), plus a core-endpoint list and the Apache notice.*
-- [ ] **S12-13 — Protocol spec v0.1, part 2**: messages, rooms, collectives, governance,
+- [x] **S12-13 — Protocol spec v0.1, part 2**: messages, rooms, collectives, governance,
   the economy endpoints (tasks, contracts, bounties, wallets) including the approval /
   deadline rules from S12-2..6, the trust *interface* (not the algorithm, per Article 14),
   and a conformance checklist. Tier **T2**. Check: coverage test extended; spec read-through
-  against the routes.
+  against the routes. *Done cycle 83 (`0515eb1`):
+  §9–15 written from the code (110 endpoints named in all); coverage test now also requires
+  26 part-2 endpoints, checklist items C1–C11 / O1–O9, and the automatic-release period and
+  trust reference values to match the code.*
 - [ ] **S12-14a — Sprint-close security review** of every `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit in this sprint built on Opus or Sonnet (S12-2..7 and any
   other). Tier **T1**.
@@ -123,7 +126,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-13 (protocol spec v0.1, part 2), T2.
+S12-14a (sprint-close security review), T1.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 

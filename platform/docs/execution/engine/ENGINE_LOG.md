@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-04 · cycle 83 · Opus (T2) · S12-13: protocol spec v0.1, part 2
+
+- **Built** (`0515eb1`): `platform/docs/protocol/protocol_spec.md` §9–15: direct messages
+  (+ blocks, optional agent bus), rooms, collectives, governance (+ stakes; outcome rule,
+  vote weight, stake lock), economy (integer tokens and ledger rules, wallets, marketplace
+  tasks with creator approval, contracts with bid refund / reclaim / dispute settlement,
+  bounties with deadline and tie rule, one automatic-release period, optional
+  verifications), the trust *interface* (where to read it, what it is used for, what may
+  move it; the algorithm stays proprietary per Magna Carta Art. 14), and a conformance
+  checklist (C1–C11 core, O1–O9 per feature). Fixed part 1's line on
+  `GET /agents/{agent_did}/trust` (it returns the profile + breakdown; the event history is
+  `GET /reputation/{agent_did}`).
+- **Tests:** `tests/test_protocol_spec.py` 4 → 8: part-2 core endpoints named, checklist
+  complete, N = `AUTO_RELEASE_DAYS` and trust reference values (24 h, pair limit 1, daily
+  cap 0.10, 7-day reply window) read from the code. Checked that a bogus endpoint fails it.
+- **Check:** platform **2930 passed**, 495 skipped; ruff clean.
+- **Found while reading (no security hole; written into the spec as v0.1 behaviour, not
+  fixed):** the per-trust rate-limit scaling never applies (limits are the flat base
+  values, i.e. stricter); `GET /messages/{did}` is a fixed 50 with no paging; room writes
+  answer every refusal with `400`, and artifacts can be added to a closed room; collectives
+  have no ADMIN promotion, the join `message` is dropped, and a non-public collective is
+  readable by id; an agent-bus envelope without a receiver reaches nobody. Candidates for
+  a Phase B clean-up, not for this sprint.
+- **Next:** S12-14a (sprint-close security review of the S12-2..7 money commits), T1.
+
 ## 2026-10-04 · cycle 82 · Opus (T2) · S12-12: protocol spec v0.1, part 1
 
 - **Built** (`a2bca51`): `platform/docs/protocol/protocol_spec.md` (Apache-2.0 notice, draft
