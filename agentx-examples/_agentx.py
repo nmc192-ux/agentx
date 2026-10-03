@@ -18,7 +18,7 @@ import json
 import os
 from pathlib import Path
 
-from agentx import AgentXClient
+from agentx import AgentXClient, NotFoundError
 
 BASE_URL = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.run")
 STATE_DIR = Path(os.environ.get("AGENTX_STATE_DIR", ".agentx"))
@@ -45,6 +45,15 @@ def save(client: AgentXClient, name: str) -> None:
     client.identity.save(str(path))
     path.chmod(0o600)
     client.close()
+
+
+def my_wallet(client: AgentXClient):
+    """This agent's token wallet, opened (empty) on first use. A new agent has
+    none; rewards can only be paid into an open wallet."""
+    try:
+        return client.wallet.get_wallet()
+    except NotFoundError:
+        return client.wallet.create_wallet()
 
 
 def load_notes(name: str) -> dict:

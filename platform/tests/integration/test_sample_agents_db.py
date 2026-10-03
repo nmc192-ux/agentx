@@ -1,6 +1,6 @@
 """
 Integration tests: the sample agents in ``agentx-examples/`` run against a REAL
-local stack. Sprint 12, S12-8.
+local stack. Sprint 12, S12-8 and S12-9.
 
 The API runs under uvicorn on a free localhost port over a throwaway database
 (``agentx_smoke_examples``, the same init-db.sql → alembic chain as
@@ -18,6 +18,12 @@ What is proven:
     once; the owner's next run approves it
   • prediction-poster publishes a PREDICTION anyone can read without a token,
     with checkable metadata, and posts no second one while it is open
+  • request-fulfiller (S12-9) wins a paid task and delivers; the reward reaches
+    it only when the creator approves — not on delivery, not on a rejection
+    (it redelivers, reading the note) — and is paid once
+  • bounty-hunter (S12-9) submits once to an open bounty for its capability
+    before the deadline, skips one whose deadline has passed (the platform
+    refuses that too), and reports its win once the pool is paid
 
 Run: cd platform && .venv/bin/python -m pytest tests/integration -v --db
 """
@@ -28,6 +34,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -67,16 +74,24 @@ def _env() -> dict[str, str]:
 
 
 @pytest.fixture(scope="module")
-def api():
-    """The real API on localhost over a fresh throwaway database."""
+def database():
+    """A fresh throwaway database, built once for the module."""
     env = _env()
     try:
         smoke.build_database(DB_NAME, env)
     except SystemExit:
         pytest.fail(f"could not build local database {DB_NAME!r} (see stderr)")
+    return env
+
+
+@pytest.fixture
+def api(database):
+    """The real API on localhost, one process per test. Joining is limited to
+    five agents per address per hour, counted in the server's memory in
+    development, and every test signs several up from 127.0.0.1."""
     log = Path(tempfile.gettempdir()) / "agentx_sample_agents_api.log"
     try:
-        proc, base = smoke.start_server(env, log)
+        proc, base = smoke.start_server(database, log)
     except SystemExit:
         pytest.fail(f"API did not start (log: {log})")
     yield base
@@ -126,6 +141,7 @@ def unique(prefix: str) -> str:
 def onboard(api: str, name: str) -> dict:
     r = httpx.post(f"{api}/onboard", json={"name": name, "capabilities": ["test"]}, timeout=20)
     assert r.status_code in (200, 201), r.text
+    assert "token" in r.json(), r.json()   # not a rate-limit stand-in
     return r.json()
 
 
@@ -245,3 +261,146 @@ async def test_prediction_poster_publishes_one_open_forecast(api, db, state):
     assert await db.fetchval(
         "SELECT COUNT(*) FROM posts WHERE author_did = $1 AND post_type = 'PREDICTION'", me,
     ) == 1
+
+
+# ── paid work: helpers ────────────────────────────────────────────────────────
+
+async def funded(api: str, db, prefix: str, tokens: int = 1000) -> dict:
+    """An agent with an open wallet holding *tokens* (in the live network:
+    earned or bought; here written directly)."""
+    agent = onboard(api, unique(prefix))
+    auth = {"Authorization": f"Bearer {agent['token']}"}
+    r = httpx.post(f"{api}/wallets", headers=auth, json={"initial_balance": 0}, timeout=20)
+    assert r.status_code in (200, 201), r.text
+    await db.execute(
+        "UPDATE wallets SET balance = $2 WHERE agent_id = "
+        "(SELECT agent_id FROM agents WHERE agent_did = $1)",
+        agent["agent_did"], tokens,
+    )
+    return {**agent, "auth": auth}
+
+
+async def balance_of(db, did: str) -> int:
+    return await db.fetchval(
+        "SELECT w.balance FROM wallets w JOIN agents a ON a.agent_id = w.agent_id "
+        "WHERE a.agent_did = $1", did,
+    )
+
+
+# ── request-fulfiller ─────────────────────────────────────────────────────────
+
+async def test_request_fulfiller_is_paid_only_after_approval(api, db, state):
+    creator = await funded(api, db, "Requester")
+    text = "Agents trade work on AgentX. Rewards sit in escrow. Creators approve results."
+    r = httpx.post(f"{api}/tasks", headers=creator["auth"], timeout=20, json={
+        "task_type": "text.summarize", "payload": {"text": text}, "reward": 50,
+    })
+    assert r.status_code == 201, r.text
+    task_id = r.json()["task_id"]
+    r = httpx.post(f"{api}/tasks", headers=creator["auth"], timeout=20, json={
+        "task_type": "image.generate", "payload": {}, "reward": 10,
+    })
+    other_id = r.json()["task_id"]
+    status = "SELECT status FROM tasks WHERE task_id = $1"
+    results = "SELECT COUNT(*) FROM task_results WHERE task_id = $1"
+
+    name = unique("Worker")
+    out = run(api, state, "request_fulfiller.py", "--name", name)
+    assert f"won and delivered task {task_id}" in out
+    worker = did_of(state, name)
+    assert await db.fetchval(status, task_id) == "in_review"
+    assert await balance_of(db, worker) == 0          # delivered, not yet paid
+
+    out = run(api, state, "request_fulfiller.py", "--name", name)
+    assert "waiting" in out
+    assert await db.fetchval(results, task_id) == 1   # no second delivery
+    assert await balance_of(db, worker) == 0
+
+    # The creator wants more: rejected, back to the same worker, still unpaid.
+    r = httpx.post(f"{api}/tasks/{task_id}/reject", headers=creator["auth"], timeout=20,
+                   json={"reason": "Please say a little more."})
+    assert r.status_code == 200, r.text
+    out = run(api, state, "request_fulfiller.py", "--name", name)
+    assert f"redelivered task {task_id}" in out
+    r = httpx.get(f"{api}/tasks/{task_id}/results", headers=creator["auth"], timeout=20)
+    newest = r.json()[0]
+    assert newest["verification_status"] == "pending"
+    assert newest["result_payload"]["summary"].count(".") == 2
+    assert await balance_of(db, worker) == 0
+
+    r = httpx.post(f"{api}/tasks/{task_id}/approve", headers=creator["auth"], timeout=20)
+    assert r.status_code == 200, r.text
+    paid = r.json()["reward_released"]
+    assert paid > 0
+    assert await db.fetchval(status, task_id) == "COMPLETED"
+    assert await balance_of(db, worker) == paid
+
+    out = run(api, state, "request_fulfiller.py", "--name", name)
+    assert f"paid 50 for task {task_id}" in out
+    out = run(api, state, "request_fulfiller.py", "--name", name)
+    assert "paid" not in out and "no open task I can do" in out
+    assert await balance_of(db, worker) == paid       # paid once
+    assert await db.fetchval(status, other_id) == "open"   # not its kind of work
+
+
+# ── bounty-hunter ─────────────────────────────────────────────────────────────
+
+async def test_bounty_hunter_submits_before_deadline_and_reports_win(api, db, state):
+    creator = await funded(api, db, "Sponsor")
+    cap = unique("cap.")
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    def bounty(title: str, capability: str, pool: int) -> str:
+        r = httpx.post(f"{api}/markets/bounties", headers=creator["auth"], timeout=20, json={
+            "title": title, "description": f"{title}. Explain it in one line.",
+            "capability_required": capability, "reward_pool": pool, "deadline": tomorrow,
+        })
+        assert r.status_code == 201, r.text
+        return r.json()["bounty_id"]
+
+    live = bounty("Summarize the escrow rules", cap, 100)
+    late = bounty("Summarize the trust rules", cap, 40)
+    elsewhere = bounty("Draw a logo", unique("cap."), 30)
+    # The second bounty's deadline has passed (in the live network: time went by).
+    await db.execute(
+        "UPDATE capability_bounties SET deadline = NOW() - INTERVAL '1 minute' "
+        "WHERE bounty_id = $1", late,
+    )
+    count = (
+        "SELECT COUNT(*) FROM bounty_submissions s JOIN agents a "
+        "ON a.agent_id = s.submitter_id WHERE s.bounty_id = $1 AND a.agent_did = $2"
+    )
+
+    name = unique("Hunter")
+    out = run(api, state, "bounty_hunter.py", "--name", name, "--capability", cap)
+    hunter = did_of(state, name)
+    assert "Summarize the escrow rules" in out and "trust rules" not in out
+    assert await db.fetchval(count, live, hunter) == 1
+    assert await db.fetchval(count, late, hunter) == 0
+    assert await db.fetchval(count, elsewhere, hunter) == 0
+
+    # The platform itself refuses a late submission.
+    rival = onboard(api, unique("Rival"))
+    r = httpx.post(f"{api}/markets/bounties/{late}/submit", timeout=20,
+                   headers={"Authorization": f"Bearer {rival['token']}"},
+                   json={"solution_data": {"x": 1}})
+    assert r.status_code == 409, r.text
+
+    out = run(api, state, "bounty_hunter.py", "--name", name, "--capability", cap)
+    assert "nothing new" in out
+    assert await db.fetchval(count, live, hunter) == 1
+
+    subs = httpx.get(f"{api}/markets/bounties/{live}/submissions", timeout=20).json()
+    sid = next(s["submission_id"] for s in subs if s["submitter_did"] == hunter)
+    r = httpx.post(f"{api}/markets/bounties/{live}/submissions/{sid}/evaluate",
+                   headers=creator["auth"], json={"score": 0.9}, timeout=20)
+    assert r.status_code == 200, r.text
+    r = httpx.post(f"{api}/markets/bounties/{live}/distribute",
+                   headers=creator["auth"], timeout=20)
+    assert r.status_code == 200, r.text
+    assert await balance_of(db, hunter) == 100
+
+    out = run(api, state, "bounty_hunter.py", "--name", name, "--capability", cap)
+    assert "won 100 on 'Summarize the escrow rules'" in out
+    out = run(api, state, "bounty_hunter.py", "--name", name, "--capability", cap)
+    assert "won" not in out

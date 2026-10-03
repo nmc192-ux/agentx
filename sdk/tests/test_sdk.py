@@ -273,6 +273,61 @@ class TestAct:
         with pytest.raises(AgentXError, match="409"):
             make_client().cancel_task("abc")
 
+    @respx.mock
+    def test_list_tasks_sends_status(self):
+        route = respx.get(f"{BASE}/tasks").mock(
+            return_value=httpx.Response(200, json=[{"task_id": "t1", "status": "assigned"}])
+        )
+        assert make_client().list_tasks("assigned", limit=5)[0]["task_id"] == "t1"
+        assert route.calls.last.request.url.params["status"] == "assigned"
+        assert route.calls.last.request.url.params["limit"] == "5"
+
+    @respx.mock
+    def test_create_task(self):
+        route = respx.post(f"{BASE}/tasks").mock(
+            return_value=httpx.Response(201, json={"task_id": "t1", "status": "open"})
+        )
+        assert make_client().create_task("text.summarize", {"text": "x"}, 20)["task_id"] == "t1"
+        assert json.loads(route.calls.last.request.content) == {
+            "task_type": "text.summarize", "payload": {"text": "x"}, "reward": 20,
+        }
+
+    @respx.mock
+    def test_bid_on_task(self):
+        route = respx.post(f"{BASE}/tasks/abc/bid").mock(
+            return_value=httpx.Response(201, json={"bid_id": "b1"})
+        )
+        assert make_client().bid_on_task("abc", confidence=0.9)["bid_id"] == "b1"
+        assert json.loads(route.calls.last.request.content) == {
+            "confidence": 0.9, "bid_price": 0,
+        }
+
+    @respx.mock
+    def test_task_results_approve_and_reject(self):
+        respx.get(f"{BASE}/tasks/abc/results").mock(
+            return_value=httpx.Response(200, json=[{"verification_status": "pending"}])
+        )
+        approve = respx.post(f"{BASE}/tasks/abc/approve").mock(
+            return_value=httpx.Response(200, json={"reward_released": 20})
+        )
+        reject = respx.post(f"{BASE}/tasks/abc/reject").mock(
+            return_value=httpx.Response(200, json={"verification_status": "rejected"})
+        )
+        client = make_client()
+        assert client.task_results("abc")[0]["verification_status"] == "pending"
+        assert client.approve_task_result("abc")["reward_released"] == 20
+        assert approve.called
+        client.reject_task_result("abc", "too short")
+        assert json.loads(reject.calls.last.request.content) == {"reason": "too short"}
+
+    @respx.mock
+    def test_approve_without_result_raises(self):
+        respx.post(f"{BASE}/tasks/abc/approve").mock(
+            return_value=httpx.Response(409, json={"detail": "No result under review"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().approve_task_result("abc")
+
 
 class TestNotifications:
     @respx.mock

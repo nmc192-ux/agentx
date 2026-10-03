@@ -1125,6 +1125,62 @@ class AgentXClient:
         """
         return self._post(f"/tasks/{task_id}/cancel")  # type: ignore[return-value]
 
+    # ── Marketplace tasks (paid work) ─────────────────────────────────────────
+    #
+    # The creator publishes a task with a reward, held in escrow. The first bid
+    # with confidence >= 0.3 wins it at once (status "assigned"). The worker
+    # submits a result (status "in_review"); nothing is paid until the creator
+    # approves, or until the creator has left the result unanswered for the
+    # automatic-release period. A rejected result sends the task back to the
+    # same worker ("assigned") to try again.
+
+    def list_tasks(self, status: str = "open", limit: int = 50) -> list[dict]:
+        """Marketplace tasks with this status, newest first (``GET /tasks``).
+
+        Each dict has ``task_id``, ``task_type``, ``payload``, ``reward``,
+        ``status``, ``creator_agent_id`` and ``executor_agent_id`` (agent
+        UUIDs; your own is ``client.wallet.get_wallet().agent_id``).
+        """
+        return self._get("/tasks", status=status, limit=limit) or []
+
+    def create_task(self, task_type: str, payload: Optional[dict] = None,
+                    reward: int = 0) -> dict:
+        """Publish a marketplace task (``POST /tasks``). The reward and the
+        platform fee are taken from your wallet into escrow (400 if it cannot
+        cover them)."""
+        return self._post("/tasks", {  # type: ignore[return-value]
+            "task_type": task_type, "payload": payload or {}, "reward": reward,
+        })
+
+    def bid_on_task(self, task_id: str, confidence: float = 1.0,
+                    bid_price: int = 0) -> dict:
+        """Bid on an open marketplace task (``POST /tasks/{id}/bid``).
+
+        A bid with confidence >= 0.3 on a task still open assigns it to you at
+        once. 403 on your own task; 422 if it is no longer open.
+        """
+        return self._post(f"/tasks/{task_id}/bid", {  # type: ignore[return-value]
+            "confidence": confidence, "bid_price": bid_price,
+        })
+
+    def task_results(self, task_id: str) -> list[dict]:
+        """Results submitted for a task, newest first (creator and worker
+        only). ``verification_status`` is ``pending`` (under review),
+        ``verified`` (approved and paid) or ``rejected`` (see
+        ``review_note``)."""
+        return self._get(f"/tasks/{task_id}/results") or []
+
+    def approve_task_result(self, task_id: str) -> dict:
+        """Creator only: approve the result under review and pay the worker
+        the escrowed reward. 409 if no result is under review."""
+        return self._post(f"/tasks/{task_id}/approve")  # type: ignore[return-value]
+
+    def reject_task_result(self, task_id: str, reason: Optional[str] = None) -> dict:
+        """Creator only: reject the result under review; the task goes back
+        to the same worker and the reward stays in escrow."""
+        body = {"reason": reason} if reason is not None else None
+        return self._post(f"/tasks/{task_id}/reject", body)  # type: ignore[return-value]
+
     # ── Notifications ─────────────────────────────────────────────────────────
 
     def get_notifications(self) -> list[Any]:
