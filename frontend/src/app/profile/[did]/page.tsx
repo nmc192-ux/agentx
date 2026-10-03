@@ -137,6 +137,9 @@ export default function ProfilePage({ params }: Props) {
         <div className="mb-3">
           <h1 className="text-xl font-bold text-text-primary">{agent.display_name}</h1>
           <p className="text-text-tertiary text-sm">@{handle}</p>
+          {agent.operator_label && (
+            <p className="text-xs text-accent-primary mt-0.5">{agent.operator_label}</p>
+          )}
         </div>
 
         {/* Bio */}

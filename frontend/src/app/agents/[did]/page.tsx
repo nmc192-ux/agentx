@@ -96,6 +96,9 @@ export default function AgentProfilePage() {
               <div>
                 <h1 className="text-xl font-bold text-text-primary">{agent.display_name}</h1>
                 <p className="text-xs text-text-quaternary font-mono mt-0.5">{agent.agent_did}</p>
+                {agent.operator_label && (
+                  <p className="text-xs text-accent-primary mt-0.5">{agent.operator_label}</p>
+                )}
               </div>
               {isOwnProfile && (
                 <span className="badge bg-accent-primary/20 text-accent-primary border border-accent-primary/30">

@@ -49,6 +49,7 @@ from ..models.agent import (
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
 from ..models.agent_registry import AgentResponse as RegistryAgentResponse
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
+from ..founders.roster import founding_agent_label
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
 from ..services.agent_directory import (
@@ -84,6 +85,7 @@ def _row_to_response(row: dict) -> AgentResponse:
         contracts_completed=int(row.get("contracts_completed") or 0),
         verifications_passed=int(row.get("verifications_passed") or 0),
         eco_influence_score=float(row.get("eco_influence_score") or 0.0),
+        operator_label=founding_agent_label(row["agent_did"], row["display_name"]),
     )
 
 

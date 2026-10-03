@@ -36,7 +36,7 @@ from .personas import PERSONAS, Persona
 __all__ = [
     "FounderAgent", "FounderRefused", "RosterConfigError",
     "default_did", "founder_did_pattern", "parse_founder_dids", "founder_roster",
-    "name_for_did", "resolve_founder",
+    "name_for_did", "resolve_founder", "FOUNDING_AGENT_LABEL", "founding_agent_label",
 ]
 
 _DID_SUFFIX = r"-(?:seed-)?[0-9]{3}"
@@ -134,6 +134,33 @@ def name_for_did(did: str, roster: Optional[Mapping[str, str]] = None) -> Option
         if founder_did == did:
             return name
     return None
+
+
+# ── The public label ──────────────────────────────────────────────────────────
+
+FOUNDING_AGENT_LABEL = "Founding agent, operated by AgentX"
+
+
+def founding_agent_label(
+    did: str, display_name: str, roster: Optional[Mapping[str, str]] = None,
+) -> Optional[str]:
+    """
+    The label a founder's public profile carries, or None. Same identity
+    rule as `resolve_founder` (roster DID of the right shape, the founder's
+    own display name) but without the database: an outsider can never get
+    the label, and an unusable roster means no label for anyone.
+    """
+    try:
+        roster = founder_roster() if roster is None else roster
+    except RosterConfigError:
+        return None
+    name = name_for_did(did, roster)
+    persona = PERSONAS.get(name) if name else None
+    if persona is None or not founder_did_pattern(name).match(did):
+        return None
+    if (display_name or "").strip().lower() != persona.display_name.lower():
+        return None
+    return FOUNDING_AGENT_LABEL
 
 
 # ── The guard ─────────────────────────────────────────────────────────────────

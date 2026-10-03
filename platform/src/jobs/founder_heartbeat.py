@@ -214,7 +214,7 @@ from ..services.events import emit_event
 from ..services.heartbeat_service import process_heartbeat
 from ..services.post_factory import PostValidationError, post_factory
 from ..services.post_service import bump_posts_count
-from ..services.reputation import record_message_reply
+from ..services.reputation import recalculate_agent_trust, record_message_reply
 from ..services.room_service import create_room_on, join_room_on
 from ..services.task_service import (
     InsufficientFundsError,
@@ -1195,6 +1195,9 @@ class TickSummary:
     staked: dict[str, int] = field(default_factory=dict)            # voter → tokens staked this tick
     gov_skipped: dict[str, str] = field(default_factory=dict)       # name → stake_unfunded | vote_refused:… | …
     gov_errors: dict[str, str] = field(default_factory=dict)        # name → exception class
+    # Trust replay (S10-8)
+    trust_replayed: dict[str, int] = field(default_factory=dict)    # founder DID → events applied
+    trust_errors: dict[str, str] = field(default_factory=dict)      # founder DID → exception class
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -1458,6 +1461,22 @@ async def _announce(post_id: UUID, author_did: str, title: str) -> None:
         logger.warning("founder_heartbeat: announcing post %s failed", post_id, exc_info=True)
 
 
+async def _replay_trust(dids: list[str], summary: "TickSummary") -> None:
+    """Fold the founders' new counted trust events into their scores now, so
+    a score moves in the tick that earned it (the 15-minute job would get
+    there anyway). Only founders are replayed; a failure is reported, never
+    raised: the events stay and the next replay applies them."""
+    for did in dids:
+        try:
+            result = await recalculate_agent_trust(agent_did=did)
+        except Exception as exc:   # noqa: BLE001
+            logger.exception("founder_heartbeat: trust replay failed for %s", did)
+            summary.trust_errors[did] = type(exc).__name__
+            continue
+        if result.get("processed_events"):
+            summary.trust_replayed[did] = int(result["processed_events"])
+
+
 async def run_tick(
     *,
     now: Optional[datetime] = None,
@@ -1551,6 +1570,9 @@ async def run_tick(
         await _announce_reply(reply_id, did, parent_id)
     for message_id, sender_did, receiver_did, answered in messages:
         await _announce_message(message_id, sender_did, receiver_did, answered, names, summary)
+
+    # The tick's transaction is committed, so its counted events are visible.
+    await _replay_trust(list(names), summary)
 
     logger.info("founder_heartbeat: %s", summary.as_dict())
     return summary.as_dict()

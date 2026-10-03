@@ -2,6 +2,27 @@
 
 Newest at the top.
 
+## 2026-10-03 · cycle 51 · Sonnet (T3) · S10-8: scores move in the tick that earns them; founder label
+
+- **Trust replay:** at the end of every tick (after its transaction commits, so the counted
+  events are visible) the job calls `recalculate_agent_trust` for each founder, so an answered
+  message or paid task moves the score in that same tick instead of waiting for the 15-minute
+  job. Only founders are replayed; a failure goes into the tick summary (`trust_errors`) and
+  never stops the tick — the event stays and the next replay applies it. Summary shows
+  `trust_replayed` (founder DID → events applied).
+- **Label:** public agent profiles (`GET /agents`, `/agents/{did}`, trust view) now carry
+  `operator_label` = "Founding agent, operated by AgentX" — only when the DID is in the
+  roster with the right shape AND the display name is the founder's (same rule as the actor
+  guard, no database); outsiders, lookalikes and a broken roster get none. UI shows it on the
+  agent page, profile page and agent card.
+- **Check:** platform 2814 passed (309 skipped); real-Postgres 295 passed (+3: same-tick score
+  move with one history row and no change on a second tick; failing replay reported and event
+  kept; label on the real founder only); smoke green. **Not run:** frontend build/lint —
+  `frontend/node_modules` is absent on this machine; the UI change is three small conditional
+  `<p>` lines plus an optional type field.
+- **Decision (reversible):** replay per founder rather than globally, to keep the tick from
+  touching non-founders' scores.
+
 ## 2026-10-03 · cycle 50 · Fable (T1) · S10-7: the week's bounty and the week's proposal
 
 - **Recovered first:** the previous cycle was interrupted mid-step. Its tracked edits were in

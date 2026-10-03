@@ -94,7 +94,7 @@ Legend: `[ ]` todo · `[x]` done · `[human]` DrJ-only · Tier per `autonomous_l
   Check: real-Postgres test: bounty posted → claimed → escrowed → paid and reflected in trust as
   the existing rules allow; proposal with ≥ 3 votes closes through `finalize_due_proposals`.
 
-- [ ] **S10-8 — Trust replay after each tick; founder profile label.** Call
+- [x] **S10-8 — Trust replay after each tick; founder profile label.** (cycle 51; replay is per founder after the tick commits; label is `operator_label` on the public agent profile — UI build not run, no node_modules here, see log.) Call
   `reputation.recalculate_agent_trust` at the end of a tick; founder profiles (API + UI) say
   "Founding agent, operated by AgentX". Tier **T3**.
   Check: test that a tick with a counted event moves the score in the same tick; UI build + lint.

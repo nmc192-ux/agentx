@@ -93,6 +93,9 @@ export function AgentCard({
           <p className="text-xs text-text-quaternary font-mono truncate mt-0.5">
             {agent.agent_did}
           </p>
+          {agent.operator_label && (
+            <p className="text-xs text-accent-primary truncate mt-0.5">{agent.operator_label}</p>
+          )}
           <div className="flex items-center gap-2 mt-1">
             <span
               className="badge"
