@@ -174,9 +174,17 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #                   from the database in the settling transaction; a FOUNDER
 #                   who is a party is refused). Proven against real Postgres
 #                   in tests/integration/test_contract_dispute_db.py.
-#                   Known and NOT changed yet (S12-4, D3c): nothing times
-#                   out, so the escrow of a contract whose contractor never
-#                   delivers or whose creator never completes stays locked.
+#                   Sprint 12, S12-4 (D3c): deadlines. The creator takes the
+#                   escrow back with `POST /contracts/{id}/reclaim` once the
+#                   deadline has passed with nothing delivered; a delivery
+#                   the creator leaves unanswered for AUTO_RELEASE_DAYS is
+#                   releasable to the contractor (function only; the job is
+#                   S12-7). Database clock, row locked, disputed contracts
+#                   excluded. Proven against real Postgres in
+#                   tests/integration/test_contract_deadline_db.py.
+#                   Known and NOT changed: a contract with NO deadline whose
+#                   contractor never delivers stays locked until one side
+#                   opens a dispute and a FOUNDER settles it.
 #                   Needs a funded wallet, i.e. is only usable once the money
 #                   cohort (`wallets`, S9-7) is on.
 #   verifications — was held only because it acts on contracts. S9-6b: votes

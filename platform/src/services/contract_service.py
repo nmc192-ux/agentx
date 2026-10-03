@@ -16,6 +16,8 @@ Public API
   open_dispute(contract_id, caller_did, reason)   → ContractDisputeResponse
   settle_dispute(contract_id, caller_did, outcome, note)
                                                   → ContractSettlementResponse
+  reclaim_contract(contract_id, caller_did)       → ContractResponse
+  release_overdue_contract(contract_id)           → int   (scheduled job only)
   get_dispute_file(contract_id, caller_did)       → ContractDisputeFile
 
 Design notes
@@ -26,14 +28,30 @@ Design notes
       assigned | submitted → disputed       (creator or contractor)
       disputed → completed | cancelled      (a FOUNDER's ruling; escrow paid
                                              to the contractor / refunded)
+      assigned → cancelled                  (creator reclaims: the deadline
+                                             passed with nothing delivered)
+      submitted → completed                 (automatic: the creator left the
+                                             delivery unanswered for
+                                             AUTO_RELEASE_DAYS)
 • Money rules (Sprint 9, S9-6b). The budget is escrowed from the creator's
   wallet in the SAME transaction that creates the contract: no funds, no
   contract (it used to be soft-fail, which let a contract advertise a budget
-  nobody had paid in). The escrow leaves in exactly three ways, each once:
+  nobody had paid in). The escrow leaves in exactly five ways, each once:
   to the contractor when the creator completes a submitted contract, back
   to the creator when the creator cancels a contract nobody was assigned to,
-  or — for a disputed contract only — to whichever of the two a FOUNDER
-  rules for (``settle_dispute``, Sprint 12, S12-3).
+  for a disputed contract only — to whichever of the two a FOUNDER rules for
+  (``settle_dispute``, Sprint 12, S12-3), and by the two deadline rules below.
+• Deadlines (decision D3c; Sprint 12, S12-4). A contractor who has not
+  delivered by the contract's deadline can lose the job: the creator takes
+  the escrow back with ``reclaim_contract``. A creator who leaves a delivery
+  unanswered for AUTO_RELEASE_DAYS loses the say: ``release_overdue_contract``
+  (scheduled job only, no route) pays the contractor. Both compare the
+  DATABASE clock with a time the database holds, under the contract row lock;
+  no caller supplies a time. A contract with no deadline cannot be reclaimed,
+  and a disputed contract is touched by neither rule — it waits for a FOUNDER.
+  So that a deadline cannot be used as a trap, a contract cannot be created
+  with a deadline already past, and a contract past its deadline takes no new
+  bid and cannot be assigned.
 • Every state change locks the contract row (``SELECT … FOR UPDATE``) before
   it reads the status, so concurrent calls are serialised: the second caller
   sees the first one's committed status and is refused. Status change and
@@ -69,6 +87,7 @@ from ..models.contract import (
     ContractResultResponse,
     ContractSettlementResponse,
 )
+from .auto_release import AUTO_RELEASE_DAYS
 from .token_service import _record_transaction
 
 logger = logging.getLogger(__name__)
@@ -252,9 +271,13 @@ async def _settle_contract_escrow(
 
 
 async def _lock_contract(conn, contract_id: UUID):
-    """Fetch the contract row and hold its row lock until the transaction ends."""
+    """Fetch the contract row and hold its row lock until the transaction ends.
+
+    ``deadline_passed`` is the database's own answer (its clock against the
+    stored deadline); it is FALSE for a contract with no deadline."""
     row = await conn.fetchrow(
-        f"SELECT {_CONTRACT_COLS} FROM contracts WHERE contract_id = $1 FOR UPDATE",
+        f"SELECT {_CONTRACT_COLS}, {_DEADLINE_PASSED} AS deadline_passed "
+        "FROM contracts WHERE contract_id = $1 FOR UPDATE",
         contract_id,
     )
     if row is None:
@@ -269,6 +292,9 @@ _CONTRACT_COLS = """
     title, description, contract_type, status, budget, escrowed_budget,
     deadline, payload, created_at
 """
+
+# The database clock against the stored deadline; never a caller's time.
+_DEADLINE_PASSED = "COALESCE(deadline < CURRENT_TIMESTAMP, FALSE)"
 
 _DISPUTABLE_STATUSES = ("assigned", "submitted")
 
@@ -314,8 +340,9 @@ async def create_contract_in_transaction(
 ) -> ContractResponse:
     """
     Insert a contract and escrow its budget on *conn*, inside the caller's
-    transaction. Raises ValueError (creator not found, or insufficient funds /
-    no wallet), which must roll that transaction back.
+    transaction. Raises ValueError (creator not found, a deadline that is not
+    in the future, or insufficient funds / no wallet), which must roll that
+    transaction back.
 
     The caller announces the contract with ``announce_contract_created`` once
     its transaction has committed.
@@ -334,7 +361,7 @@ async def create_contract_in_transaction(
             (creator_did, creator_id, title, description, contract_type,
              budget, deadline, payload)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-        RETURNING {_CONTRACT_COLS}
+        RETURNING {_CONTRACT_COLS}, {_DEADLINE_PASSED} AS deadline_passed
         """,
         caller_did,
         creator_id,
@@ -346,6 +373,10 @@ async def create_contract_in_transaction(
         json.dumps(data.payload) if data.payload else None,
     )
     contract_id = row["contract_id"]
+    if row.get("deadline_passed"):
+        # A deadline already past would let the creator reclaim the moment a
+        # contractor is assigned. Raising rolls the INSERT back.
+        raise ValueError("The contract deadline must be in the future")
 
     # Escrow the budget. Raises on insufficient funds → the whole
     # transaction (the INSERT above included) rolls back.
@@ -392,7 +423,8 @@ async def create_contract(caller_did: str, data: ContractCreate) -> ContractResp
         (``escrowed_budget == budget``).
 
     Raises:
-        ValueError: creator agent not found, or insufficient funds / no wallet.
+        ValueError: creator agent not found, a deadline that is not in the
+                    future, or insufficient funds / no wallet.
     """
     async with transaction() as conn:
         contract = await create_contract_in_transaction(conn, caller_did, data)
@@ -462,7 +494,8 @@ async def submit_bid(
         PermissionError:       the bidder is the contract's creator (no
                                self-dealing: a creator could otherwise win
                                their own contract and pay themselves).
-        ContractConflictError: contract not open, or the caller already bid.
+        ContractConflictError: contract not open or past its deadline, or
+                               the caller already bid.
     """
     async with transaction() as conn:
         contract = await _lock_contract(conn, contract_id)
@@ -472,6 +505,8 @@ async def submit_bid(
             raise ContractConflictError(
                 f"Contract is not open for bidding (status={contract['status']})"
             )
+        if contract.get("deadline_passed"):
+            raise ContractConflictError("Contract deadline has passed; it takes no new bids")
 
         bidder_row = await conn.fetchrow(
             "SELECT agent_id FROM agents WHERE agent_did = $1",
@@ -544,7 +579,8 @@ async def assign_contract(
         ValueError:            contract or bid not found.
         PermissionError:       caller is not the creator, or the bid is the
                                creator's own.
-        ContractConflictError: contract is not open (e.g. already assigned).
+        ContractConflictError: contract is not open (e.g. already assigned),
+                               or its deadline has passed.
     """
     async with transaction() as conn:
         contract = await _lock_contract(conn, contract_id)
@@ -553,6 +589,11 @@ async def assign_contract(
         if contract["status"] != "open":
             raise ContractConflictError(
                 f"Contract cannot be assigned (status={contract['status']})"
+            )
+        if contract.get("deadline_passed"):
+            # Assigning now would let the creator reclaim at once.
+            raise ContractConflictError(
+                "Contract deadline has passed; it cannot be assigned (cancel it instead)"
             )
 
         bid = await conn.fetchrow(
@@ -837,6 +878,154 @@ async def cancel_contract(contract_id: UUID, caller_did: str) -> ContractRespons
         contract_id, caller_did, refunded,
     )
     return _row_to_contract(updated)
+
+
+async def reclaim_contract(contract_id: UUID, caller_did: str) -> ContractResponse:
+    """
+    Creator takes the escrow back from a contractor who did not deliver by the
+    deadline (decision D3c; Sprint 12, S12-4).
+
+    Marks the contract 'cancelled' and refunds the whole escrowed budget to
+    the creator in ONE transaction, with the contract row locked, so it
+    happens once however often or however concurrently it is called, and a
+    delivery racing the reclaim either lands first (the reclaim is refused)
+    or finds the contract cancelled.
+
+    Refused (nothing changes) unless every one of these holds:
+      • the caller is the contract's creator;
+      • the contract is 'assigned' — a contractor was hired and nothing was
+        delivered. Once a result is in ('submitted'), late or not, the creator
+        completes or disputes; a 'disputed' contract waits for a FOUNDER;
+      • the contract has a deadline and, by the database clock, it has passed.
+
+    Args:
+        contract_id: UUID of the contract to reclaim.
+        caller_did:  DID of the caller (must be the contract's creator).
+
+    Returns:
+        Updated ContractResponse with status='cancelled', escrowed_budget=0.
+
+    Raises:
+        ValueError:            contract not found.
+        PermissionError:       caller is not the creator.
+        ContractConflictError: contract is not 'assigned', has no deadline,
+                               or its deadline has not passed.
+    """
+    async with transaction() as conn:
+        contract = await _lock_contract(conn, contract_id)
+        if contract["creator_did"] != caller_did:
+            raise PermissionError("Only the contract creator can reclaim it")
+        if contract["status"] != "assigned":
+            raise ContractConflictError(
+                "Only an assigned contract with nothing delivered can be reclaimed "
+                f"(status={contract['status']})"
+            )
+        if contract["deadline"] is None:
+            raise ContractConflictError(
+                "Contract has no deadline and cannot be reclaimed; open a dispute instead"
+            )
+        if contract["deadline_passed"] is not True:
+            raise ContractConflictError("Contract deadline has not passed yet")
+
+        creator_id = contract["creator_id"]
+        if creator_id is None:
+            creator_id = await conn.fetchval(
+                "SELECT agent_id FROM agents WHERE agent_did = $1",
+                caller_did,
+            )
+            if creator_id is None:
+                raise ValueError(f"Creator agent not found: {caller_did}")
+
+        refunded = await _settle_contract_escrow(
+            conn, contract_id, creator_id, "contract_deadline_refund"
+        )
+
+        updated = await conn.fetchrow(
+            f"""
+            UPDATE contracts
+               SET status = 'cancelled'
+             WHERE contract_id = $1
+               AND status      = 'assigned'
+            RETURNING {_CONTRACT_COLS}
+            """,
+            contract_id,
+        )
+
+    logger.info(
+        "contract_service: contract %s reclaimed by %s after its deadline "
+        "(refunded %d; contractor %s did not deliver)",
+        contract_id, caller_did, refunded, contract["contractor_did"],
+    )
+    return _row_to_contract(updated)
+
+
+async def release_overdue_contract(contract_id: UUID) -> int:
+    """
+    Pay the contractor for a delivery the creator has left unanswered for
+    AUTO_RELEASE_DAYS, so a silent creator cannot withhold the escrow
+    (decision D3c; Sprint 12, S12-4). Returns the amount released.
+
+    For the scheduled job only — no route calls this and it takes no caller
+    and no time: with the contract row locked, the DATABASE clock is compared
+    with the submitted_at the database stamped on the delivered result. A
+    contract that is not 'submitted' (so never a disputed one), not yet due,
+    with no result on record, or whose contractor no longer exists is refused
+    and nothing moves. The payee is the contractor on the locked row.
+
+    Raises:
+        ValueError:            contract not found.
+        ContractConflictError: nothing delivered and unanswered, the period
+                               has not passed, or there is no contractor to pay.
+    """
+    async with transaction() as conn:
+        contract = await conn.fetchrow(
+            """
+            SELECT c.contract_id, c.status, c.contractor_did, c.contractor_id,
+                   COALESCE(
+                       (SELECT MAX(r.submitted_at) FROM contract_results r
+                         WHERE r.contract_id = c.contract_id)
+                           <= CURRENT_TIMESTAMP - make_interval(days => $2),
+                       FALSE
+                   ) AS due
+            FROM contracts c WHERE c.contract_id = $1
+            FOR UPDATE OF c
+            """,
+            contract_id,
+            AUTO_RELEASE_DAYS,
+        )
+        if contract is None:
+            raise ValueError(f"Contract not found: {contract_id}")
+        if contract["status"] != "submitted":
+            raise ContractConflictError(
+                f"Contract has no delivery awaiting the creator (status={contract['status']})"
+            )
+        if contract["due"] is not True:
+            raise ContractConflictError(
+                f"The creator still has time to answer ({AUTO_RELEASE_DAYS} days from delivery)"
+            )
+        if contract["contractor_id"] is None:
+            # The contractor's agent row was deleted. Do not guess a payee.
+            raise ContractConflictError(
+                "Contract has no contractor to pay; it cannot be released"
+            )
+
+        released = await _settle_contract_escrow(
+            conn, contract_id, contract["contractor_id"], "contract_auto_release"
+        )
+
+        await conn.execute(
+            """
+            UPDATE contracts SET status = 'completed'
+             WHERE contract_id = $1 AND status = 'submitted'
+            """,
+            contract_id,
+        )
+
+    logger.info(
+        "contract_service: contract %s released automatically after %d days (%d to %s)",
+        contract_id, AUTO_RELEASE_DAYS, released, contract["contractor_did"],
+    )
+    return released
 
 
 async def open_dispute(

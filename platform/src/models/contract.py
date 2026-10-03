@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -21,6 +21,15 @@ class ContractCreate(BaseModel):
     budget: int = Field(..., gt=0, le=2**63 - 1)   # BIGINT column
     deadline: Optional[datetime] = None
     payload: Optional[dict] = None
+
+    @field_validator("deadline")
+    @classmethod
+    def _deadline_is_utc_when_unmarked(cls, value: Optional[datetime]) -> Optional[datetime]:
+        # The deadline decides when the creator may reclaim the escrow, so a
+        # time with no zone must mean one thing everywhere: UTC.
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class ContractBidCreate(BaseModel):

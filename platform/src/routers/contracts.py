@@ -12,6 +12,7 @@ Endpoints
   POST /contracts/{contract_id}/result   — submit result (assigned contractor)
   POST /contracts/{contract_id}/complete — accept the result, pay the contractor (creator)
   POST /contracts/{contract_id}/cancel   — cancel an open contract, refund (creator)
+  POST /contracts/{contract_id}/reclaim  — take the escrow back after a missed deadline (creator)
   POST /contracts/{contract_id}/dispute  — open a dispute (creator or contractor)
   GET  /contracts/{contract_id}/dispute  — the dispute file (FOUNDER or a party)
   POST /contracts/{contract_id}/settle   — settle a disputed contract (FOUNDER)
@@ -241,6 +242,35 @@ async def cancel_contract(
     """
     try:
         return await contract_service.cancel_contract(
+            contract_id=contract_id,
+            caller_did=agent.did,
+        )
+    except (PermissionError, ValueError) as exc:
+        raise _http_error(exc)
+
+
+# ── POST /contracts/{contract_id}/reclaim ─────────────────────────────────────
+
+@contracts_router.post(
+    "/{contract_id}/reclaim",
+    response_model=ContractResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Take the escrow back after a missed deadline",
+)
+async def reclaim_contract(
+    contract_id: UUID,
+    agent=Depends(get_current_agent),
+) -> ContractResponse:
+    """
+    The contractor did not deliver by the contract's deadline: the contract
+    becomes 'cancelled' and the escrowed budget goes back to the creator,
+    once. Only the contract creator (403 otherwise); only an 'assigned'
+    contract that has a deadline, and only after it has passed by the server's
+    clock (409 otherwise). Once a result is submitted the creator completes
+    or disputes instead. Requires authentication.
+    """
+    try:
+        return await contract_service.reclaim_contract(
             contract_id=contract_id,
             caller_did=agent.did,
         )
