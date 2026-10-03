@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-04 · cycle 77 · Opus (T2) · S12-7 (E6): scheduled job for automatic releases
+
+- **Built** (`2040014`, `NEEDS-DELIBERATE-MERGE:`): Celery job `jobs.auto_release`, every 15
+  minutes on the existing beat schedule (`src/jobs/auto_release.py`). It finds due items
+  with a cheap query on the database clock and calls only the three reviewed release
+  functions (task result, contract delivery, bounty), one item at a time. Each function
+  re-checks everything with the row locked, so running twice or concurrently pays once. A
+  refusal (settled since the query) counts as skipped; any other error on one item is
+  logged, counted as failed and retried next run; one kind's query failing does not stop
+  the others. At most 200 items of each kind per run. No money code changed.
+- **Tests:** new `tests/integration/test_auto_release_job_db.py` (4 real-Postgres tests:
+  due / not-due items of every kind run twice → each released once; 4 concurrent runs →
+  once; a failing item skipped then released next run; an item approved between query and
+  release → skipped, paid once; tokens conserved) and `tests/jobs/test_auto_release.py`
+  (6 unit tests). Schedule-set assertion in `test_scheduled_maintenance.py` updated.
+- **Human action:** H9 note — the production scheduler process (not yet started) also
+  carries this job.
+- **Decisions I made (reversible):** 15-minute interval; batch limit 200 per kind.
+- **Check:** platform **2922 passed**, 486 skipped; real-Postgres **472 passed**; ruff clean.
+  No route changed, so smoke not re-run; SDK untouched.
+- **Next:** S12-8 (sample agents, part 1), T2.
+
 ## 2026-10-04 · cycle 76 · Fable (T1) · S12-6 (E5, D5b): bounty deadline enforced
 
 - **Built** (`f463234`, `NEEDS-DELIBERATE-MERGE:`): a bounty takes no submission after its

@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 76): platform **2916 passed**, 482 skipped; real-Postgres **468 passed**;
+Baseline (cycle 77): platform **2922 passed**, 486 skipped; real-Postgres **472 passed**;
 SDK **345 passed** (cycle 72); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -61,10 +61,12 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   `("rewarded" | "refunded", amount)`). Every new bounty has a deadline (30 days when none
   is given; a past one → 400). No migration, no new route. Bounties stored with no deadline
   are never released automatically.*
-- [ ] **S12-7 (E6) — Scheduled job for automatic releases (S12-2, S12-4, S12-6)** on the
+- [x] **S12-7 (E6) — Scheduled job for automatic releases (S12-2, S12-4, S12-6)** on the
   existing scheduler, calling only the reviewed release functions; idempotent; per-item
   failures logged and skipped. Tier **T2**. Check: job test with due / not-due items run
-  twice → each released once.
+  twice → each released once. *Done cycle 77 (`2040014`): `jobs.auto_release` every 15
+  minutes (`src/jobs/auto_release.py`), at most 200 items of each kind per run. Runs in
+  production only once DrJ starts the scheduler process (H9, note added).*
 - [ ] **S12-8 — Sample agents, part 1: self-contained `agentx-examples/`** (README index,
   `requirements.txt` pinning `agentx-py`, Apache-2.0 LICENSE, shared tiny helper) plus
   **governance-participant**, **collective-coordinator**, **prediction-poster**. Decide what
@@ -105,8 +107,8 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-7 (E6, scheduled job for the automatic releases: `task_service.release_overdue_result`,
-`contract_service.release_overdue_contract`, `bounty_service.release_overdue_bounty`), T2.
+S12-8 (sample agents part 1: self-contained `agentx-examples/` + governance-participant,
+collective-coordinator, prediction-poster), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
