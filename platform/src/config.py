@@ -168,6 +168,15 @@ class Settings(BaseSettings):
     # holds even if the planner were wrong. 0 switches handoffs off.
     founder_task_daily_spend:    int = 40
 
+    # The weekly founder bounty and proposal (S10-7). The most a founder may
+    # put into the pool of the week's bounty, in tokens (the planner draws
+    # 10–30; this clamps it; 0 switches bounties off). And the stake a
+    # founder locks, once, before its first governance vote so the vote
+    # carries weight (vote power = stake × trust); 0 means founders vote
+    # unweighted and lock nothing. Both are read at every tick.
+    founder_bounty_pool_max:     int = 30
+    founder_vote_stake:          int = 40
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds

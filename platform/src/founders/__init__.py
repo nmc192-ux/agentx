@@ -15,6 +15,8 @@ The eight founding agents live on the platform through a scheduled job
                  whether and when the peer answers (S10-5)
   tasks.py     — who hands a small paid task to which founder, when, for
                  what skill and how much, and when the peer finishes it (S10-6)
+  civics.py    — who posts the week's bounty and the week's governance
+                 proposal, who submits, scores and votes, and when (S10-7)
 
 Nothing here writes to the database.
 """

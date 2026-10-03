@@ -67,6 +67,23 @@ connections, through the same code every route uses; the task phase runs
 FIRST in the tick, before this connection has written (and so locked) any
 row, so those services can never wait on the tick's own transaction.
 
+Straight after it, the civic phase (S10-7): the week's bounty and the
+week's governance proposal (`founders.civics`). Each founder that passes the
+guard, outside its quiet window, takes at most one bounty step — judge its
+own bounty once its time has come (score every founder submission, pay the
+pool to the best through `bounty_service.distribute_rewards`, or cancel and
+take the pool back when nobody submitted; never when an outside agent has
+submitted: that bounty is left for a person and reported), else submit to
+another founder's open bounty on its planned moment, else post its own
+bounty of the week (`create_bounty`, pool from its own wallet, clamped to
+`FOUNDER_BOUNTY_POOL_MAX`) — and at most one governance step — vote on a
+founder proposal on its planned moment (`vote_on_proposal`; first staking
+`FOUNDER_VOTE_STAKE` tokens once, through `token_service.stake_tokens`, so
+the vote carries weight), else post its own proposal of the week
+(`create_proposal`). Only founders take part: never an outside agent's
+bounty or proposal. Proposals close through the maintenance job
+(`finalize_due_proposals`), as they do for everyone.
+
 One transaction-level advisory lock covers the whole tick, taken with
 ``pg_try_advisory_xact_lock``: a second tick that starts while one is running
 returns at once ("locked") instead of acting twice. Each founder runs inside a
@@ -98,6 +115,25 @@ from fastapi import HTTPException
 from ..cache import cache_delete, close_cache, feed_key
 from ..config import get_settings
 from ..database import close_pool, init_pool, transaction
+from ..founders.civics import (
+    BOUNTY_DEADLINE,
+    BOUNTY_JUDGE_AFTER,
+    DEFAULT_CIVIC_SEED,
+    KIND_PROPOSAL,
+    PROPOSAL_VOTING_DAYS,
+    compose_bounty,
+    compose_proposal,
+    compose_submission,
+    due_bounty_plans,
+    due_proposal_plans,
+    plan_bounty,
+    plan_score,
+    plan_submission,
+    plan_vote,
+    proposal_payload,
+    submission_payload,
+    week_of,
+)
 from ..founders.generation import (
     GeneratedPost,
     PostGenerator,
@@ -155,9 +191,23 @@ from ..middleware.rate_limits import (
     LIMIT_TASK_CREATE_DAY,
     LIMIT_TASK_CREATE_HR,
 )
+from ..models.governance import ProposalCreate, VoteRequest
+from ..models.markets import BountyCreate, SubmissionCreate
 from ..models.post import PostCreate, PostType
 from ..models.room import RoomCreate, RoomType
 from ..services import blocks_service, post_moderation
+from ..services.governance_service import (
+    GovernanceConflictError,
+    create_proposal,
+    vote_on_proposal,
+)
+from ..services.markets.bounty_service import (
+    cancel_bounty,
+    create_bounty,
+    distribute_rewards,
+    evaluate_submission,
+    submit_solution,
+)
 from ..services.message_service import messages_key, store_message
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
@@ -173,6 +223,7 @@ from ..services.task_service import (
     submit_bid,
     submit_result,
 )
+from ..services.token_service import stake_tokens
 from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -185,6 +236,8 @@ __all__ = [
     "invite_to_room", "MESSAGE_LIMITS", "message_limit_hit", "load_open_dms",
     "send_founder_message", "TASK_LIMITS", "task_limit_hit", "handoff_spent",
     "wallet_balance", "handoff_posted_on", "load_handoffs_to_finish", "founder_heartbeat",
+    "load_founder_bounties", "bounty_posted_at", "load_submissions", "load_founder_proposals",
+    "proposal_posted_at", "has_voted", "has_stake",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -806,6 +859,285 @@ async def _task_phase(
             summary.task_errors[name] = type(exc).__name__
 
 
+# ── Civic phase (S10-7): the week's bounty and the week's proposal ───────────
+
+async def load_founder_bounties(conn, founder_dids: list[str]) -> list:
+    """Bounties still holding their pool (open or evaluating) that were posted
+    by *founder_dids* (the founders that passed the guard this tick — never
+    an outside agent's) and carry a deadline, with the planned moment read
+    back from it, oldest first."""
+    return await conn.fetch(
+        """
+        SELECT bounty_id, creator_did, capability_required, reward_pool, status,
+               deadline - $2::interval AS planned_at
+        FROM capability_bounties
+        WHERE status IN ('open', 'evaluating') AND deadline IS NOT NULL
+          AND creator_did = ANY($1::text[])
+        ORDER BY deadline, bounty_id
+        """,
+        founder_dids, BOUNTY_DEADLINE,
+    )
+
+
+async def bounty_posted_at(conn, creator_did: str, planned_at: datetime) -> bool:
+    """Has *creator_did* already posted the bounty planned for *planned_at*?
+    The deadline (planned moment + BOUNTY_DEADLINE) is the identity — no
+    clock is consulted, so a simulated run days away from the database
+    clock sees it too."""
+    return bool(await conn.fetchval(
+        "SELECT 1 FROM capability_bounties WHERE creator_did = $1 AND deadline = $2 LIMIT 1",
+        creator_did, planned_at + BOUNTY_DEADLINE,
+    ))
+
+
+async def load_submissions(conn, bounty_id: UUID) -> list:
+    return await conn.fetch(
+        "SELECT submission_id, submitter_did, status FROM bounty_submissions "
+        "WHERE bounty_id = $1 ORDER BY submitted_at, submission_id",
+        bounty_id,
+    )
+
+
+async def _bounty_paid_to(conn, bounty_id: UUID, agent_id) -> int:
+    """What the pool of *bounty_id* paid to *agent_id* (ledger)."""
+    return int(await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(tx.amount), 0) FROM transactions tx
+        JOIN wallets w ON w.wallet_id = tx.to_wallet
+        WHERE tx.related_id = $1 AND tx.type = 'bounty_reward' AND w.agent_id = $2
+        """,
+        bounty_id, agent_id,
+    ) or 0)
+
+
+async def _tick_bounty(
+    conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], roster_dids: set[str],
+    seed: str, now: datetime, summary: "TickSummary", pool_max: int,
+) -> None:
+    """At most one bounty step by *founder* this tick: judge its own bounty
+    once its time has come, else submit to another founder's open bounty on
+    its planned moment, else post its own bounty of the week. Money moves
+    only inside `bounty_service`."""
+    persona = founder.persona
+    name = founder.name
+    if persona.is_quiet(now):
+        return
+    by_did = {f.did: f for f in founders.values()}
+    bounties = await load_founder_bounties(conn, list(by_did))
+
+    # 1. Judge my own bounty: score every founder submission and pay the best,
+    #    or take the pool back when nobody came. Never with an outsider's entry.
+    for row in bounties:
+        if row["creator_did"] != founder.did or row["planned_at"] + BOUNTY_JUDGE_AFTER > now:
+            continue
+        bounty_id = row["bounty_id"]
+        subs = await load_submissions(conn, bounty_id)
+        if any(s["submitter_did"] not in roster_dids for s in subs):
+            summary.bounty_skipped[name] = "outsider_submitted"
+            return
+        try:
+            if not subs:
+                await cancel_bounty(bounty_id, founder.did)
+                summary.bounty_cancelled[name] = str(bounty_id)
+                return
+            for s in subs:
+                if s["status"] == "pending":
+                    await evaluate_submission(
+                        bounty_id, s["submission_id"], founder.did,
+                        plan_score(persona, s["submission_id"], seed),
+                    )
+            reward = await distribute_rewards(bounty_id, founder.did)
+        except (PermissionError, ValueError) as exc:   # BountyConflictError is a ValueError
+            summary.bounty_skipped[name] = f"judge_refused:{type(exc).__name__}"
+            return
+        summary.bounty_judged[name] = str(bounty_id)
+        winner = by_did.get(reward.recipient_did)
+        if winner is not None:
+            summary.bounty_paid[winner.name] = await _bounty_paid_to(conn, bounty_id, winner.agent_id)
+        return
+
+    # 2. Submit to another founder's open bounty, once, on my planned moment.
+    for row in bounties:
+        if row["creator_did"] == founder.did or row["status"] != "open":
+            continue
+        creator = by_did[row["creator_did"]]
+        planned_at = row["planned_at"]
+        plan = plan_bounty(week_of(planned_at), seed)
+        match = plan.match if (plan.at == planned_at and plan.creator == creator.name) else None
+        at = plan_submission(persona, creator.name, match, planned_at, seed)
+        if at is None or at > now:
+            continue
+        if any(s["submitter_did"] == founder.did for s in await load_submissions(conn, row["bounty_id"])):
+            continue
+        capability = row["capability_required"]
+        try:
+            await submit_solution(
+                row["bounty_id"], founder.did,
+                SubmissionCreate(
+                    solution_data=submission_payload(persona, capability, now),
+                    summary=compose_submission(persona, capability),
+                ),
+            )
+        except (PermissionError, ValueError) as exc:
+            summary.bounty_skipped[name] = f"submit_refused:{type(exc).__name__}"
+            return
+        summary.bounty_submitted[name] = str(row["bounty_id"])
+        return
+
+    # 3. Post my own bounty of the week, once its moment has come.
+    if pool_max <= 0:
+        return
+    for plan in due_bounty_plans(now, seed):
+        if plan.creator != name or await bounty_posted_at(conn, founder.did, plan.at):
+            continue
+        if plan.match not in founders:
+            summary.bounty_skipped[name] = "match_unavailable"
+            continue
+        pool = min(plan.pool, pool_max)
+        balance = await wallet_balance(conn, founder.agent_id)
+        if balance is None:
+            summary.bounty_skipped[name] = "no_wallet"
+            return
+        if balance < pool:
+            summary.bounty_skipped[name] = "wallet_short"
+            return
+        title, description = compose_bounty(persona, plan.capability)
+        try:
+            bounty = await create_bounty(founder.did, BountyCreate(
+                title=title, description=description, capability_required=plan.capability,
+                reward_pool=pool, deadline=plan.deadline,
+            ))
+        except ValueError:
+            summary.bounty_skipped[name] = "wallet_short"
+            return
+        summary.bounty_posted[name] = str(bounty.bounty_id)
+        summary.bounty_skipped.pop(name, None)
+        return
+
+
+async def load_founder_proposals(conn, founder_dids: list[str]) -> list:
+    """Active heartbeat proposals by *founder_dids* (the founders that passed
+    the guard this tick — never an outside agent's), with the planned moment
+    read back from the payload, oldest first."""
+    return await conn.fetch(
+        """
+        SELECT proposal_id, proposer_did, (payload->'heartbeat'->>'at')::timestamptz AS planned_at
+        FROM proposals
+        WHERE status = 'active' AND proposer_did = ANY($1::text[])
+          AND payload->'heartbeat'->>'kind' = $2
+        ORDER BY planned_at, proposal_id
+        """,
+        founder_dids, KIND_PROPOSAL,
+    )
+
+
+async def proposal_posted_at(conn, proposer_did: str, planned_at: datetime) -> bool:
+    """Has *proposer_did* already posted the proposal planned for *planned_at*?"""
+    return bool(await conn.fetchval(
+        """
+        SELECT 1 FROM proposals
+        WHERE proposer_did = $1 AND payload->'heartbeat'->>'kind' = $2
+          AND payload->'heartbeat'->>'at' = $3
+        LIMIT 1
+        """,
+        proposer_did, KIND_PROPOSAL, planned_at.isoformat(),
+    ))
+
+
+async def has_voted(conn, proposal_id: UUID, agent_id) -> bool:
+    return bool(await conn.fetchval(
+        "SELECT 1 FROM governance_votes WHERE proposal_id = $1 AND voter_id = $2",
+        proposal_id, agent_id,
+    ))
+
+
+async def has_stake(conn, agent_id) -> bool:
+    return bool(await conn.fetchval(
+        "SELECT 1 FROM stakes WHERE agent_id = $1 AND released_at IS NULL LIMIT 1", agent_id,
+    ))
+
+
+async def _tick_governance(
+    conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], seed: str,
+    now: datetime, summary: "TickSummary", vote_stake: int,
+) -> None:
+    """At most one governance step by *founder* this tick: vote on a founder
+    proposal on its planned moment (staking first, once, so the vote has
+    weight), else post its own proposal of the week."""
+    persona = founder.persona
+    name = founder.name
+    if persona.is_quiet(now):
+        return
+    by_did = {f.did: f for f in founders.values()}
+
+    for row in await load_founder_proposals(conn, list(by_did)):
+        if row["proposer_did"] == founder.did or row["planned_at"] is None:
+            continue
+        vote = plan_vote(persona, by_did[row["proposer_did"]].name, row["planned_at"], seed)
+        if not vote.wants or vote.at > now or await has_voted(conn, row["proposal_id"], founder.agent_id):
+            continue
+        if vote_stake > 0 and not await has_stake(conn, founder.agent_id):
+            balance = await wallet_balance(conn, founder.agent_id)
+            if balance is None:
+                summary.gov_skipped[name] = "no_wallet"
+            elif balance < vote_stake:
+                summary.gov_skipped[name] = "stake_unfunded"
+            else:
+                try:
+                    await stake_tokens(founder.agent_id, vote_stake)
+                    summary.staked[name] = vote_stake
+                except ValueError as exc:
+                    summary.gov_skipped[name] = f"stake_refused:{type(exc).__name__}"
+        try:
+            cast = await vote_on_proposal(
+                founder.did, VoteRequest(proposal_id=row["proposal_id"], vote=vote.choice),
+            )
+        except (GovernanceConflictError, ValueError) as exc:
+            summary.gov_skipped[name] = f"vote_refused:{type(exc).__name__}"
+            return
+        summary.voted[name] = vote.choice
+        summary.vote_power[name] = float(cast.vote_power)
+        return
+
+    for plan in due_proposal_plans(now, seed):
+        if plan.proposer != name or await proposal_posted_at(conn, founder.did, plan.at):
+            continue
+        title, description = compose_proposal(persona, plan.topic)
+        try:
+            proposal = await create_proposal(founder.did, ProposalCreate(
+                title=title, description=description, proposal_type="general",
+                payload=proposal_payload(plan, now), voting_days=PROPOSAL_VOTING_DAYS,
+            ))
+        except (GovernanceConflictError, ValueError) as exc:
+            summary.gov_skipped[name] = f"proposal_refused:{type(exc).__name__}"
+            return
+        summary.proposal_posted[name] = str(proposal.proposal_id)
+        return
+
+
+async def _civic_phase(
+    conn, founders: Mapping[str, FounderAgent], roster: Mapping[str, str], seed: str,
+    now: datetime, summary: "TickSummary", pool_max: int, vote_stake: int,
+) -> None:
+    """Every founder that passes the guard gets one bounty step and one
+    governance step, in the fixed roster order, each in its own savepoint on
+    the tick's connection (reads only; the services commit on their own)."""
+    roster_dids = set(roster.values())
+    for name, founder in founders.items():
+        try:
+            async with conn.transaction():
+                await _tick_bounty(conn, founder, founders, roster_dids, seed, now, summary, pool_max)
+        except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
+            logger.exception("founder_heartbeat: %s's bounty step failed", name)
+            summary.bounty_errors[name] = type(exc).__name__
+        try:
+            async with conn.transaction():
+                await _tick_governance(conn, founder, founders, seed, now, summary, vote_stake)
+        except Exception as exc:   # noqa: BLE001
+            logger.exception("founder_heartbeat: %s's governance step failed", name)
+            summary.gov_errors[name] = type(exc).__name__
+
+
 # ── The tick ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -848,6 +1180,21 @@ class TickSummary:
     task_trust: dict[str, str] = field(default_factory=dict)      # executor → recorded | not_recorded
     task_skipped: dict[str, str] = field(default_factory=dict)    # name → spend_cap | wallet_short | …
     task_errors: dict[str, str] = field(default_factory=dict)     # name → exception class
+    # The week's bounty (S10-7)
+    bounty_posted: dict[str, str] = field(default_factory=dict)     # creator → bounty id
+    bounty_submitted: dict[str, str] = field(default_factory=dict)  # submitter → bounty id
+    bounty_judged: dict[str, str] = field(default_factory=dict)     # creator → bounty id paid out
+    bounty_paid: dict[str, int] = field(default_factory=dict)       # winner → tokens the pool paid
+    bounty_cancelled: dict[str, str] = field(default_factory=dict)  # creator → bounty id refunded
+    bounty_skipped: dict[str, str] = field(default_factory=dict)    # name → outsider_submitted | wallet_short | …
+    bounty_errors: dict[str, str] = field(default_factory=dict)     # name → exception class
+    # The week's proposal (S10-7)
+    proposal_posted: dict[str, str] = field(default_factory=dict)   # proposer → proposal id
+    voted: dict[str, str] = field(default_factory=dict)             # voter → yes | no | abstain
+    vote_power: dict[str, float] = field(default_factory=dict)      # voter → weight of its vote
+    staked: dict[str, int] = field(default_factory=dict)            # voter → tokens staked this tick
+    gov_skipped: dict[str, str] = field(default_factory=dict)       # name → stake_unfunded | vote_refused:… | …
+    gov_errors: dict[str, str] = field(default_factory=dict)        # name → exception class
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -1121,6 +1468,7 @@ async def run_tick(
     reply_seed: str = DEFAULT_REPLY_SEED,
     dm_seed: str = DEFAULT_DM_SEED,
     task_seed: str = DEFAULT_TASK_SEED,
+    civic_seed: str = DEFAULT_CIVIC_SEED,
 ) -> dict:
     """
     One heartbeat tick (the database pool must be initialised).
@@ -1131,7 +1479,9 @@ async def run_tick(
     *reply_seed* (fixes who replies to which post; see `founders.replies`),
     *dm_seed* (fixes who messages whom and who answers; `founders.messages`),
     *task_seed* (fixes who hands which task to whom and when it is finished;
-    `founders.tasks`). Returns `TickSummary.as_dict()`.
+    `founders.tasks`), *civic_seed* (fixes the week's bounty and proposal,
+    who submits, scores and votes; `founders.civics`). Returns
+    `TickSummary.as_dict()`.
     """
     settings = settings or get_settings()
     summary = TickSummary()
@@ -1166,6 +1516,10 @@ async def run_tick(
         names = {f.did: name for name, f in founders.items()}
         await _task_phase(
             conn, founders, task_seed, rng, now, summary, int(settings.founder_task_daily_spend),
+        )
+        await _civic_phase(
+            conn, founders, roster, civic_seed, now, summary,
+            int(settings.founder_bounty_pool_max), int(settings.founder_vote_stake),
         )
         for name in FOUNDER_NAMES:
             if name not in roster:
