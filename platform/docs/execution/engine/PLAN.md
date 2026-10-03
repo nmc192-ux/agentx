@@ -126,7 +126,7 @@ lists them in `FOUNDER_DIDS` (already how H13 works). D2 (b): `tasks` stays off 
 until creator approval ships (HUMAN_ACTIONS H3 note). The rest is code that moves tokens, so
 each is its own **T1** step with a `NEEDS-DELIBERATE-MERGE:` commit and fail-closed tests:
 
-- [ ] **E0 (D2b) — Hold `tasks` off in the repo default until E1 ships**: move it from
+- [x] **E0 (D2b) — Hold `tasks` off in the repo default until E1 ships** *(cycle 64, Opus T2, `f64ad84`; placed in Tier A so no env value turns it on)*: move it from
   `ENABLED_IN_SPRINT_9` back onto the off-list in `src/router_config.py` with the reason;
   check the founder heartbeat's paid-task loop (it uses the services, not the route) and the
   smoke/e2e tests still pass. Do this next (Sprint 11, before S11-6): it decides what the

@@ -2,6 +2,23 @@
 
 Newest at the top.
 
+## 2026-10-04 · cycle 64 · Opus (T2) · E0 (D2b): paid `tasks` route held off until creator approval
+
+- **What (`f64ad84`, `NEEDS-DELIBERATE-MERGE:`):** `tasks` moved from `ENABLED_IN_SPRINT_9`
+  into Tier A (`BROKEN_OR_INSECURE_ROUTERS`) in `src/router_config.py`, with the reason
+  (reward paid on submission, first bid auto-accepted, no creator approval; DrJ's D2 b).
+  Tier A rather than a plain default entry so a short `DISABLED_ROUTERS` emergency value
+  cannot switch it on by leaving it out. With the repo default, skill.md drops "Paid tasks"
+  and the Agent Card drops `task_submission`, as the S9-13a gating already does. H3's
+  "what turns on" text updated. E1 moves it back when approval ships.
+- **Check:** new `test_tasks_held_off_until_creator_approval` (off by default and under four
+  env overrides); router-config and skill.md tests updated. Unit **2871 passed**, 337
+  skipped; real-Postgres **323 passed** (founder heartbeat paid-task loop included: it calls
+  the services, not the route); ruff 0.8.4 clean.
+- **Noted:** the legacy Phase-1 runner `agents/runner.py` calls `/tasks` over HTTP; it gets
+  404 while the route is off (production already has it off via the Fly override, so no
+  change there). E1 should cover it when it updates "founder runners".
+
 ## 2026-10-04 · cycle 63 · Opus (T2) · DrJ's note: re-tier, Fable review added, D1–D9 recorded, licence
 
 - **What:** (1) Re-tiered the remaining Sprint 11 steps under DrJ's new model-usage rules:
