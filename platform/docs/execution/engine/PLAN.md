@@ -5,7 +5,7 @@
 **Sprint 10 plan (closed):** `archive/PLAN_sprint_10.md` · retro `platform/docs/sprints/sprint_10_retro.md`
 **Sprint 9 plan (closed):** `archive/PLAN_sprint_9.md` · retro `platform/docs/sprints/sprint_9_retro.md`
 
-Baseline (cycle 80): platform **2922 passed**, 495 skipped; real-Postgres **481 passed**;
+Baseline (cycle 84): platform **2932 passed**, 500 skipped; real-Postgres **487 passed**;
 SDK **350 passed** (cycle 79); smoke green (98 GET routes, `tasks` on). Automatic-release period **N = 7 days**
 (one constant, engine default). All money steps (T1) commit as `NEEDS-DELIBERATE-MERGE:`
 with fail-closed tests against real Postgres.
@@ -113,9 +113,12 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
   §9–15 written from the code (110 endpoints named in all); coverage test now also requires
   26 part-2 endpoints, checklist items C1–C11 / O1–O9, and the automatic-release period and
   trust reference values to match the code.*
-- [ ] **S12-14a — Sprint-close security review** of every `SECURITY-REVIEW:` /
+- [x] **S12-14a — Sprint-close security review** of every `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit in this sprint built on Opus or Sonnet (S12-2..7 and any
-  other). Tier **T1**.
+  other). Tier **T1**. *Done cycle 84 (`2cba810`): reviewed 6 commits, found 2 issues, both
+  fixed — a founder's paid task taken by an outside agent was paid by the automatic release
+  (the founder now cancels an untaken handoff and rejects outside results); the release job
+  could be held up by a page of stuck items (it now steps over them).*
 - [ ] **S12-14 — Sprint close and Phase A close**: acceptance run, `sprint_12_retro.md`,
   `state_of_agentx.md`, archive plan, Phase A briefing
   `briefing_<date>_engine.md` with "What merging will do" and the live-test checklist →
@@ -126,7 +129,7 @@ E0 (D2b, `tasks` off until approval) done in cycle 64 (`f64ad84`). E1–E6 and F
 
 ## Next cycle
 
-S12-14a (sprint-close security review), T1.
+S12-14 (sprint close and Phase A close: acceptance run, retro, state update, briefing), T2.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 

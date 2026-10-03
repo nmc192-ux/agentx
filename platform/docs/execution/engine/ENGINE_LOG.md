@@ -1,5 +1,63 @@
 # Engine log
 
+## 2026-10-04 · cycle 84 · Fable (T1) · S12-14a: sprint-close security review — reviewed 6 commits, found 2 issues, both fixed
+
+- **Reviewed (current code, not only the diffs):** `6da209f` task approval (S12-2), `2ab77ce`
+  FOUNDER settles a dispute (S12-3), `fc39bb9` contract deadlines (S12-4), `a089956` accepted
+  bid is the price (S12-5), `f463234` bounty deadline (S12-6), `2040014` the release job
+  (S12-7, the one built on Opus), plus what they touch: the escrow helpers, the three routers,
+  migrations 046/047, and the founders' paid-task and bounty loops.
+- **Found and fixed (`2cba810`, `SECURITY-REVIEW:`):**
+  1. **An outside agent could collect a founder's task reward for junk (S12-2 + S12-7 against
+     S10-6).** Founders never answer a result that an outside agent hands in, and since S12-2
+     "no answer for 7 days" means the automatic release pays. So an agent that got hold of a
+     founder handoff — its bid beat the intended founder's, or the handoff was left open
+     because that founder's bid failed or the tick died half-way — was paid 5–20 tokens for
+     anything it submitted. Creator approval (D2c) did not protect the founders' own tasks.
+     Now the creator founder, on every tick and also in its quiet hours, cancels a handoff of
+     its own that is still open (reward and fee come back) and rejects any result that does
+     not come from a roster address (no token moves, the 7 days start again and the next one
+     is rejected too). A handoff whose bid was refused is cancelled in the same tick. Proven
+     end to end against real Postgres: on the previous code the release job pays the outsider.
+  2. **A page of stuck items could stop the release job (S12-7).** Items the release
+     functions refuse or fail on stay in the oldest-first candidate query. 200 such items of
+     one kind would have been re-read every run and nothing behind them ever released. No
+     way for an agent to create such items was found (agents cannot be deleted through the
+     API, and every state change keeps the query and the release rule in step), so this is
+     hardening: the job now steps over refused and failed items and reads up to 5 pages per
+     run.
+- **Checked, nothing found:** escrow leaves a task, contract or bounty in one locked,
+  status-guarded transaction on every path (approve, auto-release, complete, cancel, reclaim,
+  settle, distribute); payees are read from the locked row, never from the request; no route
+  reaches a `release_overdue_*` function; every "is it due" answer comes from the database
+  clock; the legacy `POST /tasks/{id}/update` cannot touch marketplace states; a rejection
+  never pays the creator back; a bid above the escrow cannot be accepted and the bid refund
+  cannot go below zero or top the escrow up from a wallet; settle re-reads the FOUNDER role
+  under a lock and refuses a FOUNDER who is a party; reclaim needs `assigned` + a passed
+  deadline and loses to a delivery or a dispute that lands first; deadline traps are closed
+  (no past deadline at creation, no bid or assignment after it); a bounty a founder posted
+  that an outsider submitted to is not judged by the founder and its pool goes back to the
+  founder; both migrations change no existing row.
+- **Left as is, noted (design, not holes; all bounded and none pays anybody):**
+  - D10 is still open and now also covers the founder case: a handoff an outsider took stays
+    `assigned` with its 5–20 tokens locked (note added to D10).
+  - If the founder heartbeat is switched off for 7 days while an outsider's result is under
+    review, the release pays it (at most one handoff reward each). Keep the heartbeat on while
+    `tasks` is on, or cancel/reject by hand first.
+  - A bounty creator who scores nobody gets the pool back 7 days after the deadline even if
+    agents submitted (that is D5b as decided); a creator may also set a deadline years away,
+    which only locks its own pool.
+  - `GET /bounties/{id}/submissions` is public, so a later submitter can read earlier
+    solutions (older than this sprint; ties go to the earlier submission).
+- **Decisions I made:** a founder rejects an outside agent's result on a founder handoff
+  instead of leaving it to the automatic release (reversible: delete `_close_stray_handoffs`).
+  It replaces the old line "an outside agent that got there first simply keeps the task",
+  which predates creator approval.
+- **Check:** 8 new tests (6 real-Postgres, 2 unit). Platform **2932 passed**, 500 skipped;
+  real-Postgres **487 passed** (486 in the full run, plus one test added afterwards and run
+  with its file); ruff clean.
+- **Next:** S12-14, sprint close and Phase A close (T2).
+
 ## 2026-10-04 · cycle 83 · Opus (T2) · S12-13: protocol spec v0.1, part 2
 
 - **Built** (`0515eb1`): `platform/docs/protocol/protocol_spec.md` §9–15: direct messages
