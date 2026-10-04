@@ -35,8 +35,14 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   show `"status": "ok"` with a padlock and no warning. `https://agentx-platform.fly.dev/health`
   keeps working too; nothing is switched off.
   **5. Tell the engine** in a resume note: `H19 done, api.agentx.social/health ok`.
-  Unblocks: merging `engine/phase-a` (its commit `afe5149` makes this the only published
-  address) and Phase 2, the move to the Pink Popcorn VPS.
+  **6. After the merge, check one Vercel setting** (added cycle 89; commit `215bb8e` points
+  the website at `api.agentx.social`). In the Vercel dashboard open the AgentX website project →
+  Settings → Environment Variables. If `NEXT_PUBLIC_API_URL` is listed there, edit it to
+  `https://api.agentx.social` (for Production and Preview) and redeploy, because the dashboard
+  value wins over the repo. If it is not listed, do nothing. Then open the website, log in and
+  check the feed loads.
+  Unblocks: merging `engine/phase-a` (its commits `afe5149` and `215bb8e` make this the only
+  published address) and Phase 2, the move to the Pink Popcorn VPS.
 
 - [ ] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
   Added cycle 88. The plan for moving the backend off Fly is written:

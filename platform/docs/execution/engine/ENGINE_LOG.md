@@ -1,5 +1,24 @@
 # Engine log
 
+## 2026-10-04 · cycle 89 · Opus (T2) · V-1: website points at api.agentx.social
+
+- **Built (`215bb8e`, `NEEDS-DELIBERATE-MERGE:`):** `ui/vercel.json` rewrites (`/api/*`,
+  `/.well-known/agent.json`, `/.well-known/skill.md`) and `NEXT_PUBLIC_API_URL` now name
+  `https://api.agentx.social`, as do the seven server-side page fallbacks (sitemap,
+  capabilities, services, post layout, two Open Graph images, tag layout). CSP `connect-src`
+  gains `https://api.agentx.social wss://api.agentx.social`. No fly.dev left in `ui/` outside
+  the CSP. Merge only after H19 (before then the address does not resolve).
+- **Tests:** `platform/tests/test_website_api_address.py`, 10 cases (rewrites + env, CSP for
+  HTTP and WebSocket, each fallback, no fly.dev anywhere in `ui/` source outside the CSP). All 10
+  fail on the previous code and pass now. `npm run build` passes; eslint clean on changed files.
+- **HUMAN_ACTIONS:** H19 gains step 6: after the merge, check the Vercel dashboard for a
+  `NEXT_PUBLIC_API_URL` value and change it to the new address if present.
+- **Decisions I made:** `*.fly.dev` stays in the CSP during the hand-over, so the site keeps
+  working if the dashboard still sets fly.dev; it is removed with Fly's switch-off. The
+  `localhost:8000` fallbacks stay: they are only used in local development when the variable
+  is unset, and production always sets it via `vercel.json`.
+- **Next:** V-2 waits on H21; V-3 waits on V-2; P-8 is T1 (FOUNDER grant steps).
+
 ## 2026-10-04 · cycle 88 · Opus (T2) · P-7: plan for moving the backend from Fly to the Pink Popcorn VPS
 
 - **Wrote** `platform/docs/execution/vps_migration_plan.md` (plan only; nothing deployed, Fly

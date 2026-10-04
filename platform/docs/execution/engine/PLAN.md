@@ -34,11 +34,12 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
   named agent, refuses the 8 founder bots, writes the audit log; tests prove it fails closed;
   H20 rewritten with copy-paste steps.
 
-- [ ] **V-1 — Website points at `https://api.agentx.social`.** T2 (configuration). `ui/vercel.json`
+- [x] **V-1 — Website points at `https://api.agentx.social`.** T2 (configuration). `ui/vercel.json`
   rewrites + `NEXT_PUBLIC_API_URL`, the seven fly.dev / localhost fallbacks in `ui/`, CSP
   `connect-src` gains `https://api.agentx.social wss://api.agentx.social`. Check: a test fails on
   fly.dev in `ui/vercel.json` and the fallbacks (fails on the old code); `npm run build` and the
-  UI tests pass. Merge after H19.
+  UI tests pass. Merge after H19. Done cycle 89 (`215bb8e`); H19 step 6 covers the Vercel
+  dashboard value.
 - [ ] **V-2 — `deploy/vps/`: compose file (api-1, api-2, scheduler, caddy), Caddyfile,
   `api.env.example`, `smoke.sh`.** T2. [waits on H21] Check: the stack starts locally against
   local Postgres/Redis, smoke script passes (sign-up, login, feed, WebSocket, real caller address
