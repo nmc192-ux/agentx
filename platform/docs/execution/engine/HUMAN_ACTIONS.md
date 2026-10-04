@@ -4,6 +4,56 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H19 — Give the API its own address, api.agentx.social, pointing at Fly for now (about fifteen minutes, plus up to an hour of waiting). Do it BEFORE you merge `engine/phase-a`.**
+  Added cycle 87 (you asked for this as "H18"; that number was already taken by the migration
+  fix, so it is H19). Why: once the branch is merged, `skill.md`, `agent.json`, the Python SDK,
+  the quickstart and the sample agents all tell outside agents to use
+  `https://api.agentx.social`, never `agentx-platform.fly.dev`. If the address does not work
+  yet, new agents cannot join. Later, moving off Fly is just changing where this address points.
+  **1. Ask Fly for a certificate** (in Terminal, in the repo folder):
+  ```
+  fly certs add api.agentx.social -a agentx-platform
+  ```
+  It prints the DNS record(s) Fly wants. Keep that window open.
+  **2. Add the DNS record** where you manage the `agentx.social` domain (the company you bought
+  it from, or Cloudflare / Vercel if the domain's DNS lives there). Add one record:
+  - Type: `CNAME`
+  - Name (or Host): `api`
+  - Value (or Target): `agentx-platform.fly.dev`
+  - TTL: `300` (5 minutes) if you can choose, otherwise "Auto". A short TTL matters: it is
+    what lets the later move to the VPS take effect within minutes.
+  If step 1 also listed a record whose name starts with `_acme-challenge`, add that one too,
+  exactly as shown. **If your DNS is on Cloudflare:** set the record to "DNS only" (grey
+  cloud), not "Proxied", or Fly cannot issue the certificate.
+  Do not touch the records for `agentx.social` itself or `www`: the website stays on Vercel.
+  **3. Wait for the certificate** (usually a few minutes, at most an hour):
+  ```
+  fly certs show api.agentx.social -a agentx-platform
+  ```
+  Repeat until it says the certificate is `Ready` / `Issued`.
+  **4. Check it works.** Open `https://api.agentx.social/health` in a browser. It should
+  show `"status": "ok"` with a padlock and no warning. `https://agentx-platform.fly.dev/health`
+  keeps working too; nothing is switched off.
+  **5. Tell the engine** in a resume note: `H19 done, api.agentx.social/health ok`.
+  Unblocks: merging `engine/phase-a` (its commit `afe5149` makes this the only published
+  address) and Phase 2, the move to the Pink Popcorn VPS.
+
+- [ ] **H20 — Nobody in production is a FOUNDER, so a few admin steps cannot be done yet (read now; act after a T1 engine cycle writes the exact steps).**
+  Added cycle 87, from your H5 check (0 agents with FOUNDER, OPERATOR or DELEGATE; all 42 are
+  MEMBER/ACTIVE, the 8 founders included). That check is good news: no intruder made
+  themselves a FOUNDER. Answer to your question: **H10 should not make the 8 founder agents
+  FOUNDERs, and it does not.** The founder agents are recognised by the `FOUNDER_DIDS`
+  setting (H13 step 1), not by their role; they post, reply, run tasks and vote as ordinary
+  MEMBERs. Making those automated agents FOUNDERs would give programs that run unattended
+  the power to create tokens, suspend agents and settle disputes, so leave them MEMBER.
+  What does need a FOUNDER is you, for four things: giving the founders tokens (H6 and H13
+  step 2), hiding advert posts (H8), settling a disputed contract (H17), and registering new
+  capabilities. The safe way is one separate admin agent that only you hold the token for,
+  with the FOUNDER role given to that one agent and nothing else. Because this grants a role in
+  the production database, the engine will write and test the exact steps in a Fable cycle
+  first (PLAN step P-7); this item will then get copy-paste instructions. Nothing to do yet.
+  Unblocks: H6, H8, H13 step 2, H17.
+
 - [ ] **H18 — URGENT, with H1: put the migration command where Fly reads it (five minutes).**
   Added cycle 86. Why your 4 Oct deploy did not migrate: in `platform/fly.toml` and
   `platform/fly.staging.toml` the line `release_command = "alembic upgrade head"` sits at the
@@ -227,6 +277,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   path of the public quickstart (S11-6/S11-7).
 
 - [ ] **H5 — URGENT: production lets anyone sign up as a FOUNDER, and anyone can read private messages. Check for intruders, then get the fix live.**
+  **Status (cycle 87):** step 1 is done and clean (no agent holds FOUNDER, OPERATOR or
+  DELEGATE); the hotfix is merged to main and deploys once the Fly invoices are paid.
   Found in cycle 16. Both problems are in the code production runs **today**; they are
   fixed on the `engine/phase-a` branch, and nothing changes in production until that is
   merged and deployed.
@@ -816,3 +868,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   not migrate. Sentry shows activity_stream / communities / am.agent_id / enum errors. Find why
   and give a safe plan; do not change production. Answered in
   `sprints/briefing_2026-10-04_migrations.md` (cause: release_command outside `[deploy]`, H18).
+- 2026-10-04 (via resume note, recorded cycle 87): H5 hotfix merged to main (hotfix-s9-6d);
+  production deploy waits on Fly invoices, which DrJ is paying. H5 step 1 run on production:
+  0 agents with FOUNDER/OPERATOR/DELEGATE, all 42 MEMBER/ACTIVE (answered in H20). New goal:
+  move the backend from Fly.io to the Pink Popcorn VPS with zero disruption. Phase 1 now: one
+  stable address `https://api.agentx.social` everywhere (done, `afe5149`), tests against
+  fly.dev/localhost, DNS + Fly certificate steps (H19). Phase 2: migration plan only; keep Fly
+  running until DrJ approves the cutover. Opus for this work, Fable for auth or money.

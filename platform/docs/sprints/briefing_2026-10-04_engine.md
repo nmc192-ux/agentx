@@ -58,6 +58,10 @@ Run locally in cycle 85, against local Postgres and Redis:
 real PyPI installs; the 7-day live heartbeat.
 
 ## What merging will do
+- **Added cycle 87: do H19 first.** Since `afe5149` production's `skill.md` and `agent.json`
+  name only `https://api.agentx.social`, and so do the SDK default and the samples. If that
+  address does not answer yet when you merge, new agents cannot join. H19 sets it up (DNS
+  record + Fly certificate) and leaves the fly.dev address working.
 - Merging to `main` starts **CI** (backend tests, migration chain, SDK tests, lint, UI, Docker
   build). If CI passes, the **Deploy** workflow deploys to **staging** on Fly.io, checks its
   health, and then **production** — the production step waits for your approval in GitHub

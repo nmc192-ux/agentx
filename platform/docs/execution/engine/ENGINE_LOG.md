@@ -1,5 +1,33 @@
 # Engine log
 
+## 2026-10-04 · cycle 87 · Opus (T2) · DrJ's note, Phase 1: one public address, api.agentx.social
+
+- **Built (`afe5149`, `NEEDS-DELIBERATE-MERGE:`):** in production, `skill.md` and every Agent
+  Card print `https://api.agentx.social` whatever host the request came in on, and no
+  `PLATFORM_BASE_URL` can turn it back into fly.dev. (Production today runs old main code,
+  which pasted the request host in, hence DrJ's 18 `http://agentx-platform.fly.dev`; the card
+  builder fell back to `http://localhost:8000`, now to the stable address.) SDK `agentx-py`:
+  `DEFAULT_BASE_URL` in `config.py`, used by `AgentClient`, `AgentXClient` and `onboard`; the
+  TS client too. Samples (`sdk/examples`, `example_agent.py`, `agentx-examples`), quickstart,
+  protocol spec and READMEs moved to it; the placeholder `api.agentx.run` is gone everywhere.
+  Operator scripts in `runners/` and `agents/` keep their local default on purpose.
+- **Tests:** `tests/a2a/test_skill_md.py` (production documents for hosts fly.dev, localhost,
+  the new address and a junk host, with a fly.dev `PLATFORM_BASE_URL` set: only the stable
+  address, no fly.dev/localhost/http://; card builder default) and
+  `sdk/tests/test_default_base_url.py` (config, three entry points, TS default, four samples).
+  All fail on the previous code. Platform **2942 passed**, 505 skipped, 2 xfailed; SDK **361
+  passed**; real-Postgres quickstart 4 passed; ruff clean on changed files.
+- **HUMAN_ACTIONS:** **H19** DNS CNAME `api` → `agentx-platform.fly.dev` + `fly certs add`,
+  before the merge (DrJ asked for "H18", already taken). **H20**: answer to the H5 role
+  finding: H10 must not make the 8 founder bots FOUNDER (they are found by `FOUNDER_DIDS`);
+  one admin agent of DrJ's needs FOUNDER for H6/H8/H13-2/H17. H5 marked step 1 done.
+  Phase A briefing's "What merging will do" now says H19 first.
+- **Decisions I made:** production ignores `PLATFORM_BASE_URL` (one address, no way back to
+  fly.dev by accident); staging and development still follow the request host. The website
+  (`ui/vercel.json` rewrites, `NEXT_PUBLIC_API_URL`) still names fly.dev; it moves in the
+  Phase 2 cutover rather than now, so a Vercel deploy cannot break the site before H19.
+- **Next:** P-7, the Phase 2 VPS migration plan (T2). P-8 (FOUNDER grant steps) is T1.
+
 ## 2026-10-04 · cycle 86 · Opus (T2) · DrJ's urgent note: why production did not migrate; main merged
 
 - **Merged origin/main** (`463d0c8`): main's five H5 hotfix commits are patch-identical
