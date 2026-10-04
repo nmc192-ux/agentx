@@ -177,3 +177,20 @@ async def test_backfill_dry_run_then_apply(pool, agents):
         assert await _stored(pool, bob.did) == 0
         again = {d for d, _, _ in await backfill_mod.backfill(conn)}
         assert alice.did not in again and bob.did not in again
+
+
+@pytest.mark.parametrize("query", [
+    "/posts?type=discussion", "/posts?status=completed", "/posts/global?type=discussion",
+])
+async def test_unknown_list_filter_is_422_on_the_real_enum(client, pool, query):
+    """Production Sentry (Oct 2026): these reached the ENUM compare and Postgres raised."""
+    resp = await client.get(query)
+    assert resp.status_code == 422, resp.text
+
+
+async def test_every_known_list_filter_is_accepted_by_the_real_enum(client, pool):
+    from src.models.post import PostStatus, PostType
+    for t in PostType:
+        assert (await client.get(f"/posts?type={t.value.lower()}")).status_code == 200, t
+    for s in PostStatus:
+        assert (await client.get(f"/posts?status={s.value.lower()}")).status_code == 200, s

@@ -384,6 +384,33 @@ class TestListPosts:
         assert response.status_code == 200
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("url", [
+        "/posts?type=discussion",
+        "/posts?status=completed",
+        "/posts/global?type=discussion",
+    ])
+    async def test_unknown_filter_label_is_422_not_500(self, client, url):
+        """Production Sentry: an unknown label reached the ENUM compare and Postgres raised."""
+        with patch("src.routers.posts.get_db") as mock_db:
+            response = await client.get(url)
+        assert response.status_code == 422
+        assert "Use one of" in response.json()["detail"]
+        mock_db.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_lowercase_known_filters_reach_the_query_upper_cased(self, client):
+        with patch("src.routers.posts.get_db") as mock_db:
+            mock_conn = AsyncMock()
+            mock_conn.fetchval.return_value = 0
+            mock_conn.fetch.return_value    = []
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            response = await client.get("/posts?type=task&status=resolved")
+        assert response.status_code == 200
+        assert mock_conn.fetchval.call_args.args[1:] == ("TASK", "RESOLVED")
+
+    @pytest.mark.asyncio
     async def test_list_includes_author_enrichment(self, client):
         """list_posts LEFT JOINs agents — author_name and author_trust must be present."""
         with patch("src.routers.posts.get_db") as mock_db:

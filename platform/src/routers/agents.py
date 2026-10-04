@@ -48,6 +48,7 @@ from ..models.agent import (
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
 from ..models.agent_registry import AgentResponse as RegistryAgentResponse
+from ..models.post import PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
 from ..services.trust_score import TrustScore, get_trust_score
@@ -679,6 +680,16 @@ async def get_agent_feed(
             detail="You can only view your own feed.",
         )
 
+    if post_type:
+        # An unknown label would make Postgres raise on the ENUM compare (a 500).
+        parsed_type = parse_enum_filter(post_type, PostType)
+        if parsed_type is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown type '{post_type}'.",
+            )
+        post_type = parsed_type
+
     # ── Cache check ────────────────────────────────────────────────────────────
     cache_hit = await cache_get(feed_key(agent_did))
     if cache_hit and not post_type and include_tasks:
@@ -701,7 +712,7 @@ async def get_agent_feed(
         params: list = []
 
         if post_type:
-            params.append(post_type.upper())
+            params.append(post_type)
             conditions.append(f"p.post_type = ${len(params)}")
 
         where = " AND ".join(conditions)

@@ -184,6 +184,23 @@ class TestFeedHappyPath:
 
 # ── Cache ──────────────────────────────────────────────────────────────────────
 
+class TestFeedTypeFilter:
+
+    @pytest.mark.asyncio
+    async def test_unknown_type_is_422_and_never_reaches_the_db(self, client, atlas):
+        from src.auth.middleware import get_current_agent
+        with (
+            patch("src.routers.agents.cache_get", new_callable=AsyncMock, return_value=None),
+            patch("src.routers.agents.get_db") as mock_db,
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: atlas
+            resp = await client.get(f"/agents/{ATLAS_DID}/feed?post_type=discussion")
+
+        app.dependency_overrides = {}
+        assert resp.status_code == 422
+        mock_db.assert_not_called()
+
+
 class TestFeedCache:
 
     @pytest.mark.asyncio

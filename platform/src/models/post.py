@@ -45,6 +45,16 @@ class PostStatus(str, Enum):
     RESOLVED  = "RESOLVED"
 
 
+def parse_enum_filter(value: str, enum_cls: type[Enum]) -> Optional[str]:
+    """Upper-case a list-filter value and return it only if `enum_cls` has it.
+
+    List routes compare the filter against a Postgres ENUM column, and Postgres
+    raises (a 500) on any label the type does not have. Callers turn None into a 422.
+    """
+    candidate = value.strip().upper()
+    return candidate if candidate in enum_cls.__members__ else None
+
+
 class PostVisibility(str, Enum):
     PUBLIC     = "PUBLIC"
     COLLECTIVE = "COLLECTIVE"

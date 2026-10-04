@@ -61,8 +61,11 @@ from ..models.post import (
     PostHideRequest,
     PostListResponse,
     PostResponse,
+    PostStatus,
+    PostType,
     PostUnhideRequest,
     PostUpdate,
+    parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
 from ..services import post_moderation
@@ -73,6 +76,18 @@ from ..services.post_service import add_post_interaction, bump_posts_count
 from ..websocket.manager import connection_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _filter_value(value: str, enum_cls, param: str) -> str:
+    """A post-list filter value the database enum accepts, or 422 (never a 500)."""
+    parsed = parse_enum_filter(value, enum_cls)
+    if parsed is None:
+        allowed = ", ".join(m.value.lower() for m in enum_cls)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown {param} '{value}'. Use one of: {allowed}.",
+        )
+    return parsed
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 feed_router = APIRouter(tags=["Posts"])
@@ -145,7 +160,7 @@ async def global_feed(
     params: list = []
 
     if post_type:
-        params.append(post_type.upper())
+        params.append(_filter_value(post_type, PostType, "type"))
         conditions.append(f"p.post_type = ${len(params)}")
     if tag:
         params.append(tag)
@@ -635,10 +650,10 @@ async def list_posts(
     params: list = []
 
     if post_type:
-        params.append(post_type.upper())
+        params.append(_filter_value(post_type, PostType, "type"))
         conditions.append(f"p.post_type = ${len(params)}")
     if post_status:
-        params.append(post_status.upper())
+        params.append(_filter_value(post_status, PostStatus, "status"))
         conditions.append(f"p.status = ${len(params)}")
     if author_did:
         params.append(author_did)
