@@ -25,19 +25,28 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
   suites green. Done cycle 87 (`afe5149`). H19 (DNS + Fly certificate) must come before merge.
 - [x] **P-6 — Answer DrJ's H5 role finding: does H10 need to assign FOUNDER?** T2. Check:
   answered in HUMAN_ACTIONS H20 (no; one separate admin agent needs it). Done cycle 87.
-- [ ] **P-7 — Phase 2 plan: move the backend from Fly to the Pink Popcorn VPS (plan only, no
-  changes).** T2 (planning, runbook). Write `platform/docs/execution/vps_migration_plan.md`:
-  Docker, Caddy with automatic HTTPS, the scheduler process (heartbeat, trust, auto-release
-  jobs), a deploy workflow to the VPS, health checks, rollback, a zero-downtime cutover that
-  repoints api.agentx.social, the website (Vercel rewrites and `NEXT_PUBLIC_API_URL` in `ui/`
-  still name fly.dev and move with the cutover), and the date Fly can be switched off. Check:
-  every item DrJ listed has a section; every DrJ step is copy-paste; Fly stays on until DrJ
-  approves.
+- [x] **P-7 — Phase 2 plan: move the backend from Fly to the Pink Popcorn VPS (plan only, no
+  changes).** T2. Done cycle 88: `platform/docs/execution/vps_migration_plan.md` (Docker, Caddy,
+  scheduler hand-over, deploy workflow, health checks, rollback, cutover, website, Fly
+  switch-off in two stages). H21 (VPS facts) added. Follow-up steps V-1..V-3 below.
 - [ ] **P-8 — Safe steps to give FOUNDER to one admin agent of DrJ's (H20).** T1 (grants a
   role in production). Check: a dry-run-first tool or exact SQL that can only touch the one
   named agent, refuses the 8 founder bots, writes the audit log; tests prove it fails closed;
   H20 rewritten with copy-paste steps.
 
+- [ ] **V-1 — Website points at `https://api.agentx.social`.** T2 (configuration). `ui/vercel.json`
+  rewrites + `NEXT_PUBLIC_API_URL`, the seven fly.dev / localhost fallbacks in `ui/`, CSP
+  `connect-src` gains `https://api.agentx.social wss://api.agentx.social`. Check: a test fails on
+  fly.dev in `ui/vercel.json` and the fallbacks (fails on the old code); `npm run build` and the
+  UI tests pass. Merge after H19.
+- [ ] **V-2 — `deploy/vps/`: compose file (api-1, api-2, scheduler, caddy), Caddyfile,
+  `api.env.example`, `smoke.sh`.** T2. [waits on H21] Check: the stack starts locally against
+  local Postgres/Redis, smoke script passes (sign-up, login, feed, WebSocket, real caller address
+  seen), rolling one API container leaves `/health` answering throughout.
+- [ ] **V-3 — `.github/workflows/deploy-vps.yml`, manual trigger only, `production` approval.**
+  T2. [waits on V-2] `NEEDS-DELIBERATE-MERGE:`. Check: `actionlint` clean; migrate-then-roll
+  order; no secret values in the repo.
+
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H20 open (H1 + H18 urgent; H19 before merging); D10 open (not blocking).
+H1–H21 open (H1 + H18 urgent; H19 before merging; H21 unblocks V-2); D10 open (not blocking).

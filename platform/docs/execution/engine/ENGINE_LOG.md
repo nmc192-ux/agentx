@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-04 · cycle 88 · Opus (T2) · P-7: plan for moving the backend from Fly to the Pink Popcorn VPS
+
+- **Wrote** `platform/docs/execution/vps_migration_plan.md` (plan only; nothing deployed, Fly
+  untouched). Core idea: Neon and Upstash stay put, so only the program moves. The VPS runs
+  beside Fly against the same database, Redis and `JWT_SECRET`. Cutover is one DNS change of
+  `api.agentx.social`, and rollback is the same change reversed. Sections: Docker (api-1, api-2,
+  scheduler, caddy), Caddy with automatic HTTPS (and the cutover-certificate catch: DNS method
+  if the DNS is on Cloudflare), exactly-one-scheduler hand-over, a new `deploy-vps.yml`
+  (migrate first, then roll one API container at a time), health checks plus an outside uptime
+  monitor, rollback table, the cutover day, the website, and Fly switch-off in two stages
+  (D+7 downsize, D+30 at the earliest off, once fly.dev has had 7 quiet days).
+- **Found while planning:** behind a proxy, the per-address rate limits (sign-up, login, reads)
+  would put every caller in one bucket unless uvicorn runs `--proxy-headers` and trusts only
+  Caddy's fixed address. This is written into the plan and the V-2 smoke check. It is not a hole
+  today: Fly is unchanged. The website still names fly.dev in `vercel.json`, seven code
+  fallbacks and the CSP. That is V-1, decoupled from the VPS move.
+- **HUMAN_ACTIONS:** **H21** (read-only VPS facts, including the VPS-to-Neon latency that
+  decides whether the move makes sense; stop above 60 ms). Fixed H20's step reference (P-8,
+  not P-7). PLAN: P-7 ticked; V-1 (website), V-2 (VPS files, waits on H21), V-3 (deploy
+  workflow) added.
+- **Checks:** every item DrJ listed has its own section. The H21 latency one-liner runs (tried
+  against local Postgres) and is identical in both files. Docs-only cycle, no code changed.
+- **Decisions I made:** staging stays on Fly until production has run a month on the VPS; image
+  registry is GitHub's own (ghcr.io), so no new account is needed; two API containers instead
+  of one so deploys have no gap.
+- **Next:** V-1 (T2), not blocked. P-8 is T1.
+
 ## 2026-10-04 · cycle 87 · Opus (T2) · DrJ's note, Phase 1: one public address, api.agentx.social
 
 - **Built (`afe5149`, `NEEDS-DELIBERATE-MERGE:`):** in production, `skill.md` and every Agent

@@ -38,6 +38,27 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: merging `engine/phase-a` (its commit `afe5149` makes this the only published
   address) and Phase 2, the move to the Pink Popcorn VPS.
 
+- [ ] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
+  Added cycle 88. The plan for moving the backend off Fly is written:
+  `platform/docs/execution/vps_migration_plan.md` (read sections 1 and 11 for the overview).
+  Before the engine builds the VPS files it needs a few facts about the VPS, above all how far
+  it is from the database. If it is too far, moving would make AgentX slower and the plan
+  stops there. **1.** SSH into the VPS as you normally do. **2.** Paste these lines (they
+  only read; nothing is installed or changed):
+  ```
+  cat /etc/os-release | head -3; uname -m; nproc; free -h | head -2; df -h / | tail -1
+  docker --version; docker compose version
+  sudo ss -tlnp | grep -E ':(80|443) '
+  curl -s https://ipinfo.io | grep -E '"ip"|"city"|"country"'
+  python3 -c "import socket,time;h='ep-shy-scene-an7jvkxo-pooler.c-6.us-east-1.aws.neon.tech';r=[];exec('for _ in range(5):\n t=time.time();socket.create_connection((h,5432),5).close();r.append((time.time()-t)*1000)');print('Neon ms:',sorted(round(x) for x in r))"
+  python3 -c "import socket,time;h='vast-jay-35806.upstash.io';t=time.time();socket.create_connection((h,6379),5).close();print('Upstash ms:',round((time.time()-t)*1000))"
+  ```
+  (A "command not found" line is fine; it is an answer too.) **3.** Also say where the DNS for
+  `agentx.social` is managed (Cloudflare, Vercel, or the company you bought it from). On
+  Cloudflare, the switch can be done with no gap at all.
+  **4.** Put all of the output in a resume note, starting `H21:`. Nothing on Fly changes.
+  Unblocks: engine steps V-2 and V-3 (the VPS files and the deploy workflow).
+
 - [ ] **H20 — Nobody in production is a FOUNDER, so a few admin steps cannot be done yet (read now; act after a T1 engine cycle writes the exact steps).**
   Added cycle 87, from your H5 check (0 agents with FOUNDER, OPERATOR or DELEGATE; all 42 are
   MEMBER/ACTIVE, the 8 founders included). That check is good news: no intruder made
@@ -51,7 +72,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   capabilities. The safe way is one separate admin agent that only you hold the token for,
   with the FOUNDER role given to that one agent and nothing else. Because this grants a role in
   the production database, the engine will write and test the exact steps in a Fable cycle
-  first (PLAN step P-7); this item will then get copy-paste instructions. Nothing to do yet.
+  first (PLAN step P-8); this item will then get copy-paste instructions. Nothing to do yet.
   Unblocks: H6, H8, H13 step 2, H17.
 
 - [ ] **H18 — URGENT, with H1: put the migration command where Fly reads it (five minutes).**
