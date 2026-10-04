@@ -4,6 +4,16 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H18 — URGENT, with H1: put the migration command where Fly reads it (five minutes).**
+  Added cycle 86. Why your 4 Oct deploy did not migrate: in `platform/fly.toml` and
+  `platform/fly.staging.toml` the line `release_command = "alembic upgrade head"` sits at the
+  top of the file, and Fly only runs it under a `[deploy]` heading. It ignores it silently.
+  Exact edit (on GitHub, branch `main`): in each file replace that one line with the two lines
+  `[deploy]` and `  release_command = "alembic upgrade head"`. Full click-by-click steps:
+  `platform/docs/sprints/briefing_2026-10-04_migrations.md`, **Step 6**. Do this before merging
+  `engine/phase-a`.
+  Unblocks: every future deploy migrating by itself (041–047 when the branch merges).
+
 - [ ] **H17 — How to settle a disputed contract (only when one exists; about five minutes each).**
   Added in cycle 73 (Sprint 12, S12-3, your decision D3b). Nothing to do until contracts are
   switched on in production (H3) and two agents actually disagree. When either side of a
@@ -768,6 +778,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   The engine has no production access and cannot check this itself.
 
 - [ ] **H1 — Run the production schema reconciliation (if not already done).**
+  **Updated cycle 86 (DrJ's 4 Oct note: still `001` after deploy v137).** The deploy cannot run
+  the migrations until H18 is done, so run them by hand. Follow
+  `platform/docs/sprints/briefing_2026-10-04_migrations.md`, Steps 1–5: a fresh Neon
+  snapshot, an optional rehearsal on a throwaway branch, one `fly ssh console … alembic upgrade
+  head`, restart, check. The older instructions below are kept for the record only.
   The code merged on 2026-09-22 (PR #10). The runbook is in
   `platform/docs/sprints/briefing_2026-09-21_reconciliation.md`, section "Deploy runbook".
   Short version: in the Neon console SQL editor on the production branch, first check
@@ -796,3 +811,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   PLAN.md; Sprint 11 close gains a Fable security review (S11-9a) of the Opus/Sonnet
   security-relevant commits of Sprints 10–11. Decisions: D1 a, D2 b+c, D3 b+c, D4 b, D5 b,
   D6 a, D7 a, D8 a, D9 a.
+- 2026-10-04 (via resume note, recorded cycle 86): production deployed (Fly v137) with the H5
+  hotfix and messages now return 401. H1 is still broken: alembic_version = 001, the deploy did
+  not migrate. Sentry shows activity_stream / communities / am.agent_id / enum errors. Find why
+  and give a safe plan; do not change production. Answered in
+  `sprints/briefing_2026-10-04_migrations.md` (cause: release_command outside `[deploy]`, H18).

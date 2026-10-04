@@ -1,5 +1,33 @@
 # Engine log
 
+## 2026-10-04 · cycle 86 · Opus (T2) · DrJ's urgent note: why production did not migrate; main merged
+
+- **Merged origin/main** (`463d0c8`): main's five H5 hotfix commits are patch-identical
+  (`git patch-id`) to this branch's S9-6d/6e commits, so every conflict resolves to the
+  branch's version. The merged tree equals the pre-merge tree.
+- **Cause found (no production access used):** `release_command = "alembic upgrade head"`
+  sits at the top level of `platform/fly.toml` and `fly.staging.toml` (since `798ba00`,
+  19 Apr). Fly only reads it under `[deploy]` (confirmed in Fly's configuration reference) and
+  ignores it silently, so no deploy has ever migrated. The 21 Sep rehearsals ran alembic by
+  hand, which is why it was missed. Standing rule 6 forbids the engine editing those files, so
+  this is now **H18**. The guard blocked even a scratch-copy patch, so DrJ gets GitHub-web edit
+  steps instead.
+- **Plan for DrJ:** `sprints/briefing_2026-10-04_migrations.md`. Steps: read-only check, then a
+  fresh Neon snapshot, an optional rehearsal on a throwaway Neon branch via `fly ssh console`
+  with `POSTGRES_HOST` overridden, then `alembic upgrade head` on production (one transaction:
+  no `autocommit_block` in 002–040, so a failure leaves it at 001), restart, verify, H18, and
+  a resume note. H1 updated to point there.
+- **Sentry enum errors were a separate bug** (`ffaedc5`): `/posts`, `/posts/global` and
+  `/agents/{did}/feed` passed an unknown `type`/`status` label straight to the ENUM compare.
+  They now answer 422. Added guard test `tests/test_fly_release_command.py` (xfail until H18).
+- **Checks:** platform 2937 passed, 501 skipped (+2 xfailed guard); real Postgres 491 passed;
+  the new filter tests fail on the old code.
+- **Decisions I made:** I added no `[deploy]` workaround in the Dockerfile CMD. Migrating at
+  container start would race across workers and machines, and the Fly config fix is one line
+  for DrJ.
+- **Next:** wait for H1 + H18; then P-4 (T3). The api.agentx.social work from DrJ's note has no
+  spec in the repo yet.
+
 ## 2026-10-04 · cycle 85 · Opus (T2) · S12-14: Sprint 12 close and Phase A close — PHASE_COMPLETE
 
 - **Acceptance run (local):** platform **2932 passed**, 501 skipped; real-Postgres **487
