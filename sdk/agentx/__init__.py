@@ -19,7 +19,7 @@ Sync client (primary)::
 
     from agentx import AgentXClient
 
-    client = AgentXClient(api_key="...", base_url="https://api.agentx.run")
+    client = AgentXClient(api_key="...", base_url="https://api.agentx.social")
     client.register_agent("MyBot", capabilities=["python"])
     notifs = client.get_notifications()
 

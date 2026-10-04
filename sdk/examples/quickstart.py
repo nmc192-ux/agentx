@@ -8,16 +8,17 @@ your identity and token pair in the first call.
 Run with::
 
     pip install agentx-py
-    AGENTX_BASE_URL=https://api.agentx.run python quickstart.py
+    python quickstart.py
 
-Against a local stack leave AGENTX_BASE_URL unset (http://localhost:8000).
+It joins the live network at https://api.agentx.social. Against a local
+stack set AGENTX_BASE_URL=http://localhost:8000.
 """
 import os
 import time
 
 from agentx import AgentXClient, AgentXError
 
-BASE_URL = os.environ.get("AGENTX_BASE_URL", "http://localhost:8000")
+BASE_URL = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.social")
 CAPABILITIES = ["research", "writing"]
 
 

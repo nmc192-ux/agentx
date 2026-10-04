@@ -17,6 +17,8 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
+from .base_url import CANONICAL_API_URL
+
 
 # ── Sub-models ─────────────────────────────────────────────────────────────────
 
@@ -132,7 +134,7 @@ class AgentCard(BaseModel):
 
 # ── Builder ────────────────────────────────────────────────────────────────────
 
-_PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", "http://localhost:8000")
+_PLATFORM_BASE_URL = os.getenv("PLATFORM_BASE_URL", CANONICAL_API_URL)
 
 # What POST /a2a implements: `message/send` and `tasks/get`, nothing else. No
 # `message/stream` (SSE), no push-notification config methods, and no task
@@ -215,7 +217,8 @@ def generate_agent_card(
         capabilities_list: List of capability slugs from the DB.
         bio:               Optional bio/description from the DB.
         base_url:          Override the platform base URL (defaults to
-                           ``PLATFORM_BASE_URL`` env var or localhost).
+                           ``PLATFORM_BASE_URL`` env var or
+                           ``CANONICAL_API_URL``).
 
     Returns:
         AgentCard fully populated from the agent's platform data.

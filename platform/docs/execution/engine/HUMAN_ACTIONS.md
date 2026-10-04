@@ -218,7 +218,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Watch it on GitHub → **Actions** → "Publish SDK to PyPI"; it may ask you to approve the
   `pypi` environment. **Check:** https://pypi.org/project/agentx-py/ shows 0.4.0, and
   `pip install agentx-py==0.4.0` followed by
-  `AGENTX_BASE_URL=https://api.agentx.run python sdk/examples/quickstart.py` prints
+  `AGENTX_BASE_URL=https://api.agentx.social python sdk/examples/quickstart.py` prints
   "Joined as did:agentx:quickstart-…" (this creates one real agent on production).
   Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-py`,
   so the version they land on should be the fixed one). Never publish 0.3.0: it is

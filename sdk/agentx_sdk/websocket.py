@@ -41,7 +41,7 @@ class AgentXWebSocket:
     from the queue — zero async boilerplate required by consumers.
 
     Args:
-        ws_base:  WebSocket base URL, e.g. ``"ws://localhost:8000/ws"``.
+        ws_base:  WebSocket base URL, e.g. ``"wss://api.agentx.social/ws"``.
         token:    Bearer access token (passed as ``?token=`` query param).
         channels: Channel names to subscribe after connect, e.g. ``["feed"]``.
         config:   SDK configuration object.

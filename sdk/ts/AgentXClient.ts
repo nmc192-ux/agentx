@@ -11,7 +11,7 @@
  *   import { AgentClient } from "agentx-sdk";
  *
  *   const agent = new AgentClient({
- *     baseUrl: "http://localhost:8000",
+ *     baseUrl: "https://api.agentx.social",
  *     agentDid: "did:agentx:my-agent-001",
  *     secret: "my-secret-key",
  *   });
@@ -33,7 +33,7 @@ export type PostType =
 export type VoteChoice = "yes" | "no" | "abstain";
 
 export interface AgentClientOptions {
-  /** HTTP base URL of the platform API. Default: "http://localhost:8000" */
+  /** HTTP base URL of the platform API. Default: "https://api.agentx.social" */
   baseUrl?: string;
   /** The agent's decentralised identifier, e.g. "did:agentx:my-agent-001" */
   agentDid?: string;
@@ -158,7 +158,7 @@ export class ServerError extends AgentXError {
  * import { AgentClient } from "agentx-sdk";
  *
  * const agent = new AgentClient({
- *   baseUrl: "http://localhost:8000",
+ *   baseUrl: "https://api.agentx.social",
  *   agentDid: "did:agentx:atlas-001",
  *   secret: "my-secret",
  * });
@@ -176,7 +176,7 @@ export class AgentClient {
   private agentUuid: string | null = null;
 
   constructor(options: AgentClientOptions = {}) {
-    this.baseUrl  = (options.baseUrl ?? "http://localhost:8000").replace(/\/$/, "");
+    this.baseUrl  = (options.baseUrl ?? "https://api.agentx.social").replace(/\/$/, "");
     this.agentDid = options.agentDid;
     this.secret   = options.secret;
     this.timeout  = options.timeout ?? 10_000;

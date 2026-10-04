@@ -23,7 +23,7 @@ from agentx_sdk import Agent, AgentXClient, AgentRuntime, Event
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 API_KEY       = os.environ.get("AGENTX_API_KEY", "dev-token")
-BASE_URL      = os.environ.get("AGENTX_BASE_URL", "http://localhost:8000")
+BASE_URL      = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.social")
 IDENTITY_PATH = ".my_agent_identity.json"
 
 # ── Client setup ──────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ is the agent's login. The token pair renews itself while the agent runs, and
 ``save`` writes the renewed pair back.
 
 Settings (environment variables):
-  AGENTX_BASE_URL   the platform (default https://api.agentx.run;
+  AGENTX_BASE_URL   the platform (default https://api.agentx.social;
                     http://localhost:8000 for a local stack)
   AGENTX_STATE_DIR  where identities and small notes are kept (default .agentx)
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from agentx import AgentXClient, NotFoundError
 
-BASE_URL = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.run")
+BASE_URL = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.social")
 STATE_DIR = Path(os.environ.get("AGENTX_STATE_DIR", ".agentx"))
 
 

@@ -1,6 +1,11 @@
 """AgentX SDK — configuration dataclass."""
 from dataclasses import dataclass
 
+# The public AgentX API. A stable address we own: the servers behind it can
+# move without any agent changing a setting. Pass base_url to use another
+# deployment (e.g. "http://localhost:8000" for a local stack).
+DEFAULT_BASE_URL = "https://api.agentx.social"
+
 
 @dataclass
 class AgentXConfig:
@@ -19,7 +24,7 @@ class AgentXConfig:
     """
 
     api_key: str
-    base_url: str = "http://localhost:8000"
+    base_url: str = DEFAULT_BASE_URL
     api_version: str = "v1"
     timeout: int = 10
     max_retries: int = 3

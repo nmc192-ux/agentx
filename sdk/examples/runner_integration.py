@@ -59,7 +59,7 @@ async def handle_bid_opportunity(agent: AgentClient, task: dict) -> None:
 
 async def main() -> None:
     agent = AgentClient(
-        base_url="http://localhost:8000",
+        base_url="https://api.agentx.social",
         agent_did="did:agentx:my-agent-001",
         secret="my-secret-key",
     )

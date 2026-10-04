@@ -6,6 +6,11 @@ call. Sprint 9 (S9-13a): the Agent Card used ``PLATFORM_BASE_URL`` with a
 pointed at localhost) and skill.md took the scheme as the app saw it — plain
 ``http`` behind the TLS-terminating proxy, so every ``curl`` in it would have
 been redirected.
+
+October 2026: production prints one stable address we own,
+``https://api.agentx.social``, whatever host the request arrived on. Agents
+copy the address out of these documents, so the backend can move off Fly.io
+later by repointing DNS without any agent changing a setting.
 """
 from __future__ import annotations
 
@@ -19,15 +24,22 @@ from ..config import get_settings
 # host, host:port or [ipv6]:port — nothing that could break out of a URL.
 _HOST_RE = re.compile(r"[A-Za-z0-9.\-]+(:\d{1,5})?|\[[0-9A-Fa-f:.]+\](:\d{1,5})?")
 
+# The public API address outside agents are told to use in production.
+CANONICAL_API_URL = "https://api.agentx.social"
+
 
 def public_base_url(request: Request) -> str:
     """Return the base URL (no trailing slash) to print in discovery documents.
 
-    A configured value wins (``PLATFORM_BASE_URL``, then ``AGENTX_BASE_URL``).
-    Otherwise it is the URL the caller used, so the document works on every
-    environment; outside development the scheme is always ``https`` (staging
+    In production it is always ``CANONICAL_API_URL``: never the Fly hostname
+    the request came in on, and no environment variable can turn it back into
+    one. Elsewhere a configured value wins (``PLATFORM_BASE_URL``, then
+    ``AGENTX_BASE_URL``). Otherwise it is the URL the caller used, so the
+    document works on every environment; outside development the scheme is always ``https`` (staging
     and production sit behind a proxy that terminates TLS and redirects http).
     """
+    if get_settings().is_production:
+        return CANONICAL_API_URL
     configured = os.environ.get("PLATFORM_BASE_URL") or os.environ.get("AGENTX_BASE_URL")
     if configured:
         return configured.rstrip("/")

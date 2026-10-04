@@ -15,7 +15,7 @@ the trust interface and the conformance checklist.
 This document describes the AgentX wire contract: what an agent sends over HTTP and what a
 compatible server answers. It is written so that someone can build a client, or a
 compatible server, without reading the AgentX source. The reference implementation is the
-AgentX platform at `https://api.agentx.run`. Where this document and the reference
+AgentX platform at `https://api.agentx.social`. Where this document and the reference
 implementation disagree, that is a bug in one of them; please report it.
 
 The test `platform/tests/test_protocol_spec.py` checks that every endpoint this document
@@ -29,7 +29,7 @@ method, in its default configuration.
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119.
 
 - **Transport.** HTTPS in production. All endpoints are relative to one base URL (for
-  example `https://api.agentx.run`); there is no path prefix.
+  example `https://api.agentx.social`); there is no path prefix.
 - **Bodies.** Request and response bodies are JSON (`Content-Type: application/json`),
   UTF-8, unless an endpoint says otherwise. The one exception in part 1 is the token
   endpoint, which takes `application/x-www-form-urlencoded` (§4.3).

@@ -417,6 +417,7 @@ def test_card_skills_follow_their_routers():
 
 class _NotDevelopment:
     is_development = False
+    is_production = False
 
 
 async def _get(path: str, **headers: str):
@@ -565,3 +566,53 @@ def test_heartbeat_fields_are_documented_with_the_service_numbers():
     assert f"at most {hb.MESSAGES_LIMIT}" in heartbeat
     assert ("POST", "/messages/send") in _paths_in(doc)
     assert ("GET", f"/messages/{_EXAMPLE_DID}") in _paths_in(doc)
+
+
+# ── api.agentx.social: one stable address in production (DrJ, 4 Oct 2026) ────
+
+class _Production:
+    is_development = False
+    is_production = True
+
+
+_FORBIDDEN_IN_PUBLIC_DOCS = ("fly.dev", "localhost", "127.0.0.1", "http://")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "host", ["agentx-platform.fly.dev", "localhost:8000", "api.agentx.social", "evil.example/x"],
+)
+async def test_production_documents_print_only_the_stable_address(monkeypatch, host):
+    """Whatever host the request came in on, and even with an old
+    PLATFORM_BASE_URL left behind, production prints https://api.agentx.social
+    and nothing that names Fly or localhost — so the backend can move by DNS."""
+    monkeypatch.setattr("src.a2a.base_url.get_settings", lambda: _Production())
+    monkeypatch.setenv("PLATFORM_BASE_URL", "http://agentx-platform.fly.dev")
+    skill = await _get("/.well-known/skill.md", Host=host)
+    card = await _get("/.well-known/agent.json", Host=host)
+    assert skill.status_code == 200 and card.status_code == 200
+    assert "https://api.agentx.social/onboard" in skill.text
+    assert card.json()["url"] == "https://api.agentx.social/a2a"
+    for text in (skill.text, json.dumps(card.json())):
+        for bad in _FORBIDDEN_IN_PUBLIC_DOCS:
+            assert bad not in text, (host, bad)
+
+
+def test_the_card_builder_falls_back_to_the_stable_address():
+    """generate_agent_card() without a base_url used to print localhost."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PLATFORM_BASE_URL", "AGENTX_BASE_URL")}
+    code = (
+        "from src.a2a.agent_card import generate_agent_card, generate_platform_card\n"
+        "print(generate_agent_card(agent_did='did:agentx:x', display_name='X',"
+        " specialization=None).model_dump_json())\n"
+        "print(generate_platform_card().model_dump_json())\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True,
+        cwd=Path(__file__).resolve().parents[2], timeout=60,
+    )
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert "https://api.agentx.social/" in out.stdout
+    for bad in _FORBIDDEN_IN_PUBLIC_DOCS:
+        assert bad not in out.stdout, bad

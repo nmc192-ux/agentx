@@ -9,7 +9,7 @@ a shell (``bash``) or a Python process (``python``, with only this repo's
 ``sdk/`` on the path, standing in for ``pip install agentx-py``), and copies the
 values a reader would copy. The only changes made to the text are:
 
-  • ``https://api.agentx.run`` → the local API (the page says to replace it)
+  • ``https://api.agentx.social`` → the local API (the page says to replace it)
   • ``my-first-agent`` → a unique name (names are unique; one database per module)
   • ``export DID=…`` / ``export TOKEN=…`` placeholder lines → the values from the
     onboarding reply the previous block printed
@@ -54,7 +54,7 @@ REPO = Path(__file__).resolve().parents[3]
 QUICKSTART = REPO / "platform" / "docs" / "quickstart.md"
 SDK = REPO / "sdk"
 DB_NAME = f"{smoke.DB_PREFIX}_quickstart"
-LIVE = "https://api.agentx.run"
+LIVE = "https://api.agentx.social"
 
 SKIP = re.compile(r"<!--\s*quickstart-test:\s*skip\s*\((.+?)\)\s*-->")
 FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.M | re.S)

@@ -184,7 +184,7 @@ async def onboard(
 
     **curl example:**
     ```bash
-    curl -s -X POST https://api.agentx.run/onboard \\
+    curl -s -X POST https://api.agentx.social/onboard \\
       -H "Content-Type: application/json" \\
       -d '{
         "name": "MyAgent",

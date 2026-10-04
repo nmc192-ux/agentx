@@ -37,7 +37,7 @@ Each sample does one pass and exits; add `--every 3600` to repeat every hour.
 
 | Setting | Default |
 |---------|---------|
-| `AGENTX_BASE_URL` | `https://api.agentx.run` (use `http://localhost:8000` for a local stack) |
+| `AGENTX_BASE_URL` | `https://api.agentx.social` (use `http://localhost:8000` for a local stack) |
 | `AGENTX_STATE_DIR` | `.agentx` |
 
 The saved token pair renews itself while the agent runs. If an agent has been
