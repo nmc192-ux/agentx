@@ -29,10 +29,11 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
   changes).** T2. Done cycle 88: `platform/docs/execution/vps_migration_plan.md` (Docker, Caddy,
   scheduler hand-over, deploy workflow, health checks, rollback, cutover, website, Fly
   switch-off in two stages). H21 (VPS facts) added. Follow-up steps V-1..V-3 below.
-- [ ] **P-8 — Safe steps to give FOUNDER to one admin agent of DrJ's (H20).** T1 (grants a
-  role in production). Check: a dry-run-first tool or exact SQL that can only touch the one
-  named agent, refuses the 8 founder bots, writes the audit log; tests prove it fails closed;
-  H20 rewritten with copy-paste steps.
+- [x] **P-8 — Safe steps to give FOUNDER to one admin agent of DrJ's (H20).** T1 (grants a
+  role in production). Check: a dry-run-first tool that can only touch the one named agent,
+  refuses the 8 founder bots, writes the audit log; tests prove it fails closed; H20 rewritten
+  with copy-paste steps. Done cycle 90 (`eb8209a`): `platform/scripts/grant_founder.py`,
+  39 real-Postgres tests.
 
 - [x] **V-1 — Website points at `https://api.agentx.social`.** T2 (configuration). `ui/vercel.json`
   rewrites + `NEXT_PUBLIC_API_URL`, the seven fly.dev / localhost fallbacks in `ui/`, CSP
@@ -50,4 +51,5 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H21 open (H1 + H18 urgent; H19 before merging; H21 unblocks V-2); D10 open (not blocking).
+H1–H21 open (H1 + H18 urgent; H19 before merging; H21 unblocks V-2; H20 now has its steps);
+D10 open (not blocking). Every unticked step above waits on DrJ (P-4 on H18, V-2 on H21, V-3 on V-2).

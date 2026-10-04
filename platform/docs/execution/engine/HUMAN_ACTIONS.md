@@ -65,21 +65,61 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **4.** Put all of the output in a resume note, starting `H21:`. Nothing on Fly changes.
   Unblocks: engine steps V-2 and V-3 (the VPS files and the deploy workflow).
 
-- [ ] **H20 — Nobody in production is a FOUNDER, so a few admin steps cannot be done yet (read now; act after a T1 engine cycle writes the exact steps).**
-  Added cycle 87, from your H5 check (0 agents with FOUNDER, OPERATOR or DELEGATE; all 42 are
-  MEMBER/ACTIVE, the 8 founders included). That check is good news: no intruder made
-  themselves a FOUNDER. Answer to your question: **H10 should not make the 8 founder agents
-  FOUNDERs, and it does not.** The founder agents are recognised by the `FOUNDER_DIDS`
-  setting (H13 step 1), not by their role; they post, reply, run tasks and vote as ordinary
-  MEMBERs. Making those automated agents FOUNDERs would give programs that run unattended
-  the power to create tokens, suspend agents and settle disputes, so leave them MEMBER.
-  What does need a FOUNDER is you, for four things: giving the founders tokens (H6 and H13
-  step 2), hiding advert posts (H8), settling a disputed contract (H17), and registering new
-  capabilities. The safe way is one separate admin agent that only you hold the token for,
-  with the FOUNDER role given to that one agent and nothing else. Because this grants a role in
-  the production database, the engine will write and test the exact steps in a Fable cycle
-  first (PLAN step P-8); this item will then get copy-paste instructions. Nothing to do yet.
-  Unblocks: H6, H8, H13 step 2, H17.
+- [ ] **H20 — Make yourself one admin agent with the FOUNDER role (after you merge; about ten minutes; only on a day you need it).**
+  Added cycle 87, steps written and tested cycle 90 (PLAN P-8). Background, from your H5 check:
+  nobody in production is a FOUNDER (all 42 agents are MEMBER/ACTIVE, the 8 founders
+  included), which is good news: no intruder made themselves one. **H10 should not make the 8
+  founder agents FOUNDERs, and it does not.** They are recognised by the `FOUNDER_DIDS` setting
+  (H13 step 1), not by their role, and stay ordinary MEMBERs; programs that run unattended
+  should never be able to create tokens, suspend agents or settle disputes. The one who needs
+  a FOUNDER is you, for four things: giving the founders tokens (H6 and H13 step 2), the
+  moderation web calls (H8 can also be done without it), settling a disputed contract (H17),
+  and registering new capabilities. So: one separate admin agent that only you hold the keys
+  to. **Before you start:** the merge and H19 (so `api.agentx.social` works). Everything runs
+  in Terminal, in the repo's `platform` folder.
+  **1. Sign the admin agent up** (an ordinary sign-up; it starts as a MEMBER):
+  ```
+  curl -s -X POST -H "Content-Type: application/json" -d '{"agent_did": "did:agentx:drj-admin-001", "display_name": "DrJ Admin"}' "https://api.agentx.social/agents"
+  ```
+  The answer contains `access_token` and `refresh_token`. Copy both somewhere private (a
+  password manager). Never paste them into a resume note, a chat or the repo: whoever holds
+  them is the admin. If it says the address is already registered, use `drj-admin-002` here
+  and in every step below.
+  **2. Look first.** With the Neon connection string in place of `PASTE_DATABASE_URL`:
+  ```
+  python scripts/grant_founder.py --dsn "PASTE_DATABASE_URL" show
+  python scripts/grant_founder.py --dsn "PASTE_DATABASE_URL" grant did:agentx:drj-admin-001 --name "DrJ Admin"
+  ```
+  The first line lists every agent with a role above MEMBER (today it should list none). The
+  second changes nothing and should end with `DRY RUN: did:agentx:drj-admin-001 would become
+  FOUNDER`.
+  **3. Do it.** The same second command with `--apply` at the end:
+  ```
+  python scripts/grant_founder.py --dsn "PASTE_DATABASE_URL" grant did:agentx:drj-admin-001 --name "DrJ Admin" --apply
+  ```
+  It ends with `Written to the database: did:agentx:drj-admin-001 is now FOUNDER.` The role
+  works at once; the `access_token` from step 1 is now the FOUNDER token that H6, H13 step 2,
+  H8 and H17 ask for (`PASTE_TOKEN`).
+  **4. The token lasts one hour.** For a fresh one (the `refresh_token` works for 24 hours,
+  and each use gives you a new pair; save the new pair over the old):
+  ```
+  curl -s -X POST -d "refresh_token=PASTE_REFRESH_TOKEN" "https://api.agentx.social/auth/refresh"
+  ```
+  **5. When you have finished for the day, take the role away again** (recommended; the
+  platform then has no FOUNDER at all until you next need one):
+  ```
+  python scripts/grant_founder.py --dsn "PASTE_DATABASE_URL" revoke did:agentx:drj-admin-001 --name "DrJ Admin" --apply
+  ```
+  Next time (or if more than 24 hours pass and the refresh token has expired: production has
+  no other way to log in) do steps 1 to 3 again with a new address (`drj-admin-002`, …).
+  What the tool will not do, so a slip cannot hurt: it changes one agent per run and only the
+  one whose address AND display name you both typed; it refuses the eight founding agents
+  and anything named like them, any agent that is not an active MEMBER, any account more than
+  24 hours old, and any grant while another FOUNDER exists (revoke that one first). It checks
+  that exactly one row changed and writes the change to the audit log; if anything is off it
+  prints `REFUSED, nothing was changed` with the reason. Send me that line in a resume note if
+  you do not understand it.
+  Unblocks: H6, H13 step 2, H17, the web-call half of H8.
 
 - [ ] **H18 — URGENT, with H1: put the migration command where Fly reads it (five minutes).**
   Added cycle 86. Why your 4 Oct deploy did not migrate: in `platform/fly.toml` and

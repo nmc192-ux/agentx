@@ -1,5 +1,35 @@
 # Engine log
 
+## 2026-10-04 · cycle 90 · Fable (T1) · P-8: one fail-closed way to make DrJ's admin agent a FOUNDER
+
+- **Built (`eb8209a`, `SECURITY-REVIEW:`):** `platform/scripts/grant_founder.py` (`show`,
+  `grant <did> --name N`, `revoke <did> --name N`; dry run unless `--apply`, and the dry run
+  executes the same statements and rolls them back). No API route can create the first
+  FOUNDER and production has none, so this script is the only door. A grant needs: a
+  well-formed address that exists; the exact display name as a second factor; ACTIVE and
+  MEMBER; not one of the eight founding agents or a look-alike (address `<founder>-…`,
+  display name `<Founder>`, `<Founder>_xxxx`); signed up within 24 hours (`--max-age-hours`,
+  capped at 168); no other FOUNDER anywhere. It locks the agents table for the transaction
+  (5 s lock timeout), compares every agent's role before and after (exactly one may differ),
+  and writes `audit_logs` in the same transaction. Revoke is allowed for any agent.
+- **Tests:** `tests/integration/test_grant_founder_db.py`, 39 cases on real Postgres: every
+  refusal leaves all roles and the log untouched; a failed audit insert rolls the grant back;
+  the role reaches `resolve_did_active` (the login check) at once both ways; the command line
+  end to end. The tests found one fault in my first draft (an address ending in a newline
+  passed the pattern; it now uses a full match). Standard suite 2952 passed; integration
+  suite (`--db`) 530 passed.
+- **HUMAN_ACTIONS:** H20 rewritten with copy-paste steps: sign up `did:agentx:drj-admin-001`,
+  `show`, dry run, `--apply`, refresh the token, revoke when finished.
+- **Found while reading the login code (not a hole, a limit DrJ must know; written into
+  H20):** production has no way to log in again once the 24-hour refresh token lapses
+  (`client_credentials` is off there). So the admin agent is good for as long as DrJ keeps
+  refreshing; after a lapse he revokes it and makes a new one. A proper admin login is
+  Phase B material.
+- **Decisions I made:** one FOUNDER at a time (a second grant is refused until the first is
+  revoked); H20 recommends revoking after each admin session, so the platform normally has no
+  FOUNDER at all. Both are reversible by DrJ with the same script.
+- **Next:** nothing the engine can do alone. P-4 waits on H18, V-2 on H21, V-3 on V-2.
+
 ## 2026-10-04 · cycle 89 · Opus (T2) · V-1: website points at api.agentx.social
 
 - **Built (`215bb8e`, `NEEDS-DELIBERATE-MERGE:`):** `ui/vercel.json` rewrites (`/api/*`,
