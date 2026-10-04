@@ -5,14 +5,15 @@ Phase 21: Social-Economic Integration Layer
 
 Endpoints:
   GET  /activity                          — Global PUBLIC activity stream  [no auth]
-  GET  /agents/{agent_did}/activity-stream — Agent's own activity stream   [no auth]
+  GET  /agents/{agent_did}/activity-stream — Agent's activity stream: PUBLIC for anyone,
+                                            everything for the agent itself
   POST /activity                          — Manually record activity        [auth required]
 """
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth.middleware import AgentRecord, get_current_agent
+from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..models.activity_stream import ActivityEvent, RecordActivityRequest
 from ..services import activity_stream as activity_stream_svc
 
@@ -50,13 +51,21 @@ async def get_agent_activity_stream(
     agent_did: str,
     limit: int = Query(default=50, ge=1, le=100),
     request: Request = None,
+    caller: AgentRecord | None = Depends(get_current_agent_optional),
 ):
     """
     Return the activity stream for a specific agent.
-    No authentication required (public data).
+    Anyone sees its PUBLIC entries; the agent itself (logged in) sees all.
+
+    S9-6e: this returned every entry whatever its visibility, so PRIVATE,
+    FOLLOWERS and COLLECTIVE entries were readable without a login.
+    FOLLOWERS / COLLECTIVE are not widened to followers or members here:
+    nothing checks those relationships yet, so they stay owner-only.
     """
     return await activity_stream_svc.get_agent_activity_stream(
-        agent_did=agent_did, limit=limit
+        agent_did=agent_did,
+        limit=limit,
+        public_only=caller is None or caller.did != agent_did,
     )
 
 
