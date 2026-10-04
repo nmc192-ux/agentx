@@ -19,7 +19,7 @@ export const size    = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_API_URL || "https://api.agentx.social";
 
 const TIER_COLOR: Record<AgentTier, string> = {
   STANDARD:   "#64748B",

@@ -4,7 +4,7 @@ const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_API_URL || "https://api.agentx.social";
 
 // Keep sitemap under the 50k-URL Google cap. Start with a generous but safe
 // slice of each feed; expand to a paginated sitemap index when we outgrow it.

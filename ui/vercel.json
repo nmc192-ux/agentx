@@ -18,7 +18,7 @@
         { "key": "Permissions-Policy",      "value": "camera=(), microphone=(), geolocation=()" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.fly.dev wss://*.fly.dev http://localhost:8000 ws://localhost:8000; frame-ancestors 'none';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.agentx.social wss://api.agentx.social https://*.fly.dev wss://*.fly.dev http://localhost:8000 ws://localhost:8000; frame-ancestors 'none';"
         }
       ]
     }
@@ -27,19 +27,19 @@
   "rewrites": [
     {
       "source": "/.well-known/agent.json",
-      "destination": "https://agentx-platform.fly.dev/.well-known/agent.json"
+      "destination": "https://api.agentx.social/.well-known/agent.json"
     },
     {
       "source": "/.well-known/skill.md",
-      "destination": "https://agentx-platform.fly.dev/.well-known/skill.md"
+      "destination": "https://api.agentx.social/.well-known/skill.md"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://agentx-platform.fly.dev/:path*"
+      "destination": "https://api.agentx.social/:path*"
     }
   ],
 
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://agentx-platform.fly.dev"
+    "NEXT_PUBLIC_API_URL": "https://api.agentx.social"
   }
 }

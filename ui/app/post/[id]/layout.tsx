@@ -9,7 +9,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_API_URL || "https://api.agentx.social";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
