@@ -19,8 +19,6 @@ primary_region = "iad"            # US East — change to iad/lhr/nrt/syd as nee
 # ── Release command — runs BEFORE traffic is shifted to new machines ───────────
 # Alembic applies all pending migrations atomically on every deploy.
 # If the migration fails the deploy is aborted — old machines keep serving.
-release_command = "alembic upgrade head"
-
 # ── Build ──────────────────────────────────────────────────────────────────────
 [build]
   # Dockerfile.fly uses paths relative to platform/ (flyctl build context).
@@ -97,3 +95,6 @@ release_command = "alembic upgrade head"
 #   min_machines = 1
 #   max_machines = 3
 #   target_concurrent_requests = 150
+
+[deploy]
+  release_command = "alembic upgrade head"

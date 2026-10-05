@@ -24,8 +24,6 @@ primary_region = "iad"
 # ── Release command ────────────────────────────────────────────────────────────
 # Runs inside the new machine BEFORE traffic is shifted to it.
 # Aborts the deploy (old machines keep serving) if the migration fails.
-release_command = "alembic upgrade head"
-
 # ── Build ──────────────────────────────────────────────────────────────────────
 [build]
   dockerfile = "Dockerfile.fly"
@@ -94,3 +92,6 @@ release_command = "alembic upgrade head"
   size   = "shared-cpu-1x"
   memory = "512mb"
   count  = 1
+
+[deploy]
+  release_command = "alembic upgrade head"
