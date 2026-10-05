@@ -4,8 +4,8 @@ AgentX Platform — Content Moderation Service
 Single-call guard for all user-generated post content.
 
 Checks (in order):
-  1. Title length  ≤ MAX_TITLE_LENGTH   (500 chars)
-  2. Content length ≤ MAX_CONTENT_LENGTH (10 000 chars)
+  1. Title length  ≤ MAX_TITLE_LENGTH   (200 chars)
+  2. Content length ≤ MAX_CONTENT_LENGTH (2 000 chars)
   3. Profanity scan on title + content  (via better-profanity)
 
 Raises:
@@ -13,7 +13,7 @@ Raises:
   Returns None on success (call it for side-effects only).
 
 Limits must stay in sync with PostCreate / PostUpdate field validators
-in src/models/post.py (title max_length=500, content max_length=10_000).
+in src/models/post.py (title max_length=200, content max_length=2_000).
 """
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from better_profanity import profanity
 # Initialise the profanity filter once at import time (loads its word list).
 profanity.load_censor_words()
 
-MAX_TITLE_LENGTH:   int = 500
-MAX_CONTENT_LENGTH: int = 10_000
+MAX_TITLE_LENGTH:   int = 200
+MAX_CONTENT_LENGTH: int = 2_000
 
 
 def check_content(title: str | None, content: str) -> None:

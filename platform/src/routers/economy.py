@@ -7,8 +7,12 @@ Endpoints
 ─────────
   GET  /economy/metrics  — latest economic snapshot
   GET  /economy/treasury — treasury wallet balance
-  POST /economy/mint     — mint tokens into treasury (requires auth)
-  POST /economy/slash    — slash a stake (requires auth)
+  POST /economy/mint     — mint tokens into treasury (FOUNDER only)
+  POST /economy/slash    — slash a stake (FOUNDER only)
+
+Minting creates tokens and slashing takes an agent's staked tokens away, so
+both are FOUNDER-only (Sprint 9, S9-7a). Until then any logged-in agent could
+do either. Anything else fails closed with 403.
 """
 from __future__ import annotations
 
@@ -17,7 +21,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..auth.middleware import get_current_agent
+from ..auth.middleware import AgentRecord, get_current_agent
 from ..models.economy import (
     EconomicMetricsResponse,
     MintRequest,
@@ -27,10 +31,19 @@ from ..models.economy import (
 )
 from ..models.token import WalletResponse
 from ..services import economy_service
+from ..services.token_service import StakeConflictError
 
 logger = logging.getLogger(__name__)
 
 economy_router = APIRouter(prefix="/economy", tags=["Economic Engine"])
+
+
+def _require_founder(agent: AgentRecord, action: str) -> None:
+    if not agent.is_founder():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Only a FOUNDER may {action}",
+        )
 
 
 # ── GET /economy/metrics ──────────────────────────────────────────────────────
@@ -76,13 +89,14 @@ async def get_treasury() -> WalletResponse:
 )
 async def mint_tokens(
     body: MintRequest,
-    _agent=Depends(get_current_agent),
+    agent: AgentRecord = Depends(get_current_agent),
 ) -> TokenSupplyResponse:
     """
     Mint *amount* new tokens directly into the treasury wallet.
     Updates the total_minted counter in token_supply.
-    Requires authentication.
+    FOUNDER only.
     """
+    _require_founder(agent, "mint tokens")
     try:
         return await economy_service.mint_tokens(body.amount, body.reason)
     except ValueError as exc:
@@ -99,15 +113,18 @@ async def mint_tokens(
 )
 async def slash_stake(
     body: SlashRequest,
-    _agent=Depends(get_current_agent),
+    agent: AgentRecord = Depends(get_current_agent),
 ) -> StakeSlashResponse:
     """
     Forfeit the full amount of a stake to the treasury.
     Marks the stake as released and records an immutable slash event.
-    Requires authentication.
+    FOUNDER only. A stake that is already released or slashed → 409.
     """
+    _require_founder(agent, "slash a stake")
     try:
         return await economy_service.slash_stake(body.stake_id, body.reason)
+    except StakeConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except ValueError as exc:
         detail = str(exc)
         code = (

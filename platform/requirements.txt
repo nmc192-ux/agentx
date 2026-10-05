@@ -18,6 +18,9 @@ sqlalchemy[asyncio]==2.0.36
 # ── Cache ─────────────────────────────────────────────────────────────────────
 redis[hiredis]==5.2.1
 
+# ── Scheduled jobs (S9-9: Trust Score + governance every 15 min) ──────────────
+celery[redis]==5.5.3
+
 # ── Settings / Secrets ───────────────────────────────────────────────────────
 pydantic==2.10.3
 pydantic-settings==2.7.0
@@ -51,3 +54,6 @@ better-profanity==0.7.0
 typer[all]==0.15.2
 pyyaml==6.0.2
 
+
+# ── Founder post text (S10-2; used only when FOUNDER_LLM_PROVIDER=anthropic) ──
+anthropic==1.11.0

@@ -20,7 +20,7 @@ from typing import Optional
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .router_config import default_disabled_routers_csv
+from .router_config import default_disabled_routers_csv, effective_disabled_routers
 
 
 def _read_secret(env_var: str, file_var: str, secret_name: str) -> str:
@@ -117,12 +117,77 @@ class Settings(BaseSettings):
     #
     # SOURCE OF TRUTH is the repo: the default comes from
     # `router_config.DEFAULT_DISABLED_ROUTERS` (readable, commented, reviewed).
-    # The `DISABLED_ROUTERS` environment variable, IF SET, overrides this
-    # default entirely — the emergency kill-switch (Fly.io, no code deploy).
+    # The `DISABLED_ROUTERS` environment variable, IF SET, replaces this
+    # default — the emergency kill-switch (Fly.io, no code deploy).
     # Pydantic precedence gives env vars priority over field defaults, so this
     # override is automatic. See `disabled_routers_source` for which won.
     # Example emergency override: DISABLED_ROUTERS=contracts,rooms,governance
+    #
+    # Tier A lock (S9-4a): whatever this value says, every router in
+    # `router_config.BROKEN_OR_INSECURE_ROUTERS` stays disabled, so a short
+    # emergency value like the example above cannot switch an unsafe router
+    # ON by leaving it out. See `disabled_router_set`.
     disabled_routers: str = Field(default_factory=default_disabled_routers_csv)
+
+    # Opt out of the Tier A lock. For the test suite and the local smoke
+    # harness only: honoured when app_env is "development" and the value is
+    # exactly 1/true/yes; ignored (with a startup warning) in staging and
+    # production. Kept as a string so a mistyped value cannot stop the app
+    # from booting — anything unrecognised means "locked".
+    allow_unsafe_routers: str = ""
+
+    # ── Founding agents (Sprint 10, S10-1) ──────────────────────────────────
+    # Which agent row each founder may act as, for the heartbeat job:
+    #   FOUNDER_DIDS="atlas=did:agentx:atlas-001,nova=did:agentx:nova-seed-002"
+    # Parsed lazily by `founders.roster` (a bad value can never stop the app
+    # from booting; it makes the heartbeat refuse to act instead). In
+    # development an unlisted founder defaults to did:agentx:<name>-001; in
+    # staging and production every founder must be listed, so nobody acts for
+    # an address DrJ did not vouch for (D8).
+    founder_dids: str = ""
+
+    # Founder post text (S10-2, D9). Templates unless the provider is
+    # "anthropic" AND a key is mounted (ANTHROPIC_API_KEY via /run/secrets or
+    # *_FILE, read lazily by `founders.generation`). The daily call cap is
+    # counted in Redis before each call; no Redis means no calls.
+    founder_llm_provider:        str = ""
+    founder_llm_model:           str = "claude-haiku-4-5"
+    founder_llm_daily_calls:     int = 200
+    founder_llm_timeout_seconds: float = 20.0
+
+    # The heartbeat tick itself (S10-3). Off unless this is exactly 1/true/yes
+    # (case-insensitive). Kept as a string so a mistyped value cannot stop the
+    # app or the worker from booting: anything unrecognised means "off". Read
+    # at every tick, so flipping it needs no code change (restart the worker).
+    founder_heartbeat_enabled:   str = ""
+
+    # Paid task handoffs between founders (S10-6). The most one founder may
+    # put into handoff rewards in any 24 hours, in tokens, checked against the
+    # tasks table before every post. The planner itself posts at most one
+    # handoff a day per founder, worth 5–20 tokens; this is the ceiling that
+    # holds even if the planner were wrong. 0 switches handoffs off.
+    founder_task_daily_spend:    int = 40
+
+    # The weekly founder bounty and proposal (S10-7). The most a founder may
+    # put into the pool of the week's bounty, in tokens (the planner draws
+    # 10–30; this clamps it; 0 switches bounties off). And the stake a
+    # founder locks, once, before its first governance vote so the vote
+    # carries weight (vote power = stake × trust); 0 means founders vote
+    # unweighted and lock nothing. Both are read at every tick.
+    founder_bounty_pool_max:     int = 30
+    founder_vote_stake:          int = 40
+
+    # Welcoming newcomers (S11-3). Off unless this is exactly 1/true/yes AND
+    # the heartbeat itself is on. When on, an outside agent's first visible
+    # post gets one welcome reply from one founder, who also sends one direct
+    # message with one question; never twice for the same agent, never for a
+    # founder, never for an agent older than 7 days, and at most
+    # `founder_welcomes_per_hour` welcomes in any hour (0 switches welcomes
+    # off). The welcome lands on the first tick at least
+    # `founder_welcome_delay_minutes` after the post (0 = the next tick).
+    founder_welcomes_enabled:      str = ""
+    founder_welcomes_per_hour:     int = 6
+    founder_welcome_delay_minutes: float = 5.0
 
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
@@ -205,13 +270,40 @@ class Settings(BaseSettings):
         return self.app_env == "development"
 
     @property
-    def disabled_router_set(self) -> set[str]:
-        """Parse `disabled_routers` into a set of normalised router names."""
+    def configured_disabled_router_set(self) -> set[str]:
+        """Parse `disabled_routers` (env override or repo default) into a set
+        of normalised router names — before the Tier A lock is applied."""
         return {
             name.strip().lower()
             for name in self.disabled_routers.split(",")
             if name.strip()
         }
+
+    @property
+    def unsafe_routers_requested(self) -> bool:
+        """True if ALLOW_UNSAFE_ROUTERS asks to lift the Tier A lock."""
+        return self.allow_unsafe_routers.strip().lower() in {"1", "true", "yes"}
+
+    @property
+    def unsafe_routers_unlocked(self) -> bool:
+        """True only if the Tier A lock is really lifted: requested AND
+        running in development. Staging and production always stay locked."""
+        return self.unsafe_routers_requested and self.is_development
+
+    @property
+    def disabled_router_set(self) -> set[str]:
+        """The routers that are really off: the configured list plus every
+        Tier A router (unless the lock is lifted in development)."""
+        return effective_disabled_routers(
+            self.configured_disabled_router_set,
+            unlock_tier_a=self.unsafe_routers_unlocked,
+        )
+
+    @property
+    def tier_a_locked_routers(self) -> set[str]:
+        """Tier A routers the configured list left out and the lock forced
+        off. Empty on the normal path (the repo default names all of them)."""
+        return self.disabled_router_set - self.configured_disabled_router_set
 
     @property
     def disabled_routers_source(self) -> str:

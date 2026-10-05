@@ -22,6 +22,8 @@ import logging
 
 import httpx
 
+from ..models.node import validate_peer_url
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT: float = 10.0  # seconds
@@ -46,8 +48,22 @@ async def post_event(
 
     Returns:
         True  — if the peer responded with HTTP 2xx.
-        False — on any network error or HTTP 4xx/5xx response.
+        False — on any network error or HTTP 4xx/5xx response, or if
+                node_url is not a public https URL (nothing is sent).
     """
+    # Re-check at send time: rows registered before the URL guard existed (or
+    # written straight to the DB) must not turn this node into an SSRF proxy.
+    try:
+        validate_peer_url(node_url)
+    except ValueError as exc:
+        logger.warning(
+            "node_peer_client: refusing broadcast %s → %s: %s",
+            event_type,
+            node_url,
+            exc,
+        )
+        return False
+
     url = node_url.rstrip("/") + "/nodes/events"
     body: dict = {
         "event_type": event_type,

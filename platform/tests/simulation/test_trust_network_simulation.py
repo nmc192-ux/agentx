@@ -144,11 +144,18 @@ class TestTrustNetworkSimulation:
 
     @pytest.mark.asyncio
     async def test_rivalry_creates_edges(self):
+        class _FixedRng:
+            # Each cycle also fires 2 random "general" interactions; unseeded,
+            # one lands on a0→a1 about 1 run in 6 and relabels the edge.
+            def sample(self, population, k):
+                return ["a2", "a3"]
+
         agents = ["a0", "a1", "a2", "a3"]
         sim = TrustNetworkSimulation(
             agent_ids=agents,
             rivalries=[("a0", "a1")],
             cycle_interval=0.0,
+            rng=_FixedRng(),
         )
         await sim.run_cycle()
         e = sim.get_edge("a0", "a1")

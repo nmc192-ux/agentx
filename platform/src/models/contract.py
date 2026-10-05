@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -18,13 +18,22 @@ class ContractCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1)
     contract_type: str = Field(default="general")
-    budget: int = Field(..., gt=0)
+    budget: int = Field(..., gt=0, le=2**63 - 1)   # BIGINT column
     deadline: Optional[datetime] = None
     payload: Optional[dict] = None
 
+    @field_validator("deadline")
+    @classmethod
+    def _deadline_is_utc_when_unmarked(cls, value: Optional[datetime]) -> Optional[datetime]:
+        # The deadline decides when the creator may reclaim the escrow, so a
+        # time with no zone must mean one thing everywhere: UTC.
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
 
 class ContractBidCreate(BaseModel):
-    bid_amount: int = Field(..., gt=0)
+    bid_amount: int = Field(..., gt=0, le=2**63 - 1)   # BIGINT column
     proposal: Optional[str] = None
 
 
@@ -38,6 +47,15 @@ class ContractResultCreate(BaseModel):
 
 class ContractDisputeCreate(BaseModel):
     reason: str = Field(..., min_length=1)
+
+
+class ContractSettleRequest(BaseModel):
+    """A FOUNDER's ruling on a disputed contract. The whole escrow goes one
+    way; the body names no payee and no amount (anything else → 422)."""
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["pay_contractor", "refund_creator"]
+    note: str = Field(..., min_length=1, max_length=2000)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -87,3 +105,23 @@ class ContractDisputeResponse(BaseModel):
     reason: str
     status: str
     created_at: datetime
+    resolution: Optional[str] = None
+    resolved_by_did: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    resolution_note: Optional[str] = None
+
+
+class ContractSettlementResponse(BaseModel):
+    contract: ContractResponse
+    dispute: ContractDisputeResponse
+    outcome: str
+    amount: int
+    paid_to_did: str
+
+
+class ContractDisputeFile(BaseModel):
+    """What a FOUNDER reads before ruling: the contract, its disputes and
+    whatever the contractor submitted."""
+    contract: ContractResponse
+    disputes: List[ContractDisputeResponse]
+    results: List[ContractResultResponse]

@@ -163,124 +163,78 @@ class TestEconomyConsumer:
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestReputationConsumer:
+    """S9-9b: the consumer passes ids on; the reputation service decides."""
 
     @pytest.mark.asyncio
-    async def test_task_completed_calls_record_event_task_success(self):
-        event = _event(
-            EventType.TASK_COMPLETED,
-            {"task_id": str(uuid4())},
-            "did:agentx:executor-001",
-        )
-        mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
+    async def test_task_completed_reports_the_task_id(self):
+        task_id = str(uuid4())
+        event = _event(EventType.TASK_COMPLETED, {"task_id": task_id}, "did:agentx:executor-001")
+        mock_record = AsyncMock(return_value="recorded")
+        with patch("src.services.reputation.record_task_completed", new=mock_record):
             from src.services.consumers.reputation_consumer import handle
             await handle(event)
 
-        mock_record.assert_awaited_once()
-        args = mock_record.await_args.args
-        assert args[0] == "did:agentx:executor-001"
-        assert args[1] == "task_success"
+        mock_record.assert_awaited_once_with(task_id, source="service_consumer")
 
     @pytest.mark.asyncio
-    async def test_task_completed_skips_if_no_agent_did(self):
-        """No agent_did and no source_did → skip gracefully."""
-        event = _event(EventType.TASK_COMPLETED, {"task_id": str(uuid4())}, source_did=None)
+    async def test_task_completed_skips_if_no_task_id(self):
+        event = _event(EventType.TASK_COMPLETED, {}, "did:agentx:executor-001")
         mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
+        with patch("src.services.reputation.record_task_completed", new=mock_record):
             from src.services.consumers.reputation_consumer import handle
             await handle(event)
 
         mock_record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_task_completed_failure_does_not_raise(self):
-        event = _event(EventType.TASK_COMPLETED, {}, "did:agentx:executor-001")
-        mock_record = AsyncMock(side_effect=ValueError("Unsupported reputation event type"))
-        with patch("src.services.reputation.record_event", new=mock_record):
-            from src.services.consumers.reputation_consumer import handle
-            await handle(event)  # must not raise
-
-    @pytest.mark.asyncio
-    async def test_contract_verified_calls_peer_validation(self):
+    async def test_contract_verified_reports_the_verification_id(self):
+        """The requester named in the payload earns nothing: only the winning
+        voters do, and the service reads them from the database."""
         vid = str(uuid4())
         event = _event(
             EventType.CONTRACT_VERIFIED,
             {"verification_id": vid, "requester_did": "did:agentx:requester-001"},
         )
-        mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
+        mock_outcome = AsyncMock(return_value={})
+        mock_event = AsyncMock()
+        with (
+            patch("src.services.reputation.record_verification_outcome", new=mock_outcome),
+            patch("src.services.reputation.record_event", new=mock_event),
+        ):
             from src.services.consumers.reputation_consumer import handle
             await handle(event)
 
-        mock_record.assert_awaited_once()
-        args = mock_record.await_args.args
-        assert args[0] == "did:agentx:requester-001"
-        assert args[1] == "peer_validation"
+        mock_outcome.assert_awaited_once_with(vid)
+        mock_event.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_contract_verified_skips_if_no_requester_did(self):
+    async def test_contract_verified_skips_if_no_verification_id(self):
         event = _event(EventType.CONTRACT_VERIFIED, {}, source_did=None)
-        mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
+        mock_outcome = AsyncMock()
+        with patch("src.services.reputation.record_verification_outcome", new=mock_outcome):
             from src.services.consumers.reputation_consumer import handle
             await handle(event)
 
-        mock_record.assert_not_awaited()
+        mock_outcome.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_contract_verified_failure_does_not_raise(self):
-        event = _event(
-            EventType.CONTRACT_VERIFIED,
-            {"requester_did": "did:agentx:req"},
-        )
-        mock_record = AsyncMock(side_effect=RuntimeError("DB error"))
-        with patch("src.services.reputation.record_event", new=mock_record):
-            from src.services.consumers.reputation_consumer import handle
-            await handle(event)  # must not raise
-
-    @pytest.mark.asyncio
-    async def test_verification_submitted_calls_peer_validation(self):
-        vid = str(uuid4())
+    async def test_a_vote_cast_earns_nothing_by_itself(self):
         event = _event(
             EventType.VERIFICATION_SUBMITTED,
-            {"verification_id": vid, "verifier_did": "did:agentx:verifier-001"},
+            {"verification_id": str(uuid4()), "verifier_did": "did:agentx:verifier-001"},
+            source_did="did:agentx:verifier-001",
         )
-        mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
+        mock_event = AsyncMock()
+        mock_outcome = AsyncMock()
+        with (
+            patch("src.services.reputation.record_event", new=mock_event),
+            patch("src.services.reputation.record_verification_outcome", new=mock_outcome),
+        ):
             from src.services.consumers.reputation_consumer import handle
             await handle(event)
 
-        mock_record.assert_awaited_once()
-        args = mock_record.await_args.args
-        assert args[0] == "did:agentx:verifier-001"
-        assert args[1] == "peer_validation"
-
-    @pytest.mark.asyncio
-    async def test_verification_submitted_uses_source_did_fallback(self):
-        """verifier_did absent in payload → falls back to source_agent_did."""
-        vid = str(uuid4())
-        event = _event(
-            EventType.VERIFICATION_SUBMITTED,
-            {"verification_id": vid},
-            source_did="did:agentx:fallback-verifier",
-        )
-        mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
-            from src.services.consumers.reputation_consumer import handle
-            await handle(event)
-
-        mock_record.assert_awaited_once()
-        assert mock_record.await_args.args[0] == "did:agentx:fallback-verifier"
-
-    @pytest.mark.asyncio
-    async def test_verification_submitted_skips_if_no_verifier_did(self):
-        event = _event(EventType.VERIFICATION_SUBMITTED, {}, source_did=None)
-        mock_record = AsyncMock()
-        with patch("src.services.reputation.record_event", new=mock_record):
-            from src.services.consumers.reputation_consumer import handle
-            await handle(event)
-
-        mock_record.assert_not_awaited()
+        mock_event.assert_not_awaited()
+        mock_outcome.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_unexpected_event_type_does_not_raise(self):

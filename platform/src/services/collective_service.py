@@ -234,6 +234,9 @@ async def get_members(collective_id: UUID) -> list[CollectiveMemberResponse]:
     ]
 
 
+_FINISHED_TASK_STATUSES = {"completed", "failed"}
+
+
 # ── assign_task_to_collective ──────────────────────────────────────────────────
 
 async def assign_task_to_collective(
@@ -246,7 +249,8 @@ async def assign_task_to_collective(
 
     Validates:
       - Collective exists.
-      - Task exists.
+      - Task exists, is not finished, and the assigning agent is its
+        requester or executor.
       - The assigning agent is an OWNER or ADMIN of the collective.
 
     Creates a collective_tasks record (idempotent via UNIQUE constraint) and
@@ -269,11 +273,26 @@ async def assign_task_to_collective(
 
         # Verify task
         task_row = await conn.fetchrow(
-            "SELECT task_id, status FROM tasks WHERE task_id = $1",
+            """
+            SELECT task_id, status, requester_agent_did, executor_agent_did
+            FROM tasks WHERE task_id = $1
+            FOR UPDATE
+            """,
             task_id,
         )
         if task_row is None:
             raise ValueError(f"Task not found: {task_id}")
+
+        # Only a party to the task may hand it to a collective (S9-6): without
+        # this, any collective admin could stamp any agent's task as theirs.
+        if assigned_by_did not in (
+            task_row["requester_agent_did"], task_row["executor_agent_did"],
+        ):
+            raise ValueError(
+                f"Agent {assigned_by_did!r} is not the requester or executor of task {task_id}"
+            )
+        if (task_row["status"] or "").lower() in _FINISHED_TASK_STATUSES:
+            raise ValueError(f"Task {task_id} is already {task_row['status']}")
 
         # Verify assigner is OWNER or ADMIN
         assigner_role = await conn.fetchval(

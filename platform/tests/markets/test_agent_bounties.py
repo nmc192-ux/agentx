@@ -405,3 +405,80 @@ class TestStrategyEndpoints:
         data = resp.json()
         assert "market_health" in data
         assert data["market_health"] == "empty"
+
+    # ── S9-7c: the two login-free calculators only accept a bounded body ──────
+
+    @pytest.mark.asyncio
+    async def test_market_analysis_counts_supply_and_ignores_unknown_keys(self, client):
+        resp = await client.post(
+            "/economy/market-analysis",
+            json={
+                "bounties": [{"status": "open", "capability_required": "x", "junk": [1, 2]}],
+                "agents": [
+                    {"did": "did:agentx:a", "capabilities": ["x", "y"], "junk": {"a": 1}},
+                    {"did": "did:agentx:b", "capabilities": ["x"]},
+                ],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["capability_supply"] == {"x": 2, "y": 1}
+        assert data["open_bounties"] == 1 and data["total_agents"] == 2
+        assert data["market_health"] == "healthy"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("body", [
+        {"agents": [{"capabilities": 5}]},                     # was a 500 (TypeError)
+        {"agents": [{"capabilities": [["nested"]]}]},          # was a 500 (unhashable)
+        {"agents": [{"capabilities": ["c"] * 51}]},
+        {"agents": [{"capabilities": ["x" * 101]}]},
+        {"agents": [{"capabilities": []}] * 501},
+        {"bounties": [{"status": "open"}] * 501},
+        {"bounties": ["not-an-object"]},
+    ])
+    async def test_market_analysis_rejects_malformed_or_oversized_bodies(self, client, body):
+        resp = await client.post("/economy/market-analysis", json=body)
+        assert resp.status_code == 422, resp.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("body", [
+        {"agent_id": "a", "capabilities": ["c"] * 51},
+        {"agent_id": "a", "capabilities": ["x" * 101]},
+        {"agent_id": "a", "capabilities": [1, 2]},
+        {"agent_id": "a" * 256, "capabilities": []},
+    ])
+    async def test_select_strategy_rejects_oversized_bodies(self, client, body):
+        resp = await client.post("/economy/strategies/select", json=body)
+        assert resp.status_code == 422, resp.text
+
+
+class TestAutoBountyErrorMapping:
+    """S9-7c: same HTTP answers as POST /markets/bounties."""
+
+    @pytest.mark.asyncio
+    async def test_reward_pool_over_the_column_range_returns_422(self, client):
+        _auth()
+        try:
+            resp = await client.post(
+                "/markets/bounties/auto",
+                json={"capability": "forecast", "reward_pool": 2**63},
+            )
+        finally:
+            _clear_auth()
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_creator_not_found_returns_404(self, client):
+        _auth()
+        try:
+            with patch(
+                "src.routers.agent_economy.auto_bounty_service.create_agent_bounty",
+                new=AsyncMock(side_effect=ValueError("Creator agent not found: did:agentx:agent1")),
+            ):
+                resp = await client.post(
+                    "/markets/bounties/auto",
+                    json={"capability": "forecast", "reward_pool": 10},
+                )
+        finally:
+            _clear_auth()
+        assert resp.status_code == 404

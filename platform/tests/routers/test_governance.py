@@ -22,6 +22,16 @@ from src.main import app
 
 # -- Fixtures -----------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def _no_database(monkeypatch):
+    """The list routes first close proposals that are due (S9-8); these tests
+    have no database, so that sweep is stubbed."""
+    from src.services import governance_service
+    sweep = AsyncMock(return_value=0)
+    monkeypatch.setattr(governance_service, "finalize_due_proposals", sweep)
+    return sweep
+
+
 @pytest.fixture
 async def client():
     async with AsyncClient(
@@ -245,12 +255,13 @@ class TestVoteOnProposal:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_returns_400_for_already_voted(self, client):
+    async def test_returns_409_for_already_voted(self, client):
         from src.auth.middleware import get_current_agent
+        from src.services.governance_service import GovernanceConflictError
 
         with patch(
             "src.routers.governance.governance_service.vote_on_proposal",
-            new=AsyncMock(side_effect=ValueError("already voted on proposal")),
+            new=AsyncMock(side_effect=GovernanceConflictError("already voted on proposal")),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
             try:
@@ -261,7 +272,7 @@ class TestVoteOnProposal:
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
 
-        assert resp.status_code == 400
+        assert resp.status_code == 409
 
 
 # -- GET /governance/results --------------------------------------------------
@@ -269,14 +280,16 @@ class TestVoteOnProposal:
 class TestGetResults:
 
     @pytest.mark.asyncio
-    async def test_returns_finalized_proposals(self, client):
-        passed   = [_proposal(status="passed", yes_power=300.0)]
-        failed   = [_proposal(status="failed", no_power=200.0)]
-        executed = [_proposal(status="executed")]
+    async def test_returns_finalized_proposals(self, client, _no_database):
+        results = [
+            _proposal(status="passed", yes_power=300.0),
+            _proposal(status="failed", no_power=200.0),
+            _proposal(status="executed"),
+        ]
 
         with patch(
-            "src.routers.governance.governance_service.list_proposals",
-            new=AsyncMock(side_effect=[passed, failed, executed]),
+            "src.routers.governance.governance_service.list_results",
+            new=AsyncMock(return_value=results),
         ):
             resp = await client.get("/governance/results")
 
@@ -285,12 +298,13 @@ class TestGetResults:
         assert len(data) == 3
         statuses = {p["status"] for p in data}
         assert statuses == {"passed", "failed", "executed"}
+        _no_database.assert_awaited_once()      # due proposals are closed first
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_results(self, client):
         with patch(
-            "src.routers.governance.governance_service.list_proposals",
-            new=AsyncMock(side_effect=[[], [], []]),
+            "src.routers.governance.governance_service.list_results",
+            new=AsyncMock(return_value=[]),
         ):
             resp = await client.get("/governance/results")
 
@@ -301,9 +315,72 @@ class TestGetResults:
     async def test_no_auth_required(self, client):
         """GET /governance/results is public."""
         with patch(
-            "src.routers.governance.governance_service.list_proposals",
-            new=AsyncMock(side_effect=[[], [], []]),
+            "src.routers.governance.governance_service.list_results",
+            new=AsyncMock(return_value=[]),
         ):
             resp = await client.get("/governance/results")
 
         assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_a_failed_sweep_does_not_break_the_read(self, client, _no_database):
+        _no_database.side_effect = RuntimeError("database busy")
+        with patch(
+            "src.routers.governance.governance_service.list_results",
+            new=AsyncMock(return_value=[_proposal(status="passed")]),
+        ):
+            resp = await client.get("/governance/results")
+
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("path", ["/governance/proposals", "/governance/results"])
+    @pytest.mark.parametrize("query", ["limit=0", "limit=201", "offset=-1"])
+    async def test_page_bounds(self, client, path, query):
+        resp = await client.get(f"{path}?{query}")
+        assert resp.status_code == 422
+
+
+# -- POST /governance/proposals: state and bounds -----------------------------
+
+class TestCreateProposalLimits:
+
+    @pytest.mark.asyncio
+    async def test_returns_409_at_the_open_proposal_cap(self, client):
+        from src.auth.middleware import get_current_agent
+        from src.services.governance_service import GovernanceConflictError
+
+        with patch(
+            "src.routers.governance.governance_service.create_proposal",
+            new=AsyncMock(side_effect=GovernanceConflictError("limit is 3")),
+        ):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent()
+            try:
+                resp = await client.post(
+                    "/governance/proposals", json={"title": "T", "description": "D"},
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 409
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("body", [
+        {"title": "T", "description": "x" * 10_001},
+        {"title": "T", "description": "D", "proposal_type": "Not A Slug"},
+        {"title": "T", "description": "D", "payload": {"blob": "x" * 20_000}},
+    ])
+    async def test_oversized_or_malformed_body_is_422(self, client, body):
+        from src.auth.middleware import get_current_agent
+
+        create = AsyncMock()
+        with patch("src.routers.governance.governance_service.create_proposal", new=create):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent()
+            try:
+                resp = await client.post("/governance/proposals", json=body)
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 422
+        create.assert_not_awaited()

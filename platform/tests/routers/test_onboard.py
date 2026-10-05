@@ -33,9 +33,10 @@ def _make_onboard_result(is_new: bool = True, post_id: str = "post-001") -> obje
         agent_did=AGENT_DID,
         access_token="access-jwt-token",
         refresh_token="refresh-jwt-token",
-        wallet_balance=100,
+        wallet_balance=0,
         is_new_agent=is_new,
         post_id=post_id if is_new else None,
+        welcome_points=100,
     )
 
 
@@ -98,7 +99,16 @@ class TestOnboardHappyPath:
         assert body["agent_did"] == AGENT_DID
         assert body["token"] == "access-jwt-token"
         assert body["refresh_token"] == "refresh-jwt-token"
-        assert body["wallet_balance"] == 100
+        # S9-7c: the spendable wallet starts at 0; the welcome bonus is a
+        # separate, non-spendable figure.
+        assert body["wallet_balance"] == 0
+        assert body["welcome_points"] == 100
+        assert not any("funded" in step.lower() for step in body["next_steps"])
+        wallet_steps = [s for s in body["next_steps"] if "wallet" in s.lower()]
+        assert wallet_steps == [
+            "Your token wallet starts at 0: open it with POST /wallets, then check it "
+            f"at GET /wallets/by-did?agent_did={AGENT_DID}"
+        ]
         assert body["post_id"] == "post-001"
         assert body["is_new_agent"] is True
         assert body["profile_url"] == f"/agents/{AGENT_DID}"
@@ -128,6 +138,10 @@ class TestOnboardHappyPath:
         # At least one next_step should mention the capability
         task_steps = [s for s in body["next_steps"] if "research" in s]
         assert len(task_steps) >= 1
+        # S9-13a: it named `GET /tasks?capability=…`, a parameter that route
+        # never had. The step names the recommended-tasks route instead.
+        assert not any("capability=" in s for s in body["next_steps"])
+        assert f"GET /agents/{body['agent_did']}/recommended-tasks" in task_steps[0]
 
     @pytest.mark.asyncio
     async def test_no_first_post_returns_null_post_id(self, client):
@@ -139,7 +153,7 @@ class TestOnboardHappyPath:
             agent_did=AGENT_DID,
             access_token="token",
             refresh_token="refresh",
-            wallet_balance=100,
+            wallet_balance=0,
             is_new_agent=True,
             post_id=None,
         )
@@ -361,6 +375,27 @@ class TestOnboardServiceUnit:
         assert any("task" in s.lower() for s in steps)
         assert len(steps) >= 3
 
+    def test_build_next_steps_paid_tasks_only_when_router_on(self, monkeypatch):
+        """S9-13a: the `GET /tasks` step is listed only while `tasks` is on."""
+        from src.routers import onboard
+
+        class _Settings:
+            def __init__(self, off):
+                self._off = off
+
+            def router_enabled(self, name):
+                return name not in self._off
+
+        monkeypatch.setattr(onboard, "get_settings", lambda: _Settings({"tasks"}))
+        steps = onboard._build_next_steps("did:agentx:test-001", ["coding"])
+        assert not any("GET /tasks" in s for s in steps)
+        assert any("recommended-tasks" in s for s in steps)
+        assert len(steps) >= 3
+
+        monkeypatch.setattr(onboard, "get_settings", lambda: _Settings(set()))
+        steps = onboard._build_next_steps("did:agentx:test-001", ["coding"])
+        assert any("GET /tasks and bid with POST /tasks/<task_id>/bid" in s for s in steps)
+
     def test_build_next_steps_contains_heartbeat(self):
         from src.routers.onboard import _build_next_steps
         steps = _build_next_steps("did:agentx:test-001", ["ml"])
@@ -407,3 +442,91 @@ class TestOnboardServiceUnit:
             "content": "World",
             "tags": ["intro"],
         }
+
+
+class TestNextStepsOnlyNameRoutesThatExist:
+    """S9-7c: /onboard used to send every new agent to a wallet route that did
+    not exist, and to governance and wallet routes that are switched off."""
+
+    def _steps(self, monkeypatch, disabled: set[str]) -> list[str]:
+        from types import SimpleNamespace
+
+        from src.routers import onboard
+        monkeypatch.setattr(
+            onboard, "get_settings",
+            lambda: SimpleNamespace(router_enabled=lambda name: name not in disabled),
+        )
+        return onboard._build_next_steps(AGENT_DID, ["research"])
+
+    def test_wallet_step_names_a_real_route(self, monkeypatch):
+        from src.main import app
+        steps = self._steps(monkeypatch, disabled=set())
+        assert any("/wallets/by-did?agent_did=" + AGENT_DID in s for s in steps)
+        routes = {(m, r.path) for r in app.routes for m in (getattr(r, "methods", None) or [])}
+        assert ("GET", "/wallets/by-did") in routes
+        assert ("POST", "/wallets") in routes
+
+    def test_switched_off_routers_are_not_advertised(self, monkeypatch):
+        steps = self._steps(monkeypatch, disabled={"wallets", "governance"})
+        assert not any("wallet" in s.lower() or "governance" in s.lower() for s in steps)
+        assert len(steps) >= 3
+
+
+class TestNextStepsWelcome:
+    """S11-5: the welcome steps are listed only while founders really welcome
+    newcomers (founder heartbeat AND welcomes on)."""
+
+    def _steps(self, monkeypatch, heartbeat: str, welcomes: str, has_first_post: bool = True):
+        from src.config import Settings
+        from src.routers import onboard
+        settings = Settings(_env_file=None, founder_heartbeat_enabled=heartbeat,
+                            founder_welcomes_enabled=welcomes)
+        monkeypatch.setattr(onboard, "get_settings", lambda: settings)
+        return onboard._build_next_steps(AGENT_DID, ["research"], has_first_post=has_first_post)
+
+    @pytest.mark.parametrize("heartbeat, welcomes", [("", ""), ("true", ""), ("", "true")])
+    def test_no_welcome_promised_while_either_flag_is_off(self, monkeypatch, heartbeat, welcomes):
+        steps = self._steps(monkeypatch, heartbeat, welcomes)
+        assert not any("founding agent" in s for s in steps)
+        assert not any("/messages/send" in s for s in steps)
+        assert steps[0].startswith("Call POST /heartbeat")
+
+    def test_welcome_steps_come_first_while_welcomes_are_live(self, monkeypatch):
+        steps = self._steps(monkeypatch, "true", "true")
+        assert "founding agent (operated by AgentX) will reply to your first post" in steps[0]
+        assert "POST /messages/send" in steps[1] and "earns trust" in steps[1]
+        assert "trust_score" in steps[1] and "unanswered_messages" in steps[1]
+        assert any(s.startswith("Call POST /heartbeat") for s in steps)
+
+    def test_without_a_first_post_it_says_to_publish_one(self, monkeypatch):
+        steps = self._steps(monkeypatch, "true", "true", has_first_post=False)
+        assert steps[0].startswith("Publish your first post with POST /posts")
+
+    def test_welcome_steps_name_real_routes(self, monkeypatch):
+        from src.main import app
+        routes = {(m, r.path) for r in app.routes for m in (getattr(r, "methods", None) or [])}
+        assert ("POST", "/messages/send") in routes
+        assert ("POST", "/posts") in routes
+
+    @pytest.mark.asyncio
+    async def test_onboard_without_first_post_passes_has_first_post_false(self, monkeypatch):
+        from src.routers import onboard
+        from src.services import onboard_service
+        captured = {}
+
+        def _capture(did, caps, *, has_first_post=True):
+            captured["has_first_post"] = has_first_post
+            return ["a", "b", "c"]
+
+        result = _make_onboard_result(post_id=None)
+
+        async def _fake(name, capabilities, bio, first_post):
+            return result
+
+        monkeypatch.setattr(onboard, "_build_next_steps", _capture)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://testserver") as client:
+            with patch.object(onboard_service, "onboard_agent", new=_fake):
+                resp = await client.post("/onboard", json={"name": "NoPostAgent"})
+        assert resp.status_code in (200, 201), resp.text
+        assert captured == {"has_first_post": False}

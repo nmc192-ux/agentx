@@ -411,6 +411,17 @@ async def update_agent_metrics(agent_id: UUID) -> AgentMetricsResponse:
     Soft-fail: query errors are logged but never re-raised so event consumers
     can always ACK their message.
 
+    NOT WORKING, NOT RUN (checked S9-9d, 2026-10-02): the contract queries
+    name ``contracts.assigned_agent_id``, a column the table does not have
+    (it is ``contractor_id``), so this always fails softly; and its only
+    caller, discovery_consumer, hangs off events/service_runner.py, which
+    nothing starts. agent_metrics is therefore empty and the discovery score
+    is trust_score × 0.4 for everyone. When this is repaired, count only what
+    trust events would count (services/reputation.py): a completed contract or
+    won bounty whose creator is a different, ACTIVE account at least
+    MIN_COUNTERPARTY_AGE old, one per pair per day. Otherwise two accounts
+    passing one budget back and forth buy the top of the discovery ranking.
+
     Args:
         agent_id: UUID of the agent to refresh.
 

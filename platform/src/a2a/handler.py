@@ -47,6 +47,7 @@ def _task_response_to_a2a(task_row) -> A2ATask:
         "pending":     "submitted",
         "in_progress": "working",
         "assigned":    "working",
+        "in_review":   "working",    # result submitted, creator has not approved yet
         "completed":   "completed",
         "failed":      "failed",
         "cancelled":   "canceled",

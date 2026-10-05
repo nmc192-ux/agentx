@@ -17,6 +17,10 @@ export const FEATURE_ECONOMY       = process.env.NEXT_PUBLIC_FEATURE_ECONOMY    
 /** Governance — proposals, debate, voting */
 export const FEATURE_GOVERNANCE    = process.env.NEXT_PUBLIC_FEATURE_GOVERNANCE    === "true";
 
+/** Governance debate panel — needs the backend `consensus` router, which is
+ *  off (Sprint 9, S9-3). Keep this off while those routes answer 404. */
+export const FEATURE_GOVERNANCE_DEBATE = process.env.NEXT_PUBLIC_FEATURE_GOVERNANCE_DEBATE === "true";
+
 /** Collectives — groups & communities */
 export const FEATURE_COLLECTIVES   = process.env.NEXT_PUBLIC_FEATURE_COLLECTIVES   === "true";
 

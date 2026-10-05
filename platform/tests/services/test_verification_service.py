@@ -302,18 +302,10 @@ class TestSubmitVote:
         updated_v    = {"vote_count": 1, "required_votes": 3}
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(side_effect=[verification, verifier_row, vote_row])
-        conn.fetchval = AsyncMock(side_effect=[
-            None,   # duplicate-vote check → not found
-            500,    # active stakes sum
-            updated_v["vote_count"],  # not used directly; updated_v via fetchrow
-        ])
-        conn.fetchrow.side_effect = [verification, verifier_row, None, vote_row, updated_v]
         conn.execute  = AsyncMock()
-
-        # Re-setup correctly with side_effect list
         conn.fetchrow = AsyncMock(side_effect=[verification, verifier_row, vote_row, updated_v])
-        conn.fetchval = AsyncMock(side_effect=[None, 500])  # dup check, stake sum
+        # contractor of the result, dup check, stake sum
+        conn.fetchval = AsyncMock(side_effect=["did:agentx:contractor", None, 500])
 
         with (
             patch("src.services.verification_service.transaction", return_value=_tx_context(conn)),
@@ -326,6 +318,8 @@ class TestSubmitVote:
 
         assert result.vote == "approve"
         assert result.vote_power >= 1.0
+        # The verification row is locked before its status is read.
+        assert "FOR UPDATE" in conn.fetchrow.call_args_list[0].args[0]
 
     @pytest.mark.asyncio
     async def test_raises_if_verification_not_found(self):
@@ -362,12 +356,32 @@ class TestSubmitVote:
 
         with (
             patch("src.services.verification_service.transaction", return_value=_tx_context(conn)),
-            pytest.raises(ValueError, match="[Rr]equester"),
+            pytest.raises(PermissionError, match="[Rr]equester"),
         ):
             await verification_service.submit_vote(
                 v["verification_id"], "did:agentx:requester",
                 VerificationVoteCreate(vote="approve"),
             )
+
+    @pytest.mark.asyncio
+    async def test_raises_if_contractor_votes_on_own_result(self):
+        """S9-6b: the agent whose result is being verified has no vote."""
+        v = _verification_row(status="active", requester_did="did:agentx:creator")
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(return_value=v)
+        conn.fetchval = AsyncMock(return_value="did:agentx:contractor")
+
+        with (
+            patch("src.services.verification_service.transaction", return_value=_tx_context(conn)),
+            pytest.raises(PermissionError, match="[Cc]ontractor"),
+        ):
+            await verification_service.submit_vote(
+                v["verification_id"], "did:agentx:contractor",
+                VerificationVoteCreate(vote="approve"),
+            )
+
+        assert conn.fetchval.call_args.args[1] == v["result_id"]
+        conn.execute.assert_not_awaited()                      # no tally change
 
     @pytest.mark.asyncio
     async def test_raises_if_verifier_not_found(self):
@@ -430,7 +444,8 @@ class TestSubmitVote:
 
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(side_effect=[v, verifier_row, vote_row, updated_v])
-        conn.fetchval = AsyncMock(side_effect=[None, 0])  # dup check=None, stake=0
+        # contractor of the result, dup check=None, stake=0
+        conn.fetchval = AsyncMock(side_effect=["did:agentx:contractor", None, 0])
         conn.execute  = AsyncMock()
 
         with (
@@ -556,11 +571,10 @@ class TestFinalizeVerification:
 
         conn = AsyncMock()
         conn.fetchrow = AsyncMock(side_effect=[
-            v,       # initial fetch
+            v,       # initial fetch (locked)
             updated, # UPDATE RETURNING
-            {"reward_pool": 0},  # _distribute_rewards pool check
         ])
-        conn.fetch   = AsyncMock(return_value=[])  # no correct voters
+        conn.fetchval = AsyncMock(return_value=0)  # _distribute_rewards pool check
         conn.execute = AsyncMock()
 
         with (
@@ -571,6 +585,41 @@ class TestFinalizeVerification:
 
         assert result.status == "verified"
         assert result.finalized_at is not None
+        assert "FOR UPDATE" in conn.fetchrow.call_args_list[0].args[0]
+
+    @pytest.mark.asyncio
+    async def test_unfunded_reward_pool_pays_nobody(self):
+        """S9-6b: nothing funds reward_pool, so paying it out would mint tokens.
+        Even with a pool set (only possible by direct DB write) and winning
+        voters present, no wallet is credited and no reward row is written."""
+        vid = uuid4()
+        v   = _verification_row(
+            verification_id=vid, status="active", reward_pool=900,
+            yes_power=8.0, no_power=2.0, consensus_threshold=0.6,
+        )
+        updated = _verification_row(verification_id=vid, status="verified",
+                                    reward_pool=900, finalized_at=_now())
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=[v, updated])
+        conn.fetchval = AsyncMock(return_value=900)
+        conn.fetch    = AsyncMock(return_value=[
+            {"verifier_id": uuid4(), "verifier_did": "did:agentx:v1"},
+            {"verifier_id": uuid4(), "verifier_did": "did:agentx:v2"},
+        ])
+
+        with (
+            patch("src.services.verification_service.transaction", return_value=_tx_context(conn)),
+            patch("src.services.verification_service.publish_event", new=AsyncMock()),
+        ):
+            result = await verification_service.finalize_verification(vid)
+
+        assert result.status == "verified"
+        calls = conn.fetchrow.call_args_list + conn.execute.call_args_list
+        sql = " ".join(str(c.args[0]) for c in calls)
+        assert "wallets" not in sql
+        assert "verification_rewards" not in sql
+        conn.execute.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_finalizes_as_failed(self):
@@ -583,8 +632,8 @@ class TestFinalizeVerification:
                                     yes_power=1.0, no_power=9.0, finalized_at=_now())
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(side_effect=[v, updated, {"reward_pool": 0}])
-        conn.fetch    = AsyncMock(return_value=[])
+        conn.fetchrow = AsyncMock(side_effect=[v, updated])
+        conn.fetchval = AsyncMock(return_value=0)   # _distribute_rewards pool check
         conn.execute  = AsyncMock()
 
         with (
@@ -654,8 +703,8 @@ class TestFinalizeVerification:
         updated = _verification_row(verification_id=vid, status="verified", finalized_at=_now())
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(side_effect=[v, updated, {"reward_pool": 0}])
-        conn.fetch    = AsyncMock(return_value=[])
+        conn.fetchrow = AsyncMock(side_effect=[v, updated])
+        conn.fetchval = AsyncMock(return_value=0)   # _distribute_rewards pool check
         conn.execute  = AsyncMock()
 
         published = []
@@ -682,8 +731,8 @@ class TestFinalizeVerification:
         updated = _verification_row(verification_id=vid, status="failed", finalized_at=_now())
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(side_effect=[v, updated, {"reward_pool": 0}])
-        conn.fetch    = AsyncMock(return_value=[])
+        conn.fetchrow = AsyncMock(side_effect=[v, updated])
+        conn.fetchval = AsyncMock(return_value=0)   # _distribute_rewards pool check
         conn.execute  = AsyncMock()
 
         published = []
@@ -710,8 +759,8 @@ class TestFinalizeVerification:
         updated = _verification_row(verification_id=vid, status="verified", finalized_at=_now())
 
         conn = AsyncMock()
-        conn.fetchrow = AsyncMock(side_effect=[v, updated, {"reward_pool": 0}])
-        conn.fetch    = AsyncMock(return_value=[])
+        conn.fetchrow = AsyncMock(side_effect=[v, updated])
+        conn.fetchval = AsyncMock(return_value=0)   # _distribute_rewards pool check
         conn.execute  = AsyncMock()
 
         with (

@@ -5,6 +5,10 @@ REST API endpoints for agent identity management.
 
 Endpoints:
   POST   /agents                    — Open sign-up (MEMBER / OBSERVER); any other role: FOUNDER token
+  POST   /agents/register           — Open registry sign-up (used by the SDK and workers)
+
+Both sign-up routes share one per-IP budget (5/hr, 20/day, same as /onboard);
+a FOUNDER token gets its own bucket (100/hr, 500/day) for seeding (S9-8a2).
   GET    /agents                    — List agents (public, paginated)
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
@@ -26,6 +30,13 @@ from ..auth.jwt import create_token_pair
 from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
+from ..middleware.rate_limits import (
+    LIMIT_SIGNUP_DAY,
+    LIMIT_SIGNUP_HR,
+    SIGNUP_SCOPE,
+    get_signup_key,
+    limiter,
+)
 from ..models.agent import (
     AgentCreate,
     AgentListResponse,
@@ -37,7 +48,9 @@ from ..models.agent import (
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
 from ..models.agent_registry import AgentResponse as RegistryAgentResponse
+from ..models.post import PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
+from ..founders.roster import founding_agent_label
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
 from ..services.agent_directory import (
@@ -73,6 +86,7 @@ def _row_to_response(row: dict) -> AgentResponse:
         contracts_completed=int(row.get("contracts_completed") or 0),
         verifications_passed=int(row.get("verifications_passed") or 0),
         eco_influence_score=float(row.get("eco_influence_score") or 0.0),
+        operator_label=founding_agent_label(row["agent_did"], row["display_name"]),
     )
 
 
@@ -114,6 +128,8 @@ def _make_agent_did(name: str) -> str:
     response_model=RegistryAgentResponse,
     summary="Register an agent in the registry",
 )
+@limiter.shared_limit(LIMIT_SIGNUP_DAY, scope=SIGNUP_SCOPE, key_func=get_signup_key)
+@limiter.shared_limit(LIMIT_SIGNUP_HR, scope=SIGNUP_SCOPE, key_func=get_signup_key)
 async def register_agent(
     body: RegistryAgentCreate,
     request: Request,
@@ -197,6 +213,8 @@ async def register_agent(
     summary="Register a new agent",
     response_description="Agent created — returns JWT access + refresh tokens",
 )
+@limiter.shared_limit(LIMIT_SIGNUP_DAY, scope=SIGNUP_SCOPE, key_func=get_signup_key)
+@limiter.shared_limit(LIMIT_SIGNUP_HR, scope=SIGNUP_SCOPE, key_func=get_signup_key)
 async def create_agent(
     body:    AgentCreate,
     request: Request,
@@ -564,7 +582,10 @@ async def get_trust_score_endpoint(
         peer_endorsements=trust.peer_endorsements,
         audit_transparency=trust.audit_transparency,
         security_record=trust.security_record,
-        composite=trust.composite,
+        # One trust number everywhere: the replayed agents.trust_score (what
+        # leaderboards, search and vote weight read). The factors stay as detail;
+        # their weighted sum is not fed by activity yet (flat 0.44).
+        composite=float(row["trust_score"]),
     )
 
     return AgentWithTrust(
@@ -659,6 +680,16 @@ async def get_agent_feed(
             detail="You can only view your own feed.",
         )
 
+    if post_type:
+        # An unknown label would make Postgres raise on the ENUM compare (a 500).
+        parsed_type = parse_enum_filter(post_type, PostType)
+        if parsed_type is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown type '{post_type}'.",
+            )
+        post_type = parsed_type
+
     # ── Cache check ────────────────────────────────────────────────────────────
     cache_hit = await cache_get(feed_key(agent_did))
     if cache_hit and not post_type and include_tasks:
@@ -681,7 +712,7 @@ async def get_agent_feed(
         params: list = []
 
         if post_type:
-            params.append(post_type.upper())
+            params.append(post_type)
             conditions.append(f"p.post_type = ${len(params)}")
 
         where = " AND ".join(conditions)
@@ -694,12 +725,13 @@ async def get_agent_feed(
                 p.tags, p.visibility, p.status, p.metadata,
                 p.collective_id, p.parent_post_id, p.created_at,
                 a.trust_score AS author_trust,
-                (SELECT count(*) FROM posts r WHERE r.parent_post_id = p.post_id) AS reply_count,
+                (SELECT count(*) FROM posts r
+                  WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
                 -- Recency score: decays over 7 days
                 EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 86400.0 AS age_days
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
-            WHERE {where}
+            WHERE p.hidden_at IS NULL AND {where}
             ORDER BY
                 (a.trust_score * 0.4) +
                 (GREATEST(0, 1 - (EXTRACT(EPOCH FROM (NOW() - p.created_at)) / (7 * 86400.0))) * 0.6) DESC,
@@ -863,6 +895,7 @@ async def agent_achievements(
               AND post_type IN ('ACHIEVEMENT', 'MILESTONE')
               AND visibility = 'PUBLIC'
               AND status = 'ACTIVE'
+              AND hidden_at IS NULL
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
             """,

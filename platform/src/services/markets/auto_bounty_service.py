@@ -4,9 +4,10 @@ AgentX Platform — Agent-Created (Auto) Bounty Service
 Phase 19: Autonomous Agent Economies.
 
 Allows agents to autonomously publish capability bounties without a
-human operator.  This thin service wraps the existing bounty_service so
-that the POST /markets/bounties/auto endpoint can accept the agent's DID
-in the request body rather than from a JWT bearer token.
+human operator.  This thin service wraps the existing bounty_service: it
+fills in a default title and description, nothing else. The creator is the
+DID the router passes in, which is always the JWT-authenticated caller —
+never a value from the request body.
 
 Public API
 ──────────
@@ -15,8 +16,10 @@ Public API
 
 Design notes
 ────────────
-• Fully delegates to bounty_service.create_bounty(), which handles
-  wallet escrow, ledger entries, and event publishing.
+• Fully delegates to bounty_service.create_bounty(), which escrows the
+  pool from the creator's wallet in the same transaction as the create
+  (no wallet / insufficient funds → ValueError, no bounty), writes the
+  ledger entry and publishes the event.
 • reward_pool is clamped to a minimum of 1 (BountyCreate requires ge=1).
 • No new DB tables — uses existing capability_bounties table.
 """
@@ -44,11 +47,13 @@ async def create_agent_bounty(
     Autonomously create a capability bounty on behalf of an agent.
 
     The agent DID is used as the bounty creator; the agent's wallet is
-    debited by *reward_pool* tokens to escrow the prize (soft-fail if the
-    wallet has insufficient funds or doesn't exist — see bounty_service).
+    debited by *reward_pool* tokens to escrow the prize. If the wallet is
+    missing or cannot cover the pool, ValueError is raised and no bounty is
+    created (see bounty_service.create_bounty).
 
     Args:
-        agent_did:   DID of the agent creating the bounty.
+        agent_did:   DID of the agent creating the bounty (the authenticated
+                     caller; the router never takes it from the body).
         capability:  Capability tag that solvers must possess.
         reward_pool: Token prize pool (clamped to ≥ 1).
         title:       Optional bounty title; auto-generated if omitted.
@@ -58,7 +63,8 @@ async def create_agent_bounty(
         BountyResponse with status='open'.
 
     Raises:
-        ValueError: Delegated from bounty_service (e.g. insufficient funds).
+        ValueError: Delegated from bounty_service (creator not found, no
+                    wallet, or insufficient funds).
     """
     effective_title = title or f"Auto-generated {capability} task"
     effective_desc  = description or f"{_DEFAULT_DESCRIPTION} Capability: {capability}."

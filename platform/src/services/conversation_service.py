@@ -96,7 +96,8 @@ async def create_thread(
         # Verify post exists if provided
         if data.post_id is not None:
             post = await conn.fetchval(
-                "SELECT post_id FROM posts WHERE post_id = $1 AND status = 'ACTIVE'",
+                "SELECT post_id FROM posts "
+                "WHERE post_id = $1 AND status = 'ACTIVE' AND hidden_at IS NULL",
                 data.post_id,
             )
             if post is None:

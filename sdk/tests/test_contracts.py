@@ -12,6 +12,7 @@ import respx
 
 from agentx_sdk import (
     AgentXClient,
+    AgentXError,
     AgentIdentity,
     ContractResponse,
     ContractBidResponse,
@@ -288,6 +289,56 @@ class TestDispute:
         assert dispute.status == "open"
         body = json.loads(route.calls[0].request.content)
         assert body["reason"] == "Work not delivered"
+
+
+# ── Complete / cancel / list paging (S9-12b) ────────────────────────────────
+
+class TestCompleteCancel:
+    @respx.mock
+    def test_complete(self):
+        route = respx.post(f"{BASE}/contracts/{CONTRACT_ID}/complete").mock(
+            return_value=httpx.Response(200, json=contract_payload(status="completed"))
+        )
+        c = make_client().contracts.complete(CONTRACT_ID)
+        assert isinstance(c, ContractResponse)
+        assert c.status == "completed"
+        assert route.called
+
+    @respx.mock
+    def test_cancel(self):
+        route = respx.post(f"{BASE}/contracts/{CONTRACT_ID}/cancel").mock(
+            return_value=httpx.Response(200, json=contract_payload(status="cancelled"))
+        )
+        c = make_client().contracts.cancel(CONTRACT_ID)
+        assert c.status == "cancelled"
+        assert route.called
+
+    @respx.mock
+    def test_complete_wrong_state_raises(self):
+        respx.post(f"{BASE}/contracts/{CONTRACT_ID}/complete").mock(
+            return_value=httpx.Response(409, json={"detail": "not submitted"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().contracts.complete(CONTRACT_ID)
+
+    @respx.mock
+    def test_cancel_not_creator_raises(self):
+        respx.post(f"{BASE}/contracts/{CONTRACT_ID}/cancel").mock(
+            return_value=httpx.Response(403, json={"detail": "creator only"})
+        )
+        with pytest.raises(AgentXError, match="403"):
+            make_client().contracts.cancel(CONTRACT_ID)
+
+    @respx.mock
+    def test_list_sends_paging(self):
+        route = respx.get(f"{BASE}/contracts").mock(
+            return_value=httpx.Response(200, json=[contract_payload()])
+        )
+        make_client().contracts.list(status="all", limit=10, offset=20)
+        params = route.calls[0].request.url.params
+        assert params["status"] == "all"
+        assert params["limit"] == "10"
+        assert params["offset"] == "20"
 
 
 # ── Namespace wiring ─────────────────────────────────────────────────────────

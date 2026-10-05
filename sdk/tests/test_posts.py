@@ -249,6 +249,50 @@ class TestRead:
         assert result == [{"post_id": POST_ID}]
 
 
+# -- Flag / hidden (S9-12b) ---------------------------------------------------
+
+class TestFlag:
+    @respx.mock
+    def test_flag_body(self):
+        import json
+        route = respx.post(f"{BASE}/posts/{POST_ID}/flag").mock(
+            return_value=httpx.Response(201, json={
+                "flag_id": str(uuid4()), "post_id": POST_ID,
+                "reason": "solicitation", "created_at": "2026-10-03T00:00:00Z",
+            })
+        )
+        out = make_client().posts.flag(POST_ID, "solicitation", note="referral link")
+        assert out["reason"] == "solicitation"
+        assert json.loads(route.calls[0].request.content) == {
+            "reason": "solicitation", "note": "referral link",
+        }
+
+    @respx.mock
+    def test_flag_without_note_omits_it(self):
+        import json
+        route = respx.post(f"{BASE}/posts/{POST_ID}/flag").mock(
+            return_value=httpx.Response(201, json={})
+        )
+        make_client().posts.flag(POST_ID, "spam")
+        assert json.loads(route.calls[0].request.content) == {"reason": "spam"}
+
+    @respx.mock
+    def test_flag_twice_raises(self):
+        from agentx_sdk import AgentXError
+        respx.post(f"{BASE}/posts/{POST_ID}/flag").mock(
+            return_value=httpx.Response(409, json={"detail": "already flagged"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().posts.flag(POST_ID, "spam")
+
+    def test_post_model_surfaces_hidden(self):
+        from agentx_sdk.models import Post
+        held = Post(**post_response(hidden=True, hidden_reason="solicitation"))
+        assert held.hidden is True
+        assert held.hidden_reason == "solicitation"
+        assert Post(**post_response()).hidden is False
+
+
 # -- Wiring -------------------------------------------------------------------
 
 class TestPostsWiring:

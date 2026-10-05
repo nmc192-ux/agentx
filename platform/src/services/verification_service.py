@@ -26,8 +26,18 @@ Design notes
 • Auto-finalisation triggers inside submit_vote() when
   vote_count >= required_votes; finalize_verification() is also callable
   manually (idempotent if already finalised).
-• Reward distribution is soft-fail: token-credit failures are logged but
-  verification status is still set.
+• submit_vote() and finalize_verification() lock the verification row
+  (``FOR UPDATE``) before reading its status, so a verification is finalised
+  once and no vote can land on one that is already finalised (Sprint 9, S9-6b).
+• Neither party to the contract votes: not the requester (the creator) and
+  not the contractor whose result is being verified.
+• A verification is advisory: it never changes the contract or moves its
+  escrow. The creator still decides (contract_service.complete_contract).
+• Verifier rewards are NOT paid (S9-6b): nothing ever funds ``reward_pool``
+  (no wallet is debited for it), so paying from it would create tokens from
+  nothing. See _distribute_rewards.
+• Trust (S9-9b): once a verification is final, the verifiers on the winning
+  side get one ``peer_validation`` each (reputation.record_verification_outcome).
 • Events are fire-and-forget; failures are logged, never bubble up.
 """
 from __future__ import annotations
@@ -45,6 +55,7 @@ from ..models.verification import (
     VerificationVoteCreate,
     VerificationVoteResponse,
 )
+from .reputation import record_verification_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -125,71 +136,26 @@ async def _do_activate(conn, verification_id: UUID):
 
 async def _distribute_rewards(conn, verification_id: UUID, winning_vote: str) -> None:
     """
-    Credit winning-side voters from the verification reward_pool.
-    Reward per verifier = reward_pool / number_of_correct_voters.
-    Soft-fail: errors are caught per-voter and logged.
+    Verifier rewards — deliberately pays nothing (Sprint 9, S9-6b).
+
+    This used to split ``verifications.reward_pool`` between the winning-side
+    voters by crediting their wallets. But no code path ever *funds* that pool:
+    the API always creates it as 0 and no wallet is debited for it. Paying out
+    a non-zero pool (settable only by a direct database write) would therefore
+    create tokens from nothing. Until verifier rewards are designed with a
+    real source of funds (e.g. a slice of the contract's escrow), fail closed:
+    credit nobody, and say so in the log if a pool was set.
     """
-    pool_row = await conn.fetchrow(
+    reward_pool = await conn.fetchval(
         "SELECT reward_pool FROM verifications WHERE verification_id = $1",
         verification_id,
     )
-    reward_pool = pool_row["reward_pool"] if pool_row else 0
-    if reward_pool <= 0:
-        return
-
-    correct_voters = await conn.fetch(
-        """
-        SELECT verifier_id, verifier_did
-        FROM   verification_votes
-        WHERE  verification_id = $1 AND vote = $2
-        """,
-        verification_id,
-        winning_vote,
-    )
-    if not correct_voters:
-        return
-
-    per_verifier = reward_pool // len(correct_voters)
-    if per_verifier <= 0:
-        return
-
-    for voter in correct_voters:
-        try:
-            wallet_row = await conn.fetchrow(
-                """
-                UPDATE wallets
-                   SET balance    = balance + $1,
-                       updated_at = CURRENT_TIMESTAMP
-                 WHERE agent_id = $2
-                RETURNING wallet_id
-                """,
-                per_verifier,
-                voter["verifier_id"],
-            )
-            if wallet_row is None:
-                logger.warning(
-                    "verification_service: no wallet for verifier %s — skipping reward",
-                    voter["verifier_did"],
-                )
-                continue
-
-            await conn.execute(
-                """
-                INSERT INTO verification_rewards
-                    (verification_id, verifier_id, verifier_did, amount)
-                VALUES ($1, $2, $3, $4)
-                """,
-                verification_id,
-                voter["verifier_id"],
-                voter["verifier_did"],
-                per_verifier,
-            )
-        except Exception:
-            logger.warning(
-                "verification_service: reward distribution failed for verifier %s",
-                voter["verifier_did"],
-                exc_info=True,
-            )
+    if reward_pool and reward_pool > 0:
+        logger.warning(
+            "verification_service: verification %s has an unfunded reward_pool "
+            "of %d — NOT distributed (winning vote: %s)",
+            verification_id, reward_pool, winning_vote,
+        )
 
 
 # ── Public service functions ───────────────────────────────────────────────────
@@ -350,9 +316,10 @@ async def submit_vote(
     Submit a vote on an active verification.
 
     Vote power = max(1.0, SUM(active stakes) × trust_score).
-    Caller must not be the verification requester and must not have
-    already voted.  After each vote, if vote_count ≥ required_votes
-    the verification is auto-finalised in the same transaction.
+    Caller must not be the verification requester or the contractor whose
+    result is being verified, and must not have already voted.  After each
+    vote, if vote_count ≥ required_votes the verification is auto-finalised
+    in the same transaction.
 
     Args:
         verification_id: UUID of the target verification.
@@ -363,13 +330,21 @@ async def submit_vote(
         VerificationVoteResponse for the recorded vote.
 
     Raises:
-        ValueError: Verification not found/not active, duplicate vote,
-                    verifier not found, or requester trying to vote.
+        ValueError:      Verification not found/not active, duplicate vote,
+                         or verifier not found.
+        PermissionError: the caller is the requester, or the contractor whose
+                         result is being verified.
     """
     async with transaction() as conn:
-        # Fetch verification
+        # Fetch verification and hold its row lock: votes on one verification
+        # are serialised, so the status read here cannot go stale and the
+        # verification is finalised exactly once.
         verification = await conn.fetchrow(
-            f"SELECT {_VERIFICATION_COLS} FROM verifications WHERE verification_id = $1",
+            f"""
+            SELECT {_VERIFICATION_COLS} FROM verifications
+            WHERE verification_id = $1
+            FOR UPDATE
+            """,
             verification_id,
         )
         if verification is None:
@@ -379,9 +354,19 @@ async def submit_vote(
                 f"Verification is not active (status={verification['status']})"
             )
 
-        # Prevent requester from self-voting
+        # Neither party to the contract may vote.
         if verification["requester_did"] == caller_did:
-            raise ValueError("The verification requester cannot vote on their own verification")
+            raise PermissionError(
+                "The verification requester cannot vote on their own verification"
+            )
+        contractor_did = await conn.fetchval(
+            "SELECT contractor_did FROM contract_results WHERE result_id = $1",
+            verification["result_id"],
+        )
+        if contractor_did == caller_did:
+            raise PermissionError(
+                "The contractor cannot vote on the verification of their own result"
+            )
 
         # Resolve verifier DID → agent_id + trust_score
         verifier_row = await conn.fetchrow(
@@ -461,10 +446,16 @@ async def submit_vote(
         )
 
         # Auto-finalise when enough votes have been collected
-        if updated_v["vote_count"] >= updated_v["required_votes"]:
+        finalised = updated_v["vote_count"] >= updated_v["required_votes"]
+        if finalised:
             await _do_finalize(conn, verification_id)
 
     vote = _row_to_vote(vote_row)
+
+    # S9-9b: a vote earns trust only once the outcome is known, and only on
+    # the winning side (it was +0.03 for every vote cast, through the bus).
+    if finalised:
+        await record_verification_outcome(verification_id)
 
     try:
         await publish_event(
@@ -520,14 +511,8 @@ async def _do_finalize(conn, verification_id: UUID) -> None:
         new_status,
     )
 
-    # Distribute rewards (soft-fail)
-    try:
-        await _distribute_rewards(conn, verification_id, winning_vote)
-    except Exception:
-        logger.warning(
-            "verification_service: reward distribution failed for verification %s",
-            verification_id, exc_info=True,
-        )
+    # Verifier rewards: pays nothing today (see _distribute_rewards).
+    await _distribute_rewards(conn, verification_id, winning_vote)
 
     # Publish event (can't await inside sync helper — use a sync-friendly flag)
     # Events are published after the transaction commits in finalize_verification().
@@ -607,7 +592,11 @@ async def finalize_verification(verification_id: UUID) -> VerificationResponse:
     """
     async with transaction() as conn:
         verification = await conn.fetchrow(
-            f"SELECT {_VERIFICATION_COLS} FROM verifications WHERE verification_id = $1",
+            f"""
+            SELECT {_VERIFICATION_COLS} FROM verifications
+            WHERE verification_id = $1
+            FOR UPDATE
+            """,
             verification_id,
         )
         if verification is None:
@@ -640,16 +629,12 @@ async def finalize_verification(verification_id: UUID) -> VerificationResponse:
             new_status,
         )
 
-        # Distribute rewards (soft-fail)
-        try:
-            await _distribute_rewards(conn, verification_id, winning_vote)
-        except Exception:
-            logger.warning(
-                "verification_service: reward distribution failed for verification %s",
-                verification_id, exc_info=True,
-            )
+        # Verifier rewards: pays nothing today (see _distribute_rewards).
+        await _distribute_rewards(conn, verification_id, winning_vote)
 
     result = _row_to_verification(updated)
+
+    await record_verification_outcome(verification_id)
 
     # Publish post-transaction event
     event_type = (

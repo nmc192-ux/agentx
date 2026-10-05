@@ -113,6 +113,8 @@ class AgentResponse(BaseModel):
     contracts_completed:  int   = 0
     verifications_passed: int   = 0
     eco_influence_score:  float = 0.0
+    # Set only for the founding agents the platform itself operates (S10-8)
+    operator_label:       Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -259,6 +259,14 @@ async def test_get_members_raises_if_collective_not_found():
 
 # ── assign_task_to_collective ─────────────────────────────────────────────────
 
+def _task_row(task_id, requester="did:agentx:someone-else", executor=None, status="open"):
+    return {
+        "task_id":            task_id,
+        "status":             status,
+        "requester_agent_did": requester,
+        "executor_agent_did": executor,
+    }
+
 @pytest.mark.asyncio
 async def test_assign_task_inserts_record_and_updates_task():
     col_id = uuid4()
@@ -282,7 +290,7 @@ async def test_assign_task_inserts_record_and_updates_task():
         "OWNER",  # assigner role
     ])
     conn.fetchrow = AsyncMock(side_effect=[
-        {"task_id": task_id, "status": "open"},  # task exists
+        _task_row(task_id, requester=assigner),  # task exists, caller requested it
         ct_row,                                    # INSERT collective_task
     ])
 
@@ -343,7 +351,9 @@ async def test_assign_task_raises_if_not_owner_or_admin():
         1,        # collective exists
         "MEMBER", # assigner is only MEMBER
     ])
-    conn.fetchrow = AsyncMock(return_value={"task_id": task_id, "status": "open"})
+    conn.fetchrow = AsyncMock(
+        return_value=_task_row(task_id, requester="did:agentx:outsider-001"),
+    )
 
     with (
         patch("src.services.collective_service.transaction", return_value=_tx_context(conn)),
@@ -354,3 +364,48 @@ async def test_assign_task_raises_if_not_owner_or_admin():
             task_id=task_id,
             assigned_by_did="did:agentx:outsider-001",
         )
+
+
+# S9-6: only a party to the task may hand it to a collective, and only while open.
+
+async def _assign_with_task(task_row, caller, role="OWNER"):
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(side_effect=[1, role])
+    conn.fetchrow = AsyncMock(side_effect=[task_row, _col_task_row(task_id=task_row["task_id"])])
+    conn.execute = AsyncMock()
+    with patch("src.services.collective_service.transaction", return_value=_tx_context(conn)):
+        result = await collective_service.assign_task_to_collective(
+            collective_id=uuid4(), task_id=task_row["task_id"], assigned_by_did=caller,
+        )
+    return result, conn
+
+
+@pytest.mark.asyncio
+async def test_assign_task_rejects_admin_who_is_not_party_to_the_task():
+    """A collective OWNER cannot claim another agent's task."""
+    row = _task_row(uuid4(), requester="did:agentx:victim", executor="did:agentx:other")
+    with pytest.raises(ValueError, match="not the requester or executor"):
+        await _assign_with_task(row, caller="did:agentx:atlas-001")
+
+
+@pytest.mark.asyncio
+async def test_assign_task_rejects_unassigned_task_with_no_parties_matching():
+    row = _task_row(uuid4(), requester=None, executor=None)
+    with pytest.raises(ValueError, match="not the requester or executor"):
+        await _assign_with_task(row, caller="did:agentx:atlas-001")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["completed", "COMPLETED", "failed", "FAILED"])
+async def test_assign_task_rejects_finished_task(status):
+    row = _task_row(uuid4(), requester="did:agentx:atlas-001", status=status)
+    with pytest.raises(ValueError, match="already"):
+        await _assign_with_task(row, caller="did:agentx:atlas-001")
+
+
+@pytest.mark.asyncio
+async def test_assign_task_allows_executor():
+    caller = "did:agentx:atlas-001"
+    row = _task_row(uuid4(), requester="did:agentx:other", executor=caller, status="assigned")
+    _, conn = await _assign_with_task(row, caller=caller)
+    conn.execute.assert_awaited_once()

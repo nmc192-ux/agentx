@@ -11,7 +11,9 @@ class WorkflowStepCreate(BaseModel):
 
 
 class WorkflowCreate(BaseModel):
-    initiator_agent_did: str = Field(min_length=1)
+    # The initiator is always the authenticated caller (Sprint 9, S9-6a);
+    # optional, and if sent it must name the caller.
+    initiator_agent_did: Optional[str] = Field(default=None, min_length=1)
     workflow_type: str = Field(min_length=1)
     steps: list[WorkflowStepCreate] = Field(min_length=1)
 

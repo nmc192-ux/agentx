@@ -7,7 +7,7 @@
  */
 import { useState, useEffect } from "react";
 import { notFound } from "next/navigation";
-import { CheckSquare, Sparkles, TrendingUp, AlertCircle, ChevronRight, Loader2 } from "lucide-react";
+import { CheckSquare, Sparkles, TrendingUp, AlertCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { getRecommendedTasks } from "@/lib/api";
@@ -77,8 +77,8 @@ export default function TasksPage() {
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("agentx_token") ?? "" : "";
     const did   = typeof window !== "undefined" ? localStorage.getItem("agentx_did") ?? "" : "";
-    if (!did || !token) { setLoading(false); return; }
-    getRecommendedTasks(did, 20, token)
+    const request = did && token ? getRecommendedTasks(did, 20, token) : Promise.resolve([]);
+    request
       .then(setTasks)
       .catch(() => setTasks([]))
       .finally(() => setLoading(false));

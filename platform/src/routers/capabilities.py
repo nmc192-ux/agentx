@@ -36,12 +36,17 @@ from ..models.capability import (
     EligibleAgentResponse,
 )
 from ..services import capability_router as cap_router_svc
+from ..services.reputation import MIN_COUNTERPARTY_AGE
 
 logger = logging.getLogger(__name__)
 
 # Two routers: one for /capabilities, one for /agents (capability sub-routes)
 router      = APIRouter(prefix="/capabilities", tags=["Capabilities"])
 agent_caps  = APIRouter(prefix="/agents",       tags=["Capabilities"])
+
+# Recorded endorsers (rows in capability_endorsements) a capability needs to
+# show as "verified".
+ENDORSERS_TO_VERIFY = 2
 
 _CAP_PATTERN = re.compile(r"^[a-z]+\.[a-z0-9_]+\.(basic|intermediate|advanced|expert)$")
 
@@ -347,9 +352,20 @@ async def verify_agent_capability(
     caller:        AgentRecord = Depends(get_current_agent),
 ):
     """
-    Endorse another agent's capability. Increases their verified_by_count.
-    Agents cannot verify their own capabilities.
+    Endorse another agent's capability (S9-9d).
+
+    One endorsement per endorser, kept in capability_endorsements: a second
+    call by the same account is a 409 and counts nothing. The endorser is the
+    logged-in agent, must not be the capability's owner and must be an ACTIVE
+    account at least reputation.MIN_COUNTERPARTY_AGE old (the same bar a trust
+    event's counterparty has to clear). The capability becomes "verified" on
+    ENDORSERS_TO_VERIFY recorded endorsers.
     """
+    if body.endorser_did and body.endorser_did != caller.did:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="endorser_did must be the authenticated agent",
+        )
     if caller.did == agent_did:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -357,22 +373,70 @@ async def verify_agent_capability(
         )
 
     async with transaction() as conn:
-        row = await conn.fetchrow(
+        # Lock the capability row: two endorsements at the same moment are
+        # counted one after the other.
+        held = await conn.fetchval(
             """
-            UPDATE agent_capabilities
-            SET
-                verified_by_count = verified_by_count + 1,
-                verified = (verified_by_count + 1 >= 2)
+            SELECT 1 FROM agent_capabilities
             WHERE agent_did = $1 AND capability_id = $2
-            RETURNING verified_by_count, verified
+            FOR UPDATE
             """,
             agent_did, capability_id,
         )
+        if not held:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Agent {agent_did} does not have capability {capability_id}",
+            )
 
-    if row is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Agent {agent_did} does not have capability {capability_id}",
+        established = await conn.fetchval(
+            """
+            SELECT 1 FROM agents
+            WHERE agent_did = $1
+              AND status = 'ACTIVE'
+              AND created_at <= CURRENT_TIMESTAMP - $2::interval
+            """,
+            caller.did, MIN_COUNTERPARTY_AGE,
+        )
+        if not established:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an active account at least 24 hours old can endorse a capability",
+            )
+
+        recorded = await conn.fetchval(
+            """
+            INSERT INTO capability_endorsements (agent_did, capability_id, endorser_did, notes)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (agent_did, capability_id, endorser_did) DO NOTHING
+            RETURNING 1
+            """,
+            agent_did, capability_id, caller.did, body.notes,
+        )
+        if not recorded:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="You have already endorsed this capability",
+            )
+
+        # verified_by_count may carry endorsements from before the table
+        # existed (nobody knows whose), so it does not decide "verified":
+        # only recorded endorsers do. A flag already set stays set.
+        row = await conn.fetchrow(
+            """
+            UPDATE agent_capabilities ac
+            SET
+                verified_by_count = ac.verified_by_count + 1,
+                verified = ac.verified OR e.endorsers >= $3
+            FROM (
+                SELECT COUNT(*) AS endorsers
+                FROM capability_endorsements
+                WHERE agent_did = $1 AND capability_id = $2
+            ) e
+            WHERE ac.agent_did = $1 AND ac.capability_id = $2
+            RETURNING ac.verified_by_count, ac.verified, e.endorsers
+            """,
+            agent_did, capability_id, ENDORSERS_TO_VERIFY,
         )
 
     logger.info(
@@ -384,5 +448,6 @@ async def verify_agent_capability(
         "agent_did":        agent_did,
         "verified":         row["verified"],
         "verified_by_count": row["verified_by_count"],
+        "endorsers":        row["endorsers"],
         "endorsed_by":      caller.did,
     }

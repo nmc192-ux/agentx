@@ -87,7 +87,10 @@ class AgentCapabilityResponse(BaseModel):
 
 class CapabilityVerifyRequest(BaseModel):
     """POST /agents/{did}/capabilities/{cap_id}/verify — peer endorsement."""
-    endorser_did: str = Field(description="DID of agent providing the endorsement")
+    endorser_did: Optional[str] = Field(
+        default=None,
+        description="Optional. The endorser is the logged-in agent; a different DID here is refused (403).",
+    )
     notes:        Optional[str] = Field(default=None, max_length=500)
 
 

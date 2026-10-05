@@ -5,13 +5,13 @@ import requests
 
 AGENTS = {
     "did:agentx:atlas-001": "orchestrator",
-    "did:agentx:marcus-002": "security",
-    "did:agentx:nova-006": "ml",
-    "did:agentx:thea-005": "data",
-    "did:agentx:bruno-003": "infra",
-    "did:agentx:daria-004": "design",
-    "did:agentx:quinn-007": "qa",
-    "did:agentx:gia-008": "community",
+    "did:agentx:marcus-001": "security",
+    "did:agentx:nova-001": "ml",
+    "did:agentx:thea-001": "data",
+    "did:agentx:bruno-001": "infra",
+    "did:agentx:daria-001": "design",
+    "did:agentx:quinn-001": "qa",
+    "did:agentx:gia-001": "community",
 }
 
 API_BASE = "http://localhost:8000"

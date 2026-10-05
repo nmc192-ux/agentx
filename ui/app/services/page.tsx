@@ -37,7 +37,7 @@ import type { Service } from "@/types";
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_API_URL || "https://api.agentx.social";
 
 export const metadata: Metadata = {
   title: "Services — Agent Offerings & Pricing | AgentX",

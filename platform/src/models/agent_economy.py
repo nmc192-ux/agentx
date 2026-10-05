@@ -17,10 +17,18 @@ Models
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from typing_extensions import Annotated
+
+# Bounds for the two login-free calculators (market-analysis, strategies/select).
+# They only compute on the request body, so the body is the whole attack
+# surface: every list and string in it has a hard ceiling.
+MAX_ANALYSIS_ITEMS = 500
+MAX_CAPABILITIES = 50
+CapabilityTag = Annotated[str, StringConstraints(min_length=1, max_length=100)]
 
 
 # ── Auto-Bounty ───────────────────────────────────────────────────────────────
@@ -33,7 +41,7 @@ class AutoBountyCreate(BaseModel):
     allowed the unauthenticated wallet-drain. Matches `markets.BountyCreate`.
     """
     capability: str = Field(..., min_length=1, max_length=100)
-    reward_pool: int = Field(..., ge=1)
+    reward_pool: int = Field(..., ge=1, le=2**63 - 1)   # BIGINT column, as BountyCreate
     title: Optional[str] = Field(default=None, max_length=255)
     description: Optional[str] = None
 
@@ -44,7 +52,7 @@ class SubcontractCreate(BaseModel):
     """Request body for POST /contracts/{id}/subcontract."""
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1)
-    budget: int = Field(..., gt=0)
+    budget: int = Field(..., gt=0, le=2**63 - 1)   # BIGINT column
     deadline: Optional[datetime] = None
     payload: Optional[dict] = None
 
@@ -74,15 +82,35 @@ class SubcontractResponse(BaseModel):
 
 # ── Market Analysis ───────────────────────────────────────────────────────────
 
+class MarketBounty(BaseModel):
+    """One bounty in a market-analysis request. Unknown keys are ignored."""
+    model_config = ConfigDict(extra="ignore")
+
+    status: Optional[str] = Field(default=None, max_length=50)
+    capability_required: Optional[str] = Field(default=None, max_length=100)
+
+
+class MarketAgent(BaseModel):
+    """One agent in a market-analysis request. Unknown keys are ignored."""
+    model_config = ConfigDict(extra="ignore")
+
+    did: Optional[str] = Field(default=None, max_length=255)
+    capabilities: list[CapabilityTag] = Field(
+        default_factory=list, max_length=MAX_CAPABILITIES,
+    )
+
+
 class MarketAnalysisRequest(BaseModel):
     """Request body for POST /economy/market-analysis."""
-    bounties: list[dict[str, Any]] = Field(
+    bounties: list[MarketBounty] = Field(
         default_factory=list,
-        description="List of bounty dicts (at minimum: status, capability_required)",
+        max_length=MAX_ANALYSIS_ITEMS,
+        description="List of bounties (at minimum: status, capability_required)",
     )
-    agents: list[dict[str, Any]] = Field(
+    agents: list[MarketAgent] = Field(
         default_factory=list,
-        description="List of agent dicts (at minimum: did, capabilities)",
+        max_length=MAX_ANALYSIS_ITEMS,
+        description="List of agents (at minimum: did, capabilities)",
     )
 
 
@@ -114,8 +142,10 @@ class StrategyInfo(BaseModel):
 
 class StrategySelectRequest(BaseModel):
     """Request body for POST /economy/strategies/select."""
-    agent_id: str = Field(..., description="Agent ID or DID")
-    capabilities: list[str] = Field(default_factory=list)
+    agent_id: str = Field(..., max_length=255, description="Agent ID or DID")
+    capabilities: list[CapabilityTag] = Field(
+        default_factory=list, max_length=MAX_CAPABILITIES,
+    )
 
 
 class StrategySelectResponse(BaseModel):

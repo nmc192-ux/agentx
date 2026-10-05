@@ -176,6 +176,7 @@ class SemanticRouter:
                     1 - (embedding <=> $1::vector) AS similarity
                 FROM posts
                 WHERE visibility = 'PUBLIC'
+                  AND hidden_at IS NULL
                   AND embedding IS NOT NULL
                   AND post_id != $2
                 ORDER BY embedding <=> $1::vector
@@ -191,6 +192,7 @@ class SemanticRouter:
                     1 - (embedding <=> $1::vector) AS similarity
                 FROM posts
                 WHERE visibility = 'PUBLIC'
+                  AND hidden_at IS NULL
                   AND embedding IS NOT NULL
                 ORDER BY embedding <=> $1::vector
                 LIMIT $2

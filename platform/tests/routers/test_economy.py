@@ -5,8 +5,8 @@ Phase 8.5 — Economic Engine
 Covers:
   GET  /economy/metrics  — latest economic snapshot
   GET  /economy/treasury — treasury wallet balance
-  POST /economy/mint     — mint tokens (requires auth)
-  POST /economy/slash    — slash a stake (requires auth)
+  POST /economy/mint     — mint tokens (FOUNDER only, S9-7a)
+  POST /economy/slash    — slash a stake (FOUNDER only, S9-7a)
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def _slash(stake_id=None):
 
 # ── Mock auth ─────────────────────────────────────────────────────────────────
 
-def _make_agent():
+def _make_agent(role: str = "FOUNDER"):
     from src.auth.jwt import TokenClaims
     from src.auth.middleware import AgentRecord
     mock_claims = MagicMock(spec=TokenClaims)
@@ -94,7 +94,7 @@ def _make_agent():
     row = {
         "agent_did":       "did:agentx:admin-001",
         "display_name":    "Admin",
-        "governance_role": "ADMIN",
+        "governance_role": role,
         "tier":            "ELITE",
         "status":          "ACTIVE",
         "trust_score":     1.0,
@@ -213,6 +213,42 @@ class TestMintTokens:
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("role", ["MEMBER", "OBSERVER", "DELEGATE", "OPERATOR", "ADMIN"])
+    async def test_mint_is_founder_only(self, client, role):
+        """S9-7a: any logged-in agent used to be able to mint. Now 403, and
+        the service is never reached."""
+        from unittest.mock import patch
+        from src.auth.middleware import get_current_agent
+
+        mint = AsyncMock(return_value=_supply())
+        with patch("src.routers.economy.economy_service.mint_tokens", new=mint):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent(role)
+            try:
+                resp = await client.post("/economy/mint", json={"amount": 1000})
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 403
+        mint.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("amount", [0, -5, 10**12 + 1, 10**30])
+    async def test_mint_amount_out_of_range_is_422(self, client, amount):
+        from unittest.mock import patch
+        from src.auth.middleware import get_current_agent
+
+        mint = AsyncMock(return_value=_supply())
+        with patch("src.routers.economy.economy_service.mint_tokens", new=mint):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent()
+            try:
+                resp = await client.post("/economy/mint", json={"amount": amount})
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 422
+        mint.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_mint_requires_auth(self, client):
         """Without auth override, endpoint returns 401/403 from real auth."""
         resp = await client.post(
@@ -271,13 +307,34 @@ class TestSlashStake:
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_slash_returns_400_for_already_released(self, client):
+    @pytest.mark.parametrize("role", ["MEMBER", "OBSERVER", "DELEGATE", "OPERATOR", "ADMIN"])
+    async def test_slash_is_founder_only(self, client, role):
+        """S9-7a: any logged-in agent used to be able to slash anyone's stake."""
         from unittest.mock import patch
         from src.auth.middleware import get_current_agent
 
+        slash = AsyncMock(return_value=_slash())
+        with patch("src.routers.economy.economy_service.slash_stake", new=slash):
+            app.dependency_overrides[get_current_agent] = lambda: _make_agent(role)
+            try:
+                resp = await client.post(
+                    "/economy/slash", json={"stake_id": str(uuid4()), "reason": "grudge"},
+                )
+            finally:
+                app.dependency_overrides.pop(get_current_agent, None)
+
+        assert resp.status_code == 403
+        slash.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_slash_returns_409_for_already_released(self, client):
+        from unittest.mock import patch
+        from src.auth.middleware import get_current_agent
+        from src.services.token_service import StakeConflictError
+
         with patch(
             "src.routers.economy.economy_service.slash_stake",
-            new=AsyncMock(side_effect=ValueError("Stake already released or slashed")),
+            new=AsyncMock(side_effect=StakeConflictError("Stake already released or slashed")),
         ):
             app.dependency_overrides[get_current_agent] = lambda: _make_agent()
             try:
@@ -288,7 +345,7 @@ class TestSlashStake:
             finally:
                 app.dependency_overrides.pop(get_current_agent, None)
 
-        assert resp.status_code == 400
+        assert resp.status_code == 409
 
     @pytest.mark.asyncio
     async def test_slash_requires_auth(self, client):

@@ -11,7 +11,19 @@ from ..models.post_social import (
     PostInteractionCreate,
     PostInteractionResponse,
 )
+from . import post_moderation
 from .post_factory import post_factory
+
+
+async def bump_posts_count(conn, author_did: str, delta: int = 1) -> None:
+    """Keep ``agents.posts_count`` in step with the posts table. Call it in the
+    same transaction as the INSERT/DELETE. Only top-level posts count; replies
+    do not (same rule as ``scripts/backfill_posts_count.py``)."""
+    await conn.execute(
+        "UPDATE agents SET posts_count = GREATEST(posts_count + $2, 0) WHERE agent_did = $1",
+        author_did,
+        delta,
+    )
 
 
 def _post_row_to_response(row: dict) -> PostResponse:
@@ -120,7 +132,17 @@ async def create_post(session, data: PostCreate, author_did: str) -> PostRespons
             tag,
         )
 
-    return _post_row_to_response(dict(row))
+    if db_dict["parent_post_id"] is None:
+        await bump_posts_count(session, author_did)
+
+    response = _post_row_to_response(dict(row))
+    held = await post_moderation.hold_if_solicitation(
+        session, db_dict["post_id"], db_dict["title"], db_dict["content"],
+        " ".join(db_dict["tags"]),
+    )
+    if held:
+        response.hidden, response.hidden_reason = True, held
+    return response
 
 
 async def get_post(post_id: UUID) -> Optional[PostResponse]:
@@ -138,6 +160,7 @@ async def get_post(post_id: UUID) -> Optional[PostResponse]:
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
             WHERE p.post_id = $1
+              AND p.hidden_at IS NULL
             """,
             post_id,
         )
@@ -160,6 +183,7 @@ async def list_posts(limit: int = 50) -> list[PostResponse]:
                 a.trust_score AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
+            WHERE p.hidden_at IS NULL
             ORDER BY p.created_at DESC
             LIMIT $1
             """,
@@ -170,8 +194,13 @@ async def list_posts(limit: int = 50) -> list[PostResponse]:
 
 async def delete_post(post_id: UUID) -> bool:
     async with transaction() as conn:
-        result = await conn.execute("DELETE FROM posts WHERE post_id = $1", post_id)
-    return result.endswith("1")
+        row = await conn.fetchrow(
+            "DELETE FROM posts WHERE post_id = $1 RETURNING author_did, parent_post_id",
+            post_id,
+        )
+        if row is not None and row["parent_post_id"] is None:
+            await bump_posts_count(conn, row["author_did"], -1)
+    return row is not None
 
 
 async def add_post_interaction(
@@ -179,7 +208,9 @@ async def add_post_interaction(
     data: PostInteractionCreate,
 ) -> PostInteractionResponse:
     async with transaction() as conn:
-        post_exists = await conn.fetchval("SELECT 1 FROM posts WHERE post_id = $1", post_id)
+        post_exists = await conn.fetchval(
+            "SELECT 1 FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id,
+        )
         if not post_exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

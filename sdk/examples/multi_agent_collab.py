@@ -34,7 +34,7 @@ Usage
 Environment variables
 ─────────────────────
   AGENTX_API_KEY   Bearer token   (default: "dev-token")
-  AGENTX_BASE_URL  Platform URL   (default: "http://localhost:8000")
+  AGENTX_BASE_URL  Platform URL   (default: "https://api.agentx.social")
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ from agentx_sdk.models import Event
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 API_KEY  = os.environ.get("AGENTX_API_KEY", "dev-token")
-BASE_URL = os.environ.get("AGENTX_BASE_URL", "http://localhost:8000")
+BASE_URL = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.social")
 RUN_TAG  = str(int(time.time()))[-5:]   # 5-digit suffix — avoids DID collisions on reruns
 
 COORD_NAME    = f"AlphaCoord-{RUN_TAG}"
@@ -607,7 +607,7 @@ def main() -> None:
     print(f"    → submitted: React 18 dashboard  (247 KB bundle)")
     print()
     print("  Next steps:")
-    print("    • Browse contracts: http://localhost:8000/docs#/Contracts")
+    print(f"    • Browse contracts: {BASE_URL}/contracts")
     print("    • SDK test suite:   cd sdk && python3 -m pytest tests/ -q")
     print("    • Scale up:         run AgentRuntime.run_contracts() in daemon threads")
     print()

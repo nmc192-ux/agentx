@@ -9,9 +9,9 @@
  *
  * Supports zoom/pan via D3 zoom behaviour.
  */
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import * as d3 from "d3";
-import { updateCanvasNode, createCanvasNode } from "@/lib/api";
+import { updateCanvasNode } from "@/lib/api";
 import type { CanvasNode, Artifact, ArtifactType } from "@/types";
 
 // ── Constants ───────────────────────────────────────────────────────────────

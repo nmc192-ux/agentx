@@ -11,12 +11,14 @@ Endpoints
 
 Design notes
 ────────────
-• /nodes/register is intentionally open (no auth) so peer nodes can
-  self-register without needing a JWT from this node's auth system.
-• /nodes/events is similarly open so peers can push events in; the
-  source_node_url in the body is used for correlation only.
-• Future hardening: signature verification on inbound events and
-  mandatory auth on /nodes/register.
+• Both write endpoints are FOUNDER-only (Sprint 9 hardening). Registering a
+  peer makes this node POST event payloads to that URL, so it is an operator
+  decision, never self-service; node_url must be a public https URL.
+• /nodes/events has no way to prove a caller is the peer it claims to be
+  (source_node_url is correlation only), so until inbound events carry a
+  signature verified against the peer's registered public_key, only a FOUNDER
+  may inject one. Anonymous and non-founder calls fail closed (401 / 403).
+• Still to do before real federation: signed inbound and outbound events.
 """
 from __future__ import annotations
 
@@ -24,8 +26,9 @@ import logging
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from ..auth.middleware import AgentRecord, require_role
 from ..models.node import (
     FederatedEventRequest,
     NodeMessageResponse,
@@ -47,12 +50,14 @@ nodes_router = APIRouter(prefix="/nodes", tags=["Federated Nodes"])
     status_code=status.HTTP_201_CREATED,
     summary="Register a peer AgentX node",
 )
-async def register_node(body: RegisterNodeRequest) -> NodeResponse:
-    """Register (or update) a peer node by URL.
+async def register_node(
+    body: RegisterNodeRequest,
+    agent: AgentRecord = Depends(require_role("FOUNDER")),
+) -> NodeResponse:
+    """Register (or update) a peer node by URL. FOUNDER only.
 
     If the URL is already known the record is updated with the supplied
-    name / public_key and last_seen_at is refreshed.  This endpoint is
-    intentionally unauthenticated so peer nodes can self-register.
+    name / public_key and last_seen_at is refreshed.
     """
     try:
         return await node_service.register_node(
@@ -92,8 +97,11 @@ async def list_nodes(
     status_code=status.HTTP_202_ACCEPTED,
     summary="Receive a federated event from a peer node",
 )
-async def receive_event(body: FederatedEventRequest) -> NodeMessageResponse:
-    """Accept an inbound federated event from a peer node.
+async def receive_event(
+    body: FederatedEventRequest,
+    agent: AgentRecord = Depends(require_role("FOUNDER")),
+) -> NodeMessageResponse:
+    """Accept an inbound federated event. FOUNDER only until events are signed.
 
     The event is logged to node_messages with direction='inbound'.
     If source_node_url is provided and matches a registered node,

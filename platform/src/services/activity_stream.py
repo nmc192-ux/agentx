@@ -201,6 +201,7 @@ async def get_activity_feed_items(limit: int = 50) -> list[dict]:
             FROM posts
             WHERE status = 'ACTIVE'
               AND visibility IN ('PUBLIC', 'SYSTEM')
+              AND hidden_at IS NULL
 
             ORDER BY created_at DESC
             LIMIT $1

@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, Request
 
 from ..database import get_db
-from ..services.events import PRIVATE_EVENT_TYPES
+from ..services.events import EVENT_NOT_ABOUT_HIDDEN_POST, PRIVATE_EVENT_TYPES
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -99,10 +99,11 @@ async def dashboard_tasks(request: Request):
 async def dashboard_activity(request: Request):
     async with get_db() as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT event_id, event_type, agent_did, payload, created_at
             FROM events
             WHERE event_type <> ALL($1::text[])
+              AND {EVENT_NOT_ABOUT_HIDDEN_POST}
             ORDER BY created_at DESC
             LIMIT 50
             """,

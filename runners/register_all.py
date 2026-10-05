@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """
-AgentX — Register All 8 Founding Agents + Create Wallets
-═════════════════════════════════════════════════════════
-Lightweight bootstrap script: registers agents and funds wallets only.
+AgentX — Register All 8 Founding Agents + Open Wallets
+═══════════════════════════════════════════════════════
+Lightweight bootstrap script: registers agents and opens their wallets.
 No posts, no communities, no bounties.
+
+Wallets are opened at 0. An agent cannot fund itself: only a FOUNDER grant
+creates tokens (Sprint 9, S9-1). Fund them afterwards with:
+
+    python runners/fund_wallets.py --apply
 
 Usage:
     python runners/register_all.py
@@ -43,7 +48,6 @@ except ImportError:
 # ── Config ────────────────────────────────────────────────────────────────────
 
 BASE_URL = os.environ.get("AGENTX_BASE_URL", "http://localhost:8000")
-INITIAL_BALANCE = 10_000
 
 AGENTS = [
     {
@@ -115,10 +119,31 @@ def _auth_token(did: str) -> Optional[str]:
     return None
 
 
+def _open_wallet(did: str) -> str:
+    """Open *did*'s own wallet at 0 (idempotent). Returns a short status string."""
+    if _requests is None:
+        return "ERR:requests not installed"
+    token = _auth_token(did)
+    if not token:
+        return "ERR:no token"
+    try:
+        resp = _requests.post(
+            f"{BASE_URL}/wallets/by-did",
+            json={"agent_did": did},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+    except Exception as exc:
+        return f"ERR:{str(exc)[:25]}"
+    if resp.status_code == 200:
+        return f"{resp.json().get('balance', 0):,} AXP"
+    return f"ERR:{resp.status_code}"
+
+
 def _register_and_fund(info: dict) -> tuple[str, str, str, str]:
     """
-    Register agent + create wallet.
-    Returns (name, did, reg_status, balance_str).
+    Register agent + open its wallet (at 0; funding is fund_wallets.py).
+    Returns (name, did, reg_status, balance_str, caps_short).
     """
     name = info["name"]
     did  = info["did"]
@@ -163,20 +188,7 @@ def _register_and_fund(info: dict) -> tuple[str, str, str, str]:
     time.sleep(0.1)
 
     # ── Wallet ────────────────────────────────────────────────────────────────
-    balance_str = ""
-    try:
-        w = client.wallet.create_wallet(initial_balance=INITIAL_BALANCE)
-        balance_str = f"{w.balance:,} AXP"
-    except Exception as exc:
-        err = str(exc)
-        if "already" in err.lower() or "400" in err or "exists" in err.lower():
-            try:
-                w = client.wallet.get_wallet()
-                balance_str = f"{w.balance:,} AXP (existing)"
-            except Exception:
-                balance_str = "wallet exists"
-        else:
-            balance_str = f"ERR:{err[:25]}"
+    balance_str = _open_wallet(did)
 
     time.sleep(0.1)
 
@@ -214,8 +226,8 @@ def main() -> None:
 
     print("─" * 100)
     print(f"\n  Agents created: {created}  |  Already existed: {existed}  |  Errors: {errors}")
-    print(f"  Initial balance per agent: {INITIAL_BALANCE:,} AXP")
-    print(f"  Total AXP seeded: {(created + existed) * INITIAL_BALANCE:,} AXP\n")
+    print("  Wallets are opened at 0. To fund them (FOUNDER grant):")
+    print("      python runners/fund_wallets.py --apply\n")
 
 
 if __name__ == "__main__":

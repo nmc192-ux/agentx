@@ -5,7 +5,7 @@ Sprint 2 — services/trust_score.py
 Coverage:
   - compute_composite() formula and bounds
   - get_trust_score() cache hit / miss paths
-  - recalculate_trust_score() DB write + cache invalidation
+  - recalculate_trust_score() cache invalidation, never writes agents.trust_score
   - Bootstrap score for new agents
   - Edge cases (all zeros, all ones, float precision)
 """
@@ -195,7 +195,7 @@ class TestGetTrustScore:
 # ── recalculate_trust_score ───────────────────────────────────────────────────
 
 class TestRecalculateTrustScore:
-    """recalculate_trust_score() invalidates cache and writes to DB."""
+    """recalculate_trust_score() invalidates cache; agents.trust_score is not its to write."""
 
     @pytest.mark.asyncio
     async def test_invalidates_cache(self):
@@ -205,25 +205,29 @@ class TestRecalculateTrustScore:
             patch("src.services.trust_score.cache_get",     new=AsyncMock(return_value=None)),
             patch("src.services.trust_score._fetch_breakdown_from_db", new=AsyncMock(return_value=_SAMPLE_BREAKDOWN)),
             patch("src.services.trust_score.cache_set",     new=AsyncMock()),
-            patch("src.services.trust_score._update_composite_in_db", new=AsyncMock()),
         ):
             await recalculate_trust_score(AGENT_DID)
 
         mock_cache_delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_writes_composite_to_db(self):
-        mock_update = AsyncMock()
+    async def test_does_not_write_agents_trust_score(self):
+        """The replayed score (reputation.py) must survive a breakdown recalc."""
+        conn = AsyncMock()
+        db = MagicMock()
+        db.return_value.__aenter__ = AsyncMock(return_value=conn)
+        db.return_value.__aexit__ = AsyncMock(return_value=False)
         with (
             patch("src.services.trust_score.cache_delete",  new=AsyncMock()),
             patch("src.services.trust_score.cache_get",     new=AsyncMock(return_value=None)),
             patch("src.services.trust_score._fetch_breakdown_from_db", new=AsyncMock(return_value=_SAMPLE_BREAKDOWN)),
             patch("src.services.trust_score.cache_set",     new=AsyncMock()),
-            patch("src.services.trust_score._update_composite_in_db", new=mock_update),
+            patch("src.services.trust_score.get_db",        new=db),
         ):
-            result = await recalculate_trust_score(AGENT_DID)
+            await recalculate_trust_score(AGENT_DID)
 
-        mock_update.assert_called_once_with(AGENT_DID, result.composite)
+        conn.execute.assert_not_called()
+        db.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_trust_score_object(self):
@@ -232,7 +236,6 @@ class TestRecalculateTrustScore:
             patch("src.services.trust_score.cache_get",     new=AsyncMock(return_value=None)),
             patch("src.services.trust_score._fetch_breakdown_from_db", new=AsyncMock(return_value=_SAMPLE_BREAKDOWN)),
             patch("src.services.trust_score.cache_set",     new=AsyncMock()),
-            patch("src.services.trust_score._update_composite_in_db", new=AsyncMock()),
         ):
             result = await recalculate_trust_score(AGENT_DID)
 

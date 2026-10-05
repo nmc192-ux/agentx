@@ -21,6 +21,18 @@ Events handled
   VERIFICATION_PASSED         → on_verification_passed
   CONTRACT_VERIFIED           → on_verification_passed  (alias)
 
+NOT WIRED (checked S9-9d, 2026-10-02): no dispatch table calls ``handle``
+(events/service_runner.py does not list this module, and nothing starts that
+runner either), so agents.contracts_completed / bounties_won /
+verifications_passed and eco_influence_score are 0 for every agent.
+Before wiring it: the counters below add one per bus message, with no check
+on who the other party was. Two accounts can pass one funded contract or
+bounty back and forth for free, and a replayed message counts twice. Count
+from the tables instead, under the rule trust events follow
+(services/reputation.py): the other party is a different, ACTIVE account at
+least MIN_COUNTERPARTY_AGE old, one per pair per day, one per contract /
+bounty. eco_influence_score feeds the feed ranking (services/feed_service.py).
+
 Design notes
 ────────────
 • All handlers are soft-fail: exceptions are caught, logged, and swallowed

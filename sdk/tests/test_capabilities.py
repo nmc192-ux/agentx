@@ -214,6 +214,39 @@ class TestListAgentCapabilities:
         assert route.called
 
 
+# -- Endorse (S9-12b) ---------------------------------------------------------
+
+class TestEndorse:
+    OTHER = "did:agentx:other-001"
+
+    @respx.mock
+    def test_endorse_path_and_body(self):
+        route = respx.post(
+            f"{BASE}/agents/{self.OTHER}/capabilities/{CAP_ID}/verify"
+        ).mock(return_value=httpx.Response(200, json={"verified_by_count": 1, "endorsers": 1}))
+        out = make_client().capabilities.endorse(self.OTHER, CAP_ID, notes="solid")
+        assert out["endorsers"] == 1
+        # The endorser is the token's agent: no DID is sent.
+        assert json.loads(route.calls[0].request.content) == {"notes": "solid"}
+
+    @respx.mock
+    def test_endorse_without_notes_sends_empty_body(self):
+        route = respx.post(
+            f"{BASE}/agents/{self.OTHER}/capabilities/{CAP_ID}/verify"
+        ).mock(return_value=httpx.Response(200, json={}))
+        make_client().capabilities.endorse(self.OTHER, CAP_ID)
+        assert json.loads(route.calls[0].request.content) == {}
+
+    @respx.mock
+    def test_endorse_twice_raises(self):
+        from agentx_sdk import AgentXError
+        respx.post(
+            f"{BASE}/agents/{self.OTHER}/capabilities/{CAP_ID}/verify"
+        ).mock(return_value=httpx.Response(409, json={"detail": "already endorsed"}))
+        with pytest.raises(AgentXError, match="409"):
+            make_client().capabilities.endorse(self.OTHER, CAP_ID)
+
+
 # -- Namespace wiring ---------------------------------------------------------
 
 class TestCapabilitiesWiring:

@@ -6,9 +6,11 @@ Phase 1 Enhanced Social Layer: Collaboration rooms.
 Public API
 ──────────
   create_room(creator_did, data)                → RoomResponse
+  create_room_on(conn, creator_did, data, at)   → RoomResponse (caller's transaction)
   get_room(room_id)                             → RoomResponse
   list_rooms(community_id, status, limit)       → list[RoomResponse]
   join_room(room_id, agent_did, role)           → RoomParticipant
+  join_room_on(conn, room_id, agent_did, role, at) → RoomParticipant (caller's transaction)
   leave_room(room_id, agent_did)                → None
   get_participants(room_id)                     → list[RoomParticipant]
   add_artifact(room_id, author_did, data)       → ArtifactResponse
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -74,28 +77,40 @@ def _artifact_from_row(row: dict) -> ArtifactResponse:
     )
 
 
+async def create_room_on(
+    conn, creator_did: str, data: RoomCreate, at: Optional[datetime] = None,
+) -> RoomResponse:
+    """`create_room` inside the caller's transaction. *at* sets the stored
+    times (the founder heartbeat's injectable clock); default: now."""
+    row = await conn.fetchrow(
+        """
+        INSERT INTO rooms (name, description, community_id, room_type, max_participants,
+                           creator_did, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, CURRENT_TIMESTAMP))
+        RETURNING *
+        """,
+        data.name, data.description, data.community_id,
+        data.room_type.value, data.max_participants, creator_did, at,
+    )
+    room_id = row["room_id"]
+
+    # Creator joins as HOST
+    await conn.execute(
+        """
+        INSERT INTO room_participants (room_id, agent_did, role, joined_at)
+        VALUES ($1, $2, 'HOST', COALESCE($3::timestamptz, CURRENT_TIMESTAMP))
+        """,
+        room_id, creator_did, at,
+    )
+
+    room = dict(row)
+    room["participant_count"] = 1
+    return _room_from_row(room)
+
+
 async def create_room(creator_did: str, data: RoomCreate) -> RoomResponse:
     async with transaction() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO rooms (name, description, community_id, room_type, max_participants, creator_did)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING *
-            """,
-            data.name, data.description, data.community_id,
-            data.room_type.value, data.max_participants, creator_did,
-        )
-        room_id = row["room_id"]
-
-        # Creator joins as HOST
-        await conn.execute(
-            "INSERT INTO room_participants (room_id, agent_did, role) VALUES ($1, $2, 'HOST')",
-            room_id, creator_did,
-        )
-
-        room = dict(row)
-        room["participant_count"] = 1
-        return _room_from_row(room)
+        return await create_room_on(conn, creator_did, data)
 
 
 async def get_room(room_id: UUID) -> RoomResponse:
@@ -144,36 +159,48 @@ async def list_rooms(
     return [_room_from_row(dict(r)) for r in rows]
 
 
+async def join_room_on(
+    conn, room_id: UUID, agent_did: str, role: str = "PARTICIPANT",
+    at: Optional[datetime] = None,
+) -> RoomParticipant:
+    """`join_room` inside the caller's transaction; *at* as in `create_room_on`."""
+    room = await conn.fetchrow(
+        "SELECT room_id, status, max_participants FROM rooms WHERE room_id = $1 FOR UPDATE",
+        room_id,
+    )
+    if room is None:
+        raise ValueError("Room not found")
+    if room["status"] not in ("OPEN", "IN_PROGRESS"):
+        raise ValueError("Room is not accepting participants")
+
+    count = await conn.fetchval(
+        "SELECT COUNT(*) FROM room_participants WHERE room_id = $1",
+        room_id,
+    )
+    if int(count) >= room["max_participants"]:
+        raise ValueError("Room is full")
+
+    result = await conn.execute(
+        """
+        INSERT INTO room_participants (room_id, agent_did, role, joined_at)
+        VALUES ($1, $2, $3, COALESCE($4::timestamptz, CURRENT_TIMESTAMP))
+        ON CONFLICT DO NOTHING
+        """,
+        room_id, agent_did, role, at,
+    )
+    if result == "INSERT 0 0":
+        raise ValueError("Already in this room")
+
+    row = await conn.fetchrow(
+        "SELECT * FROM room_participants WHERE room_id = $1 AND agent_did = $2",
+        room_id, agent_did,
+    )
+    return _participant_from_row(dict(row))
+
+
 async def join_room(room_id: UUID, agent_did: str, role: str = "PARTICIPANT") -> RoomParticipant:
     async with transaction() as conn:
-        room = await conn.fetchrow(
-            "SELECT room_id, status, max_participants FROM rooms WHERE room_id = $1",
-            room_id,
-        )
-        if room is None:
-            raise ValueError("Room not found")
-        if room["status"] not in ("OPEN", "IN_PROGRESS"):
-            raise ValueError("Room is not accepting participants")
-
-        count = await conn.fetchval(
-            "SELECT COUNT(*) FROM room_participants WHERE room_id = $1",
-            room_id,
-        )
-        if int(count) >= room["max_participants"]:
-            raise ValueError("Room is full")
-
-        result = await conn.execute(
-            "INSERT INTO room_participants (room_id, agent_did, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-            room_id, agent_did, role,
-        )
-        if result == "INSERT 0 0":
-            raise ValueError("Already in this room")
-
-        row = await conn.fetchrow(
-            "SELECT * FROM room_participants WHERE room_id = $1 AND agent_did = $2",
-            room_id, agent_did,
-        )
-        return _participant_from_row(dict(row))
+        return await join_room_on(conn, room_id, agent_did, role)
 
 
 async def leave_room(room_id: UUID, agent_did: str) -> None:

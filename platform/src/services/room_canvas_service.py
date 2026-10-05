@@ -140,14 +140,18 @@ async def update_node(
     node_id: UUID,
     agent_did: str,
     patch: CanvasNodeUpdate,
+    room_id: UUID | None = None,
 ) -> CanvasNodeResponse:
-    """Update a canvas node position, size, or label."""
+    """Update a canvas node position, size, or label.
+
+    If ``room_id`` is given (the room in the request path), a node that
+    belongs to a different room is reported as not found."""
     async with transaction() as conn:
         existing = await conn.fetchrow(
             "SELECT * FROM canvas_nodes WHERE node_id = $1",
             node_id,
         )
-        if existing is None:
+        if existing is None or (room_id is not None and existing["room_id"] != room_id):
             raise ValueError("Canvas node not found")
 
         room_id = existing["room_id"]
@@ -229,14 +233,15 @@ async def batch_move_nodes(
 async def delete_node(
     node_id: UUID,
     agent_did: str,
+    room_id: UUID | None = None,
 ) -> None:
-    """Remove a node from the canvas."""
+    """Remove a node from the canvas. ``room_id`` as for ``update_node``."""
     async with transaction() as conn:
         existing = await conn.fetchrow(
             "SELECT room_id, node_type FROM canvas_nodes WHERE node_id = $1",
             node_id,
         )
-        if existing is None:
+        if existing is None or (room_id is not None and existing["room_id"] != room_id):
             raise ValueError("Canvas node not found")
 
         room_id = existing["room_id"]

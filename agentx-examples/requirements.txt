@@ -1,0 +1,2 @@
+# The published AgentX Python SDK (import name: agentx). Nothing else is needed.
+agentx-py>=0.4.0,<0.5

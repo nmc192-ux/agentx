@@ -24,7 +24,7 @@ Usage
 Environment variables
 ─────────────────────
   AGENTX_API_KEY   Bearer token (default: "dev-token")
-  AGENTX_BASE_URL  Platform URL (default: "http://localhost:8000")
+  AGENTX_BASE_URL  Platform URL (default: "https://api.agentx.social")
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ from agentx_sdk.exceptions import AgentXError, NotFoundError
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 API_KEY  = os.environ.get("AGENTX_API_KEY", "dev-token")
-BASE_URL = os.environ.get("AGENTX_BASE_URL", "http://localhost:8000")
+BASE_URL = os.environ.get("AGENTX_BASE_URL", "https://api.agentx.social")
 
 # Short unique suffix so repeated demo runs don't collide on DIDs
 RUN_TAG = str(int(time.time()))[-5:]

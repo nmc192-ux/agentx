@@ -196,32 +196,137 @@ class TestAct:
     @respx.mock
     def test_act_auto_route(self):
         t = task_payload()
-        respx.post(f"{BASE}/tasks/route").mock(return_value=httpx.Response(200, json=t))
+        route = respx.post(f"{BASE}/tasks/route").mock(return_value=httpx.Response(200, json=t))
         task = make_client().act("ACCEPT_TASK", data={"post_id": "abc"})
         assert task.task_type == "ACCEPT_TASK"
+        # The API's field names, and no requester: it comes from the token.
+        assert json.loads(route.calls.last.request.content) == {
+            "task_type": "ACCEPT_TASK", "payload": {"post_id": "abc"},
+        }
 
     @respx.mock
     def test_act_direct(self):
         t = task_payload()
-        respx.post(f"{BASE}/tasks/create").mock(return_value=httpx.Response(200, json=t))
+        route = respx.post(f"{BASE}/tasks/create").mock(return_value=httpx.Response(200, json=t))
         task = make_client().act("DO_WORK", data={}, executor_did="did:agentx:other-001")
         assert task.status == "PENDING"
+        assert json.loads(route.calls.last.request.content) == {
+            "task_type": "DO_WORK", "payload": {},
+            "executor_agent_did": "did:agentx:other-001",
+        }
+
+    @respx.mock
+    def test_task_without_executor_parses(self):
+        t = task_payload()
+        t["executor_agent_did"] = None
+        respx.post(f"{BASE}/tasks/route").mock(return_value=httpx.Response(200, json=t))
+        assert make_client().act("DO", data={}).executor_agent_did is None
 
     @respx.mock
     def test_accept_task(self):
         t = task_payload(status="IN_PROGRESS")
         tid = t["task_id"]
-        respx.patch(f"{BASE}/tasks/{tid}").mock(return_value=httpx.Response(200, json=t))
+        route = respx.post(f"{BASE}/tasks/{tid}/update").mock(
+            return_value=httpx.Response(200, json=t)
+        )
         task = make_client().accept_task(tid)
         assert task.status == "IN_PROGRESS"
+        assert json.loads(route.calls.last.request.content) == {"status": "IN_PROGRESS"}
 
     @respx.mock
-    def test_submit_result(self):
-        respx.post(f"{BASE}/tasks/abc/result").mock(
-            return_value=httpx.Response(200, json={"ok": True})
+    def test_submit_result_completes_direct_task(self):
+        t = task_payload(status="COMPLETED")
+        tid = t["task_id"]
+        route = respx.post(f"{BASE}/tasks/{tid}/update").mock(
+            return_value=httpx.Response(200, json=t)
         )
-        result = make_client().submit_result("abc", {"output": "done"})
-        assert result["ok"] is True
+        task = make_client().submit_result(tid, {"output": "done"})
+        assert task.status == "COMPLETED"
+        assert json.loads(route.calls.last.request.content) == {
+            "status": "COMPLETED", "result": {"output": "done"},
+        }
+
+    @respx.mock
+    def test_submit_marketplace_result(self):
+        route = respx.post(f"{BASE}/tasks/abc/result").mock(
+            return_value=httpx.Response(201, json={"result_id": "r1"})
+        )
+        result = make_client().submit_marketplace_result("abc", {"output": "done"})
+        assert result["result_id"] == "r1"
+        assert json.loads(route.calls.last.request.content) == {
+            "result_payload": {"output": "done"},
+        }
+
+    @respx.mock
+    def test_cancel_task(self):
+        route = respx.post(f"{BASE}/tasks/abc/cancel").mock(
+            return_value=httpx.Response(200, json={"status": "cancelled"})
+        )
+        assert make_client().cancel_task("abc")["status"] == "cancelled"
+        assert route.called
+
+    @respx.mock
+    def test_cancel_taken_task_raises(self):
+        respx.post(f"{BASE}/tasks/abc/cancel").mock(
+            return_value=httpx.Response(409, json={"detail": "Task is not open"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().cancel_task("abc")
+
+    @respx.mock
+    def test_list_tasks_sends_status(self):
+        route = respx.get(f"{BASE}/tasks").mock(
+            return_value=httpx.Response(200, json=[{"task_id": "t1", "status": "assigned"}])
+        )
+        assert make_client().list_tasks("assigned", limit=5)[0]["task_id"] == "t1"
+        assert route.calls.last.request.url.params["status"] == "assigned"
+        assert route.calls.last.request.url.params["limit"] == "5"
+
+    @respx.mock
+    def test_create_task(self):
+        route = respx.post(f"{BASE}/tasks").mock(
+            return_value=httpx.Response(201, json={"task_id": "t1", "status": "open"})
+        )
+        assert make_client().create_task("text.summarize", {"text": "x"}, 20)["task_id"] == "t1"
+        assert json.loads(route.calls.last.request.content) == {
+            "task_type": "text.summarize", "payload": {"text": "x"}, "reward": 20,
+        }
+
+    @respx.mock
+    def test_bid_on_task(self):
+        route = respx.post(f"{BASE}/tasks/abc/bid").mock(
+            return_value=httpx.Response(201, json={"bid_id": "b1"})
+        )
+        assert make_client().bid_on_task("abc", confidence=0.9)["bid_id"] == "b1"
+        assert json.loads(route.calls.last.request.content) == {
+            "confidence": 0.9, "bid_price": 0,
+        }
+
+    @respx.mock
+    def test_task_results_approve_and_reject(self):
+        respx.get(f"{BASE}/tasks/abc/results").mock(
+            return_value=httpx.Response(200, json=[{"verification_status": "pending"}])
+        )
+        approve = respx.post(f"{BASE}/tasks/abc/approve").mock(
+            return_value=httpx.Response(200, json={"reward_released": 20})
+        )
+        reject = respx.post(f"{BASE}/tasks/abc/reject").mock(
+            return_value=httpx.Response(200, json={"verification_status": "rejected"})
+        )
+        client = make_client()
+        assert client.task_results("abc")[0]["verification_status"] == "pending"
+        assert client.approve_task_result("abc")["reward_released"] == 20
+        assert approve.called
+        client.reject_task_result("abc", "too short")
+        assert json.loads(reject.calls.last.request.content) == {"reason": "too short"}
+
+    @respx.mock
+    def test_approve_without_result_raises(self):
+        respx.post(f"{BASE}/tasks/abc/approve").mock(
+            return_value=httpx.Response(409, json={"detail": "No result under review"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().approve_task_result("abc")
 
 
 class TestNotifications:
@@ -264,9 +369,65 @@ class TestMessages:
             "message":            "Hello",
             "created_at":         "2024-01-01T00:00:00",
         }
-        respx.post(f"{BASE}/messages/send").mock(return_value=httpx.Response(200, json=payload))
-        msg = make_client().send_message("did:agentx:you", "Hello")
+        route = respx.post(f"{BASE}/messages/send").mock(
+            return_value=httpx.Response(201, json=payload)
+        )
+        client = make_client()
+        client.identity = AgentIdentity(agent_did="did:agentx:me", api_key="test-key")
+        msg = client.send_message("did:agentx:you", "Hello")
         assert msg.message == "Hello"
+        # The server refuses a send whose sender_agent_did is not the caller.
+        sent = json.loads(route.calls.last.request.content)
+        assert sent == {
+            "sender_agent_did": "did:agentx:me",
+            "receiver_agent_did": "did:agentx:you",
+            "message": "Hello",
+        }
+
+    @respx.mock
+    def test_send_message_without_did_raises_before_sending(self):
+        route = respx.post(f"{BASE}/messages/send")
+        with pytest.raises(AgentXError, match="send_message"):
+            make_client().send_message("did:agentx:you", "Hello")
+        assert not route.called
+
+    @respx.mock
+    def test_messages_reads_own_inbox(self):
+        row = {
+            "message_id":         str(uuid4()),
+            "sender_agent_did":   "did:agentx:you",
+            "receiver_agent_did": "did:agentx:me",
+            "message":            "Welcome!",
+            "created_at":         "2024-01-01T00:00:00",
+        }
+        route = respx.get(f"{BASE}/messages/did:agentx:me").mock(
+            return_value=httpx.Response(200, json=[row])
+        )
+        client = make_client()
+        client.identity = AgentIdentity(agent_did="did:agentx:me", api_key="test-key")
+        msgs = client.messages()
+        assert route.called
+        assert [m.message for m in msgs] == ["Welcome!"]
+        assert msgs[0].receiver_agent_did == client.agent_did
+
+    @respx.mock
+    def test_get_trust_reads_composite_for_self(self):
+        respx.get(f"{BASE}/agents/did:agentx:me/trust").mock(
+            return_value=httpx.Response(200, json={
+                "agent_did": "did:agentx:me", "trust_score": 0.44,
+                "trust_breakdown": {"composite": 0.45},
+            })
+        )
+        client = make_client()
+        client.identity = AgentIdentity(agent_did="did:agentx:me", api_key="test-key")
+        assert client.get_trust() == 0.45
+
+    @respx.mock
+    def test_messages_without_did_raises_before_sending(self):
+        route = respx.get(url__regex=rf"{BASE}/messages/.*")
+        with pytest.raises(AgentXError, match="messages"):
+            make_client().messages()
+        assert not route.called
 
 
 class TestBounties:
@@ -288,6 +449,97 @@ class TestBounties:
             title="Fix bug", description="...", capability_required="python", reward_pool=100
         ))
         assert b.title == "Fix bug"
+
+    @respx.mock
+    def test_create_bounty_with_deadline_serialises(self):
+        # A datetime deadline used to break the JSON body.
+        route = respx.post(f"{BASE}/markets/bounties").mock(
+            return_value=httpx.Response(201, json=bounty_payload())
+        )
+        from agentx_sdk import BountyCreate
+        make_client().create_bounty(BountyCreate(
+            title="Fix bug", description="...", capability_required="python",
+            reward_pool=100, deadline=datetime(2026, 12, 1, 12, 0),
+        ))
+        body = json.loads(route.calls[0].request.content)
+        assert body["deadline"].startswith("2026-12-01T12:00")
+
+    @respx.mock
+    def test_list_bounties_pages(self):
+        route = respx.get(f"{BASE}/markets/bounties").mock(
+            return_value=httpx.Response(200, json=[bounty_payload()])
+        )
+        out = make_client().list_bounties(status="open", limit=10, offset=5)
+        assert out[0].title == "Fix bug"
+        params = route.calls[0].request.url.params
+        assert params["status"] == "open"
+        assert params["limit"] == "10"
+        assert params["offset"] == "5"
+        assert "capability" not in params
+
+    @respx.mock
+    def test_get_bounty(self):
+        respx.get(f"{BASE}/markets/bounties/{BOUNTY_ID}").mock(
+            return_value=httpx.Response(200, json=bounty_payload())
+        )
+        assert str(make_client().get_bounty(BOUNTY_ID).bounty_id) == BOUNTY_ID
+
+    @respx.mock
+    def test_submit_solution_body(self):
+        route = respx.post(f"{BASE}/markets/bounties/{BOUNTY_ID}/submit").mock(
+            return_value=httpx.Response(201, json={"submission_id": str(uuid4())})
+        )
+        make_client().submit_bounty_solution(BOUNTY_ID, {"patch": "x"}, summary="fix")
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"solution_data": {"patch": "x"}, "summary": "fix"}
+
+    @respx.mock
+    def test_list_submissions(self):
+        respx.get(f"{BASE}/markets/bounties/{BOUNTY_ID}/submissions").mock(
+            return_value=httpx.Response(200, json=[{"submission_id": "s1"}])
+        )
+        assert make_client().list_bounty_submissions(BOUNTY_ID) == [{"submission_id": "s1"}]
+
+    @respx.mock
+    def test_evaluate_body(self):
+        route = respx.post(
+            f"{BASE}/markets/bounties/{BOUNTY_ID}/submissions/s1/evaluate"
+        ).mock(return_value=httpx.Response(200, json={"score": 0.8}))
+        make_client().evaluate_bounty_submission(BOUNTY_ID, "s1", 0.8)
+        assert json.loads(route.calls[0].request.content) == {"score": 0.8}
+
+    @respx.mock
+    def test_distribute_already_rewarded_raises(self):
+        respx.post(f"{BASE}/markets/bounties/{BOUNTY_ID}/distribute").mock(
+            return_value=httpx.Response(409, json={"detail": "already rewarded"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().distribute_bounty_rewards(BOUNTY_ID)
+
+    @respx.mock
+    def test_cancel_bounty(self):
+        respx.post(f"{BASE}/markets/bounties/{BOUNTY_ID}/cancel").mock(
+            return_value=httpx.Response(200, json=bounty_payload(status="cancelled"))
+        )
+        assert make_client().cancel_bounty(BOUNTY_ID).status == "cancelled"
+
+
+BOUNTY_ID = str(uuid4())
+
+
+def bounty_payload(**overrides) -> dict:
+    return {
+        "bounty_id":            BOUNTY_ID,
+        "creator_did":          "did:agentx:me",
+        "creator_id":           str(uuid4()),
+        "title":                "Fix bug",
+        "description":          "...",
+        "capability_required":  "python",
+        "reward_pool":          100,
+        "status":               "open",
+        "created_at":           "2024-01-01T00:00:00",
+        **overrides,
+    }
 
 
 class TestRequestApproval:

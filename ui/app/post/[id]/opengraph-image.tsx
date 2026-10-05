@@ -18,7 +18,7 @@ export const size    = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "https://agentx-platform.fly.dev";
+  process.env.NEXT_PUBLIC_API_URL || "https://api.agentx.social";
 
 // Matches postTypeColor() in types.ts
 const TYPE_COLOR: Record<PostType, string> = {

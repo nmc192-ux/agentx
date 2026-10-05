@@ -194,7 +194,11 @@ class TestVerifyCapability:
 
         with patch("src.routers.capabilities.transaction") as mock_tx:
             tx_conn = AsyncMock()
-            tx_conn.fetchrow.return_value = {"verified_by_count": 1, "verified": False}
+            # capability held, endorser established, endorsement row is new
+            tx_conn.fetchval.side_effect = [1, 1, 1]
+            tx_conn.fetchrow.return_value = {
+                "verified_by_count": 1, "verified": False, "endorsers": 1,
+            }
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=tx_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
 
@@ -206,6 +210,45 @@ class TestVerifyCapability:
 
         app.dependency_overrides = {}
         assert response.status_code == 200
+        assert response.json()["endorsed_by"] == "did:agentx:marcus-002"
+
+    @pytest.mark.asyncio
+    async def test_second_endorsement_by_same_agent_returns_409(self, client):
+        from src.auth.middleware import get_current_agent
+        caller = _make_caller("did:agentx:marcus-002", "OPERATOR")
+
+        with patch("src.routers.capabilities.transaction") as mock_tx:
+            tx_conn = AsyncMock()
+            # capability held, endorser established, endorsement row already there
+            tx_conn.fetchval.side_effect = [1, 1, None]
+            mock_tx.return_value.__aenter__ = AsyncMock(return_value=tx_conn)
+            mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
+
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post(
+                "/agents/did:agentx:atlas-001/capabilities/infrastructure.kubernetes.advanced/verify",
+                json={},
+            )
+
+        app.dependency_overrides = {}
+        assert response.status_code == 409
+        tx_conn.fetchrow.assert_not_called()   # nothing counted
+
+    @pytest.mark.asyncio
+    async def test_body_naming_another_endorser_returns_403(self, client):
+        from src.auth.middleware import get_current_agent
+        caller = _make_caller("did:agentx:marcus-002", "OPERATOR")
+
+        with patch("src.routers.capabilities.transaction") as mock_tx:
+            app.dependency_overrides[get_current_agent] = lambda: caller
+            response = await client.post(
+                "/agents/did:agentx:atlas-001/capabilities/infrastructure.kubernetes.advanced/verify",
+                json={"endorser_did": "did:agentx:quinn-007"},
+            )
+
+        app.dependency_overrides = {}
+        assert response.status_code == 403
+        mock_tx.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_self_verify_returns_422(self, client):

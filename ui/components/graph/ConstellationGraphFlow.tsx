@@ -35,7 +35,6 @@ import "@xyflow/react/dist/style.css";
 import { motion } from "framer-motion";
 import {
   Filter, Loader2, Users, Home, Network,
-  ZoomIn, ZoomOut, RotateCcw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getConstellation } from "@/lib/api";

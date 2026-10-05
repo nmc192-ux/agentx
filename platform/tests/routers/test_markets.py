@@ -9,6 +9,10 @@ Covers:
   GET  /markets/bounties/{id}/submissions — list submissions (public)
   POST /markets/bounties/{id}/submissions/{sid}/evaluate — evaluate (auth)
   POST /markets/bounties/{id}/distribute — distribute rewards (auth)
+  POST /markets/bounties/{id}/cancel — cancel + refund (auth)
+
+Error mapping (Sprint 9, S9-6c): PermissionError → 403, BountyConflictError →
+409, "not found" → 404, other ValueError → 400; no token → 401 on every write.
 
 All service calls and auth are mocked; no live DB/Redis required.
 """
@@ -22,6 +26,7 @@ from fastapi.testclient import TestClient
 
 from src.main import app
 from src.models.markets import BountyResponse, RewardResponse, SubmissionResponse
+from src.services.markets.bounty_service import BountyConflictError
 
 client = TestClient(app, raise_server_exceptions=False)
 
@@ -181,13 +186,20 @@ class TestListBountiesEndpoint:
         mock_list = AsyncMock(return_value=[])
         with patch("src.routers.markets.bounty_service.list_bounties", mock_list):
             client.get("/markets/bounties?status=open")
-        mock_list.assert_called_once_with(status="open", capability=None)
+        mock_list.assert_called_once_with(status="open", capability=None, limit=50, offset=0)
 
     def test_list_passes_capability_filter(self):
         mock_list = AsyncMock(return_value=[])
         with patch("src.routers.markets.bounty_service.list_bounties", mock_list):
             client.get("/markets/bounties?capability=collect_data")
-        mock_list.assert_called_once_with(status=None, capability="collect_data")
+        mock_list.assert_called_once_with(status=None, capability="collect_data", limit=50, offset=0)
+
+    def test_list_page_size_is_capped(self):
+        mock_list = AsyncMock(return_value=[])
+        with patch("src.routers.markets.bounty_service.list_bounties", mock_list):
+            assert client.get("/markets/bounties?limit=201").status_code == 422
+            assert client.get("/markets/bounties?limit=200&offset=40").status_code == 200
+        mock_list.assert_called_once_with(status=None, capability=None, limit=200, offset=40)
 
     def test_list_is_public(self):
         """No auth required for listing."""
@@ -297,17 +309,40 @@ class TestSubmitSolutionEndpoint:
             )
         assert resp.status_code == 404
 
-    def test_submit_closed_bounty_returns_400(self):
+    def test_submit_closed_bounty_returns_409(self):
         with patch(
             "src.routers.markets.bounty_service.submit_solution",
             new_callable=AsyncMock,
-            side_effect=ValueError("Bounty is not open"),
+            side_effect=BountyConflictError("Bounty is not open"),
         ):
             resp = client.post(
                 f"/markets/bounties/{uuid4()}/submit",
                 json={"solution_data": {}},
             )
-        assert resp.status_code == 400
+        assert resp.status_code == 409
+
+    def test_submit_by_the_creator_returns_403(self):
+        with patch(
+            "src.routers.markets.bounty_service.submit_solution",
+            new_callable=AsyncMock,
+            side_effect=PermissionError("The bounty creator cannot submit to their own bounty"),
+        ):
+            resp = client.post(
+                f"/markets/bounties/{uuid4()}/submit",
+                json={"solution_data": {}},
+            )
+        assert resp.status_code == 403
+
+    def test_submit_acts_as_the_token_holder(self):
+        """Identity comes from the JWT; a DID typed into the body is ignored."""
+        mock_submit = AsyncMock(return_value=_make_submission())
+        bounty_id = uuid4()
+        with patch("src.routers.markets.bounty_service.submit_solution", mock_submit):
+            client.post(
+                f"/markets/bounties/{bounty_id}/submit",
+                json={"solution_data": {}, "submitter_did": "did:agentx:someone-else"},
+            )
+        assert mock_submit.call_args.kwargs["caller_did"] == _CREATOR_DID
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -371,17 +406,17 @@ class TestEvaluateEndpoint:
             )
         assert resp.status_code == 200
 
-    def test_evaluate_non_creator_returns_400(self):
+    def test_evaluate_non_creator_returns_403(self):
         with patch(
             "src.routers.markets.bounty_service.evaluate_submission",
             new_callable=AsyncMock,
-            side_effect=ValueError("Only the bounty creator"),
+            side_effect=PermissionError("Only the bounty creator"),
         ):
             resp = client.post(
                 f"/markets/bounties/{uuid4()}/submissions/{uuid4()}/evaluate",
                 json={"score": 0.5},
             )
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
     def test_evaluate_invalid_score_returns_422(self):
         resp = client.post(
@@ -426,29 +461,125 @@ class TestDistributeEndpoint:
         assert "amount" in data
         assert data["amount"] == reward.amount
 
-    def test_distribute_non_creator_returns_400(self):
+    def test_distribute_non_creator_returns_403(self):
         with patch(
             "src.routers.markets.bounty_service.distribute_rewards",
             new_callable=AsyncMock,
-            side_effect=ValueError("Only the bounty creator"),
+            side_effect=PermissionError("Only the bounty creator"),
         ):
             resp = client.post(f"/markets/bounties/{uuid4()}/distribute")
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
-    def test_distribute_already_rewarded_returns_400(self):
+    def test_distribute_already_rewarded_returns_409(self):
         with patch(
             "src.routers.markets.bounty_service.distribute_rewards",
             new_callable=AsyncMock,
-            side_effect=ValueError("rewards already distributed"),
+            side_effect=BountyConflictError("rewards already distributed"),
         ):
             resp = client.post(f"/markets/bounties/{uuid4()}/distribute")
-        assert resp.status_code == 400
+        assert resp.status_code == 409
 
-    def test_distribute_no_submissions_returns_400(self):
+    def test_distribute_no_submissions_returns_409(self):
         with patch(
             "src.routers.markets.bounty_service.distribute_rewards",
             new_callable=AsyncMock,
-            side_effect=ValueError("No evaluated submissions"),
+            side_effect=BountyConflictError("No evaluated submissions"),
         ):
             resp = client.post(f"/markets/bounties/{uuid4()}/distribute")
-        assert resp.status_code == 400
+        assert resp.status_code == 409
+
+    def test_distribute_acts_as_the_token_holder(self):
+        mock_distribute = AsyncMock(return_value=_make_reward())
+        bounty_id = uuid4()
+        with patch("src.routers.markets.bounty_service.distribute_rewards", mock_distribute):
+            client.post(f"/markets/bounties/{bounty_id}/distribute")
+        mock_distribute.assert_called_once_with(bounty_id=bounty_id, caller_did=_CREATOR_DID)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# POST /markets/bounties/{id}/cancel
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestCancelEndpoint:
+
+    def setup_method(self):
+        _auth()
+
+    def teardown_method(self):
+        _clear_auth()
+
+    def test_cancel_returns_200_and_the_cancelled_bounty(self):
+        mock_cancel = AsyncMock(return_value=_make_bounty(status="cancelled"))
+        bounty_id = uuid4()
+        with patch("src.routers.markets.bounty_service.cancel_bounty", mock_cancel):
+            resp = client.post(f"/markets/bounties/{bounty_id}/cancel")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+        mock_cancel.assert_called_once_with(bounty_id=bounty_id, caller_did=_CREATOR_DID)
+
+    def test_cancel_non_creator_returns_403(self):
+        with patch(
+            "src.routers.markets.bounty_service.cancel_bounty",
+            new_callable=AsyncMock,
+            side_effect=PermissionError("Only the bounty creator can cancel it"),
+        ):
+            resp = client.post(f"/markets/bounties/{uuid4()}/cancel")
+        assert resp.status_code == 403
+
+    def test_cancel_with_submissions_returns_409(self):
+        with patch(
+            "src.routers.markets.bounty_service.cancel_bounty",
+            new_callable=AsyncMock,
+            side_effect=BountyConflictError("A bounty that has submissions cannot be cancelled"),
+        ):
+            resp = client.post(f"/markets/bounties/{uuid4()}/cancel")
+        assert resp.status_code == 409
+
+    def test_cancel_missing_bounty_returns_404(self):
+        with patch(
+            "src.routers.markets.bounty_service.cancel_bounty",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Bounty not found"),
+        ):
+            resp = client.post(f"/markets/bounties/{uuid4()}/cancel")
+        assert resp.status_code == 404
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# No token → 401 on every write, and the service is never reached
+# ═════════════════════════════════════════════════════════════════════════════
+
+_WRITES = [
+    ("/markets/bounties", "create_bounty",
+     {"title": "T", "capability_required": "x", "reward_pool": 10}),
+    (f"/markets/bounties/{uuid4()}/submit", "submit_solution", {"solution_data": {}}),
+    (f"/markets/bounties/{uuid4()}/submissions/{uuid4()}/evaluate", "evaluate_submission",
+     {"score": 0.5}),
+    (f"/markets/bounties/{uuid4()}/distribute", "distribute_rewards", None),
+    (f"/markets/bounties/{uuid4()}/cancel", "cancel_bounty", None),
+]
+
+
+@pytest.mark.parametrize("path,service_fn,body", _WRITES, ids=[w[1] for w in _WRITES])
+def test_every_write_needs_a_token(path, service_fn, body):
+    _clear_auth()
+    service = AsyncMock()
+    with patch(f"src.routers.markets.bounty_service.{service_fn}", service):
+        resp = client.post(path, json=body) if body is not None else client.post(path)
+    assert resp.status_code == 401
+    service.assert_not_called()
+
+
+def test_reward_pool_must_fit_the_database_column():
+    _auth()
+    try:
+        service = AsyncMock()
+        with patch("src.routers.markets.bounty_service.create_bounty", service):
+            resp = client.post(
+                "/markets/bounties",
+                json={"title": "T", "capability_required": "x", "reward_pool": 2**63},
+            )
+        assert resp.status_code == 422
+        service.assert_not_called()
+    finally:
+        _clear_auth()

@@ -75,6 +75,7 @@ export function OnboardingHero() {
   // Client-only — hide on SSR, check login state after mount
   useEffect(() => {
     if (!isLoggedIn()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShow(true);
       fetchStats().then(setStats);
     }

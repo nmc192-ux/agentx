@@ -567,31 +567,34 @@ CREATE POLICY agent_caps_select ON agent_capabilities
 -- ============================================================================
 -- SEED DATA: 8 Founding Agents
 -- ============================================================================
+-- Every founder is did:agentx:<name>-001: the DID the runners and every other
+-- seed use (guarded by tests/test_founder_dids_agree.py). A second DID for the
+-- same founder is how the duplicates of Sprint 9 (S9-10) came about.
 
 -- Agents
 INSERT INTO agents (agent_did, display_name, agent_type, governance_role, tier, status, trust_score, bio, specialization)
 VALUES
   ('did:agentx:atlas-001',  'ATLAS',  'AUTONOMOUS', 'FOUNDER',   'ELITE',        'ACTIVE', 0.98, 'Chief Architect — system design and platform strategy', 'system.architecture.expert'),
-  ('did:agentx:marcus-002', 'MARCUS', 'AUTONOMOUS', 'OPERATOR',  'ELITE',        'ACTIVE', 0.95, 'Security Lead — threat modeling and compliance', 'security.audit.expert'),
-  ('did:agentx:bruno-003',  'BRUNO',  'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.88, 'Infrastructure Lead — Docker, K8s, CI/CD', 'infrastructure.kubernetes.expert'),
-  ('did:agentx:daria-004',  'DARIA',  'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.85, 'Design Lead — UI/UX and design systems', 'frontend.design.advanced'),
-  ('did:agentx:thea-005',   'THEA',   'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.87, 'Data Lead — SQL, pipelines, analytics', 'data.pipeline.expert'),
-  ('did:agentx:nova-006',   'NOVA',   'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.89, 'ML Lead — model design and embeddings', 'ml.training.expert'),
-  ('did:agentx:quinn-007',  'QUINN',  'SUPERVISED', 'MEMBER',    'BASIC',        'ACTIVE', 0.82, 'QA Lead — testing strategy and coverage gates', 'qa.testing.advanced'),
-  ('did:agentx:gia-008',    'GIA',    'HYBRID',     'MEMBER',    'BASIC',        'ACTIVE', 0.80, 'Community Lead — agent onboarding and UX copy', 'governance.community.intermediate');
+  ('did:agentx:marcus-001', 'MARCUS', 'AUTONOMOUS', 'OPERATOR',  'ELITE',        'ACTIVE', 0.95, 'Security Lead — threat modeling and compliance', 'security.audit.expert'),
+  ('did:agentx:bruno-001',  'BRUNO',  'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.88, 'Infrastructure Lead — Docker, K8s, CI/CD', 'infrastructure.kubernetes.expert'),
+  ('did:agentx:daria-001',  'DARIA',  'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.85, 'Design Lead — UI/UX and design systems', 'frontend.design.advanced'),
+  ('did:agentx:thea-001',   'THEA',   'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.87, 'Data Lead — SQL, pipelines, analytics', 'data.pipeline.expert'),
+  ('did:agentx:nova-001',   'NOVA',   'AUTONOMOUS', 'DELEGATE',  'PROFESSIONAL', 'ACTIVE', 0.89, 'ML Lead — model design and embeddings', 'ml.training.expert'),
+  ('did:agentx:quinn-001',  'QUINN',  'SUPERVISED', 'MEMBER',    'BASIC',        'ACTIVE', 0.82, 'QA Lead — testing strategy and coverage gates', 'qa.testing.advanced'),
+  ('did:agentx:gia-001',    'GIA',    'HYBRID',     'MEMBER',    'BASIC',        'ACTIVE', 0.80, 'Community Lead — agent onboarding and UX copy', 'governance.community.intermediate');
 
 -- Trust breakdowns (will trigger trust_score update via trigger)
 INSERT INTO agent_trust_breakdown
   (agent_did, execution_success, sla_compliance, peer_endorsements, audit_transparency, security_record)
 VALUES
   ('did:agentx:atlas-001',  0.99, 0.97, 0.95, 0.98, 1.00),
-  ('did:agentx:marcus-002', 0.96, 0.95, 0.92, 0.97, 1.00),
-  ('did:agentx:bruno-003',  0.90, 0.88, 0.80, 0.85, 0.95),
-  ('did:agentx:daria-004',  0.87, 0.85, 0.78, 0.82, 0.95),
-  ('did:agentx:thea-005',   0.89, 0.87, 0.82, 0.84, 0.97),
-  ('did:agentx:nova-006',   0.91, 0.90, 0.83, 0.88, 0.97),
-  ('did:agentx:quinn-007',  0.85, 0.83, 0.75, 0.80, 0.98),
-  ('did:agentx:gia-008',    0.82, 0.80, 0.70, 0.78, 0.97);
+  ('did:agentx:marcus-001', 0.96, 0.95, 0.92, 0.97, 1.00),
+  ('did:agentx:bruno-001',  0.90, 0.88, 0.80, 0.85, 0.95),
+  ('did:agentx:daria-001',  0.87, 0.85, 0.78, 0.82, 0.95),
+  ('did:agentx:thea-001',   0.89, 0.87, 0.82, 0.84, 0.97),
+  ('did:agentx:nova-001',   0.91, 0.90, 0.83, 0.88, 0.97),
+  ('did:agentx:quinn-001',  0.85, 0.83, 0.75, 0.80, 0.98),
+  ('did:agentx:gia-001',    0.82, 0.80, 0.70, 0.78, 0.97);
 
 -- Token balances (100k GOV + 50k WORK for each founding agent)
 INSERT INTO token_balances (agent_did, token_type, balance)
@@ -623,18 +626,18 @@ INSERT INTO agent_capabilities (agent_did, capability_id, verified, verified_by_
 VALUES
   ('did:agentx:atlas-001',  'system.architecture.expert',        TRUE,  3),
   ('did:agentx:atlas-001',  'infrastructure.kubernetes.expert',  TRUE,  2),
-  ('did:agentx:marcus-002', 'security.audit.expert',             TRUE,  3),
-  ('did:agentx:marcus-002', 'security.tls.intermediate',         TRUE,  2),
-  ('did:agentx:bruno-003',  'infrastructure.kubernetes.expert',  TRUE,  3),
-  ('did:agentx:bruno-003',  'infrastructure.docker.advanced',    TRUE,  2),
-  ('did:agentx:bruno-003',  'infrastructure.cicd.advanced',      TRUE,  2),
-  ('did:agentx:daria-004',  'frontend.design.advanced',          TRUE,  2),
-  ('did:agentx:thea-005',   'data.pipeline.expert',              TRUE,  3),
-  ('did:agentx:thea-005',   'data.sql.advanced',                 TRUE,  2),
-  ('did:agentx:nova-006',   'ml.training.expert',                TRUE,  3),
-  ('did:agentx:nova-006',   'ml.embeddings.advanced',            TRUE,  2),
-  ('did:agentx:quinn-007',  'qa.testing.advanced',               TRUE,  2),
-  ('did:agentx:gia-008',    'governance.community.intermediate', TRUE,  2);
+  ('did:agentx:marcus-001', 'security.audit.expert',             TRUE,  3),
+  ('did:agentx:marcus-001', 'security.tls.intermediate',         TRUE,  2),
+  ('did:agentx:bruno-001',  'infrastructure.kubernetes.expert',  TRUE,  3),
+  ('did:agentx:bruno-001',  'infrastructure.docker.advanced',    TRUE,  2),
+  ('did:agentx:bruno-001',  'infrastructure.cicd.advanced',      TRUE,  2),
+  ('did:agentx:daria-001',  'frontend.design.advanced',          TRUE,  2),
+  ('did:agentx:thea-001',   'data.pipeline.expert',              TRUE,  3),
+  ('did:agentx:thea-001',   'data.sql.advanced',                 TRUE,  2),
+  ('did:agentx:nova-001',   'ml.training.expert',                TRUE,  3),
+  ('did:agentx:nova-001',   'ml.embeddings.advanced',            TRUE,  2),
+  ('did:agentx:quinn-001',  'qa.testing.advanced',               TRUE,  2),
+  ('did:agentx:gia-001',    'governance.community.intermediate', TRUE,  2);
 
 -- Founding Council collective
 INSERT INTO collectives (collective_id, name, description, charter, is_public, owner_did)
@@ -651,13 +654,13 @@ VALUES (
 INSERT INTO collective_members (collective_id, agent_did, role, status)
 VALUES
   ('00000000-0000-0000-0000-000000000001', 'did:agentx:atlas-001',  'OWNER',  'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:marcus-002', 'ADMIN',  'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:bruno-003',  'ADMIN',  'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:daria-004',  'MEMBER', 'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:thea-005',   'MEMBER', 'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:nova-006',   'MEMBER', 'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:quinn-007',  'MEMBER', 'ACTIVE'),
-  ('00000000-0000-0000-0000-000000000001', 'did:agentx:gia-008',    'MEMBER', 'ACTIVE');
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:marcus-001', 'ADMIN',  'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:bruno-001',  'ADMIN',  'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:daria-001',  'MEMBER', 'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:thea-001',   'MEMBER', 'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:nova-001',   'MEMBER', 'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:quinn-001',  'MEMBER', 'ACTIVE'),
+  ('00000000-0000-0000-0000-000000000001', 'did:agentx:gia-001',    'MEMBER', 'ACTIVE');
 
 -- ============================================================================
 -- VERIFY SEED DATA

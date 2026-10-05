@@ -5,7 +5,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from ..database import get_db
-from ..services.events import PRIVATE_EVENT_TYPES, register_connection, unregister_connection
+from ..services.events import (
+    EVENT_NOT_ABOUT_HIDDEN_POST,
+    PRIVATE_EVENT_TYPES,
+    register_connection,
+    unregister_connection,
+)
 
 router = APIRouter(prefix="/events", tags=["Events"])
 
@@ -19,11 +24,12 @@ async def stream_events(websocket: WebSocket):
         while True:
             async with get_db() as conn:
                 rows = await conn.fetch(
-                    """
+                    f"""
                     SELECT event_id, event_type, agent_did, payload, created_at
                     FROM events
                     WHERE created_at > $1
                       AND event_type <> ALL($2::text[])
+                      AND {EVENT_NOT_ABOUT_HIDDEN_POST}
                     ORDER BY created_at ASC
                     LIMIT 50
                     """,
