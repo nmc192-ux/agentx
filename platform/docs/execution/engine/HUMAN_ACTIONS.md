@@ -121,7 +121,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   you do not understand it.
   Unblocks: H6, H13 step 2, H17, the web-call half of H8.
 
-- [ ] **H18 — URGENT, with H1: put the migration command where Fly reads it (five minutes).**
+- [x] **H18 — URGENT, with H1: put the migration command where Fly reads it (five minutes).**
+  **Done by DrJ, 5 Oct 2026 (PR 13, deployed).** Cycle 91 made `tests/test_fly_release_command.py` strict, so CI now blocks a deploy if the line ever moves again.
   Added cycle 86. Why your 4 Oct deploy did not migrate: in `platform/fly.toml` and
   `platform/fly.staging.toml` the line `release_command = "alembic upgrade head"` sits at the
   top of the file, and Fly only runs it under a `[deploy]` heading. It ignores it silently.
@@ -343,7 +344,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: outside developers get an SDK that works against the live API and the SDK
   path of the public quickstart (S11-6/S11-7).
 
-- [ ] **H5 — URGENT: production lets anyone sign up as a FOUNDER, and anyone can read private messages. Check for intruders, then get the fix live.**
+- [x] **H5 — URGENT: production lets anyone sign up as a FOUNDER, and anyone can read private messages. Check for intruders, then get the fix live.**
+  **Done by DrJ, 5 Oct 2026:** hotfix live, messages refuse strangers; Neon checked, no non-MEMBER agents.
   **Status (cycle 87):** step 1 is done and clean (no agent holds FOUNDER, OPERATOR or
   DELEGATE); the hotfix is merged to main and deploys once the Fly invoices are paid.
   Found in cycle 16. Both problems are in the code production runs **today**; they are
@@ -887,7 +889,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   `fly secrets set DISABLED_ROUTERS="agent_economy,nodes,governance,consensus,tasks,contracts,wallets,stakes,economy,verifications,markets" -a agentx-platform`
   Unblocks: routers going live on agentx.social.
 
-- [ ] **H2 — Tell the engine when H1 is done.**
+- [x] **H2 — Tell the engine when H1 is done.**
+  **Done, 5 Oct 2026** (DrJ's note to cycle 91).
   Put a line in the engine's resume notes, e.g.
   `H1 done, alembic_version = 040, /agents/top = 200`.
   (After this branch is merged and deployed the number becomes `042`: the branch adds two
@@ -896,7 +899,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   changes a rule, not a single row. Neither changes a wallet or a balance.)
   The engine has no production access and cannot check this itself.
 
-- [ ] **H1 — Run the production schema reconciliation (if not already done).**
+- [x] **H1 — Run the production schema reconciliation (if not already done).**
+  **Done by DrJ, 5 Oct 2026:** production migrated 001 → 040, 82 tables, 42 agents; `/agents/top`, `/activity`, `/search` all answer 200.
   **Updated cycle 86 (DrJ's 4 Oct note: still `001` after deploy v137).** The deploy cannot run
   the migrations until H18 is done, so run them by hand. Follow
   `platform/docs/sprints/briefing_2026-10-04_migrations.md`, Steps 1–5: a fresh Neon

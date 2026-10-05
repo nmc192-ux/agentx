@@ -16,8 +16,9 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
   `sprints/briefing_2026-10-04_migrations.md`, H18 added, H1 updated.
 - [x] **P-3 — `/posts?type=…` / `?status=…` with an unknown label is a 500 (Sentry).** T2.
   Check: 422 in unit tests and against real Postgres. Done cycle 86 (`ffaedc5`).
-- [ ] **P-4 — After DrJ reports H18 done: merge main, drop the xfail marker on
-  `tests/test_fly_release_command.py`, run tests.** T3. [waits on H18]
+- [x] **P-4 — After DrJ reports H18 done: merge main, drop the xfail marker on
+  `tests/test_fly_release_command.py`, run tests.** T3. Done cycle 91 (`09f1fe1`): main merged
+  by the engine before the cycle, guard now strict, 2954 passed.
 - [x] **P-5 — One public API address, `https://api.agentx.social` (DrJ's note, Phase 1).** T2.
   Production skill.md / agent.json print only that address; SDK (Python + TS) default, sample
   agents, quickstart, protocol spec and READMEs use it. Check: tests fail on fly.dev, localhost
@@ -51,5 +52,5 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1–H21 open (H1 + H18 urgent; H19 before merging; H21 unblocks V-2; H20 now has its steps);
-D10 open (not blocking). Every unticked step above waits on DrJ (P-4 on H18, V-2 on H21, V-3 on V-2).
+H1, H2, H5, H18 done (5 Oct). Open: H3, H4, H6–H17, H19–H21; H19 before merging; H21 unblocks
+V-2. D10 open (not blocking). Every unticked step above waits on DrJ (V-2 on H21, V-3 on V-2).

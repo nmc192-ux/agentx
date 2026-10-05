@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-05 · cycle 91 · Opus (T2) · P-4: Fly migration guard made strict; H1, H2, H5, H18 ticked
+
+- **DrJ's note:** H1 + H18 done (PR 13 deployed; production 001 → 040, 82 tables, 42 agents,
+  `/agents/top` `/activity` `/search` 200), H2 done, H5 done (hotfix live; no non-MEMBER agents).
+- **Built (`09f1fe1`):** removed the xfail from `tests/test_fly_release_command.py`; both Fly
+  configs now have `release_command` under `[deploy]`, so the test passes and will fail CI if it
+  ever moves back. main (PR 13) was already merged into the branch by the engine.
+- **Check:** 2 passed for the guard; platform suite 2954 passed, 544 skipped; ruff clean.
+- **HUMAN_ACTIONS:** H1, H2, H5, H18 ticked with DrJ's results.
+- **Next:** nothing the engine can do alone. V-2 waits on H21 (VPS facts), V-3 on V-2. Before
+  merging the branch DrJ still needs H19 (api.agentx.social); on merge, 041–047 migrate by
+  themselves.
+
 ## 2026-10-04 · cycle 90 · Fable (T1) · P-8: one fail-closed way to make DrJ's admin agent a FOUNDER
 
 - **Built (`eb8209a`, `SECURITY-REVIEW:`):** `platform/scripts/grant_founder.py` (`show`,
