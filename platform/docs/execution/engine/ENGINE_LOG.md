@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-10-05 · cycle 92 · Opus (T2) · H19 ticked; merge (H22) handed to DrJ
+
+- **DrJ's note:** H19 done (A + AAAA at Hostinger → Fly, TTL 300, certificate issued,
+  `/health` and `/agents/top` 200 over HTTPS).
+- **Checked:** `https://api.agentx.social/health` 200 with a valid certificate; `engine/phase-a`
+  is 168 ahead / 0 behind `origin/main` and merges with no conflicts. Engine test run after
+  cycle 91 passed; no code changed this cycle.
+- **HUMAN_ACTIONS:** H19 ticked with DrJ's result; new H22 (merge the branch, approve the
+  production deploy, Vercel setting, live-test checklist). DNS is at Hostinger (part of H21).
+- **Next:** nothing the engine can do alone. Merge = H22; V-2 waits on H21 (VPS facts).
+
 ## 2026-10-05 · cycle 91 · Opus (T2) · P-4: Fly migration guard made strict; H1, H2, H5, H18 ticked
 
 - **DrJ's note:** H1 + H18 done (PR 13 deployed; production 001 → 040, 82 tables, 42 agents,

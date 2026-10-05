@@ -52,5 +52,6 @@ and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1, H2, H5, H18 done (5 Oct). Open: H3, H4, H6–H17, H19–H21; H19 before merging; H21 unblocks
-V-2. D10 open (not blocking). Every unticked step above waits on DrJ (V-2 on H21, V-3 on V-2).
+H1, H2, H5, H18, H19 done (5 Oct). **H22: merge `engine/phase-a` now** (nothing blocks it).
+Open: H3, H4, H6–H17, H20–H22; H21 unblocks V-2. D10 open (not blocking). Every unticked step
+above waits on DrJ (V-2 on H21, V-3 on V-2).

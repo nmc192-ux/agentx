@@ -4,7 +4,26 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
-- [ ] **H19 — Give the API its own address, api.agentx.social, pointing at Fly for now (about fifteen minutes, plus up to an hour of waiting). Do it BEFORE you merge `engine/phase-a`.**
+- [ ] **H22 — Merge `engine/phase-a` into `main` (now unblocked; about fifteen minutes plus CI time).**
+  Added cycle 92. Everything that had to happen first is done: H1 + H18 (production migrates on
+  deploy, now at 040), H5 (security fix live), H19 (`api.agentx.social` answers over HTTPS;
+  the engine saw `/health` 200 with a valid certificate on 5 Oct, 19:35). The branch is 168
+  commits ahead of `main`, `main` has nothing the branch lacks, and the two merge with no
+  conflicts. What the merge does is in `platform/docs/sprints/briefing_2026-10-04_engine.md`,
+  section "What merging will do" (in short: CI, then staging, then production after your
+  approval; Fly applies migrations 041–047, which add rules and columns and change no existing
+  row or balance).
+  **1.** On GitHub, in the AgentX repo, open a pull request from `engine/phase-a` into `main`
+  (Pull requests → New pull request → base `main`, compare `engine/phase-a`).
+  **2.** Wait for CI to go green. Merge with "Create a merge commit".
+  **3.** Approve the `production` step in the Deploy workflow when it asks.
+  **4.** Do H19 step 6 (the one Vercel setting), then run the live-test checklist at the end of
+  the briefing, using `https://api.agentx.social` instead of the fly.dev address.
+  **5.** Tell the engine in a resume note: `H22 done` plus anything that looked wrong.
+  Unblocks: the after-merge items in this order: H3 → H9 → H10 → H6 → H13 → H14 → H12 (and
+  H20 whenever you need an admin agent).
+
+- [x] **H19 — Give the API its own address, api.agentx.social, pointing at Fly for now (about fifteen minutes, plus up to an hour of waiting). Do it BEFORE you merge `engine/phase-a`.**
   Added cycle 87 (you asked for this as "H18"; that number was already taken by the migration
   fix, so it is H19). Why: once the branch is merged, `skill.md`, `agent.json`, the Python SDK,
   the quickstart and the sample agents all tell outside agents to use
@@ -43,6 +62,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   check the feed loads.
   Unblocks: merging `engine/phase-a` (its commits `afe5149` and `215bb8e` make this the only
   published address) and Phase 2, the move to the Pink Popcorn VPS.
+  **Done 5 Oct (DrJ):** A + AAAA records at Hostinger → Fly (66.241.125.103 /
+  2a09:8280:1::108:ae41:0), TTL 300; Fly certificate issued; `/health` and `/agents/top` 200
+  over HTTPS. Engine re-checked `/health`: 200, certificate valid. Step 6 still applies after
+  the merge (it is part of H22).
 
 - [ ] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
   Added cycle 88. The plan for moving the backend off Fly is written:
@@ -946,3 +969,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   stable address `https://api.agentx.social` everywhere (done, `afe5149`), tests against
   fly.dev/localhost, DNS + Fly certificate steps (H19). Phase 2: migration plan only; keep Fly
   running until DrJ approves the cutover. Opus for this work, Fable for auth or money.
+- 2026-10-05 (via resume note, recorded cycle 92): H19 done. api.agentx.social has A + AAAA
+  records at Hostinger pointing at Fly (66.241.125.103 / 2a09:8280:1::108:ae41:0), TTL 300; Fly
+  certificate issued; /health and /agents/top return 200 over HTTPS. DNS is at Hostinger
+  (answers part of H21 step 3). H22 (merge) added.
