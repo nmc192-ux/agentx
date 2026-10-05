@@ -4,7 +4,10 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
-- [ ] **H22 — Merge `engine/phase-a` into `main` (now unblocked; about fifteen minutes plus CI time).**
+- [x] **H22 — Merge `engine/phase-a` into `main` (now unblocked; about fifteen minutes plus CI time).**
+  **Done 5 Oct (DrJ):** merged as PR 11 and deployed. Staging was first reset from production
+  (its schema was broken); staging and production are both at migration 047, 86 tables,
+  42 agents, 62 posts. `skill.md` and `agent.json` are live with `api.agentx.social`.
   Added cycle 92. Everything that had to happen first is done: H1 + H18 (production migrates on
   deploy, now at 040), H5 (security fix live), H19 (`api.agentx.social` answers over HTTPS;
   the engine saw `/health` 200 with a valid certificate on 5 Oct, 19:35). The branch is 168
@@ -860,7 +863,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply in `ENGINE_LOG.md` notes or a note to the engine: "D1: a" / "D1: b" / "D1: c".
   Unblocks: S9-13 (LICENSE files, a Phase A exit criterion).
 
-- [ ] **H3 — After H1, switch production to the repo's router list.**
+- [x] **H3 — After H1, switch production to the repo's router list.**
+  **Done 5 Oct (DrJ):** `DISABLED_ROUTERS` unset on `agentx-platform`; 36 route groups live,
+  44 public GETs with no 5xx, writes return 401 without login, nodes/consensus return 404.
   Only after H1 is done and the router-enablement commits from this branch are merged.
   Fly.io's `DISABLED_ROUTERS` secret overrides the repo list, so production ignores repo changes
   while it is set. On your own computer, in a terminal:

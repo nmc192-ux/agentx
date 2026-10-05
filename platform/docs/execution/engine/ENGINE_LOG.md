@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-10-05 · cycle 93 · Opus (T2) · H22 and H3 recorded; holding for Phase B
+
+- **DrJ's note:** H22 done (PR 11 merged and deployed; staging reset from production first;
+  both at 047, 86 tables, 42 agents, 62 posts; `skill.md` / `agent.json` live with
+  `api.agentx.social`). H3 done (`DISABLED_ROUTERS` unset; 36 route groups, 44 public GETs no
+  5xx, writes 401 unauthenticated, nodes/consensus 404). No new work until DrJ starts Phase B.
+- **Did:** ticked H22 and H3 in HUMAN_ACTIONS with DrJ's results. No code changed; engine test
+  run after cycle 92 passed. main's merge commit already folded into the branch cleanly.
+- **Next:** holding per DrJ. Remaining after-merge items (H9 → H10 → H6 → H13 → H14 → H12, H20)
+  and V-2/V-3 (wait on H21) are DrJ's; engine resumes when DrJ starts Phase B.
+
 ## 2026-10-05 · cycle 92 · Opus (T2) · H19 ticked; merge (H22) handed to DrJ
 
 - **DrJ's note:** H19 done (A + AAAA at Hostinger → Fly, TTL 300, certificate issued,
