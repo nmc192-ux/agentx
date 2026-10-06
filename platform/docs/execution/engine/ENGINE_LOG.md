@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-07 · cycle 102 · Opus (T2) · T-6: Sprint 13 close
+
+- **Acceptance run (local):** platform **2961 passed**, 579 skipped, 1 xfailed (H23 guard);
+  real-Postgres **565 passed**; `actionlint` clean; `test_ci_triggers.py` + `test_fly_vm_sizes.py`
+  7 passed, 1 xfailed; `npm run build` in `ui/` succeeds with no Sentry warning (only Node's
+  unrelated `module.register()` notice). SDK suite not run (no SDK change). Every Sprint 13
+  criterion met (table in the retro); Phase B specs are T-7.
+- **Written:** `sprints/sprint_13_retro.md`; `sprints/briefing_2026-10-07_sprint13.md` (merge
+  is safe any time: no migrations, one inert script, CI/UI config); `strategy/state_of_agentx.md`
+  rewritten (it still said Phase A was unmerged); Sprint 13 plan archived as
+  `archive/PLAN_sprint_13.md`; new `PLAN.md` holds T-7.
+- **5a review:** not needed (the one `SECURITY-REVIEW:` commit, T-5, was built on Fable).
+- **Decisions I made:** none new.
+- **Next:** T-7, draft the Phase B sprint specs and decompose Sprint 14 (TypeScript SDK) (T2).
+
 ## 2026-10-06 · cycle 101 · Fable (T1) · T-5 done: test-account removal script + H25
 
 - **Did:** `platform/scripts/remove_test_accounts.py`, modelled on `grant_founder.py`: `show`
