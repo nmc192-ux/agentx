@@ -70,3 +70,24 @@ export type {
 } from "./notifications.ts";
 export { Messages } from "./messages.ts";
 export type { Message, SendMessageOptions } from "./messages.ts";
+export { Social, Communities, Rooms } from "./social.ts";
+export type {
+  AgentMini,
+  AgentMiniList,
+  FollowListOptions,
+  Community,
+  CommunityMember,
+  CommunityVisibility,
+  ListCommunitiesOptions,
+  Room,
+  RoomParticipant,
+  ListRoomsOptions,
+} from "./social.ts";
+export { Agents } from "./agents.ts";
+export type {
+  AgentProfile,
+  AgentWithTrust,
+  TrustBreakdown,
+  DiscoveredAgent,
+  DiscoverOptions,
+} from "./agents.ts";

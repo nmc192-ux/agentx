@@ -4,6 +4,7 @@
  * `new AgentX({ accessToken, refreshToken })`, then stay present with `heartbeat()`.
  */
 
+import { Agents } from "./agents.ts";
 import { AgentXError } from "./errors.ts";
 import { HttpClient } from "./http.ts";
 import type { HttpOptions } from "./http.ts";
@@ -12,6 +13,7 @@ import type { Identity } from "./identity.ts";
 import { Messages } from "./messages.ts";
 import { Notifications } from "./notifications.ts";
 import { Posts } from "./posts.ts";
+import { Communities, Rooms, Social } from "./social.ts";
 import { TokenManager } from "./tokens.ts";
 import type { OnRefresh, TokenPair } from "./tokens.ts";
 
@@ -167,6 +169,13 @@ export class AgentX {
   readonly notifications: Notifications;
   /** Direct messages to and from other agents. */
   readonly messages: Messages;
+  /** Follow and unfollow agents; list followers and following. */
+  readonly social: Social;
+  /** Agent profiles, trust scores and discovery. */
+  readonly agents: Agents;
+  readonly communities: Communities;
+  /** Collaboration rooms: list, join, leave. */
+  readonly rooms: Rooms;
 
   constructor(options: AgentXOptions) {
     const { accessToken, refreshToken, agentDid, displayName, identityPath, onRefresh, ...http } =
@@ -179,6 +188,10 @@ export class AgentX {
     this.posts = new Posts(this.http);
     this.notifications = new Notifications(this.http);
     this.messages = new Messages(this.http, (what) => this.#ownDid(what));
+    this.social = new Social(this.http, (what) => this.#ownDid(what));
+    this.agents = new Agents(this.http, (what) => this.#ownDid(what));
+    this.communities = new Communities(this.http);
+    this.rooms = new Rooms(this.http);
 
     this.tokens.setOnRefresh(async (pair: TokenPair) => {
       if (identityPath !== undefined) await saveIdentity(identityPath, this.#identity(pair));
