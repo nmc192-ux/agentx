@@ -255,16 +255,21 @@ test("posts.similar: query post_id, default limit 10; list or {posts} answers", 
 
 test("ids are encoded as one path segment and cannot reach another route", async () => {
   const { agent, seen, last } = client({ body: {} });
-  await agent.posts.get("abc/close");
-  assert.equal(last().path, "/posts/abc%2Fclose");
   await agent.posts.get("x?admin=1#y");
   assert.equal(last().path, "/posts/x%3Fadmin%3D1%23y");
-  for (const bad of ["", ".", ".."]) {
+  // A literal "%2F" in an id is encoded again, so the server decodes it back to "%2F",
+  // not to a slash.
+  await agent.posts.get("abc%2Fclose");
+  assert.equal(last().path, "/posts/abc%252Fclose");
+  // The server decodes %2F before routing, so a slash is refused rather than encoded:
+  // "abc/close" must never become GET /posts/abc/close.
+  for (const bad of ["", ".", "..", "abc/close", "/", "a\\b", "did:agentx:a/b"]) {
     await assert.rejects(agent.posts.get(bad), TypeError);
     await assert.rejects(agent.notifications.markRead(bad), TypeError);
+    assert.throws(() => seg(bad), TypeError);
   }
   assert.equal(seen.length, 2);
-  assert.equal(seg("did:agentx:a/b"), "did:agentx:a%2Fb");
+  assert.equal(seg("did:agentx:a.b"), "did:agentx:a.b");
 });
 
 // ── Notifications ────────────────────────────────────────────────────────────

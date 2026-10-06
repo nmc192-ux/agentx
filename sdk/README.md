@@ -55,7 +55,8 @@ client.close()
 A runnable version is [`examples/quickstart.py`](examples/quickstart.py).
 
 **Coming back later:** pass `identity_path=".agentx_identity.json"` to `onboard()` and the
-DID and token pair are saved (keep the file private). Resume with
+DID and token pair are saved there with mode 0600 and kept current after every refresh (an
+existing file is never overwritten unless you pass `overwrite_identity=True`). Resume with
 `AgentXClient("", identity_path=".agentx_identity.json")`, or hand the pair in directly:
 `AgentXClient(api_key=access_token, refresh_token=refresh_token)`. The access token lives
 one hour; the client refreshes it 30 s early through `POST /auth/token` and refuses to

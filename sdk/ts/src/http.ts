@@ -46,9 +46,23 @@ interface RawResponse {
   body: unknown;
 }
 
-/** One path segment, so an id can never reach another route. Colons stay readable. */
+/**
+ * One path segment, so an id can never reach another route. Colons stay readable.
+ *
+ * A slash is refused outright rather than encoded: the server decodes `%2F` back to `/`
+ * before routing, so `posts.get("abc/replies")` would otherwise call `GET
+ * /posts/abc/replies`. An id taken from an untrusted source therefore cannot pick the
+ * route. Empty ids and `.` / `..` are refused for the same reason.
+ */
 export function seg(value: string): string {
-  if (typeof value !== "string" || value === "" || value === "." || value === "..") {
+  if (
+    typeof value !== "string" ||
+    value === "" ||
+    value === "." ||
+    value === ".." ||
+    value.includes("/") ||
+    value.includes("\\")
+  ) {
     throw new TypeError(`Not a valid id: ${JSON.stringify(value)}`);
   }
   return encodeURIComponent(value).replace(/%3A/gi, ":");

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { inspect } from "node:util";
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -300,6 +300,7 @@ test("the identity file is saved again, still 0600, after each token refresh", a
       accessToken: expired,
       refreshToken: "old-refresh",
       displayName: "Atlas",
+      ownerId: "owner-7",
     });
     await chmod(path, 0o600);
     const refreshed: string[] = [];
@@ -325,6 +326,7 @@ test("the identity file is saved again, still 0600, after each token refresh", a
     assert.equal(saved.refresh_token, "fresh-refresh");
     assert.equal(saved.agent_did, "did:agentx:atlas");
     assert.equal(saved.display_name, "Atlas");
+    assert.equal(saved.owner_id, "owner-7", "a resave must not drop fields the Python SDK wrote");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -348,6 +350,79 @@ test("a failed save after refresh fails the call loudly", async () => {
       identityPath: path,
     });
     await assert.rejects(agent.heartbeat(), IdentityFileError);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Adversarial: symlinks and planted files (sprint-close security review) ───
+
+test("loadIdentity judges the file a symlink points at, not the link", { skip: !posix }, async () => {
+  const dir = await tempDir();
+  try {
+    const target = join(dir, "shared.json");
+    await writeFile(
+      target,
+      JSON.stringify({ agent_did: "did:agentx:x", api_key: "leaked", refresh_token: null }),
+      { mode: 0o644 },
+    );
+    await chmod(target, 0o644);
+    const link = join(dir, "identity.json");
+    await symlink(target, link);
+    // The link itself is 0777 on most systems; the target is what matters.
+    await assert.rejects(loadIdentity(link), (e: unknown) => e instanceof IdentityFileError);
+    await chmod(target, 0o600);
+    assert.equal((await loadIdentity(link)).accessToken, "leaked");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("saveIdentity replaces a planted symlink instead of writing through it", async () => {
+  const dir = await tempDir();
+  try {
+    const victim = join(dir, "victim.txt");
+    await writeFile(victim, "keep me\n");
+    const path = join(dir, "identity.json");
+    await symlink(victim, path);
+    await saveIdentity(path, { agentDid: "did:agentx:x", accessToken: "secret-x" });
+    assert.equal(await readFile(victim, "utf8"), "keep me\n", "the link target was written through");
+    assert.equal((await lstat(path)).isSymbolicLink(), false, "the symlink should be replaced");
+    if (posix) assert.equal(await modeOf(path), 0o600);
+    assert.equal((await loadIdentity(path)).accessToken, "secret-x");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadIdentity refuses a directory and a FIFO-like non-regular path", async () => {
+  const dir = await tempDir();
+  try {
+    await assert.rejects(loadIdentity(dir), (e: unknown) => e instanceof IdentityFileError);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a refresh response from the server cannot redirect tokens to a planted DID", async () => {
+  // The identity file keeps the DID the agent was created with even if a refresh body
+  // carries an agent_did; only the token fields are taken from the response.
+  const dir = await tempDir();
+  try {
+    const path = join(dir, "identity.json");
+    const expired = jwt({ sub: "did:agentx:atlas", exp: nowSec() - 10 });
+    await saveIdentity(path, { agentDid: "did:agentx:atlas", accessToken: expired, refreshToken: "r" });
+    await chmod(path, 0o600);
+    const { fn } = fakeFetch((s) =>
+      s.path === "/auth/token"
+        ? { body: { access_token: "fresh", refresh_token: "fresh-r", agent_did: "did:agentx:mallory" } }
+        : { body: HEARTBEAT_REPLY },
+    );
+    const agent = await AgentX.fromIdentityFile(path, { baseUrl: BASE, fetch: fn });
+    await agent.heartbeat();
+    const saved = JSON.parse(await readFile(path, "utf8"));
+    assert.equal(saved.agent_did, "did:agentx:atlas");
+    assert.equal(agent.agentDid, "did:agentx:atlas");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

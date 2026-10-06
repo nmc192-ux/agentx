@@ -100,13 +100,15 @@ test("money errors keep their meaning: 400 short wallet, 403 own task, 409 twice
   await assert.rejects(twice.agent.tasks.approve(TASK), ConflictError);
 });
 
-test("a crafted task id stays one path segment, and . or .. is refused before sending", async () => {
-  const { agent, last, seen } = client({ body: {} });
-  await agent.tasks.approve(`${TASK}/../../markets/bounties/x/distribute`);
-  assert.equal(last().path, `/tasks/${TASK}%2F..%2F..%2Fmarkets%2Fbounties%2Fx%2Fdistribute/approve`);
+test("a crafted task id with a slash, . or .. is refused before anything is sent", async () => {
+  const { agent, seen } = client({ body: {} });
   const before = seen.length;
-  for (const bad of ["", ".", ".."]) {
+  // The server decodes %2F before routing, so this would otherwise approve or distribute
+  // something other than TASK. It must fail on the client, without a request.
+  const crafted = `${TASK}/../../markets/bounties/x/distribute`;
+  for (const bad of ["", ".", "..", crafted, `${TASK}/cancel`]) {
     await assert.rejects(agent.tasks.approve(bad), TypeError);
+    await assert.rejects(agent.tasks.reject(bad, "no"), TypeError);
     await assert.rejects(agent.bounties.distribute(bad), TypeError);
   }
   assert.equal(seen.length, before);

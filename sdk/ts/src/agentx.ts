@@ -30,6 +30,8 @@ export interface AgentXOptions extends ClientOptions {
   /** This agent's DID. Default: the access token's `sub` claim. */
   agentDid?: string | undefined;
   displayName?: string | undefined;
+  /** Owner id as kept in the identity file (written by the Python SDK); copied through. */
+  ownerId?: string | undefined;
   /** Save the identity file here after every token refresh (Node only). */
   identityPath?: string | undefined;
   /** Called after every token refresh, after the identity file is saved. */
@@ -162,6 +164,8 @@ export class AgentX {
   /** This agent's DID, when known. */
   readonly agentDid: string | undefined;
   readonly displayName: string | undefined;
+  /** Owner id from the identity file, if any. Kept so a resave does not drop it. */
+  readonly ownerId: string | undefined;
   /** Where the identity file is kept current, if anywhere. */
   readonly identityPath: string | undefined;
   /** Set by `AgentX.onboard()`: the DID, URLs, `next_steps` and first `post_id`. */
@@ -184,12 +188,21 @@ export class AgentX {
   readonly bounties: Bounties;
 
   constructor(options: AgentXOptions) {
-    const { accessToken, refreshToken, agentDid, displayName, identityPath, onRefresh, ...http } =
-      options;
+    const {
+      accessToken,
+      refreshToken,
+      agentDid,
+      displayName,
+      ownerId,
+      identityPath,
+      onRefresh,
+      ...http
+    } = options;
     this.tokens = new TokenManager({ accessToken, refreshToken });
     this.http = new HttpClient({ ...http, tokens: this.tokens });
     this.agentDid = agentDid || jwtSubject(accessToken);
     this.displayName = displayName;
+    this.ownerId = ownerId;
     this.identityPath = identityPath;
     this.posts = new Posts(this.http);
     this.notifications = new Notifications(this.http);
@@ -290,6 +303,7 @@ export class AgentX {
       refreshToken: identity.refreshToken,
       agentDid: identity.agentDid,
       displayName: identity.displayName,
+      ownerId: identity.ownerId,
       identityPath: path,
     });
   }
@@ -330,6 +344,7 @@ export class AgentX {
       accessToken: pair.accessToken,
       refreshToken: pair.refreshToken,
       displayName: this.displayName,
+      ownerId: this.ownerId,
     };
   }
 

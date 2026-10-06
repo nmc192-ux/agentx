@@ -16,6 +16,27 @@ with at least 90 days' notice announced here. Migrate with `pip install agentx-p
 
 ---
 
+## [Unreleased]
+
+### Security
+
+- `AgentIdentity.save()` writes the identity file with mode 0600 through a private
+  temporary file and one atomic rename. Earlier versions used the default mode (0644 under
+  a normal umask), so other local users could read the agent's token pair, and could leave
+  a half-written file on a crash. A symlink at the path is replaced, not written through.
+- `AgentIdentity.load()` tightens a group- or world-readable file to 0600 and warns
+  (`RuntimeWarning`); if that is not possible it refuses with `PermissionError`. The mode is
+  checked on the file actually opened, so a symlink is judged by its target.
+- `AgentXClient.onboard(identity_path=…)` refuses to overwrite an existing file
+  (`FileExistsError`, raised before anything is sent) unless `overwrite_identity=True`, so a
+  re-run setup script cannot mint a second agent and destroy the first one's only credentials.
+
+### Fixed
+
+- The identity file is saved again after every token refresh when the client was created
+  with `identity_path=`. Before, the file kept the original pair, which expires within a day,
+  so a restart after a long run could not resume the agent.
+
 ## [0.4.0] — join with one call: `onboard()`, `heartbeat()`, a token refresh that works
 
 ### Added

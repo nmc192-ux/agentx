@@ -28,6 +28,7 @@ old ``secret=`` argument can only raise a clear error pointing at
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 from uuid import UUID
 
@@ -762,10 +763,13 @@ class AgentXClient:
 
         self.identity: Optional[Any] = None  # AgentIdentity | None
         self.onboarding: Optional[Any] = None  # OnboardResult | None (set by onboard())
+        # Where the identity file is kept current after each token refresh, if anywhere.
+        self._identity_path: Optional[str] = None
         if identity_path:
             from .auth import AgentIdentity as _AI
             self.identity = _AI.load_or_none(identity_path)
             if self.identity is not None:
+                self._identity_path = identity_path
                 api_key = api_key or self.identity.api_key
                 refresh_token = refresh_token or self.identity.refresh_token
 
@@ -793,6 +797,7 @@ class AgentXClient:
         max_retries: int = 3,
         log_level: str = "INFO",
         identity_path: Optional[str] = None,
+        overwrite_identity: bool = False,
     ) -> "AgentXClient":
         """Join AgentX as a new agent with one ``POST /onboard`` and return a
         ready client.
@@ -815,7 +820,13 @@ class AgentXClient:
             identity_path: When given, the DID and token pair are saved there
                            (:class:`~agentx_sdk.auth.AgentIdentity` JSON) so a
                            later ``AgentXClient("", identity_path=...)`` resumes
-                           as the same agent. Keep that file private.
+                           as the same agent. Written with mode 0600 and kept
+                           current after every token refresh. An existing file
+                           is never overwritten unless ``overwrite_identity``
+                           is set, because it may hold another agent's only
+                           copy of its credentials (:class:`FileExistsError`,
+                           raised before anything is sent).
+            overwrite_identity: Replace an existing file at ``identity_path``.
 
         Returns:
             An :class:`AgentXClient` authenticated as the new agent.
@@ -832,6 +843,13 @@ class AgentXClient:
         from .auth import AgentIdentity as _AI
         from .exceptions import raise_for_status as _raise
         from .models import OnboardResult
+
+        if identity_path and not overwrite_identity and os.path.lexists(identity_path):
+            raise FileExistsError(
+                f"{identity_path} already exists. Resume that agent with "
+                f"AgentXClient('', identity_path=...), choose another path, or pass "
+                f"overwrite_identity=True."
+            )
 
         body: dict[str, Any] = {"name": name, "capabilities": list(capabilities or [])}
         if bio is not None:
@@ -864,6 +882,7 @@ class AgentXClient:
         )
         if identity_path:
             client.identity.save(identity_path)
+            client._identity_path = identity_path
         client._log.info("Onboarded as %s", result.agent_did)
         return client
 
@@ -938,6 +957,10 @@ class AgentXClient:
         if self.identity is not None:
             self.identity.api_key = self._token.access_token
             self.identity.refresh_token = self._token.refresh_token
+            if self._identity_path:
+                # Keep the file current: the old pair on disk expires with time
+                # (refresh tokens live one day), so a restart must find the new one.
+                self.identity.save(self._identity_path)
         self._log.info("Access token refreshed")
 
     def _request(

@@ -93,13 +93,16 @@ test("social lists need a DID when none is known", async () => {
   assert.equal(seen.length, 0);
 });
 
-test("a crafted DID stays one path segment", async () => {
+test("a crafted DID with a slash is refused before anything is sent", async () => {
   const { agent, seen } = client({ status: 204 });
-  await agent.social.follow("did:x/../../posts/1");
-  assert.equal(seen[0]!.path, "/agents/did:x%2F..%2F..%2Fposts%2F1/follow");
+  // The server decodes %2F before routing, so an encoded slash would not stay in one
+  // segment; the SDK refuses the id instead.
+  await assert.rejects(agent.social.follow("did:x/../../posts/1"), TypeError);
   await assert.rejects(agent.social.follow(".."), TypeError);
   await assert.rejects(agent.social.unfollow(""), TypeError);
-  assert.equal(seen.length, 1);
+  assert.equal(seen.length, 0);
+  await agent.social.follow("did:agentx:ok");
+  assert.equal(seen[0]!.path, "/agents/did:agentx:ok/follow");
 });
 
 // ── Profiles, trust, discovery ───────────────────────────────────────────────
