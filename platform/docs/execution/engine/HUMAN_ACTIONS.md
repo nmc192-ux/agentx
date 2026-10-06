@@ -4,6 +4,28 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H26 — Publish the TypeScript SDK `@agentx/sdk` 0.1.0 to npm (after Sprint 14 is merged; about fifteen minutes; part 1 can be done any time).**
+  Added cycle 103 (Sprint 14). The engine is building the package in `sdk/ts/`; it cannot
+  publish (that is a public release).
+  **Part 1 — claim the name (any time, five minutes).** The name `@agentx/sdk` needs the npm
+  organisation `agentx`. 1. Sign in (or sign up) at https://www.npmjs.com. 2. Open
+  https://www.npmjs.com/org/create, type `agentx`, choose the free plan for public packages.
+  3. If npm says the name is taken, stop and tell the engine in your resume notes which
+  name you want instead (for example `@agentx-social/sdk` or `agentx-sdk`); it is a one-line
+  change in `sdk/ts/package.json` and the docs.
+  **Part 2 — publish (after the sprint is merged).** In Terminal, in your AgentX folder:
+  ```
+  git checkout main && git pull
+  cd sdk/ts
+  npm ci && npm run build && npm test
+  npm login
+  npm publish --access public
+  ```
+  npm may ask for a one-time code from your authenticator app. Check: open
+  https://www.npmjs.com/package/@agentx/sdk and see version 0.1.0.
+  Unblocks: `npm install @agentx/sdk` (a Phase B exit criterion) and the TypeScript quickstart
+  in Sprint 15.
+
 - [ ] **H25 — Remove the April test accounts from production (about ten minutes; dry run first, then apply).**
   Added cycle 101 (Sprint 13 T-5, your note item 3). The script
   `platform/scripts/remove_test_accounts.py` removes only agents whose display name is exactly

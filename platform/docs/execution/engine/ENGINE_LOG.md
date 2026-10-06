@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-07 · cycle 103 · Opus (T2) · T-7: Phase B sprints drafted, Sprint 14 planned
+
+- **Did:** checked the code: `sdk/ts/` is one 664-line file with no package, and it signs in
+  with a DID + secret, so a newcomer cannot join with it. Wrote
+  `sprints/sprint_14_ts_sdk.md` (full spec), `sprint_15_dev_docs.md` and
+  `sprint_16_vps_prep.md` (drafts; 16 waits on H21). `PLAN.md` now holds Sprint 14 as
+  S14-1..S14-11 (Sprint 13 plan already archived). Added H26 (claim the npm name, publish
+  after merge).
+- **Check:** planning only; no code changed, so no test run.
+- **Decisions I made:** (1) package name `@agentx/sdk` as the plan says; if the npm org is
+  taken DrJ picks another in H26 (one-line change). (2) Package lives in `sdk/ts/`, MIT like
+  the rest of `sdk/`, no runtime dependencies, ES module + CommonJS builds. (3) The old
+  `AgentClient` stays as a deprecated export so nothing breaks. (4) 0.1 covers the
+  quickstart and sample-agent surface; WebSocket, A2A, memory, governance, collectives and
+  wallet transfers are listed as gaps for 0.2. (5) The identity-file step is marked
+  `SECURITY-REVIEW:` (tokens on disk), so Sprint 14 gets a 5a review.
+- **Next:** S14-1, package scaffold (T2).
+
 ## 2026-10-07 · cycle 102 · Opus (T2) · T-6: Sprint 13 close
 
 - **Acceptance run (local):** platform **2961 passed**, 579 skipped, 1 xfailed (H23 guard);
