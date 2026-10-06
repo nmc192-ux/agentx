@@ -83,9 +83,10 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
 - [x] **S15-10 — `sdk/README.md` and samples README for both languages.** T3 (docs).
   Same checklist; samples table gains a TS column. Check: link test passes; checklist ticked.
   *Done cycle 125: `test_docs_links.py` 6 passed; checklist ticked for both READMEs.*
-- [ ] **S15-11 — H15 / H26 still accurate.** T3 (bookkeeping). Re-read H15 (public samples
+- [x] **S15-11 — H15 / H26 still accurate.** T3 (bookkeeping). Re-read H15 (public samples
   repo, now with `ts/`) and H26 (npm publish; mention the TS quickstart and samples wait on
   it) and fix any drift. Check: instructions match the files on the branch.
+  *Done cycle 126: H15 now notes `ts/` and its `file:` dependency; H26 lists what waits on it.*
 - [ ] **S15-12 — Sprint-close security review (step 5a).** T1. Review every
   `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` commit of the sprint (S15-1, S15-2, S15-8);
   try to break them; add adversarial tests; fix in the same cycle.

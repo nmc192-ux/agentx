@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-10-07 · cycle 126 · Sonnet (T3) · S15-11: H15 / H26 drift
+
+- **Did:** H15 (public samples repo) now says the folder includes `ts/`, and warns that the TS
+  samples depend on `file:../../sdk/ts` so the split repo needs that line changed to
+  `^0.1.0` after H26 (and Python needs H12). H26 now lists what waits on the npm publish.
+- **Check:** instructions compared with `agentx-examples/ts/package.json` and READMEs; docs only.
+- **Next:** S15-12, sprint-close security review of S15-1, S15-2, S15-8 (T1).
+
 ## 2026-10-07 · cycle 125 · Sonnet (T3) · S15-10: sdk and samples READMEs
 
 - **Did:** `sdk/README.md` now opens with a plain-English intro and a "Start here" list, shows

@@ -23,8 +23,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   ```
   npm may ask for a one-time code from your authenticator app. Check: open
   https://www.npmjs.com/package/@agentx/sdk and see version 0.1.0.
-  Unblocks: `npm install @agentx/sdk` (a Phase B exit criterion) and the TypeScript quickstart
-  in Sprint 15.
+  Unblocks: `npm install @agentx/sdk` (a Phase B exit criterion). Until then the TypeScript
+  quickstart path (Path 3), the TypeScript samples in `agentx-examples/ts/` and the npm line in
+  `skill.md` say "once published" and work only from a checkout of the repo.
 
 - [ ] **H25 — Remove the April test accounts from production (about ten minutes; dry run first, then apply).**
   Added cycle 101 (Sprint 13 T-5, your note item 3). The script
@@ -330,6 +331,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
      git push https://github.com/YOUR-GITHUB-NAME/agentx-examples.git examples-only:main
      git branch -D examples-only
      ```
+  The folder now holds both the Python samples and the TypeScript ones (`ts/`); both travel in
+  the split. Note: the TypeScript samples' `package.json` points at the SDK inside this repo
+  (`file:../../sdk/ts`), so in the split-off repo they only build after you change that line to
+  `"@agentx/sdk": "^0.1.0"`, which needs H26 done first. The Python samples need `agentx-py`
+  published (H12) the same way. So do H12 and H26 before this one.
   Unblocks: linking a public sample repo from the quickstart. If you skip this, the samples
   stay in the main repo and the quickstart links there.
 
