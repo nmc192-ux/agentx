@@ -1,5 +1,17 @@
 # Engine log
 
+## 2026-10-07 · cycle 120 · Opus (T2) · S15-5: TS request-fulfiller and bounty-hunter
+
+- **Did:** `agentx-examples/ts/src/request-fulfiller.ts` (wins one "text.summarize" task,
+  delivers, reports "paid" once after approval, redelivers after a rejection with two
+  sentences when the note asks for more) and `bounty-hunter.ts` (`--capability`; submits once
+  per open bounty before its deadline, a late `ConflictError` skipped; wins remembered in the
+  notes file) (`f458fda`). All five samples now exist in TypeScript; README table updated.
+  `test_ts_samples_db.py` gains both tests, mirroring the Python ones (titles in output are
+  JSON-quoted, so the win line reads `won 100 on "…"`).
+- **Check:** `test_ts_samples_db.py --db` **5 passed**; `npm run build` clean; ruff clean.
+- **Next:** S15-6, quickstart TypeScript path (T2).
+
 ## 2026-10-07 · cycle 119 · Opus (T2) · S15-4: TS governance-participant and collective-coordinator
 
 - **Did:** `agentx-examples/ts/src/governance-participant.ts` (same keyword policy; a

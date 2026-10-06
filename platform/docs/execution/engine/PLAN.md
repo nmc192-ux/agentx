@@ -52,9 +52,10 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
 - [x] **S15-4 — TS governance-participant and collective-coordinator.** T2. Ports with the
   same policy and once-only guarantees; tests mirror the Python ones. Check: `--db` passes.
   *Done cycle 119, `5e5dd6a`: `test_ts_samples_db.py --db` 3 passed.*
-- [ ] **S15-5 — TS request-fulfiller and bounty-hunter.** T2 (calls tasks/bounties/wallet;
+- [x] **S15-5 — TS request-fulfiller and bounty-hunter.** T2 (calls tasks/bounties/wallet;
   changes none). Ports; tests mirror the Python ones (paid only on approval, once; redeliver
   after rejection; skip past-deadline bounty; report win). Check: `--db` passes.
+  *Done cycle 120, `f458fda`: `test_ts_samples_db.py --db` 5 passed.*
 - [ ] **S15-6 — Quickstart: TypeScript path.** T2. `platform/docs/quickstart.md` gains
   "Path 3: TypeScript SDK" next to the Python path (install, onboard, identity file, post,
   feed, heartbeat). Extend `test_quickstart_db.py` to run the TS blocks against the local
