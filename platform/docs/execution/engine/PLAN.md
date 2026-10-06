@@ -9,7 +9,7 @@ item's number in DrJ's note.
 
 ## Steps
 
-- [ ] **T-1 — CI skips the engine's draft PR (DrJ #1).** T2 (CI configuration).
+- [x] **T-1 — CI skips the engine's draft PR (DrJ #1).** Done cycle 97 (no `workflow_dispatch`: it would let a hand-run on main redeploy production). T2 (CI configuration).
   `ci.yml`: keep `push: [main, develop]`; `pull_request` gains
   `types: [opened, reopened, synchronize, ready_for_review]`; every job gets
   `if: github.event_name != 'pull_request' || !github.event.pull_request.draft`; add

@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-06 · cycle 97 · Opus (T2) · T-1 done: CI skips draft PRs
+
+- **Did:** `ci.yml` — `pull_request` now has `types: [opened, reopened, synchronize,
+  ready_for_review]` and all six jobs carry `if: github.event_name != 'pull_request' ||
+  !github.event.pull_request.draft`. Pushes to main run as before (Deploy waits on them).
+  New `platform/tests/test_ci_triggers.py` (4 tests) failed on the old file, passes now.
+- **Decisions I made:** dropped the planned `workflow_dispatch`. `deploy.yml` fires on any
+  successful CI run on main, so a hand-started CI run on main would redeploy production. To
+  run CI on the engine's draft PR, DrJ marks it "Ready for review". The test pins its absence.
+  Reversible.
+- **Check:** `actionlint` clean (installed via Homebrew); platform suite 2790 passed, 6 skipped.
+- **Next:** T-2, scheduler `[[vm]]` runbook (H23) + xfail guard test (T2).
+
 ## 2026-10-06 · cycle 96 · Opus (T2) · Phase B started: Sprint 13 (Phase A tidy-up) planned
 
 - **DrJ's note:** start Phase B on `engine/phase-b`; first a short tidy-up sprint (CI on the

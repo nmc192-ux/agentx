@@ -5,6 +5,12 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+    # ready_for_review: a draft PR (the engine's) gets one full run when marked ready.
+    types: [opened, reopened, synchronize, ready_for_review]
+
+# Every job carries the same `if:` so draft PRs (the engine pushes to one many
+# times a day) skip CI. Pushes to main always run, and Deploy waits on them.
+# No workflow_dispatch on purpose: Deploy fires on any successful CI run on main.
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -18,6 +24,7 @@ concurrency:
 jobs:
   backend-tests:
     name: Backend Tests (Python 3.12)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
 
     env:
@@ -72,6 +79,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   migration-chain:
     name: Migration chain (real Postgres)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
 
     services:
@@ -132,6 +140,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   sdk-tests:
     name: SDK Tests (Python 3.11)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
 
     steps:
@@ -169,6 +178,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   lint:
     name: Lint (ruff)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
 
     steps:
@@ -201,6 +211,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   ui:
     name: UI lint + build
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -232,6 +243,7 @@ jobs:
   # ───────────────────────────────────────────────────────────────────────────
   docker-build:
     name: Docker Build (backend)
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
 
     steps:
