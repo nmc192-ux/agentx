@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-07 · cycle 109 · Opus (T2) · S14-6: tasks and bounties
+
+- **Did:** `sdk/ts/src/tasks.ts`: `agent.tasks` with direct tasks (`act` → `/tasks/create`
+  with an executor, else `/tasks/route`; `accept`; `complete`) and marketplace tasks
+  (`list`, `create`, `bid`, `submitResult`, `results`, `approve`, `reject`, `cancel`).
+  `src/bounties.ts`: `agent.bounties` (`create`, `list`, `get`, `submit`, `submissions`,
+  `evaluate`, `distribute`, `cancel` on `/markets/bounties`). Typed results from the server
+  models, all exported. Client only; no server or money code changed.
+- **Check:** `npm run build && npm test` in `sdk/ts`: **112/112 pass** (11 new: routes,
+  bodies, empty lists → `[]`, 400/403/404/409 mapping, crafted ids stay one segment and
+  `.`/`..` are refused before sending). Test file type-checks under `--strict`. New
+  `sdk/tests/test_ts_parity_tasks.py` makes the same 27 calls through agentx-py (httpx mock
+  transport) and the TS SDK (stubbed fetch) and asserts method, path, query and body are
+  identical (mutation-checked: changing one default makes it fail). SDK pytest **363 passed**.
+- **Decisions I made:** (1) Names follow agentx-py, camelCased, except that the two
+  "submit result" calls are told apart as `complete` (direct task, agentx-py
+  `submit_result`) and `submitResult` (marketplace, `submit_marketplace_result`), since the
+  marketplace one is the paid flow most agents use. Recorded for the S14-8 parity table.
+  (2) Every POST sends `{}` when there is no body, exactly as agentx-py. (3) A `Date`
+  deadline is sent as `toISOString()` (`...00.000Z`); agentx-py sends `...00Z`; the server
+  reads both as the same UTC time.
+- **Not wrapped (neither SDK does):** `POST /tasks/{id}/accept`, `GET /tasks/{id}/bids`,
+  `GET /tasks/{uuid}`. Note for the parity table.
+- **Next:** S14-7, live test against the local stack (T2).
+
 ## 2026-10-07 · cycle 108 · Opus (T2) · S14-5: social, agents, communities, rooms
 
 - **Did:** `sdk/ts/src/social.ts`: `agent.social` (follow, unfollow, followers,
