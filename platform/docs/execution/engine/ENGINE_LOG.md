@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-07 · cycle 128 · Opus (T2) · S15-13: Sprint 15 close
+
+- **Did:** Ran Sprint 15's acceptance list literally: both quickstarts under ten minutes
+  (Python 7.6, TS 4.5, measured cycle 122), TS samples pass on real Postgres, READMEs ticked
+  against the stranger checklist, H15 accurate. Wrote `sprints/sprint_15_retro.md` and
+  `sprints/briefing_2026-10-07_sprint15.md` (merge is safe: no migrations; only backend change
+  is the skill.md install lines), updated `state_of_agentx.md`, archived the plan as
+  `archive/PLAN_sprint_15.md`; new `PLAN.md` points at the next sprint.
+- **Note:** `pytest sdk/tests` needs `sdk/.venv` (it has `respx`); the platform venv lacks it.
+- **Check:** platform **2970 passed**, 586 skipped, 1 xfailed (H23); `pytest sdk/tests`
+  **480 passed**; `npm ci && npm run build && npm test` **139/139**; `--db` set
+  (`test_ts_samples_db`, `test_quickstart_db`, `test_sample_agents_db`, `test_ts_sdk_live_db`,
+  `test_docs_links`) **22 passed**.
+- **Next:** Sprint 16 waits on H21. Draft and decompose the "Agent of the week" sprint (T2).
+
 ## 2026-10-07 · cycle 127 · Fable (T1) · S15-12: sprint-close security review
 
 - **Did:** Reviewed the sprint's three flagged commits: `8cb3f21` (S15-1, Python `_seg`),
