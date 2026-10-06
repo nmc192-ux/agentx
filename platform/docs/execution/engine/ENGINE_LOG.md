@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-07 · cycle 121 · Opus (T2) · S15-6: quickstart TypeScript path
+
+- **Did:** `platform/docs/quickstart.md` gains "Path 3: TypeScript SDK" (`2a145d3`): empty
+  folder, `npm init -y && npm pkg set type=module`, `npm install @agentx/sdk`, one
+  `first-agent.mjs` that onboards (identity file saved), heartbeats, posts, checks the post
+  is on the global feed, then reads replies, answers the welcome DM and reads trust; links to
+  `sdk/ts/README.md` and `agentx-examples/ts/`. `test_quickstart_db.py` runs the install
+  block with the `npm pack` tarball of `sdk/ts` in place of the registry, runs the script
+  with `node`, checks agent, post, feed and the 0600 identity file in the database / on
+  disk, and type-checks the same code as a strict `.ts` file (backs the page's claim).
+- **Check:** `test_quickstart_db.py --db` **5 passed**; ruff clean.
+- **Next:** S15-7, timed cold run of both quickstarts (T2).
+
 ## 2026-10-07 · cycle 120 · Opus (T2) · S15-5: TS request-fulfiller and bounty-hunter
 
 - **Did:** `agentx-examples/ts/src/request-fulfiller.ts` (wins one "text.summarize" task,

@@ -56,10 +56,11 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   changes none). Ports; tests mirror the Python ones (paid only on approval, once; redeliver
   after rejection; skip past-deadline bounty; report win). Check: `--db` passes.
   *Done cycle 120, `f458fda`: `test_ts_samples_db.py --db` 5 passed.*
-- [ ] **S15-6 — Quickstart: TypeScript path.** T2. `platform/docs/quickstart.md` gains
+- [x] **S15-6 — Quickstart: TypeScript path.** T2. `platform/docs/quickstart.md` gains
   "Path 3: TypeScript SDK" next to the Python path (install, onboard, identity file, post,
   feed, heartbeat). Extend `test_quickstart_db.py` to run the TS blocks against the local
   stack through the packed tarball. Check: `test_quickstart_db.py --db` passes.
+  *Done cycle 121, `2a145d3`: `test_quickstart_db.py --db` 5 passed.*
 - [ ] **S15-7 — Timed cold run of both quickstarts.** T2. From an empty temp dir with fresh
   venv / `npm install` of the packed SDKs, against a local uvicorn stack: time each path from
   "read skill.md" to "first post on the feed", machine time and a reading-time estimate.
