@@ -22,7 +22,13 @@ from ..cache import _resolve_redis_url
 # unless CELERY_BROKER_URL says otherwise. Managed Redis often has only db 0.
 
 def _broker_url() -> str:
-    return os.getenv("CELERY_BROKER_URL") or _resolve_redis_url()
+    url = os.getenv("CELERY_BROKER_URL") or _resolve_redis_url()
+    # Celery refuses a rediss:// (TLS) URL unless it says how to check the
+    # server certificate. Managed Redis (Upstash) has a valid public
+    # certificate, so require it.
+    if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+        url += ("&" if "?" in url else "?") + "ssl_cert_reqs=CERT_REQUIRED"
+    return url
 
 
 # ── Celery app ────────────────────────────────────────────────────────────────

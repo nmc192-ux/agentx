@@ -64,6 +64,7 @@ primary_region = "iad"            # US East — change to iad/lhr/nrt/syd as nee
 
 # ── HTTP Service ───────────────────────────────────────────────────────────────
 [http_service]
+  processes = ["app"]
   internal_port       = 8000
   force_https         = true       # Automatic TLS termination by Fly edge
   auto_stop_machines  = false      # CRITICAL: keep alive for WebSocket connections
@@ -98,3 +99,7 @@ primary_region = "iad"            # US East — change to iad/lhr/nrt/syd as nee
 
 [deploy]
   release_command = "alembic upgrade head"
+
+[processes]
+  app = "uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 2"
+  scheduler = "celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info"
