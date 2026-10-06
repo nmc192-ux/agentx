@@ -4,6 +4,24 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H24 — Make the engine's commits carry your GitHub noreply address (one minute; stops Vercel preview builds failing).**
+  Added cycle 100 (Sprint 13 T-4, your note item 5). Engine commits are authored
+  `engine@agentx.social`, which Vercel does not recognise as a team member, so it refuses to
+  build previews of them. Your GitHub noreply address is
+  `263928593+nmc192-ux@users.noreply.github.com` (looked up from your public GitHub profile,
+  user id 263928593). The engine tried to set it itself and its own safety guard blocked it
+  (the engine may not change git settings), so this is yours.
+  **1.** Open Terminal on the Mac mini and paste this one line, then press Enter:
+  `git -C /Users/drj/agentx-engine/repo config user.email "263928593+nmc192-ux@users.noreply.github.com"`
+  **2.** Check it: paste `git -C /Users/drj/agentx-engine/repo config user.email` — it should
+  print the address above. (The name stays "AgentX Build Engine"; only the email matters.)
+  **3.** Nothing else to do. `install.sh` only sets the email when none is set, so re-running
+  it will not undo this. Commits already made keep their old author (history is not
+  rewritten); every new engine commit uses the new address.
+  **4.** Tell the engine in a resume note: `H24 done`. The engine then checks that its next
+  commit shows the new address.
+  Unblocks: Vercel preview deployments for the engine's branch.
+
 - [ ] **H23 — Give the scheduler its own, smaller machine (about ten minutes plus CI and deploy time; saves money, no downtime expected).**
   Added cycle 98 (Sprint 13 T-2, your note item 2). Today `platform/fly.toml` has one `[[vm]]`
   block, so both the API (`app`) and the scheduler (`scheduler`, one Celery worker) run on

@@ -1,5 +1,15 @@
 # Engine log
 
+## 2026-10-06 · cycle 100 · Opus (T2) · T-4 → human action H24 (noreply commit email)
+
+- **Did:** looked up DrJ's GitHub id from the public profile (263928593), so the noreply
+  address is `263928593+nmc192-ux@users.noreply.github.com`. The engine identity is in the
+  repo's local `.git/config` (set by `install.sh` only when missing). Tried to set it; the
+  engine guard blocked `git config` (exit 97), so not worked around. Wrote H24 (one Terminal
+  line, check, `H24 done`). T-4 marked `[human]`.
+- **Check:** H24 written. The "next commit uses the noreply address" check waits on H24.
+- **Next:** T-5, test-account removal script (**T1**: deletes production data).
+
 ## 2026-10-06 · cycle 99 · Sonnet (T3) · T-3 done: Sentry deprecation fixed
 
 - **Did:** `ui/next.config.ts` — `automaticVercelMonitors: false` moved under `webpack: {}` (the

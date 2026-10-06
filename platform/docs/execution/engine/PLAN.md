@@ -26,7 +26,7 @@ item's number in DrJ's note.
 - [x] **T-3 — Sentry `automaticVercelMonitors` deprecation (DrJ #4).** Done cycle 99 (no UI test script exists; build is the check). T3 (small config).
   Move it under the `webpack` options `@sentry/nextjs` 10 expects, still `false`. Check:
   `npm run build` in `ui/` has no deprecation line for it; UI tests pass.
-- [ ] **T-4 — Commits use DrJ's GitHub noreply address (DrJ #5).** T2 (configuration).
+- [human] **T-4 — Commits use DrJ's GitHub noreply address (DrJ #5).** Cycle 100: address is `263928593+nmc192-ux@users.noreply.github.com`; the engine guard blocks `git config`, so H24 written. After `H24 done`, check the next commit's author email. T2 (configuration).
   Find the address (`<id>+nmc192-ux@users.noreply.github.com`, read-only GitHub lookup).
   The engine's commit identity is set outside the repo by the engine runner, so this is most
   likely `[human]`: write H24 with the exact setting for DrJ, and say that past commits keep
@@ -62,5 +62,5 @@ item's number in DrJ's note.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-Open: H6, H8, H11–H17, H20, H21, H23; D10 (not blocking). H13 (founder heartbeat) is next on
+Open: H6, H8, H11–H17, H20, H21, H23, H24; D10 (not blocking). H13 (founder heartbeat) is next on
 DrJ's list and unblocked. H21 unblocks Sprint 16.
