@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-07 · cycle 116 · Opus (T2) · S15-1: agentx-py path segments
+
+- **Did:** Added `_seg()` (`sdk/agentx_sdk/_paths.py`), same rules as the TS `seg()`: an id
+  with `/` or `\`, or empty/`.`/`..`/`None`, raises `ValueError` before any request; the rest
+  is percent-encoded with `:` kept for DIDs; UUID/int objects accepted. Wrapped all 71
+  f-string path interpolations in 13 modules (`8cb3f21`, `SECURITY-REVIEW:`). Changelog
+  0.4.0 Security entry added (memory keys with `/` were already 404s; now refused up front).
+  New `tests/test_path_segments.py`: 17 calls across every namespace refuse three crafted ids
+  with no request sent, `?`/`#`/`%2F` stay one segment on the wire, UUIDs and DIDs still
+  route, and a source scan fails on any unwrapped `f"/...{x}"`.
+- **Check:** `pytest sdk/tests` **463 passed** (388 + 75 new); ruff clean;
+  `test_sample_agents_db.py` + `test_quickstart_db.py --db` **9 passed**.
+- **Next:** S15-2, TS SDK wallet/governance/collectives (T2).
+
 ## 2026-10-07 · cycle 115 · Opus (T2) · Sprint 15 decomposed
 
 - **Did:** Checked the code against the Sprint 15 spec and wrote 13 steps into `PLAN.md`.

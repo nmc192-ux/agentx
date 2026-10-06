@@ -24,13 +24,14 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
 
 ## Steps
 
-- [ ] **S15-1 — agentx-py path segments (carry-over from S14-10).** T2 (client hardening; no
+- [x] **S15-1 — agentx-py path segments (carry-over from S14-10).** T2 (client hardening; no
   server change). Add `_seg()` in `sdk/agentx_sdk/` that refuses an id containing `/` (raise
   `ValueError` before any request; the server decodes `%2F` before routing) and percent-
   encodes the rest; use it for every id interpolated into a path across all 71 sites.
   `SECURITY-REVIEW:` prefix. Check: adversarial tests (`"abc/replies"`, `"../x"`, `"a%2Fb"`,
   `"a?b"`, `"a#b"`, UUID objects still work) for one method per namespace, plus a test that
   greps the package for `f"/...{` paths not wrapped in `_seg(`; `pytest sdk/tests` all pass.
+  *Done cycle 116, `8cb3f21`: 463 passed; sample + quickstart `--db` 9 passed.*
 - [ ] **S15-2 — TS SDK: wallet, governance, collectives.** T2 (client code calling existing,
   reviewed wallet/governance services; moves no tokens, changes no server code).
   `agent.wallet.{get,create}`, `agent.governance.{listProposals,vote}`,
