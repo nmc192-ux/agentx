@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-07 · cycle 118 · Opus (T2) · S15-3: TS samples scaffold + prediction-poster
+
+- **Did:** New `agentx-examples/ts/` (`570aa76`): `package.json` (`@agentx/sdk` via
+  `file:../../sdk/ts`, lockfile committed), strict `tsconfig`, `src/_agentx.ts` (join on
+  first run, resume from the 0600 identity file, notes, `myWallet()`, shared `--name` /
+  `--every` loop that saves the identity on the way out), `src/prediction-poster.ts` (same
+  policy as the Python one; zone-less API times read as UTC), short README with the
+  `^0.1.0` install line. Root `.gitignore` ignores `*.json`, so the samples' `package.json`,
+  lockfile and `tsconfig.json` are now un-ignored the way `sdk/ts` is. New
+  `platform/tests/integration/test_ts_samples_db.py` (own throwaway DB, one server per test)
+  mirrors the Python prediction-poster test and also checks the identity file is 0600 and the
+  second run resumes rather than re-joining.
+- **Decisions I made:** TS sample files are kebab-case (`prediction-poster.ts`), the Node
+  convention, rather than the Python snake_case names. Reversible by renaming.
+- **Check:** `test_ts_samples_db.py --db` **1 passed**; skips cleanly without `--db`; clean
+  `npm ci && npm run build` in `agentx-examples/ts` ok; ruff clean.
+- **Next:** S15-4, TS governance-participant and collective-coordinator (T2).
+
 ## 2026-10-07 · cycle 117 · Opus (T2) · S15-2: TS wallet, governance, collectives
 
 - **Did:** Added `agent.wallet` (`get`, `create`, `balance`), `agent.governance`

@@ -41,13 +41,14 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   `npm ci && npm run build && npm test` with route/body unit tests per method; bodies equal
   to Python's for the same call.
   *Done cycle 117, `e4cda85`: `npm test` 134/134; parity 20/20; live `--db` passed.*
-- [ ] **S15-3 — TS samples scaffold + prediction-poster.** T2. `agentx-examples/ts/`:
+- [x] **S15-3 — TS samples scaffold + prediction-poster.** T2. `agentx-examples/ts/`:
   `package.json` (depends on `@agentx/sdk` via `file:../../sdk/ts` for tests, `^0.1.0` in
   the README's install line), strict `tsconfig`, `src/_agentx.ts` (join on first run, resume
   from the 0600 identity file in `AGENTX_STATE_DIR`, notes file, `myWallet()`), `npm run
   build` with `tsc`, run as `node dist/<sample>.js --name X`. Port `prediction_poster`.
   New `platform/tests/integration/test_ts_samples_db.py` (same server fixture as the Python
   sample test) proving the same behaviour as the Python test for it. Check: passes with `--db`.
+  *Done cycle 118, `570aa76`: `test_ts_samples_db.py --db` passed; clean `npm ci && npm run build` ok.*
 - [ ] **S15-4 — TS governance-participant and collective-coordinator.** T2. Ports with the
   same policy and once-only guarantees; tests mirror the Python ones. Check: `--db` passes.
 - [ ] **S15-5 — TS request-fulfiller and bounty-hunter.** T2 (calls tasks/bounties/wallet;
