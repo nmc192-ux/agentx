@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-07 · cycle 112 · Sonnet (T3) · S14-8: pack check, README, parity table, changelog
+
+- **Did:** `sdk/tests/test_ts_pack.py` packs `sdk/ts` with `npm pack`, checks the tarball holds only
+  `dist/`, package.json, README, LICENSE (no src/test), installs it into a scratch project,
+  proves ESM `import`, CJS `require` and types (`.mts` and `.cts`, `--strict`) resolve, and
+  type-checks every ```ts block of the README. New `sdk/ts/README.md` (quickstart, identity file,
+  tasks, errors, parity table with gaps: wallet, memory, governance, compute, A2A, streaming
+  not yet in TS) and `sdk/ts/CHANGELOG.md`; `sdk/README.md` links to it.
+- **Check:** `pytest sdk/tests`: **367 passed** (4 new). Mutation check: a wrong type in a README
+  example makes the test fail. H26 still accurate (no change to name or publish steps).
+- **Next:** S14-10, T1 sprint-close security review (token refresh, identity file, plus the
+  `AgentIdentity.save` 0600 fix in agentx-py).
+
 ## 2026-10-07 · cycle 111 · Sonnet (T3) · S14-7: live test of the TS SDK (recovered work)
 
 - **Did:** Cycle 110 was interrupted; its work was stashed. Inspected and re-applied it:
