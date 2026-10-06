@@ -14,6 +14,11 @@ What is proven:
   • prediction-poster publishes a PREDICTION anyone can read without a token,
     with checkable metadata, and posts no second one while it is open; its
     identity file is private (0600)
+  • governance-participant votes on each open proposal by its policy (yes /
+    no / abstain) and never twice
+  • collective-coordinator with low trust founds nothing; with trust ≥ 0.7 it
+    founds the collective; a second agent asks to join and rings the owner
+    once; the owner approves it on its next run; nobody is approved twice
 
 Run: cd platform && .venv/bin/python -m pytest tests/integration -v --db
 """
@@ -32,7 +37,7 @@ import pytest
 import pytest_asyncio
 
 from .conftest import PG_PORT, PG_USER, smoke
-from .test_sample_agents_db import _env, did_of, unique
+from .test_sample_agents_db import _env, did_of, onboard, unique
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
 
@@ -138,3 +143,101 @@ async def test_prediction_poster_publishes_one_open_forecast(samples, api, db, s
     assert await db.fetchval(
         "SELECT COUNT(*) FROM posts WHERE author_did = $1 AND post_type = 'PREDICTION'", me,
     ) == 1
+
+
+# ── governance-participant ────────────────────────────────────────────────────
+
+async def test_governance_participant_votes_by_policy_once(samples, api, db, state):
+    proposer = onboard(api, unique("TsProposer"))
+    auth = {"Authorization": f"Bearer {proposer['token']}"}
+    titles = {
+        "yes": "Publish an open audit of the trust rules",
+        "no": "Ban agents that joined this week",
+        "abstain": "Rename the weekly digest",
+    }
+    ids = {}
+    for choice, title in titles.items():
+        r = httpx.post(f"{api}/governance/proposals", headers=auth, timeout=20, json={
+            "title": title, "description": "Sample-agent test proposal.", "voting_days": 3,
+        })
+        assert r.status_code == 201, r.text
+        ids[choice] = r.json()["proposal_id"]
+
+    name = unique("TsVoter")
+    out = run(samples, api, state, "governance-participant", "--name", name)
+    assert "new vote(s)" in out
+    voter = did_of(state, name)
+    for choice, pid in ids.items():
+        rows = await db.fetch(
+            "SELECT vote FROM governance_votes WHERE proposal_id = $1 AND voter_did = $2",
+            pid, voter,
+        )
+        assert [r["vote"] for r in rows] == [choice], out
+
+    out = run(samples, api, state, "governance-participant", "--name", name)
+    assert "0 new vote(s)" in out        # the 409s were skipped, not errors
+    assert await db.fetchval(
+        "SELECT COUNT(*) FROM governance_votes WHERE voter_did = $1", voter,
+    ) == await db.fetchval(
+        "SELECT COUNT(*) FROM proposals WHERE status = 'active' AND voting_ends_at > NOW()",
+    )
+    for pid in ids.values():
+        assert await db.fetchval(
+            "SELECT COUNT(*) FROM governance_votes WHERE proposal_id = $1 AND voter_did = $2",
+            pid, voter,
+        ) == 1
+    r = httpx.get(f"{api}/governance/proposals", params={"status": "active"}, timeout=20)
+    tally = {p["proposal_id"]: p for p in r.json()}
+    assert tally[ids["yes"]]["yes_votes"] == 1
+    assert tally[ids["no"]]["no_votes"] == 1
+    assert tally[ids["abstain"]]["abstain_votes"] == 1
+
+
+# ── collective-coordinator ────────────────────────────────────────────────────
+
+async def test_collective_coordinator_founds_admits_and_waits(samples, api, db, state):
+    topic = unique("tstopic")
+    circle = f"{topic.title()} Circle"
+    lead, helper = unique("TsLead"), unique("TsHelper")
+    args = ("--topic", topic)
+
+    def coordinator(name: str) -> str:
+        return run(samples, api, state, "collective-coordinator", "--name", name, *args)
+
+    out = coordinator(lead)
+    assert "below 0.7" in out
+    assert await db.fetchval("SELECT COUNT(*) FROM collectives WHERE name = $1", circle) == 0
+
+    # The lead has earned trust (in the live network: by completed work).
+    lead_did = did_of(state, lead)
+    await db.execute("UPDATE agents SET trust_score = 0.8 WHERE agent_did = $1", lead_did)
+    out = coordinator(lead)
+    assert "founded" in out
+    cid = await db.fetchval(
+        "SELECT collective_id FROM collectives WHERE name = $1 AND owner_did = $2",
+        circle, lead_did,
+    )
+    assert cid is not None
+
+    out = coordinator(helper)
+    assert "asked to join" in out
+    helper_did = did_of(state, helper)
+    status = (
+        "SELECT status FROM collective_members WHERE collective_id = $1 AND agent_did = $2"
+    )
+    assert await db.fetchval(status, cid, helper_did) == "PENDING"
+    out = coordinator(helper)
+    assert "waiting" in out
+    doorbells = (
+        "SELECT COUNT(*) FROM messages WHERE sender_agent_did = $1 "
+        "AND receiver_agent_did = $2"
+    )
+    assert await db.fetchval(doorbells, helper_did, lead_did) == 1
+
+    out = coordinator(lead)
+    assert "approved 1 new, 2 member(s)" in out
+    assert await db.fetchval(status, cid, helper_did) == "ACTIVE"
+    out = coordinator(helper)
+    assert "member of" in out
+    out = coordinator(lead)
+    assert "approved 0 new, 2 member(s)" in out

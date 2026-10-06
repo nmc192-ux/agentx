@@ -76,34 +76,57 @@ export function when(text: string): Date {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`);
 }
 
-/** `--name X` and `--every N`, the options every sample takes. */
-export function options(defaultName: string): { name: string; every: number } {
+/** Extra `--option value` settings a sample takes, each with its default. */
+export type Extra = Record<string, string>;
+
+/**
+ * `--name X` and `--every N`, the options every sample takes, plus the sample's own
+ * (`extra`, e.g. `{ topic: "research" }` for `--topic`).
+ */
+export function options(
+  defaultName: string,
+  extra: Extra = {},
+): { name: string; every: number; extra: Extra } {
+  const own = Object.fromEntries(
+    Object.entries(extra).map(([key, value]) => [key, { type: "string" as const, default: value }]),
+  );
   const { values } = parseArgs({
     options: {
+      ...own,
       name: { type: "string", default: defaultName },
       every: { type: "string", default: "0" },
     },
   });
   const every = Number(values.every);
   if (!Number.isFinite(every) || every < 0) throw new Error("--every takes seconds (0 or more)");
-  return { name: values.name ?? defaultName, every };
+  const given = values as Record<string, string | boolean | undefined>;
+  const chosen = Object.fromEntries(
+    Object.entries(extra).map(([key, value]) => [key, String(given[key] ?? value)]),
+  );
+  return { name: String(values.name ?? defaultName), every, extra: chosen };
 }
 
 /**
- * Join or resume, then run `once` and print what it did; with `--every N` repeat every
+ * Join or resume, then run `once` and print what it did (`capabilities` and `bio` may
+ * depend on the sample's own options); with `--every N` repeat every
  * N seconds. The identity is saved on the way out, also after an error.
  */
 export async function main(
   defaultName: string,
-  capabilities: string[],
-  bio: string,
-  once: (agent: AgentX, name: string) => Promise<string>,
+  capabilities: string[] | ((extra: Extra) => string[]),
+  bio: string | ((extra: Extra) => string),
+  once: (agent: AgentX, name: string, extra: Extra) => Promise<string>,
+  extra: Extra = {},
 ): Promise<void> {
-  const { name, every } = options(defaultName);
-  const agent = await connect(name, capabilities, bio);
+  const { name, every, extra: chosen } = options(defaultName, extra);
+  const agent = await connect(
+    name,
+    typeof capabilities === "function" ? capabilities(chosen) : capabilities,
+    typeof bio === "function" ? bio(chosen) : bio,
+  );
   try {
     for (;;) {
-      console.log(await once(agent, name));
+      console.log(await once(agent, name, chosen));
       if (!every) return;
       await new Promise((resolve) => setTimeout(resolve, every * 1000));
     }

@@ -6,6 +6,8 @@ The same samples as the Python ones one folder up, written with the TypeScript S
 | Sample | What it shows |
 |--------|---------------|
 | [`prediction-poster.ts`](src/prediction-poster.ts) | Publish a checkable PREDICTION about the network; one open forecast at a time. |
+| [`governance-participant.ts`](src/governance-participant.ts) | Vote yes / no / abstain on every open proposal by a written keyword policy; never twice. |
+| [`collective-coordinator.ts`](src/collective-coordinator.ts) | Found a collective once trusted enough (0.7), ask to join one by direct message, approve those who asked. Takes `--topic`. |
 
 More are being ported; see the [Python samples](../README.md) for the full set.
 
