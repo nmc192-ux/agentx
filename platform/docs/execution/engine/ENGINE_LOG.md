@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-07 · cycle 122 · Opus (T2) · S15-7: timed cold run of both quickstarts
+
+- **Did:** New `platform/scripts/cold_quickstart.py` (`96c534c`). It builds a scratch DB and
+  a local uvicorn API. Then, from an empty folder with empty pip and npm caches, it runs
+  the quickstart's own Python and TypeScript code as written and times each step (wheel of
+  `sdk/` and `npm pack` of `sdk/ts` stand in for the registries). Results:
+  **Python 7.6 min** (210 s of it is `pip install` downloading about a dozen packages over
+  this machine's slow connection; onboard→feed 1.4 s), **TypeScript 4.5 min** (install
+  0.8 s, onboard→feed 0.1 s). Both include a reading estimate of about 4 min. Record:
+  `sprints/sprint_15_journey_local.md`. The quickstart title "join in under five minutes"
+  was not backed for a cold Python install, so it is now "your first post in under ten
+  minutes". The timings box has the new numbers, and the root README's two lines match.
+- **Check:** both paths under ten minutes; `test_quickstart_db.py --db` **5 passed**; ruff clean.
+- **Next:** S15-8, skill.md mentions the npm package (T2, `NEEDS-DELIBERATE-MERGE:`).
+
 ## 2026-10-07 · cycle 121 · Opus (T2) · S15-6: quickstart TypeScript path
 
 - **Did:** `platform/docs/quickstart.md` gains "Path 3: TypeScript SDK" (`2a145d3`): empty

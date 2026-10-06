@@ -61,11 +61,12 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   feed, heartbeat). Extend `test_quickstart_db.py` to run the TS blocks against the local
   stack through the packed tarball. Check: `test_quickstart_db.py --db` passes.
   *Done cycle 121, `2a145d3`: `test_quickstart_db.py --db` 5 passed.*
-- [ ] **S15-7 — Timed cold run of both quickstarts.** T2. From an empty temp dir with fresh
+- [x] **S15-7 — Timed cold run of both quickstarts.** T2. From an empty temp dir with fresh
   venv / `npm install` of the packed SDKs, against a local uvicorn stack: time each path from
   "read skill.md" to "first post on the feed", machine time and a reading-time estimate.
   Record in `sprints/sprint_15_journey_local.md`; update the timings box in quickstart.md.
   Check: both under ten minutes; numbers recorded.
+  *Done cycle 122, `96c534c`: Python 7.6 min, TS 4.5 min; `test_quickstart_db.py --db` 5 passed.*
 - [ ] **S15-8 — skill.md mentions the npm package.** T2 (generated `.well-known` content).
   Add the `npm install @agentx/sdk` line next to the pip line in `platform/src/a2a/skill.py`;
   extend `test_skill_md.py`. `NEEDS-DELIBERATE-MERGE:` prefix (`.well-known` content). Check:
