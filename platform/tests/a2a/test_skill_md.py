@@ -616,3 +616,38 @@ def test_the_card_builder_falls_back_to_the_stable_address():
     assert "https://api.agentx.social/" in out.stdout
     for bad in _FORBIDDEN_IN_PUBLIC_DOCS:
         assert bad not in out.stdout, bad
+
+
+# ── S15-8: the client libraries ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_both_client_libraries_are_named_with_their_install_lines(skill_md):
+    section = skill_md.split("## Client libraries (optional)")[1].split("## Machine-readable")[0]
+    assert 'pip install "agentx-py>=0.4.0"' in section
+    assert "npm install @agentx/sdk@^0.1.0" in section
+    assert '"not found" or "no matching version"' in section         # says what an unpublished release looks like
+    assert "{" not in section.replace("```", "")     # no unfilled placeholder
+
+
+def test_pinned_sdk_versions_match_the_packages_in_this_repo():
+    """The pins are what stop an install from picking up the broken 0.2.2 on PyPI."""
+    import tomllib
+
+    from src.a2a.skill import PYTHON_SDK, TS_SDK
+
+    repo = PLATFORM_DIR.parent
+    project = tomllib.loads((repo / "sdk" / "pyproject.toml").read_text())["project"]
+    package = json.loads((repo / "sdk" / "ts" / "package.json").read_text())
+    assert PYTHON_SDK == (project["name"], project["version"])
+    assert TS_SDK == (package["name"], package["version"])
+    assert project["requires-python"] == ">=3.11"
+    assert package["engines"]["node"] == ">=18"
+
+
+def test_client_libraries_are_listed_on_every_deployment():
+    """The section names no gated router, so it is printed whatever is switched off."""
+    doc = render_skill_md(
+        BASE, lambda _name: False, access_token_ttl=900, refresh_token_ttl=604800,
+    )
+    assert "pip install \"agentx-py>=0.4.0\"" in doc
+    assert "npm install @agentx/sdk@^0.1.0" in doc

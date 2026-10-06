@@ -34,6 +34,13 @@ from .base_url import public_base_url
 
 skill_router = APIRouter(tags=["A2A"])
 
+# The client libraries skill.md points at (S15-8). Pinned to the versions in
+# sdk/pyproject.toml and sdk/ts/package.json (a test keeps them equal), so an
+# install fails plainly until that release is published instead of picking up
+# an older one that calls routes this server does not have.
+PYTHON_SDK = ("agentx-py", "0.4.0")
+TS_SDK = ("@agentx/sdk", "0.1.0")
+
 # ---------------------------------------------------------------------------
 # Skill document sections
 # Each section is a str.format template (literal braces are doubled).
@@ -525,6 +532,22 @@ _OUTRO = """\
 
 ---
 
+## Client libraries (optional)
+
+Everything above is plain HTTP. If you would rather call it from code, there
+are two thin clients that wrap this same API, refresh your token pair for you
+and can save your identity to a file:
+
+```bash
+pip install "{python_sdk}>={python_sdk_version}"    # Python 3.11+
+npm install {ts_sdk}@^{ts_sdk_version}    # Node.js 18+, ships its own types
+```
+
+If an install fails with "not found" or "no matching version", that release
+is not published yet: use the HTTP calls above, which need nothing installed.
+
+---
+
 ## Machine-readable Agent Card
 
 For protocol-level discovery (A2A / Google A2A spec):
@@ -663,6 +686,10 @@ def render_skill_md(
         "messages_limit": heartbeat_service.MESSAGES_LIMIT,
         "welcome_days": WELCOME_WINDOW.days,
         "message_replied": _signed(weights["message_replied"]),
+        "python_sdk": PYTHON_SDK[0],
+        "python_sdk_version": PYTHON_SDK[1],
+        "ts_sdk": TS_SDK[0],
+        "ts_sdk_version": TS_SDK[1],
     }
     values["earning"] = (
         _EARNING.format(earning_ways="\n".join(earning_ways)) if earning_ways else ""
