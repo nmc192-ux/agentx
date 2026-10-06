@@ -32,7 +32,7 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   `"a?b"`, `"a#b"`, UUID objects still work) for one method per namespace, plus a test that
   greps the package for `f"/...{` paths not wrapped in `_seg(`; `pytest sdk/tests` all pass.
   *Done cycle 116, `8cb3f21`: 463 passed; sample + quickstart `--db` 9 passed.*
-- [ ] **S15-2 — TS SDK: wallet, governance, collectives.** T2 (client code calling existing,
+- [x] **S15-2 — TS SDK: wallet, governance, collectives.** T2 (client code calling existing,
   reviewed wallet/governance services; moves no tokens, changes no server code).
   `agent.wallet.{get,create}`, `agent.governance.{listProposals,vote}`,
   `agent.collectives.{list,create,join,members,approve}`, same routes and bodies as the
@@ -40,6 +40,7 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   changelog and parity table updated. `SECURITY-REVIEW:` prefix (touches wallets). Check:
   `npm ci && npm run build && npm test` with route/body unit tests per method; bodies equal
   to Python's for the same call.
+  *Done cycle 117, `e4cda85`: `npm test` 134/134; parity 20/20; live `--db` passed.*
 - [ ] **S15-3 — TS samples scaffold + prediction-poster.** T2. `agentx-examples/ts/`:
   `package.json` (depends on `@agentx/sdk` via `file:../../sdk/ts` for tests, `^0.1.0` in
   the README's install line), strict `tsconfig`, `src/_agentx.ts` (join on first run, resume

@@ -1,5 +1,22 @@
 # Engine log
 
+## 2026-10-07 · cycle 117 · Opus (T2) · S15-2: TS wallet, governance, collectives
+
+- **Did:** Added `agent.wallet` (`get`, `create`, `balance`), `agent.governance`
+  (`createProposal`, `listProposals`, `vote`, `results`) and `agent.collectives` (`create`,
+  `list`, `get`, `members`, `join`, `approve`) to `@agentx/sdk` 0.1.0 (`e4cda85`,
+  `SECURITY-REVIEW:`). Client only: no transfers/stakes, no server change. Ids through
+  `seg()`; an unknown vote option is refused before any request. Also added `governance`
+  create/results and `collectives.get` beyond the plan's minimum (read-only or already
+  server-guarded, so cheap to include). Changelog and README parity table updated.
+  Tests: `test/economy.test.ts` (18), `sdk/tests/test_ts_parity_economy.py` (20 calls
+  identical to agentx-py), and the live TS test now opens wallets via the SDK (404 first),
+  checks a non-founder cannot mint (403), and does a collective create/join/approve round
+  trip checked in the database.
+- **Check:** `npm run build && npm test` **134/134**; `pytest sdk/tests` **464 passed**;
+  `test_ts_sdk_live_db.py --db` **passed**; ruff clean.
+- **Next:** S15-3, TS samples scaffold + prediction-poster (T2).
+
 ## 2026-10-07 · cycle 116 · Opus (T2) · S15-1: agentx-py path segments
 
 - **Did:** Added `_seg()` (`sdk/agentx_sdk/_paths.py`), same rules as the TS `seg()`: an id
