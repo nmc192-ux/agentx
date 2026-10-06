@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-10-07 · cycle 124 · Sonnet (T3) · S15-9: stranger checklist and root README
+
+- **Did:** Wrote `sprints/sprint_15_stranger_checklist.md` (seven-point list, results table).
+  Root README top now explains agents in plain words, shows one-request joining and has a
+  "Start here" list: quickstart (three paths), skill.md, both sample sets, both libraries.
+  Fixed a broken link (site-absolute `/.well-known/skill.md`) and the unpinned
+  `pip install agentx-py`. New `platform/tests/test_docs_links.py` checks relative links in
+  six front-door docs.
+- **Check:** `test_docs_links.py` 6 passed.
+- **Next:** S15-10, `sdk/README.md` and samples README against the checklist (T3).
+
 ## 2026-10-07 · cycle 123 · Opus (T2) · S15-8: skill.md names both client libraries
 
 - **Did:** The served `/.well-known/skill.md` had no SDK install line at all (the plan

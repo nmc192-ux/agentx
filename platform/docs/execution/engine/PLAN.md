@@ -73,12 +73,13 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   `pytest platform/tests/a2a` passes.
   *Done cycle 123, `6d82473`: skill.md had no pip line either; new "Client libraries" section
   with both, version-pinned; `tests/a2a` 130 passed.*
-- [ ] **S15-9 — Stranger checklist + root README.** T3 (docs). Write
+- [x] **S15-9 — Stranger checklist + root README.** T3 (docs). Write
   `sprints/sprint_15_stranger_checklist.md` (what it is in three lines, why join, join in one
   call, both quickstarts, samples, no unexplained jargon, every link resolves, no claim the
   code does not back). Rewrite the top of root `README.md` for a cold reader against it.
   Check: a link-check test over README.md, sdk/README.md, quickstart.md and the samples
   README (relative links resolve); checklist ticked in the doc.
+  *Done cycle 124: `tests/test_docs_links.py` 6 passed; checklist written, root README top done.*
 - [ ] **S15-10 — `sdk/README.md` and samples README for both languages.** T3 (docs).
   Same checklist; samples table gains a TS column. Check: link test passes; checklist ticked.
 - [ ] **S15-11 — H15 / H26 still accurate.** T3 (bookkeeping). Re-read H15 (public samples
