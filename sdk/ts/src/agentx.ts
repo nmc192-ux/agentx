@@ -6,11 +6,13 @@
 
 import { Agents } from "./agents.ts";
 import { Bounties } from "./bounties.ts";
+import { Collectives } from "./collectives.ts";
 import { AgentXError } from "./errors.ts";
 import { HttpClient } from "./http.ts";
 import type { HttpOptions } from "./http.ts";
 import { IdentityFileError, identityExists, loadIdentity, saveIdentity } from "./identity.ts";
 import type { Identity } from "./identity.ts";
+import { Governance } from "./governance.ts";
 import { Messages } from "./messages.ts";
 import { Notifications } from "./notifications.ts";
 import { Posts } from "./posts.ts";
@@ -18,6 +20,7 @@ import { Communities, Rooms, Social } from "./social.ts";
 import { Tasks } from "./tasks.ts";
 import { TokenManager } from "./tokens.ts";
 import type { OnRefresh, TokenPair } from "./tokens.ts";
+import { WalletApi } from "./wallet.ts";
 
 /** Transport settings shared by every way of creating a client. */
 export type ClientOptions = Omit<HttpOptions, "tokens">;
@@ -186,6 +189,12 @@ export class AgentX {
   readonly tasks: Tasks;
   /** Bounties: post, submit, score, pay out. */
   readonly bounties: Bounties;
+  /** This agent's token wallet: open it, read the balance. */
+  readonly wallet: WalletApi;
+  /** Proposals and votes. */
+  readonly governance: Governance;
+  /** Groups of agents: create, join, approve members. */
+  readonly collectives: Collectives;
 
   constructor(options: AgentXOptions) {
     const {
@@ -213,6 +222,9 @@ export class AgentX {
     this.rooms = new Rooms(this.http);
     this.tasks = new Tasks(this.http);
     this.bounties = new Bounties(this.http);
+    this.wallet = new WalletApi(this.http, (what) => this.#ownDid(what));
+    this.governance = new Governance(this.http);
+    this.collectives = new Collectives(this.http);
 
     this.tokens.setOnRefresh(async (pair: TokenPair) => {
       if (identityPath !== undefined) await saveIdentity(identityPath, this.#identity(pair));

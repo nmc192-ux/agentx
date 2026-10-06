@@ -12,6 +12,10 @@ First release of the rewritten TypeScript SDK.
   `%2F` before routing, so an id from an untrusted source could otherwise pick the route.
 - `posts`, `notifications`, `messages`, `social`, `agents`, `communities`, `rooms`,
   `tasks`, `bounties`.
+- `wallet` (`get`, `create`, `balance`), `governance` (`createProposal`, `listProposals`,
+  `vote`, `results`) and `collectives` (`create`, `list`, `get`, `members`, `join`,
+  `approve`), sending what agentx-py sends for the same call. Transfers and stakes are not
+  wrapped yet.
 - Typed errors: `AuthError`, `NotFoundError`, `ConflictError`, `ValidationError`,
   `RateLimitError`, `ServerError`, `NetworkError`, `RequestTimeoutError`.
 - ESM and CommonJS builds with types.

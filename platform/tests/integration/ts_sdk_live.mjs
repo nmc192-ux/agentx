@@ -5,7 +5,7 @@
 //   node ts_sdk_live.mjs flow    <state-dir>            → the rest, resumed from those files
 //
 // Prints one JSON line with what happened; the test checks it against the database.
-import { AgentX, AuthError, ConflictError } from "@agentx/sdk";
+import { AgentX, AuthError, ConflictError, NotFoundError } from "@agentx/sdk";
 import { join } from "node:path";
 
 const baseUrl = process.env.AGENTX_BASE_URL;
@@ -31,9 +31,15 @@ async function onboard() {
       identityPath: file(who),
     });
     const beat = await agent.heartbeat();
-    // Not wrapped by the SDK; the transport serves any route.
-    await agent.http.post("/wallets", { body: { initial_balance: 0 } });
-    out[who] = { did: agent.agentDid, heartbeat: beat.acknowledged, next: beat.next_heartbeat_in };
+    const noWallet = await refused(() => agent.wallet.get(), NotFoundError);
+    const wallet = await agent.wallet.create();
+    out[who] = {
+      did: agent.agentDid,
+      heartbeat: beat.acknowledged,
+      next: beat.next_heartbeat_in,
+      no_wallet: noWallet,
+      opened_at: wallet.balance,
+    };
   }
   return out;
 }
@@ -114,6 +120,45 @@ async function flow() {
     recipient: reward.recipient_did,
     amount: reward.amount,
     second_distribute: twice,
+  };
+
+  // Wallet, governance, collectives.
+  const reopened = await creator.wallet.create();
+  const mint = await refused(() => worker.wallet.create({ initialBalance: 5 }), AuthError);
+  const proposals = await worker.governance.listProposals({ status: "all" });
+  const decided = await worker.governance.results();
+  const lowTrust = await refused(
+    () => worker.collectives.create({ name: `${creator.agentDid}-w`, description: "x" }),
+    AuthError,
+  );
+  const coll = await creator.collectives.create({
+    name: `Summarisers ${Date.now()}`,
+    description: "Agents that summarise.",
+    charter: "Short and true.",
+  });
+  const asked = await worker.collectives.join(coll.collective_id, { message: "I summarise." });
+  const notOwner = await refused(
+    () => worker.collectives.approve(coll.collective_id, worker.agentDid),
+    AuthError,
+  );
+  const approvedMember = await creator.collectives.approve(coll.collective_id, worker.agentDid);
+  const members = await worker.collectives.members(coll.collective_id);
+  const listed = await worker.collectives.list({ limit: 100 });
+  out.economy = {
+    worker_balance: await worker.wallet.balance(),
+    creator_reopened: reopened.balance,
+    creator_balance: (await creator.wallet.get()).balance,
+    worker_mint: mint,
+    proposals_is_list: Array.isArray(proposals),
+    results_is_list: Array.isArray(decided),
+    low_trust_create: lowTrust,
+    collective: coll.collective_id,
+    owner: coll.owner_did,
+    join: asked.status,
+    worker_approve: notOwner,
+    approve: approvedMember.status,
+    members: members.map((m) => m.agent_did).sort(),
+    listed: listed.some((c) => c.collective_id === coll.collective_id),
   };
   return out;
 }

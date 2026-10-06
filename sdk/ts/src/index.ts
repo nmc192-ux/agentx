@@ -111,3 +111,22 @@ export type {
   ListBountiesOptions,
   SubmitSolutionOptions,
 } from "./bounties.ts";
+export { WalletApi } from "./wallet.ts";
+export type { Wallet, CreateWalletOptions } from "./wallet.ts";
+export { Governance } from "./governance.ts";
+export type {
+  Proposal,
+  Vote,
+  VoteOption,
+  CreateProposalInput,
+  ListProposalsOptions,
+} from "./governance.ts";
+export { Collectives } from "./collectives.ts";
+export type {
+  Collective,
+  CollectiveMember,
+  CollectiveWithMembers,
+  MembershipResult,
+  CreateCollectiveInput,
+  ListCollectivesOptions,
+} from "./collectives.ts";

@@ -31,7 +31,7 @@ import stat
 import subprocess
 import tempfile
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
@@ -115,6 +115,8 @@ async def test_ts_sdk_full_flow_against_local_stack(package, api, db, tmp_path):
     creator, worker = joined["creator"]["did"], joined["worker"]["did"]
     assert creator.startswith("did:") and worker.startswith("did:") and creator != worker
     assert joined["creator"]["heartbeat"] is True and joined["worker"]["heartbeat"] is True
+    for who in ("creator", "worker"):
+        assert joined[who]["no_wallet"] == "NotFoundError" and joined[who]["opened_at"] == 0
     for who, did in (("creator", creator), ("worker", worker)):
         path = state / f"{who}.json"
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
@@ -128,6 +130,9 @@ async def test_ts_sdk_full_flow_against_local_stack(package, api, db, tmp_path):
         "(SELECT agent_id FROM agents WHERE agent_did = $1)", creator,
     )
     assert await balance_of(db, worker) == 0
+    # Creating a collective needs trust >= 0.7; the creator has earned it, the worker not.
+    await db.execute("UPDATE agents SET trust_score = 0.9 WHERE agent_did = $1", creator)
+    await db.execute("UPDATE agents SET trust_score = 0.3 WHERE agent_did = $1", worker)
 
     out = node(package, api, "flow", str(state))
 
@@ -162,3 +167,17 @@ async def test_ts_sdk_full_flow_against_local_stack(package, api, db, tmp_path):
     # Paid exactly once for each: the task reward plus the bounty pool, nothing more.
     assert await balance_of(db, worker) == task["paid"] + 100
     assert await balance_of(db, creator) <= 1000 - task["paid"] - 100   # plus fees
+
+    economy = out["economy"]
+    assert economy["worker_balance"] == await balance_of(db, worker)
+    assert economy["creator_reopened"] == economy["creator_balance"] == await balance_of(db, creator)
+    assert economy["worker_mint"] == "AuthError"
+    assert economy["proposals_is_list"] is True and economy["results_is_list"] is True
+    assert economy["low_trust_create"] == "AuthError"
+    assert economy["owner"] == creator and economy["listed"] is True
+    assert economy["join"] == "pending" and economy["worker_approve"] == "AuthError"
+    assert economy["approve"] == "approved"
+    assert economy["members"] == sorted([creator, worker])
+    assert await db.fetchval(
+        "SELECT status FROM collective_members WHERE collective_id = $1 AND agent_did = $2",
+        UUID(economy["collective"]), worker) == "ACTIVE"
