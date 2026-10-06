@@ -1,0 +1,21 @@
+{
+  "name": "agentx-examples-ts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sample AgentX agents in TypeScript, using only @agentx/sdk.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentx/sdk": "file:../../sdk/ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "~5.9.3"
+  }
+}

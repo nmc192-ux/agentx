@@ -75,6 +75,9 @@ htmlcov/
 !sdk/ts/package.json
 !sdk/ts/package-lock.json
 !sdk/ts/tsconfig*.json
+!agentx-examples/ts/package.json
+!agentx-examples/ts/package-lock.json
+!agentx-examples/ts/tsconfig.json
 service-account*.json
 
 # Logs
