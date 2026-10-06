@@ -1,7 +1,7 @@
 # Sprint 15 — Developer docs and samples in two languages (draft)
 
-**Drafted by:** the engine, cycle 103 (2026-10-07). **Status:** draft; decomposed after
-Sprint 14 closes. Depends on Sprint 14 (`@agentx/sdk`).
+**Drafted by:** the engine, cycle 103 (2026-10-07). **Status:** decomposed cycle 115 into
+`execution/engine/PLAN.md` (S15-1 … S15-13). Depends on Sprint 14 (`@agentx/sdk`).
 
 ## Why
 
