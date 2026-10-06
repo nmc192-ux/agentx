@@ -52,13 +52,16 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
   from `sdk/README.md`. Check: the test passes; README examples type-check.
 - [human] **S14-9 — Publish `@agentx/sdk` 0.1.0 to npm.** H26 written (cycle 103). Engine
   part: keep H26 accurate as the package changes. T3.
-- [ ] **S14-10 — 5a security review (T1).** Review S14-2 (token refresh, marked `SECURITY-REVIEW:`), S14-3 (and any other
-  `SECURITY-REVIEW:` commit of this sprint built on Opus/Sonnet): try to leak or misuse the
-  stored tokens, add adversarial tests, fix what is found.
-  **Also fix (found cycle 106):** `agentx-py`'s `AgentIdentity.save` (`sdk/agentx_sdk/auth.py`)
-  writes the token pair with the default mode (0644 under a normal umask), so other local
-  users can read it, and it silently overwrites an existing file. Make it write 0600
-  atomically like the TS SDK, with tests. (The TS SDK refuses such files on load.)
+- [x] **S14-10 — 5a security review (T1).** (cycle 113, `39e0942`) Reviewed S14-2 and S14-3
+  (both `SECURITY-REVIEW:`, built on Opus). No token leak in the refresh path. Found and
+  fixed 4 issues: TS `seg()` encoded `/` as `%2F`, which the server decodes before routing
+  (an id could pick the route); a TS resave dropped `owner_id`; Python `AgentIdentity.save`
+  wrote 0644, non-atomically, through symlinks, and `onboard(identity_path=)` overwrote an
+  existing file; the Python client never re-saved the file after a refresh. Adversarial
+  tests added on both sides (symlinks, planted files, crafted ids, foreign `agent_did` in a
+  refresh body). **Follow-up (T2, Sprint 15 or later):** agentx-py f-strings ids into
+  paths with no check at all (`f"/posts/{post_id}/like"`), so the same slash issue exists
+  there across many namespaces; a shared `_seg()` helper is the fix.
 - [ ] **S14-11 — Sprint close.** T2. Run the spec's acceptance locally, `sprint_14_retro.md`,
   update `state_of_agentx.md`, short merge briefing, archive this plan, decompose Sprint 15.
 

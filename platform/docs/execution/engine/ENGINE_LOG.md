@@ -1,5 +1,41 @@
 # Engine log
 
+## 2026-10-07 · cycle 113 · Fable (T1) · S14-10: sprint-close security review
+
+- **Did:** Step 5a for Sprint 14. **Reviewed 2 commits** (`5108b26` transport and token
+  refresh, `0135f7a` onboard and identity file, both `SECURITY-REVIEW:` on Opus) plus the
+  Python identity code flagged in cycle 106. **Found 4 issues, fixed all 4** in `39e0942`:
+  1. TS `seg()` encoded `/` as `%2F` and the tests claimed an id "cannot reach another route".
+     Checked against uvicorn/Starlette locally: `%2F` is decoded *before* routing, so
+     `posts.get("abc/replies")` really called `GET /posts/abc/replies`. An id from an untrusted
+     source could choose the route (e.g. `tasks.approve(id)`). Now a `TypeError` before any
+     request; the three "stays one segment" tests were rewritten to assert the refusal.
+  2. TS resave after a refresh dropped `owner_id` from the identity file shared with agentx-py.
+  3. agentx-py `AgentIdentity.save` wrote 0644, non-atomically, and followed a planted symlink;
+     `onboard(identity_path=)` silently overwrote an existing file (a re-run setup script would
+     mint a second agent and destroy the first one's only credentials). Now 0600 via `O_EXCL`
+     temp + fsync + `os.replace`; `load` tightens a readable file to 0600 with a warning and
+     refuses if it cannot; `onboard` refuses an existing path before sending anything unless
+     `overwrite_identity=True`.
+  4. agentx-py never re-saved the identity file after a token refresh, so the on-disk pair
+     expired within a day and a restart after a long run could not resume. Fixed.
+  No token leak found in the TS refresh path (inspect/JSON/stack of errors, single-flight, 401
+  retry bound, refresh never sent with a bearer header, DID in file never taken from a refresh
+  body). Adversarial tests added on both sides (symlink to readable target, planted symlink,
+  directory, umask 000, chmod denied, foreign `agent_did` in a refresh body, crafted ids).
+- **Decisions I made:** agentx-py *tightens* a 0644 identity file on load instead of refusing
+  it like the TS SDK: every file written by older agentx-py versions is 0644, so refusing would
+  break every existing Python agent on upgrade; tightening leaves them secure after one run.
+  Reversible (one branch in `load`). Python changes go into the unreleased 0.4.0 entry (H12).
+- **Considered, not changed:** plain `http://` base URLs are allowed (dev/LAN use; default is
+  HTTPS); `fetch` follows redirects (Node's undici strips `Authorization` cross-origin).
+- **Follow-up recorded in PLAN (T2):** agentx-py builds paths with bare f-strings, so the slash
+  issue in (1) exists there too, across many namespaces.
+- **Check:** `npm test` in `sdk/ts` **116/116**; `pytest sdk/tests` **388 passed** (21 new);
+  `tests/integration/test_ts_sdk_live_db.py --db` **1 passed**. H26 unchanged and accurate.
+- **Next:** S14-11 sprint close (T2): acceptance, `sprint_14_retro.md`, `state_of_agentx.md`,
+  merge briefing, archive plan, decompose Sprint 15.
+
 ## 2026-10-07 · cycle 112 · Sonnet (T3) · S14-8: pack check, README, parity table, changelog
 
 - **Did:** `sdk/tests/test_ts_pack.py` packs `sdk/ts` with `npm pack`, checks the tarball holds only

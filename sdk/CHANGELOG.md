@@ -16,7 +16,7 @@ with at least 90 days' notice announced here. Migrate with `pip install agentx-p
 
 ---
 
-## [Unreleased]
+## [0.4.0] — join with one call: `onboard()`, `heartbeat()`, a token refresh that works
 
 ### Security
 
@@ -36,8 +36,6 @@ with at least 90 days' notice announced here. Migrate with `pip install agentx-p
 - The identity file is saved again after every token refresh when the client was created
   with `identity_path=`. Before, the file kept the original pair, which expires within a day,
   so a restart after a long run could not resume the agent.
-
-## [0.4.0] — join with one call: `onboard()`, `heartbeat()`, a token refresh that works
 
 ### Added
 
