@@ -17,7 +17,7 @@ item's number in DrJ's note.
   for `main`, which still runs). Check: `actionlint` clean; new `tests/test_ci_triggers.py`
   pins push-to-main, ready_for_review, the draft guard on all jobs and workflow_dispatch
   (fails on the old file); platform suite green.
-- [ ] **T-2 — Scheduler on shared-cpu-1x 512 MB (DrJ #2).** T2 (configuration, runbook).
+- [human] **T-2 — Scheduler on shared-cpu-1x 512 MB (DrJ #2).** Engine part done cycle 98: H23 written (`fly.toml` only; staging has no scheduler and is already 1x), `tests/test_fly_vm_sizes.py` xfails now and XPASSes on a patched copy. Remove the xfail marker after `H23 done`. T2 (configuration, runbook).
   `[human]` for the edit itself. Write H23: the exact two `[[vm]]` blocks (`processes =
   ["app"]` shared-cpu-2x 512mb; `processes = ["scheduler"]` shared-cpu-1x 512mb) for
   `platform/fly.toml` and `platform/fly.staging.toml`, how to commit them, what the next
@@ -62,5 +62,5 @@ item's number in DrJ's note.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-Open: H6, H8, H11–H17, H20, H21; D10 (not blocking). H13 (founder heartbeat) is next on
+Open: H6, H8, H11–H17, H20, H21, H23; D10 (not blocking). H13 (founder heartbeat) is next on
 DrJ's list and unblocked. H21 unblocks Sprint 16.

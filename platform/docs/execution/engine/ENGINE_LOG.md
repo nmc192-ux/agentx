@@ -1,5 +1,21 @@
 # Engine log
 
+## 2026-10-06 · cycle 98 · Opus (T2) · T-2 engine part done: H23 scheduler machine size
+
+- **Did:** wrote H23 for DrJ: replace the single `[[vm]]` in `platform/fly.toml` with one block
+  per process group (`app` shared-cpu-2x 512 MB, `scheduler` shared-cpu-1x 512 MB), via a small
+  PR to main, then `fly scale show` to check; revert-the-PR fallback. New
+  `platform/tests/test_fly_vm_sizes.py`: production check xfail (non-strict) until the edit
+  lands; a test applying the exact H23 text to the current file proves it passes; a negative
+  test proves the single shared block fails; staging pinned to no process groups, one 1x VM.
+  T-2 marked `[human]`.
+- **Decisions I made:** `fly.staging.toml` is left alone (no `[processes]`, API only, already
+  shared-cpu-1x), contrary to the spec's "same for staging". The H23-text test skips once the
+  old block is gone, so a slightly different paste by DrJ cannot turn CI red. Reversible.
+- **Check:** new tests 3 passed, 1 xfailed; on a scratch copy with H23 applied: XPASS.
+  Platform suite (no `--db`): 2961 passed, 544 skipped, 1 xfailed.
+- **Next:** T-3, Sentry `automaticVercelMonitors` deprecation (T3).
+
 ## 2026-10-06 · cycle 97 · Opus (T2) · T-1 done: CI skips draft PRs
 
 - **Did:** `ci.yml` — `pull_request` now has `types: [opened, reopened, synchronize,

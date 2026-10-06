@@ -4,6 +4,48 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H23 — Give the scheduler its own, smaller machine (about ten minutes plus CI and deploy time; saves money, no downtime expected).**
+  Added cycle 98 (Sprint 13 T-2, your note item 2). Today `platform/fly.toml` has one `[[vm]]`
+  block, so both the API (`app`) and the scheduler (`scheduler`, one Celery worker) run on
+  shared-cpu-2x, 512 MB. The scheduler needs only shared-cpu-1x, 512 MB. The engine may not
+  edit Fly files, so this one is yours. `fly.staging.toml` needs **no change** (staging runs
+  only the API, already on one shared-cpu-1x machine).
+  **1.** On GitHub, open the AgentX repo, switch to the `main` branch, open
+  `platform/fly.toml` and click the pencil (Edit).
+  **2.** Find these three lines (under "Machine sizing"):
+  ```
+  [[vm]]
+    size   = "shared-cpu-2x"
+    memory = "512mb"
+  ```
+  and replace exactly those three lines with:
+  ```
+  [[vm]]
+    processes = ["app"]
+    size      = "shared-cpu-2x"
+    memory    = "512mb"
+
+  [[vm]]
+    processes = ["scheduler"]
+    size      = "shared-cpu-1x"
+    memory    = "512mb"
+  ```
+  Leave everything else as it is.
+  **3.** Click "Commit changes…", choose **"Create a new branch for this commit and start a
+  pull request"**, message `fly: scheduler on shared-cpu-1x`. Open the pull request into `main`.
+  **4.** Wait for CI to go green. Merge, then approve the
+  `production` step in the Deploy workflow. On that deploy Fly resizes the scheduler machine;
+  the API machine keeps its size.
+  **5.** Check (Terminal): `fly scale show -a agentx-platform`. It should list `app` as
+  shared-cpu-2x 512 MB and `scheduler` as shared-cpu-1x 512 MB. Then
+  `fly logs -a agentx-platform` for a minute: the scheduler should log `celery@… ready` and
+  its beat ticks, with no restarts.
+  **If something looks wrong:** revert the pull request on GitHub (the "Revert" button on the
+  merged PR) and merge the revert; the next deploy puts both back on shared-cpu-2x.
+  **6.** Tell the engine in a resume note: `H23 done` plus what `fly scale show` printed. The
+  engine then turns the test into a hard guard.
+  Unblocks: nothing else; it is a cost saving.
+
 - [x] **H22 — Merge `engine/phase-a` into `main` (now unblocked; about fifteen minutes plus CI time).**
   **Done 5 Oct (DrJ):** merged as PR 11 and deployed. Staging was first reset from production
   (its schema was broken); staging and production are both at migration 047, 86 tables,
