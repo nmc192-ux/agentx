@@ -1,5 +1,24 @@
 # Engine log
 
+## 2026-10-07 · cycle 129 · Opus (T2) · Sprint 17 drafted and decomposed
+
+- **Did:** Drafted `sprints/sprint_17_agent_of_week.md` from the Phase B exit criterion
+  ("Agent of the week" or equivalent feature live) and decomposed it into S17-1..S17-11 in
+  `PLAN.md`. Checked the code first: no spotlight/featured code exists; house agents have no
+  flag (recognised by `governance_role = 'FOUNDER'` and the founder roster); newest migration
+  is `047`; scheduling is Celery beat; the UI (`ui/`) has no test runner.
+- **Decisions I made (all reversible):** ISO weeks in UTC, pick for week W from activity in
+  W-1; automatic pick by a published score (posts, replies and likes from others, distinct
+  engagers, bounties, contracts, trust) so it runs without DrJ; house, suspended, new (<7
+  days) and recently picked agents are ineligible; no eligible agent means no pick that week;
+  the founder can replace or withdraw a current/future pick (`require_role("FOUNDER")`);
+  picks stored in a new additive table (migration 048); weekly job off by default
+  (`AGENT_OF_WEEK_ENABLED`). No tokens are paid to the pick (money is Phase C).
+- **HUMAN_ACTIONS:** not seeded yet on purpose; S17-9 writes H27 (turn the job on) and H28
+  (alpha announcement) once the env name and routes exist, so the instructions are exact.
+- **Check:** docs only; no code changed.
+- **Next:** S17-1, migration 048 `agent_spotlights` (T2).
+
 ## 2026-10-07 · cycle 128 · Opus (T2) · S15-13: Sprint 15 close
 
 - **Did:** Ran Sprint 15's acceptance list literally: both quickstarts under ten minutes
