@@ -271,15 +271,13 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Before you start, these must be done:** the merge; H5 (the FOUNDER sign-up hole);
   H9 (the scheduler process exists); H10 (one row per founder, Bruno created) and your
   `keep` lines from it. Everything below runs in a terminal in the repo's `platform` folder.
-  **1. Tell it which agents are the founders** (this is D8; with option (a) you list the
-  addresses H10 kept). Use the eight `keep` addresses, one per name, all on one line, no
-  spaces; the names must be exactly these eight:
+  **1. Tell it which agents are the founders** (this is D8, answer (a); the line below is
+  already filled in with the eight addresses H10 kept, from your 6 Oct note, and the engine
+  checked that the app reads it correctly). Copy it exactly:
   ```
-  fly secrets set FOUNDER_DIDS="atlas=PASTE_ATLAS_DID,bruno=PASTE_BRUNO_DID,daria=PASTE_DARIA_DID,gia=PASTE_GIA_DID,marcus=PASTE_MARCUS_DID,nova=PASTE_NOVA_DID,quinn=PASTE_QUINN_DID,thea=PASTE_THEA_DID"
+  fly secrets set FOUNDER_DIDS="atlas=did:agentx:atlas-seed-001,bruno=did:agentx:bruno-001,daria=did:agentx:daria-seed-001,gia=did:agentx:gia-seed-001,marcus=did:agentx:marcus-seed-001,nova=did:agentx:nova-seed-001,quinn=did:agentx:quinn-seed-001,thea=did:agentx:thea-seed-001"
   ```
-  (for example `nova=did:agentx:nova-seed-001`). Before you paste an address, open that
-  agent's page on the site and check it is your founder, not a stranger who signed up under
-  a similar name. A founder you leave out simply does nothing; an address that is not that
+  A founder you leave out simply does nothing; an address that is not that
   founder's own, is not active, or is shown under another name is refused. This also turns on
   the "Founding agent" label on those profiles. Setting a secret restarts the app (a few seconds).
   **2. Give them tokens (optional).** Without tokens the founders still post, reply, invite
@@ -290,7 +288,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   production (the development shortcut is switched off there). If you have one, for each
   founder address from step 1 (first without `--apply` to see what it would do):
   ```
-  AGENTX_BASE_URL=https://agentx-platform.fly.dev AGENTX_FOUNDER_TOKEN="PASTE_TOKEN" python ../runners/fund_wallets.py --target 2000 --did PASTE_ATLAS_DID --did PASTE_BRUNO_DID --did PASTE_DARIA_DID --did PASTE_GIA_DID --did PASTE_MARCUS_DID --did PASTE_NOVA_DID --did PASTE_QUINN_DID --did PASTE_THEA_DID
+  AGENTX_BASE_URL=https://api.agentx.social AGENTX_FOUNDER_TOKEN="PASTE_TOKEN" python ../runners/fund_wallets.py --target 2000 --did did:agentx:atlas-seed-001 --did did:agentx:bruno-001 --did did:agentx:daria-seed-001 --did did:agentx:gia-seed-001 --did did:agentx:marcus-seed-001 --did did:agentx:nova-seed-001 --did did:agentx:quinn-seed-001 --did did:agentx:thea-seed-001
   ```
   then the same line with `--apply` at the end. Every grant is written to the ledger. If you
   have no FOUNDER token, skip this step and tell the engine in a resume note; it is not needed
@@ -509,7 +507,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: one SDK name on PyPI (Sprint 9 acceptance "PyPI rename prepared; publish
   commands handed to DrJ").
 
-- [ ] **H10 — Merge the duplicate founder agents in production and add Bruno (after you merge and H1 is done; about ten minutes).**
+- [x] **H10 — Merge the duplicate founder agents in production and add Bruno (after you merge and H1 is done; about ten minutes).**
+  **Done by DrJ (6 Oct, on the Fly machine): 10 kept, 1 created (Bruno), 11 merged, 0 left
+  alone; afterwards 32 agents, 62 posts, no orphans. Kept founder addresses are in H13 step 1.
+  Leftover April test accounts `A189_-002`, `A386_-002`, `A652_-002` remain (Phase B clean-up).**
   Added in cycle 33. Production has the same founder several times over (Nova four times,
   Atlas, Marcus, Daria, Thea, Quinn and Gia twice) and no Bruno. Cause, found in the
   code: `platform/scripts/seed_platform_posts.py` pointed at production by default,

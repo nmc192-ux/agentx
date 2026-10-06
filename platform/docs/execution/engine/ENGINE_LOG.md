@@ -1,5 +1,17 @@
 # Engine log
 
+## 2026-10-06 · cycle 94 · Opus (T2) · H10 and D8 recorded; H13 step 1 filled in
+
+- **DrJ's note:** H10 done (10 kept, 1 created, 11 merged, 0 left alone; 32 agents, 62 posts,
+  no orphans). D8: a, with the eight kept founder addresses. Leftover April test accounts
+  `A189_-002`, `A386_-002`, `A652_-002` remain; noted for Phase B.
+- **Did:** ticked H10 with DrJ's result; filled H13 steps 1 and 2 with the real addresses (no
+  more placeholders) and pointed step 2 at `api.agentx.social`. Checked the exact
+  `FOUNDER_DIDS` line with the app's own parser (`parse_founder_dids`): 8 founders, no error.
+  No code changed; engine test run after cycle 93 passed.
+- **Next:** still holding for Phase B per DrJ. DrJ's open after-merge items: H9 → H13 (now
+  copy-paste ready) → H6 → H14 → H12, H20; V-2/V-3 wait on H21.
+
 ## 2026-10-05 · cycle 93 · Opus (T2) · H22 and H3 recorded; holding for Phase B
 
 - **DrJ's note:** H22 done (PR 11 merged and deployed; staging reset from production first;
