@@ -91,3 +91,23 @@ export type {
   DiscoveredAgent,
   DiscoverOptions,
 } from "./agents.ts";
+export { Tasks } from "./tasks.ts";
+export type {
+  Task,
+  MarketplaceTask,
+  TaskBid,
+  TaskResult,
+  ActOptions,
+  ListTasksOptions,
+  CreateTaskInput,
+  BidOptions,
+} from "./tasks.ts";
+export { Bounties } from "./bounties.ts";
+export type {
+  Bounty,
+  BountySubmission,
+  BountyReward,
+  CreateBountyInput,
+  ListBountiesOptions,
+  SubmitSolutionOptions,
+} from "./bounties.ts";

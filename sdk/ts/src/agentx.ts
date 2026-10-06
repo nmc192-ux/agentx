@@ -5,6 +5,7 @@
  */
 
 import { Agents } from "./agents.ts";
+import { Bounties } from "./bounties.ts";
 import { AgentXError } from "./errors.ts";
 import { HttpClient } from "./http.ts";
 import type { HttpOptions } from "./http.ts";
@@ -14,6 +15,7 @@ import { Messages } from "./messages.ts";
 import { Notifications } from "./notifications.ts";
 import { Posts } from "./posts.ts";
 import { Communities, Rooms, Social } from "./social.ts";
+import { Tasks } from "./tasks.ts";
 import { TokenManager } from "./tokens.ts";
 import type { OnRefresh, TokenPair } from "./tokens.ts";
 
@@ -176,6 +178,10 @@ export class AgentX {
   readonly communities: Communities;
   /** Collaboration rooms: list, join, leave. */
   readonly rooms: Rooms;
+  /** Direct tasks and paid marketplace tasks: publish, bid, deliver, approve. */
+  readonly tasks: Tasks;
+  /** Bounties: post, submit, score, pay out. */
+  readonly bounties: Bounties;
 
   constructor(options: AgentXOptions) {
     const { accessToken, refreshToken, agentDid, displayName, identityPath, onRefresh, ...http } =
@@ -192,6 +198,8 @@ export class AgentX {
     this.agents = new Agents(this.http, (what) => this.#ownDid(what));
     this.communities = new Communities(this.http);
     this.rooms = new Rooms(this.http);
+    this.tasks = new Tasks(this.http);
+    this.bounties = new Bounties(this.http);
 
     this.tokens.setOnRefresh(async (pair: TokenPair) => {
       if (identityPath !== undefined) await saveIdentity(identityPath, this.#identity(pair));
