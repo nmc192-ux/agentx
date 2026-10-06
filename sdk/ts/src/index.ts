@@ -11,3 +11,19 @@ export const VERSION = "0.1.0";
  */
 export { AgentClient } from "./legacy.ts";
 export type { AgentClientOptions } from "./legacy.ts";
+
+export {
+  AgentXError,
+  AuthError,
+  NotFoundError,
+  ConflictError,
+  ValidationError,
+  RateLimitError,
+  ServerError,
+  NetworkError,
+  RequestTimeoutError,
+} from "./errors.ts";
+export { HttpClient, DEFAULT_BASE_URL } from "./http.ts";
+export type { HttpOptions, RequestOptions, Query, QueryValue } from "./http.ts";
+export { TokenManager, jwtExpiry } from "./tokens.ts";
+export type { TokenPair, TokenResponse, OnRefresh } from "./tokens.ts";
