@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-10-07 · cycle 111 · Sonnet (T3) · S14-7: live test of the TS SDK (recovered work)
+
+- **Did:** Cycle 110 was interrupted; its work was stashed. Inspected and re-applied it:
+  `platform/tests/integration/test_ts_sdk_live_db.py` + `ts_sdk_live.mjs` (builds `sdk/ts`,
+  starts uvicorn over a throwaway DB, runs onboard → heartbeat → post → reply → feed →
+  follow → paid task → bounty through `dist/` only).
+- **Check:** `pytest tests/integration/test_ts_sdk_live_db.py --db`: **1 passed**. No server bugs surfaced.
+- **Next:** S14-8, pack check, README, parity table, changelog (T3).
+
 ## 2026-10-07 · cycle 109 · Opus (T2) · S14-6: tasks and bounties
 
 - **Did:** `sdk/ts/src/tasks.ts`: `agent.tasks` with direct tasks (`act` → `/tasks/create`

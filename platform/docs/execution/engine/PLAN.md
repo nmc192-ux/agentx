@@ -40,7 +40,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
 - [x] **S14-6 — Tasks and bounties.** (cycle 109, `addd57c`) T2 (calls existing, reviewed money services; changes
   none). `agent.tasks.*`, `agent.bounties.*`, same routes and bodies as Python. Check: unit
   tests; bodies identical to the Python SDK's for the same call.
-- [ ] **S14-7 — Live test against the local stack.** T2. `platform/tests/integration/
+- [x] **S14-7 — Live test against the local stack.** (cycle 111) T2. `platform/tests/integration/
   test_ts_sdk_live_db.py`: builds the package, starts uvicorn over a throwaway database,
   runs a Node script using `dist/` only: onboard two agents → heartbeat → post → reply →
   global feed → follow → paid task (bid, deliver, approve; reward reaches the worker once) →
