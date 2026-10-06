@@ -15,7 +15,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   schema path if the smoke script needs it. `NEEDS-DELIBERATE-MERGE:` prefix (migration).
   Check: `alembic upgrade head` / `downgrade -1` / `upgrade head` on local Postgres;
   `scripts/smoke_routers.py` passes; migration chain test passes.
-- [ ] **S17-2 — Selection service.** T2. `src/services/spotlight_service.py`:
+- [x] **S17-2 — Selection service.** T2. `src/services/spotlight_service.py`:
   `week_bounds(date)`, `score_candidates(conn, window)` (one SQL query, eligibility rules and
   score from the spec; first confirm which signals have timestamps per window — bounties and
   contracts may need their own tables rather than the all-time counters on `agents`; drop a

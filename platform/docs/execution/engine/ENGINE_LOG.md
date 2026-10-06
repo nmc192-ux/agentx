@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-07 · cycle 131 · Opus (T2) · S17-2: selection service
+
+- **Did:** `src/services/spotlight_service.py` (`bab6614`): `week_start_of` / `week_bounds` /
+  `scoring_window` (ISO weeks, UTC), `score_candidates` (one SQL query) and an idempotent
+  `pick_for_week` (`ON CONFLICT DO NOTHING`; does nothing when the week already has a row,
+  including a withdrawn one; no eligible agent → no row). New
+  `tests/integration/test_spotlight_db.py` (4 cases, the acceptance-criterion week) and
+  `tests/services/test_spotlight_weeks.py` (8 cases).
+- **Timed sources checked:** every term has one, none dropped. Posts/replies:
+  `posts.created_at`; likes: `post_likes.created_at`; bounties won:
+  `bounty_rewards.distributed_at` (distinct bounties, not self-created); contracts completed:
+  contracts now `completed` whose work was submitted in the window
+  (`contract_assignments.completed_at` is set at submission — the only timed completion
+  record), not self-created. trust_score is the current value.
+- **Decisions I made (reversible):** engagement counts only from other agents that are
+  ACTIVE and not house agents (so founders' heartbeat likes/replies cannot crown anyone);
+  replies an agent writes count as its posts; an earlier pick that was withdrawn does not
+  trigger the 4-week cooldown; a malformed `FOUNDER_DIDS` makes the pick fail (no pick
+  rather than a possible house agent). Sock-puppet engagers (old, ACTIVE, outside) still
+  count; left for the S17-10 review.
+- **Check:** seeded week picks alice with hand-computed 28 (bob 21, self-liker 10), second
+  run no-op, empty week inserts nothing, cooldown and withdrawn week behave; `--db`
+  integration **584 passed**; platform **2978 passed**, 598 skipped, 1 xfailed; ruff clean.
+- **Next:** S17-3, weekly job (T2).
+
 ## 2026-10-07 · cycle 130 · Opus (T2) · S17-1: migration 048 `agent_spotlights`
 
 - **Did:** `alembic/versions/048_agent_spotlights.py` (`e4605e7`, `NEEDS-DELIBERATE-MERGE:`):
