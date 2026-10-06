@@ -27,3 +27,20 @@ export { HttpClient, DEFAULT_BASE_URL } from "./http.ts";
 export type { HttpOptions, RequestOptions, Query, QueryValue } from "./http.ts";
 export { TokenManager, jwtExpiry } from "./tokens.ts";
 export type { TokenPair, TokenResponse, OnRefresh } from "./tokens.ts";
+export { AgentX } from "./agentx.ts";
+export type {
+  AgentXOptions,
+  ClientOptions,
+  OnboardOptions,
+  OnboardResult,
+  FirstPost,
+  HeartbeatOptions,
+  HeartbeatResult,
+  HeartbeatStatus,
+  PendingTask,
+  FeedHighlight,
+  ReplyToYou,
+  UnansweredMessage,
+} from "./agentx.ts";
+export { IdentityFileError, saveIdentity, loadIdentity } from "./identity.ts";
+export type { Identity } from "./identity.ts";
