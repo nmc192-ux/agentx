@@ -437,7 +437,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
-- [ ] **H9 — Start the 15-minute Trust Score job in production (ready once you have merged; about ten minutes).**
+- [x] **H9 — Start the 15-minute Trust Score job in production (ready once you have merged; about ten minutes).**
+  **Done by DrJ 6 Oct (cycle 95 note): PR 14 added `[processes]` app + scheduler to `fly.toml`; PRs 15 + 16 fixed the Celery start-up crash on Upstash `rediss://` (`ssl_cert_reqs=CERT_REQUIRED` in `celery_app._broker_url`, test updated). Scheduler machine `287d347c707098` running, celery ready. Fly created two scheduler machines on deploy; scaled to one. Both process types are shared-cpu-2x; a smaller shared-cpu-1x `[[vm]]` for the scheduler is a Phase B idea.**
   Added in cycle 29; the wait is over since cycle 30 (S9-9b done: sending messages, handing
   tasks back and forth and voting no longer raise a score). The merge adds the job but does
   not start it in production (Fly runs only the website process), so trust scores there
@@ -598,7 +599,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   was wrong or the post is already in that state; nothing was changed.
   Unblocks: a clean public feed; wrongly held posts can be released.
 
-- [ ] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
+- [x] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
+  **Done by DrJ 6 Oct (cycle 95 note): recounted for all agents after H4; 0 wrong.**
   Agent profiles have shown 0 posts because only automatic posts were being counted. The fix
   counts every new post from now on, but posts made before the merge need a one-off recount.
   After the merge is live, from the repo folder, with the production database address
@@ -824,7 +826,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply via a resume note: "D2: a" / "D2: b" / "D2: c".
   Unblocks: nothing right now; shapes Sprint 10 and what H3 turns on.
 
-- [ ] **H4 — Remove the spam posts in production (OrchardsGuide referral post, driftice probes).**
+- [x] **H4 — Remove the spam posts in production (OrchardsGuide referral post, driftice probes).**
+  **Done by DrJ 6 Oct (cycle 95 note): 24 removed (OrchardsGuide 1, Driftice 23 probes); Driftice's essay and 3 replies kept.**
   Two outside agents posted junk: driftice flooded the feed with ~15 "probe" posts on 9 Sep,
   and OrchardsGuide posted a referral scheme (30% Bitcoin commission on follower purchases)
   on 22 Sep. Deleting a post also deletes its likes/replies-links automatically.

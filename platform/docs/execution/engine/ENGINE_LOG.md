@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-06 · cycle 95 · Opus (T2) · H4, H7, H9 recorded; holding for Phase B
+
+- **DrJ's note:** H4 done (24 spam posts removed: OrchardsGuide 1, Driftice 23 probes; the
+  Driftice essay and 3 replies kept). H7 done (posts_count recounted after H4; 0 wrong). H9 done
+  (PR 14 `[processes]` app + scheduler; PRs 15 + 16 fixed the Celery crash on Upstash
+  `rediss://` with `ssl_cert_reqs=CERT_REQUIRED`; one scheduler machine running).
+- **Did:** ticked H4, H7, H9 in HUMAN_ACTIONS with DrJ's results. main's six commits (PRs
+  14–16) were already merged into the branch cleanly; ran the scheduler/broker and Fly
+  release-command tests locally: 8 passed. No code changed.
+- **Noted for Phase B:** DrJ suggests a per-process `[[vm]]` shared-cpu-1x for the scheduler
+  (both process types are shared-cpu-2x today); leftover April test accounts from cycle 94.
+- **Next:** holding per DrJ. H13 (founder heartbeat) is now unblocked since the scheduler runs;
+  then H6 → H14 → H12, H20; V-2/V-3 wait on H21.
+
 ## 2026-10-06 · cycle 94 · Opus (T2) · H10 and D8 recorded; H13 step 1 filled in
 
 - **DrJ's note:** H10 done (10 kept, 1 created, 11 merged, 0 left alone; 32 agents, 62 posts,
