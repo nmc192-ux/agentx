@@ -19,6 +19,10 @@ What is proven:
   • collective-coordinator with low trust founds nothing; with trust ≥ 0.7 it
     founds the collective; a second agent asks to join and rings the owner
     once; the owner approves it on its next run; nobody is approved twice
+  • request-fulfiller wins a task it can do and delivers; it is paid only on
+    approval, and once; after a rejection it redelivers, following the note
+  • bounty-hunter submits once to the open bounty for its capability, skips
+    the past-deadline one and others' capabilities, and reports its win once
 
 Run: cd platform && .venv/bin/python -m pytest tests/integration -v --db
 """
@@ -29,6 +33,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import asyncpg
@@ -37,7 +42,7 @@ import pytest
 import pytest_asyncio
 
 from .conftest import PG_PORT, PG_USER, smoke
-from .test_sample_agents_db import _env, did_of, onboard, unique
+from .test_sample_agents_db import _env, balance_of, did_of, funded, onboard, unique
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
 
@@ -241,3 +246,123 @@ async def test_collective_coordinator_founds_admits_and_waits(samples, api, db, 
     assert "member of" in out
     out = coordinator(lead)
     assert "approved 0 new, 2 member(s)" in out
+
+
+# ── request-fulfiller ─────────────────────────────────────────────────────────
+
+async def test_request_fulfiller_is_paid_only_after_approval(samples, api, db, state):
+    creator = await funded(api, db, "TsRequester")
+    text = "Agents trade work on AgentX. Rewards sit in escrow. Creators approve results."
+    r = httpx.post(f"{api}/tasks", headers=creator["auth"], timeout=20, json={
+        "task_type": "text.summarize", "payload": {"text": text}, "reward": 50,
+    })
+    assert r.status_code == 201, r.text
+    task_id = r.json()["task_id"]
+    r = httpx.post(f"{api}/tasks", headers=creator["auth"], timeout=20, json={
+        "task_type": "image.generate", "payload": {}, "reward": 10,
+    })
+    other_id = r.json()["task_id"]
+    status = "SELECT status FROM tasks WHERE task_id = $1"
+    results = "SELECT COUNT(*) FROM task_results WHERE task_id = $1"
+
+    name = unique("TsWorker")
+
+    def worker_run() -> str:
+        return run(samples, api, state, "request-fulfiller", "--name", name)
+
+    out = worker_run()
+    assert f"won and delivered task {task_id}" in out
+    worker = did_of(state, name)
+    assert await db.fetchval(status, task_id) == "in_review"
+    assert await balance_of(db, worker) == 0          # delivered, not yet paid
+
+    out = worker_run()
+    assert "waiting" in out
+    assert await db.fetchval(results, task_id) == 1   # no second delivery
+    assert await balance_of(db, worker) == 0
+
+    # The creator wants more: rejected, back to the same worker, still unpaid.
+    r = httpx.post(f"{api}/tasks/{task_id}/reject", headers=creator["auth"], timeout=20,
+                   json={"reason": "Please say a little more."})
+    assert r.status_code == 200, r.text
+    out = worker_run()
+    assert f"redelivered task {task_id}" in out
+    r = httpx.get(f"{api}/tasks/{task_id}/results", headers=creator["auth"], timeout=20)
+    newest = r.json()[0]
+    assert newest["verification_status"] == "pending"
+    assert newest["result_payload"]["summary"].count(".") == 2
+    assert await balance_of(db, worker) == 0
+
+    r = httpx.post(f"{api}/tasks/{task_id}/approve", headers=creator["auth"], timeout=20)
+    assert r.status_code == 200, r.text
+    paid = r.json()["reward_released"]
+    assert paid > 0
+    assert await db.fetchval(status, task_id) == "COMPLETED"
+    assert await balance_of(db, worker) == paid
+
+    out = worker_run()
+    assert f"paid 50 for task {task_id}" in out
+    out = worker_run()
+    assert "paid" not in out and "no open task I can do" in out
+    assert await balance_of(db, worker) == paid       # paid once
+    assert await db.fetchval(status, other_id) == "open"   # not its kind of work
+
+
+# ── bounty-hunter ─────────────────────────────────────────────────────────────
+
+async def test_bounty_hunter_submits_before_deadline_and_reports_win(samples, api, db, state):
+    creator = await funded(api, db, "TsSponsor")
+    cap = unique("cap.")
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+
+    def bounty(title: str, capability: str, pool: int) -> str:
+        r = httpx.post(f"{api}/markets/bounties", headers=creator["auth"], timeout=20, json={
+            "title": title, "description": f"{title}. Explain it in one line.",
+            "capability_required": capability, "reward_pool": pool, "deadline": tomorrow,
+        })
+        assert r.status_code == 201, r.text
+        return r.json()["bounty_id"]
+
+    live = bounty("Summarize the escrow rules", cap, 100)
+    late = bounty("Summarize the trust rules", cap, 40)
+    elsewhere = bounty("Draw a logo", unique("cap."), 30)
+    # The second bounty's deadline has passed (in the live network: time went by).
+    await db.execute(
+        "UPDATE capability_bounties SET deadline = NOW() - INTERVAL '1 minute' "
+        "WHERE bounty_id = $1", late,
+    )
+    count = (
+        "SELECT COUNT(*) FROM bounty_submissions s JOIN agents a "
+        "ON a.agent_id = s.submitter_id WHERE s.bounty_id = $1 AND a.agent_did = $2"
+    )
+
+    name = unique("TsHunter")
+
+    def hunter_run() -> str:
+        return run(samples, api, state, "bounty-hunter", "--name", name, "--capability", cap)
+
+    out = hunter_run()
+    hunter = did_of(state, name)
+    assert "Summarize the escrow rules" in out and "trust rules" not in out
+    assert await db.fetchval(count, live, hunter) == 1
+    assert await db.fetchval(count, late, hunter) == 0
+    assert await db.fetchval(count, elsewhere, hunter) == 0
+
+    out = hunter_run()
+    assert "nothing new" in out
+    assert await db.fetchval(count, live, hunter) == 1
+
+    subs = httpx.get(f"{api}/markets/bounties/{live}/submissions", timeout=20).json()
+    sid = next(s["submission_id"] for s in subs if s["submitter_did"] == hunter)
+    r = httpx.post(f"{api}/markets/bounties/{live}/submissions/{sid}/evaluate",
+                   headers=creator["auth"], json={"score": 0.9}, timeout=20)
+    assert r.status_code == 200, r.text
+    r = httpx.post(f"{api}/markets/bounties/{live}/distribute",
+                   headers=creator["auth"], timeout=20)
+    assert r.status_code == 200, r.text
+    assert await balance_of(db, hunter) == 100
+
+    out = hunter_run()
+    assert 'won 100 on "Summarize the escrow rules"' in out
+    out = hunter_run()
+    assert "won" not in out
