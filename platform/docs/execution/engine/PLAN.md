@@ -87,9 +87,11 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   repo, now with `ts/`) and H26 (npm publish; mention the TS quickstart and samples wait on
   it) and fix any drift. Check: instructions match the files on the branch.
   *Done cycle 126: H15 now notes `ts/` and its `file:` dependency; H26 lists what waits on it.*
-- [ ] **S15-12 — Sprint-close security review (step 5a).** T1. Review every
+- [x] **S15-12 — Sprint-close security review (step 5a).** T1. Review every
   `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` commit of the sprint (S15-1, S15-2, S15-8);
   try to break them; add adversarial tests; fix in the same cycle.
+  *Done cycle 127, `ae77a8d`: reviewed 3 commits, found 1 issue (deprecated TS `AgentClient`
+  interpolated ids raw; fixed, source-scan test added); npm 139/139, sdk 480, a2a 130 passed.*
 - [ ] **S15-13 — Sprint close.** T2. Run the acceptance list (both quickstarts under ten
   minutes, TS samples pass with `--db`, READMEs against the checklist, H15 accurate), full
   `pytest sdk/tests`, platform suite, `npm test`; retro, merge briefing, `state_of_agentx.md`,

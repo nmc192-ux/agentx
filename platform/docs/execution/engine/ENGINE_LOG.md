@@ -1,5 +1,21 @@
 # Engine log
 
+## 2026-10-07 · cycle 127 · Fable (T1) · S15-12: sprint-close security review
+
+- **Did:** Reviewed the sprint's three flagged commits: `8cb3f21` (S15-1, Python `_seg`),
+  `e4cda85` (S15-2, TS wallet/governance/collectives), `6d82473` (S15-8, skill.md install
+  lines). **Reviewed 3 commits, found 1 issue.** The deprecated but still exported TS
+  `AgentClient` (`sdk/ts/src/legacy.ts`) put nine ids into paths raw; `fetch()`'s URL parser
+  folds `..` and `%2e%2e` away, so `getProfile("../tasks/X/approve")` sent
+  `GET /tasks/X/approve`. Fixed in `ae77a8d` (`SECURITY-REVIEW:`): all nine through `seg()`,
+  legacy refusal tests, a TS source-scan test mirroring the Python one (it also caught a
+  constant `${which}` in `social.ts`, now wrapped), and Python `_seg` adversarial cases
+  (`%2e%2e`, `.%2e`, full-width solidus, CR/LF, `str` subclass, objects whose `__str__`
+  holds a slash). S15-1, the S15-2 namespaces and S15-8 held up: no change needed.
+- **Check:** `npm test` **139/139**, `npm run build` ok, `pytest sdk/tests` **480 passed**,
+  `pytest platform/tests/a2a` **130 passed**, ruff clean.
+- **Next:** S15-13, sprint close (T2): acceptance list, retro, `state_of_agentx.md`, archive plan.
+
 ## 2026-10-07 · cycle 126 · Sonnet (T3) · S15-11: H15 / H26 drift
 
 - **Did:** H15 (public samples repo) now says the folder includes `ts/`, and warns that the TS
