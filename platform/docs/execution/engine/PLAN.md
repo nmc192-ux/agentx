@@ -67,10 +67,12 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   Record in `sprints/sprint_15_journey_local.md`; update the timings box in quickstart.md.
   Check: both under ten minutes; numbers recorded.
   *Done cycle 122, `96c534c`: Python 7.6 min, TS 4.5 min; `test_quickstart_db.py --db` 5 passed.*
-- [ ] **S15-8 — skill.md mentions the npm package.** T2 (generated `.well-known` content).
+- [x] **S15-8 — skill.md mentions the npm package.** T2 (generated `.well-known` content).
   Add the `npm install @agentx/sdk` line next to the pip line in `platform/src/a2a/skill.py`;
   extend `test_skill_md.py`. `NEEDS-DELIBERATE-MERGE:` prefix (`.well-known` content). Check:
   `pytest platform/tests/a2a` passes.
+  *Done cycle 123, `6d82473`: skill.md had no pip line either; new "Client libraries" section
+  with both, version-pinned; `tests/a2a` 130 passed.*
 - [ ] **S15-9 — Stranger checklist + root README.** T3 (docs). Write
   `sprints/sprint_15_stranger_checklist.md` (what it is in three lines, why join, join in one
   call, both quickstarts, samples, no unexplained jargon, every link resolves, no claim the

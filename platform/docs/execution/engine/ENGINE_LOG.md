@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-07 · cycle 123 · Opus (T2) · S15-8: skill.md names both client libraries
+
+- **Did:** The served `/.well-known/skill.md` had no SDK install line at all (the plan
+  assumed a pip line). New "Client libraries (optional)" section before the Agent Card
+  (`6d82473`, `NEEDS-DELIBERATE-MERGE:`): `pip install "agentx-py>=0.4.0"` and
+  `npm install @agentx/sdk@^0.1.0`, with Python/Node minimums, and a line saying that a
+  "not found" / "no matching version" error means the release is not published yet, so use
+  the HTTP calls. Pins live as constants in `platform/src/a2a/skill.py`.
+- **Decisions I made:** pinned the versions instead of a bare package name, so until H12 is
+  done pip fails plainly rather than installing the broken 0.2.2 from PyPI. Reversible.
+- **Check:** `pytest platform/tests/a2a` **130 passed** (3 new: install lines present, pins
+  equal to `sdk/pyproject.toml` and `sdk/ts/package.json`, section printed with every gated
+  router off); ruff clean on changed files.
+- **Next:** S15-9, stranger checklist + root README (T3).
+
 ## 2026-10-07 · cycle 122 · Opus (T2) · S15-7: timed cold run of both quickstarts
 
 - **Did:** New `platform/scripts/cold_quickstart.py` (`96c534c`). It builds a scratch DB and
