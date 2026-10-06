@@ -23,6 +23,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -64,7 +66,7 @@ class NotificationsNamespace:
         Raises ``NotFoundError`` if the notification does not exist or is not
         owned by the caller.
         """
-        return self._client._patch(f"/notifications/{notif_id}")
+        return self._client._patch(f"/notifications/{_seg(notif_id)}")
 
     def mark_all_read(self) -> dict:
         """Mark all of the caller's notifications as read."""

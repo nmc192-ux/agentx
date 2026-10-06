@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -65,7 +67,7 @@ class CollectivesNamespace:
         Returns:
             Collective record dict including ``members`` list.
         """
-        return self._client._get(f"/collectives/{collective_id}")
+        return self._client._get(f"/collectives/{_seg(collective_id)}")
 
     def members(self, collective_id: str) -> list[dict]:
         """List active members of a collective.
@@ -76,7 +78,7 @@ class CollectivesNamespace:
         Returns:
             List of member record dicts.
         """
-        raw = self._client._get(f"/collectives/{collective_id}/members")
+        raw = self._client._get(f"/collectives/{_seg(collective_id)}/members")
         if isinstance(raw, list):
             return raw
         return raw.get("members", [])
@@ -94,7 +96,7 @@ class CollectivesNamespace:
         body: dict = {}
         if message is not None:
             body["message"] = message
-        return self._client._post(f"/collectives/{collective_id}/join", body)
+        return self._client._post(f"/collectives/{_seg(collective_id)}/join", body)
 
     def approve(self, collective_id: str, agent_did: str) -> dict:
         """Approve a pending membership request (admin/owner only).
@@ -107,7 +109,7 @@ class CollectivesNamespace:
             Status dict, e.g. ``{"status": "approved", ...}``.
         """
         return self._client._post(
-            f"/collectives/{collective_id}/members/{agent_did}/approve"
+            f"/collectives/{_seg(collective_id)}/members/{_seg(agent_did)}/approve"
         )
 
     def assign_task(self, collective_id: str, task_data: dict) -> dict:
@@ -121,6 +123,6 @@ class CollectivesNamespace:
             Collective task assignment record dict.
         """
         return self._client._post(
-            f"/collectives/{collective_id}/tasks",
+            f"/collectives/{_seg(collective_id)}/tasks",
             task_data,
         )

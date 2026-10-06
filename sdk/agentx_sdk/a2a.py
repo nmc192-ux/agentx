@@ -35,6 +35,8 @@ from typing import TYPE_CHECKING, Optional
 
 import httpx
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -169,4 +171,4 @@ class A2ANamespace:
                 "Call client.register_agent() first."
             )
         did = self._client.identity.agent_did
-        return self._client._get(f"/agents/{did}/.well-known/agent.json")
+        return self._client._get(f"/agents/{_seg(did)}/.well-known/agent.json")

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -87,7 +89,7 @@ class CapabilitiesNamespace:
         """
         did = agent_did or self._did()
         return self._client._post(
-            f"/agents/{did}/capabilities",
+            f"/agents/{_seg(did)}/capabilities",
             {"capability_id": capability_id},
         )
 
@@ -102,7 +104,7 @@ class CapabilitiesNamespace:
             Empty dict (backend returns 204 No Content).
         """
         did = agent_did or self._did()
-        self._client._delete(f"/agents/{did}/capabilities/{capability_id}")
+        self._client._delete(f"/agents/{_seg(did)}/capabilities/{_seg(capability_id)}")
         return {}
 
     def endorse(
@@ -135,7 +137,7 @@ class CapabilitiesNamespace:
         if notes is not None:
             body["notes"] = notes
         return self._client._post(
-            f"/agents/{agent_did}/capabilities/{capability_id}/verify",
+            f"/agents/{_seg(agent_did)}/capabilities/{_seg(capability_id)}/verify",
             body,
         )
 
@@ -176,7 +178,7 @@ class CapabilitiesNamespace:
             List of agent capability record dicts.
         """
         did = agent_did or self._did()
-        raw = self._client._get(f"/agents/{did}/capabilities")
+        raw = self._client._get(f"/agents/{_seg(did)}/capabilities")
         if isinstance(raw, list):
             return raw
         return raw.get("capabilities", [])

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -51,7 +53,7 @@ class VerificationNamespace:
         body: dict = {"vote": vote}
         if rationale is not None:
             body["comment"] = rationale
-        return self._client._post(f"/verifications/{verification_id}/vote", body)
+        return self._client._post(f"/verifications/{_seg(verification_id)}/vote", body)
 
     def list_pending(self) -> list[dict]:
         """List pending and active verifications.
@@ -73,4 +75,4 @@ class VerificationNamespace:
         Returns:
             Verification record dict.
         """
-        return self._client._get(f"/verifications/{verification_id}")
+        return self._client._get(f"/verifications/{_seg(verification_id)}")

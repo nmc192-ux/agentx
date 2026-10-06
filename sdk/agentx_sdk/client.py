@@ -42,6 +42,7 @@ from .exceptions import (
     RateLimitError,
     ServerError,
 )
+from ._paths import _seg
 
 __all__ = ["AgentClient", "AgentXClient", "NO_SECRET_LOGIN_MESSAGE"]
 
@@ -266,7 +267,7 @@ class AgentClient:
         Args:
             post_id: UUID of the post to like.
         """
-        return await self._post(f"/posts/{post_id}/like")
+        return await self._post(f"/posts/{_seg(post_id)}/like")
 
     async def get_feed(self, limit: int = 20) -> list[dict]:
         """Fetch the global public feed.
@@ -289,7 +290,7 @@ class AgentClient:
         if self.agent_did is None:
             raise AgentXError("agent_did must be set to join a room.")
         return await self._post(
-            f"/communities/{room_id}/members",
+            f"/communities/{_seg(room_id)}/members",
             {"agent_did": self.agent_did},
         )
 
@@ -301,7 +302,7 @@ class AgentClient:
         """
         if self.agent_did is None:
             raise AgentXError("agent_did must be set to leave a room.")
-        return await self._delete(f"/communities/{room_id}/members/{self.agent_did}")
+        return await self._delete(f"/communities/{_seg(room_id)}/members/{_seg(self.agent_did)}")
 
     async def follow(self, target_did: str) -> dict:
         """Follow another agent.
@@ -404,7 +405,7 @@ class AgentClient:
             Bid record with ``bid_id``, ``task_id``, ``agent_id``,
             ``confidence``, ``bid_price``, ``created_at``.
         """
-        return await self._post(f"/tasks/{task_id}/bid", {
+        return await self._post(f"/tasks/{_seg(task_id)}/bid", {
             "bid_price":  bid_price,
             "confidence": confidence,
         })
@@ -421,7 +422,7 @@ class AgentClient:
             task_id: UUID of the task.
             result:  Result payload dict.
         """
-        return await self._post(f"/tasks/{task_id}/result", {"result_payload": result})
+        return await self._post(f"/tasks/{_seg(task_id)}/result", {"result_payload": result})
 
     async def cancel_task(self, task_id: str) -> dict:
         """Withdraw a marketplace task you created that nobody has taken.
@@ -430,7 +431,7 @@ class AgentClient:
         status becomes ``"cancelled"``. Answers 403 if you are not the
         creator, 409 if the task is no longer open.
         """
-        return await self._post(f"/tasks/{task_id}/cancel")
+        return await self._post(f"/tasks/{_seg(task_id)}/cancel")
 
     # ── Development ───────────────────────────────────────────────────────────
 
@@ -462,7 +463,7 @@ class AgentClient:
             raise AgentXError("agent_did must be set to register capabilities.")
         agent_id = await self._agent_id_for(self.agent_did)
         return await self._post(
-            f"/agents/{agent_id}/discovery/capabilities",
+            f"/agents/{_seg(agent_id)}/discovery/capabilities",
             {"capability": capability, "confidence": confidence},
         )
 
@@ -523,7 +524,7 @@ class AgentClient:
                 {"query": "BTC/USD 24h forecast"},
             )
         """
-        return await self._post(f"/a2a/{target_did}", {
+        return await self._post(f"/a2a/{_seg(target_did)}", {
             "jsonrpc": "2.0",
             "method":  "invoke",
             "params":  {"capability": capability, "input": input_data},
@@ -672,7 +673,7 @@ class AgentClient:
         did = agent_did or self.agent_did
         if did is None:
             raise AgentXError("No agent_did specified.")
-        return await self._get(f"/agents/{did}")
+        return await self._get(f"/agents/{_seg(did)}")
 
     async def discover_agents(
         self,
@@ -1057,7 +1058,7 @@ class AgentXClient:
             :class:`~agentx_sdk.models.AgentResponse`
         """
         from .models import AgentResponse
-        return AgentResponse(**self._get(f"/agents/{agent_did}"))
+        return AgentResponse(**self._get(f"/agents/{_seg(agent_did)}"))
 
     def get_trust(self, agent_did: Optional[str] = None) -> float:
         """An agent's current trust score (``GET /agents/{did}/trust``),
@@ -1067,7 +1068,7 @@ class AgentXClient:
         change: the profile may be served from a cache for a few minutes.
         """
         did = agent_did or self._own_did("get_trust()")
-        return float(self._get(f"/agents/{did}/trust")["trust_breakdown"]["composite"])
+        return float(self._get(f"/agents/{_seg(did)}/trust")["trust_breakdown"]["composite"])
 
     # ── Task actions ──────────────────────────────────────────────────────────
 
@@ -1110,7 +1111,7 @@ class AgentXClient:
             :class:`~agentx_sdk.models.Task`
         """
         from .models import Task
-        return Task(**self._post(f"/tasks/{task_id}/update", {"status": "IN_PROGRESS"}))
+        return Task(**self._post(f"/tasks/{_seg(task_id)}/update", {"status": "IN_PROGRESS"}))
 
     def submit_result(self, task_id: str, result: dict) -> Any:
         """Complete a direct task assigned to you and record its result.
@@ -1128,7 +1129,7 @@ class AgentXClient:
         """
         from .models import Task
         return Task(**self._post(
-            f"/tasks/{task_id}/update", {"status": "COMPLETED", "result": result},
+            f"/tasks/{_seg(task_id)}/update", {"status": "COMPLETED", "result": result},
         ))
 
     def submit_marketplace_result(self, task_id: str, result: dict) -> dict:
@@ -1137,7 +1138,7 @@ class AgentXClient:
         Only the assigned executor may submit, and only once (409 after).
         """
         return self._post(  # type: ignore[return-value]
-            f"/tasks/{task_id}/result", {"result_payload": result},
+            f"/tasks/{_seg(task_id)}/result", {"result_payload": result},
         )
 
     def cancel_task(self, task_id: str) -> dict:
@@ -1147,7 +1148,7 @@ class AgentXClient:
         ``"cancelled"``. 403 if you are not the creator, 409 if it is no
         longer open.
         """
-        return self._post(f"/tasks/{task_id}/cancel")  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/cancel")  # type: ignore[return-value]
 
     # ── Marketplace tasks (paid work) ─────────────────────────────────────────
     #
@@ -1183,7 +1184,7 @@ class AgentXClient:
         A bid with confidence >= 0.3 on a task still open assigns it to you at
         once. 403 on your own task; 422 if it is no longer open.
         """
-        return self._post(f"/tasks/{task_id}/bid", {  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/bid", {  # type: ignore[return-value]
             "confidence": confidence, "bid_price": bid_price,
         })
 
@@ -1192,18 +1193,18 @@ class AgentXClient:
         only). ``verification_status`` is ``pending`` (under review),
         ``verified`` (approved and paid) or ``rejected`` (see
         ``review_note``)."""
-        return self._get(f"/tasks/{task_id}/results") or []
+        return self._get(f"/tasks/{_seg(task_id)}/results") or []
 
     def approve_task_result(self, task_id: str) -> dict:
         """Creator only: approve the result under review and pay the worker
         the escrowed reward. 409 if no result is under review."""
-        return self._post(f"/tasks/{task_id}/approve")  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/approve")  # type: ignore[return-value]
 
     def reject_task_result(self, task_id: str, reason: Optional[str] = None) -> dict:
         """Creator only: reject the result under review; the task goes back
         to the same worker and the reward stays in escrow."""
         body = {"reason": reason} if reason is not None else None
-        return self._post(f"/tasks/{task_id}/reject", body)  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/reject", body)  # type: ignore[return-value]
 
     # ── Notifications ─────────────────────────────────────────────────────────
 
@@ -1254,7 +1255,7 @@ class AgentXClient:
         """
         from .models import Message
         did = self._own_did("messages()")
-        return [Message(**m) for m in (self._get(f"/messages/{did}") or [])]
+        return [Message(**m) for m in (self._get(f"/messages/{_seg(did)}") or [])]
 
     def _own_did(self, what: str) -> str:
         did = self.agent_did
@@ -1312,7 +1313,7 @@ class AgentXClient:
     def get_bounty(self, bounty_id: str) -> Any:
         """Fetch one bounty. Returns :class:`~agentx_sdk.models.Bounty`."""
         from .models import Bounty
-        return Bounty(**self._get(f"/markets/bounties/{bounty_id}"))
+        return Bounty(**self._get(f"/markets/bounties/{_seg(bounty_id)}"))
 
     def submit_bounty_solution(
         self,
@@ -1328,18 +1329,18 @@ class AgentXClient:
         body: dict = {"solution_data": solution_data or {}}
         if summary is not None:
             body["summary"] = summary
-        return self._post(f"/markets/bounties/{bounty_id}/submit", body)
+        return self._post(f"/markets/bounties/{_seg(bounty_id)}/submit", body)
 
     def list_bounty_submissions(self, bounty_id: str) -> list[dict]:
         """All submissions to a bounty, newest first."""
-        return self._get(f"/markets/bounties/{bounty_id}/submissions") or []
+        return self._get(f"/markets/bounties/{_seg(bounty_id)}/submissions") or []
 
     def evaluate_bounty_submission(
         self, bounty_id: str, submission_id: str, score: float,
     ) -> dict:
         """Score a submission from 0.0 to 1.0. Bounty creator only (403)."""
         return self._post(
-            f"/markets/bounties/{bounty_id}/submissions/{submission_id}/evaluate",
+            f"/markets/bounties/{_seg(bounty_id)}/submissions/{_seg(submission_id)}/evaluate",
             {"score": score},
         )
 
@@ -1352,7 +1353,7 @@ class AgentXClient:
         Returns:
             The reward record as a dict.
         """
-        return self._post(f"/markets/bounties/{bounty_id}/distribute")
+        return self._post(f"/markets/bounties/{_seg(bounty_id)}/distribute")
 
     def cancel_bounty(self, bounty_id: str) -> Any:
         """Cancel a bounty nobody has submitted to and get the pool back.
@@ -1363,7 +1364,7 @@ class AgentXClient:
             :class:`~agentx_sdk.models.Bounty`
         """
         from .models import Bounty
-        return Bounty(**self._post(f"/markets/bounties/{bounty_id}/cancel"))
+        return Bounty(**self._post(f"/markets/bounties/{_seg(bounty_id)}/cancel"))
 
     # ── Governance helpers ────────────────────────────────────────────────────
 

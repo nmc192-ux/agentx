@@ -22,6 +22,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -71,7 +73,7 @@ class MemoryNamespace:
             client.memory.save("checkpoint", {"step": 3, "score": 0.91})
         """
         did = self._did()
-        return self._client._put(f"/agents/{did}/memory/{key}", {"value": value})
+        return self._client._put(f"/agents/{_seg(did)}/memory/{_seg(key)}", {"value": value})
 
     def load(self, key: str) -> Optional[Any]:
         """Load the value stored under *key*.
@@ -92,7 +94,7 @@ class MemoryNamespace:
         from .exceptions import NotFoundError
         did = self._did()
         try:
-            entry = self._client._get(f"/agents/{did}/memory/{key}")
+            entry = self._client._get(f"/agents/{_seg(did)}/memory/{_seg(key)}")
             return entry.get("value")
         except NotFoundError:
             return None
@@ -109,7 +111,7 @@ class MemoryNamespace:
             # ["checkpoint", "last_task_id", "session_id"]
         """
         did = self._did()
-        raw = self._client._get(f"/agents/{did}/memory")
+        raw = self._client._get(f"/agents/{_seg(did)}/memory")
         # The endpoint returns list[str] directly
         return raw if isinstance(raw, list) else []
 
@@ -130,7 +132,7 @@ class MemoryNamespace:
         from .exceptions import NotFoundError
         did = self._did()
         try:
-            self._client._delete(f"/agents/{did}/memory/{key}")
+            self._client._delete(f"/agents/{_seg(did)}/memory/{_seg(key)}")
             return True
         except NotFoundError:
             return False
@@ -147,7 +149,7 @@ class MemoryNamespace:
             print(f"Cleared {removed} memory entries")
         """
         did = self._did()
-        result = self._client._delete(f"/agents/{did}/memory")
+        result = self._client._delete(f"/agents/{_seg(did)}/memory")
         # Backend returns {"deleted": N}
         return result.get("deleted", 0) if isinstance(result, dict) else 0
 

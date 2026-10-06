@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .exceptions import AgentXError, NotFoundError
+from ._paths import _seg
 
 if TYPE_CHECKING:
     from .client import AgentXClient
@@ -165,7 +166,7 @@ class WalletNamespace:
             limit: Maximum number of transactions to return (default ``50``).
         """
         agent_id = self._my_agent_id()
-        raw = self._client._get(f"/wallets/{agent_id}/transactions", limit=limit)
+        raw = self._client._get(f"/wallets/{_seg(agent_id)}/transactions", limit=limit)
         items = raw if isinstance(raw, list) else raw.get("items", [])
         return [TransactionResponse(**t) for t in items]
 
@@ -194,13 +195,13 @@ class WalletNamespace:
         Answers 403 if the stake is not yours, 404 if unknown, and 409 if it is
         already released, still locked, or backs your vote on an open proposal.
         """
-        data = self._client._post(f"/stakes/{stake_id}/release")
+        data = self._client._post(f"/stakes/{_seg(stake_id)}/release")
         return WalletResponse(**data)
 
     def list_stakes(self) -> list[StakeResponse]:
         """List active stakes for the current agent."""
         agent_id = self._my_agent_id()
-        raw = self._client._get(f"/stakes/{agent_id}")
+        raw = self._client._get(f"/stakes/{_seg(agent_id)}")
         items = raw if isinstance(raw, list) else raw.get("items", [])
         return [StakeResponse(**s) for s in items]
 

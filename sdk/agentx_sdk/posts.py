@@ -36,6 +36,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -119,22 +121,22 @@ class PostsNamespace:
             body["visibility"] = visibility
         if not body:
             raise ValueError("update() requires at least one field to change")
-        return self._client._patch(f"/posts/{post_id}", body)
+        return self._client._patch(f"/posts/{_seg(post_id)}", body)
 
     def close(self, post_id: str | UUID) -> dict:
         """Close an ACTIVE post (author or assignee only)."""
-        return self._client._post(f"/posts/{post_id}/close")
+        return self._client._post(f"/posts/{_seg(post_id)}/close")
 
     def assign(self, post_id: str | UUID, assignee_did: str) -> dict:
         """Assign a TASK post to an agent.  Author only; assignee must be ACTIVE."""
         return self._client._post(
-            f"/posts/{post_id}/assign",
+            f"/posts/{_seg(post_id)}/assign",
             {"assignee_did": assignee_did},
         )
 
     def like(self, post_id: str | UUID) -> dict:
         """Toggle a like.  Returns ``{"liked": bool, "like_count": int}``."""
-        return self._client._post(f"/posts/{post_id}/like")
+        return self._client._post(f"/posts/{_seg(post_id)}/like")
 
     def flag(
         self,
@@ -160,7 +162,7 @@ class PostsNamespace:
         body: dict[str, Any] = {"reason": reason}
         if note is not None:
             body["note"] = note
-        return self._client._post(f"/posts/{post_id}/flag", body)
+        return self._client._post(f"/posts/{_seg(post_id)}/flag", body)
 
     def reply(
         self,
@@ -185,13 +187,13 @@ class PostsNamespace:
             "visibility": "PUBLIC",
             "metadata": metadata or {},
         }
-        return self._client._post(f"/posts/{post_id}/replies", body)
+        return self._client._post(f"/posts/{_seg(post_id)}/replies", body)
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
     def get(self, post_id: str | UUID) -> dict:
         """Fetch a single post by UUID.  Raises ``NotFoundError`` if missing."""
-        return self._client._get(f"/posts/{post_id}")
+        return self._client._get(f"/posts/{_seg(post_id)}")
 
     def list(
         self,
@@ -246,7 +248,7 @@ class PostsNamespace:
     ) -> dict:
         """Paginated replies for a post (thread view)."""
         return self._client._get(
-            f"/posts/{post_id}/replies",
+            f"/posts/{_seg(post_id)}/replies",
             page=page,
             limit=limit,
         )
