@@ -32,16 +32,16 @@ item's number in DrJ's note.
   likely `[human]`: write H24 with the exact setting for DrJ, and say that past commits keep
   their author (only new commits change). Check: H24 written; if the engine can set it, the
   next commit's author email is the noreply address.
-- [ ] **T-5 — Safe removal of the April test accounts (DrJ #3).** **T1** (script deletes
-  production data). `platform/scripts/remove_test_accounts.py`, modelled on
-  `grant_founder.py`: `show` / `remove`, dry run unless `--apply` (the dry run runs the same
-  statements and rolls back); matches only `A189_-002`, `A386_-002`, `A652_-002`,
-  `canary-*`, `sdk-canary-*`, `Prod Smoke *`; refuses any founder, any FOUNDER/ADMIN role,
-  any agent with a non-zero balance or open escrow, and any match count above a cap unless
-  named; prints every row it would touch (agent, posts, follows, etc.); writes `audit_logs`
-  in the same transaction. `SECURITY-REVIEW:`. Check: real-Postgres tests prove every
-  refusal leaves the database unchanged and the dry run changes nothing; H25 written with
-  dry run first, then apply.
+- [x] **T-5 — Safe removal of the April test accounts (DrJ #3).** Done cycle 101 on Fable:
+  `platform/scripts/remove_test_accounts.py` (`show` / `remove`, dry run unless `--apply`),
+  35 real-Postgres tests in `tests/integration/test_remove_test_accounts_db.py`, H25 written
+  (dry run first, then apply). **T1** (script deletes production data).
+  Modelled on `grant_founder.py`: matches only `A189_-002`, `A386_-002`, `A652_-002`,
+  `canary-*`, `sdk-canary-*`, `Prod Smoke *` (display name); refuses any founder look-alike,
+  any FOUNDER/OPERATOR/DELEGATE, any agent with tokens or open escrow or a shared record, and
+  any match count above a cap unless named; prints every row it would touch; writes
+  `audit_logs` in the same transaction. `SECURITY-REVIEW:`. Check: real-Postgres tests prove
+  every refusal leaves the database unchanged and the dry run changes nothing; H25 written.
 - [ ] **T-6 — Sprint close.** T2. Sprint acceptance (spec) run locally; retro
   `sprint_13_retro.md`; `state_of_agentx.md` updated; short briefing for DrJ to merge this
   sprint. (The 5a security review is only needed for `SECURITY-REVIEW:` commits built on
@@ -62,5 +62,5 @@ item's number in DrJ's note.
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-Open: H6, H8, H11–H17, H20, H21, H23, H24; D10 (not blocking). H13 (founder heartbeat) is next on
+Open: H6, H8, H11–H17, H20, H21, H23, H24, H25; D10 (not blocking). H13 (founder heartbeat) is next on
 DrJ's list and unblocked. H21 unblocks Sprint 16.

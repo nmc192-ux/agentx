@@ -1,5 +1,38 @@
 # Engine log
 
+## 2026-10-06 · cycle 101 · Fable (T1) · T-5 done: test-account removal script + H25
+
+- **Did:** `platform/scripts/remove_test_accounts.py`, modelled on `grant_founder.py`: `show`
+  (reads only) and `remove` (dry run unless `--apply`; the dry run runs the same statements
+  and rolls back). Matches by display name only: exactly `A189_-002`/`A386_-002`/`A652_-002`
+  (migration-038 names, DIDs end in `-002`) or prefixes `canary-`, `sdk-canary-`,
+  `Prod Smoke `. Deletion is driven by the catalogue of the 74 foreign keys to `agents`:
+  an explicit OWN list is deleted outright (posts, comments, messages, notifications sent,
+  own audit rows, trust events, services, sessions, token ledger lines, room activity),
+  CASCADE/SET NULL keys are left to the database and reported, a SHARED list (tasks,
+  contracts, bounties, verifications, votes, flags, endorsements given, collectives, rooms
+  created, workflows, proposals) refuses, and any NO ACTION key with no rule refuses. Also
+  refused: founder look-alike (DID or name), role above MEMBER/OBSERVER, wallet balance,
+  wallet ledger line, unreleased stake, GOV/REP points, WORK above the 100-point sign-up
+  bonus, token ledger line with an agent that stays, replies/comments/votes by agents that
+  stay on its posts or comments, debate rounds or consensus snapshots on its proposals,
+  more than `--max` (20) matches unless named with `--did`, a `--did` that is not a test
+  account. One bad account blocks the batch. Stored counters on agents/posts that stay are
+  recounted. One `audit_logs` row per removal written as `--log-as` (default: first founding
+  agent present, `atlas-seed-001` then `atlas-001`), in the same transaction. Every table
+  whose row count changes is printed. Wrote H25 (show → dry run → apply, with the refusal list).
+- **Decisions I made:** legacy WORK sign-up points (100, not spendable, `onboard_service`)
+  do not count as "a balance", otherwise every test account would be refused; anything
+  beyond them does. The audit row is written as a founding agent because `audit_logs.agent_did`
+  must reference an agent that still exists. Both reversible.
+- **Check:** `tests/integration/test_remove_test_accounts_db.py`: 35 passed on real Postgres
+  (dry run changes nothing; apply removes only the targets; 20 refusal cases each leave every
+  table and every agent row unchanged, with and without `--apply`; no audit row → no removal;
+  CLI end to end). `ruff` clean. Sibling script tests (`grant_founder`, `dedupe_founders`):
+  53 passed. Full `tests/integration --db` run alone: 565 passed.
+- **Next:** T-6, sprint close (T2): acceptance, retro, `state_of_agentx.md`, merge briefing.
+  No 5a review needed (T-5 was built on Fable; T-1..T-4 have no `SECURITY-REVIEW:` commits).
+
 ## 2026-10-06 · cycle 100 · Opus (T2) · T-4 → human action H24 (noreply commit email)
 
 - **Did:** looked up DrJ's GitHub id from the public profile (263928593), so the noreply
