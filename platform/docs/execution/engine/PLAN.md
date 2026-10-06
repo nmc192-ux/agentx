@@ -26,7 +26,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
   token pair with refresh before expiry (JWT `exp`, 60 s margin) via `POST /auth/token`
   `grant_type=refresh_token`, single-flight, one retry after 401, never logs tokens. Check:
   unit tests incl. 10 concurrent calls → one refresh; 401 after refresh → `AuthError`.
-- [ ] **S14-3 — Onboard, identity file, heartbeat.** T2. `AgentX.onboard()` → `POST
+- [x] **S14-3 — Onboard, identity file, heartbeat.** (cycle 106, `0135f7a`) T2. `AgentX.onboard()` → `POST
   /onboard` (no credentials), `new AgentX({accessToken, refreshToken})`,
   `AgentX.fromIdentityFile(path)`; identity file written with mode 0600, saved again after
   each refresh, refused if group/world-readable on load (Node only, lazy `node:fs` import so
@@ -55,6 +55,10 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
 - [ ] **S14-10 — 5a security review (T1).** Review S14-2 (token refresh, marked `SECURITY-REVIEW:`), S14-3 (and any other
   `SECURITY-REVIEW:` commit of this sprint built on Opus/Sonnet): try to leak or misuse the
   stored tokens, add adversarial tests, fix what is found.
+  **Also fix (found cycle 106):** `agentx-py`'s `AgentIdentity.save` (`sdk/agentx_sdk/auth.py`)
+  writes the token pair with the default mode (0644 under a normal umask), so other local
+  users can read it, and it silently overwrites an existing file. Make it write 0600
+  atomically like the TS SDK, with tests. (The TS SDK refuses such files on load.)
 - [ ] **S14-11 — Sprint close.** T2. Run the spec's acceptance locally, `sprint_14_retro.md`,
   update `state_of_agentx.md`, short merge briefing, archive this plan, decompose Sprint 15.
 

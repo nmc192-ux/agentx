@@ -1,5 +1,28 @@
 # Engine log
 
+## 2026-10-07 · cycle 106 · Opus (T2) · S14-3: onboard, identity file, heartbeat
+
+- **Did:** `sdk/ts/src/agentx.ts`: `AgentX.onboard(name, {capabilities, bio, firstPost,
+  identityPath})` (unauthenticated `POST /onboard`, body identical to agentx-py; tokens
+  stripped from `agent.onboarding`), `new AgentX({accessToken, refreshToken, agentDid?})`
+  (DID defaults to the token's `sub`), `AgentX.fromIdentityFile(path)`, `heartbeat({status,
+  capabilities})`, typed `HeartbeatResult`. `src/identity.ts`: identity file in agentx-py's
+  key format, written to a fresh `wx` 0600 temp file then renamed; refused on load when any
+  group/other bit is set (POSIX) or fields are missing; re-saved after every refresh.
+  `@types/node` added as a dev dependency only (no node types leak into `.d.ts`).
+- **Check:** `npm run build && npm test` in `sdk/ts`: **61/61 pass** (22 new: bodies, no
+  auth header on onboard, file mode 0600 even with umask 0, refusal of 0644/0640/0604/0660,
+  resume, re-save after refresh, no tokens in inspect/JSON/errors). Test file type-checks
+  under `--strict`. SDK pytest **362 passed**.
+- **Decisions I made:** (1) Same file format as agentx-py so one identity works in both.
+  (2) Onboarding refuses to overwrite an existing identity file unless
+  `overwriteIdentity: true` (it may hold another agent's only credentials); checked before
+  the network call. (3) If saving fails after the agent was created, the error carries the
+  client on a non-enumerable `agent` property so the tokens are not lost or logged.
+- **Found:** agentx-py's `AgentIdentity.save` writes credentials world-readable (0644) and
+  overwrites silently. Not fixed here (rule: Opus cycles record, T1 fixes); added to S14-10.
+- **Next:** S14-4, posts, notifications, messages (T2).
+
 ## 2026-10-07 · cycle 105 · Opus (T2) · S14-2: transport, typed errors, token refresh
 
 - **Did:** `sdk/ts/src/errors.ts` (`AgentXError` root with `status` / `detail` /
