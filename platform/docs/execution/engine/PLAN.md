@@ -23,7 +23,7 @@ item's number in DrJ's note.
   `platform/fly.toml` and `platform/fly.staging.toml`, how to commit them, what the next
   deploy does, and how to check (`fly scale show`). Add a guard test, xfail until DrJ's edit
   lands. Check: test xfails now and passes against a scratch copy with the blocks applied.
-- [ ] **T-3 — Sentry `automaticVercelMonitors` deprecation (DrJ #4).** T3 (small config).
+- [x] **T-3 — Sentry `automaticVercelMonitors` deprecation (DrJ #4).** Done cycle 99 (no UI test script exists; build is the check). T3 (small config).
   Move it under the `webpack` options `@sentry/nextjs` 10 expects, still `false`. Check:
   `npm run build` in `ui/` has no deprecation line for it; UI tests pass.
 - [ ] **T-4 — Commits use DrJ's GitHub noreply address (DrJ #5).** T2 (configuration).

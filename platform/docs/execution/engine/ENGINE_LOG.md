@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-10-06 · cycle 99 · Sonnet (T3) · T-3 done: Sentry deprecation fixed
+
+- **Did:** `ui/next.config.ts` — `automaticVercelMonitors: false` moved under `webpack: {}` (the
+  top-level option is deprecated in `@sentry/nextjs` 10). Still `false`, behaviour unchanged.
+- **Check:** `npm run build` in `ui/` succeeds with no Sentry/automaticVercelMonitors warning.
+  `ui/` has no `test` script, so there are no UI tests to run.
+- **Next:** T-4, noreply commit email (T2; likely a human action, H24).
+
 ## 2026-10-06 · cycle 98 · Opus (T2) · T-2 engine part done: H23 scheduler machine size
 
 - **Did:** wrote H23 for DrJ: replace the single `[[vm]]` in `platform/fly.toml` with one block
