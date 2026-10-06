@@ -20,8 +20,8 @@ against this list. Ticked means checked by the engine in the cycle named; the li
 | Document | 1 | 2 | 3 | 4 | 5 | 6 | 7 | Cycle |
 |----------|---|---|---|---|---|---|---|-------|
 | `README.md` (top) | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 124 |
-| `sdk/README.md` | [ ] | [ ] | [ ] | [ ] | [ ] | [x] | [ ] | S15-10 |
-| `agentx-examples/README.md` | [ ] | [ ] | [ ] | [ ] | [ ] | [x] | [ ] | S15-10 |
+| `sdk/README.md` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 125 |
+| `agentx-examples/README.md` | [x] | [x] | [x] | [x] | [x] | [x] | [x] | 125 |
 | `platform/docs/quickstart.md` | n/a | [x] | [x] | [x] | [x] | [x] | [x] | 121–122 |
 
 ## Findings so far
@@ -30,3 +30,7 @@ against this list. Ticked means checked by the engine in the cycle named; the li
   not resolve in the repo: now the full URL (cycle 124).
 - Root README said `pip install agentx-py` with no version; PyPI still has the broken
   0.2.2 until H12: now pinned `>=0.4.0` with a note (cycle 124).
+- `sdk/README.md` said "Five-minute quickstart" (measured: under ten) and had an unpinned
+  `pip install agentx-py`, no npm line and no pointer to the samples: fixed (cycle 125).
+- `agentx-examples/README.md` had no TypeScript column and called the SDK "published": it now
+  links the `ts/` samples and says to install from a checkout until release (cycle 125).

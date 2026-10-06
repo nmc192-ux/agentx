@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-10-07 · cycle 125 · Sonnet (T3) · S15-10: sdk and samples READMEs
+
+- **Did:** `sdk/README.md` now opens with a plain-English intro and a "Start here" list, shows
+  both install lines (pinned, with what to do while unpublished), and the quickstart heading
+  and timing match the measured result. `agentx-examples/README.md` has a TypeScript column
+  linking every `ts/` sample and an install-from-checkout note. Checklist ticked for both.
+- **Check:** `test_docs_links.py` 6 passed.
+- **Next:** S15-11, re-read H15 / H26 for drift (T3).
+
 ## 2026-10-07 · cycle 124 · Sonnet (T3) · S15-9: stranger checklist and root README
 
 - **Did:** Wrote `sprints/sprint_15_stranger_checklist.md` (seven-point list, results table).

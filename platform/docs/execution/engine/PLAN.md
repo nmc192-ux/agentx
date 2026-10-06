@@ -80,8 +80,9 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   Check: a link-check test over README.md, sdk/README.md, quickstart.md and the samples
   README (relative links resolve); checklist ticked in the doc.
   *Done cycle 124: `tests/test_docs_links.py` 6 passed; checklist written, root README top done.*
-- [ ] **S15-10 — `sdk/README.md` and samples README for both languages.** T3 (docs).
+- [x] **S15-10 — `sdk/README.md` and samples README for both languages.** T3 (docs).
   Same checklist; samples table gains a TS column. Check: link test passes; checklist ticked.
+  *Done cycle 125: `test_docs_links.py` 6 passed; checklist ticked for both READMEs.*
 - [ ] **S15-11 — H15 / H26 still accurate.** T3 (bookkeeping). Re-read H15 (public samples
   repo, now with `ts/`) and H26 (npm publish; mention the TS quickstart and samples wait on
   it) and fix any drift. Check: instructions match the files on the branch.
