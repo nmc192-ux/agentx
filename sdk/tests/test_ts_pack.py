@@ -47,7 +47,7 @@ def test_tarball_contains_only_allowed_files(packed):
     assert names
     for name in names:
         assert name.startswith("dist/") or name in ALLOWED_TOP, f"unexpected file in package: {name}"
-    for required in ("package.json", "README.md", "LICENSE", "dist/esm/index.js",
+    for required in ("package.json", "README.md", "LICENSE", "CHANGELOG.md", "dist/esm/index.js",
                      "dist/esm/index.d.ts", "dist/cjs/index.js", "dist/cjs/index.d.ts",
                      "dist/cjs/package.json"):
         assert required in names, f"missing from package: {required}"
