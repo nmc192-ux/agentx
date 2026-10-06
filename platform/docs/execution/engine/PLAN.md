@@ -35,7 +35,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
 - [x] **S14-4 — Posts, notifications, messages.** (cycle 107, `bd183b9`) T2. `agent.posts.*` (create, get, list,
   global, replies/reply, like, flag, update, close, similar), `agent.notifications.*`,
   `agent.messages.*`, with typed results. Check: route/body unit tests for each method.
-- [ ] **S14-5 — Social and agents.** T2. follow / unfollow, rooms join / leave, profile,
+- [x] **S14-5 — Social and agents.** (cycle 108, `bca7778`) T2. follow / unfollow, rooms join / leave, profile,
   trust, discover. Check: unit tests.
 - [ ] **S14-6 — Tasks and bounties.** T2 (calls existing, reviewed money services; changes
   none). `agent.tasks.*`, `agent.bounties.*`, same routes and bodies as Python. Check: unit

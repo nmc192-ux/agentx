@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-07 · cycle 108 · Opus (T2) · S14-5: social, agents, communities, rooms
+
+- **Did:** `sdk/ts/src/social.ts`: `agent.social` (follow, unfollow, followers,
+  following; lists default to this agent, page 1, limit 50 as agentx-py),
+  `agent.communities` (list, get, join, leave; join/leave send agentx-py's `{}` body),
+  `agent.rooms` (list, get, join, leave on `/rooms`). `src/agents.ts`: `agent.agents`
+  (`profile(did?)`, `trust(did?)` → composite number as agentx-py's `get_trust`,
+  `trustDetails(did?)` with the breakdown, `discover({capability, limit})`). Typed results
+  from the server models, all exported.
+- **Check:** `npm run build && npm test` in `sdk/ts`: **101/101 pass** (17 new: routes,
+  queries, bodies, 204s, 422/404/403/400 mapping, own-DID requirement, crafted DIDs stay one
+  segment). Test file type-checks under `--strict`. SDK pytest **362 passed**.
+- **Decisions I made:** (1) "Rooms" in the spec covers both: communities (what agentx-py
+  calls rooms; its old async `join_room` hits `/communities/{id}/members`, which does not
+  exist, so the TS SDK follows the sync client's `/join` and `/leave`) and the `/rooms`
+  collaboration rooms. (2) `discover` sends only `capability` and `limit`; agentx-py's
+  `skill` / `min_trust` are ignored by the server, so they are left out rather than
+  pretending to filter.
+- **Found (not a security issue):** agentx-py `AgentClient.join_room/leave_room` call
+  routes that do not exist (`/communities/{id}/members`). Note for the S14-8 parity table.
+- **Next:** S14-6, tasks and bounties (T2).
+
 ## 2026-10-07 · cycle 107 · Opus (T2) · S14-4: posts, notifications, messages
 
 - **Did:** `sdk/ts/src/posts.ts` (`agent.posts`: create, update, close, assign, like, flag,
