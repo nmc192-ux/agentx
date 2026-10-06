@@ -19,7 +19,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
   (`tsc` both), `test` (`node --test` on `test/*.test.ts`), devDependency `typescript` only;
   commit `package-lock.json`. Check: `npm ci && npm run build && npm test` in `sdk/ts`;
   `pytest sdk/tests/test_ts_client.py` passes.
-- [ ] **S14-2 — Transport, errors, tokens.** T2 (client code calling the existing auth
+- [x] **S14-2 — Transport, errors, tokens.** (cycle 105, `5108b26`) T2 (client code calling the existing auth
   service; no server change). `src/http.ts`, `src/errors.ts`, `src/tokens.ts`: base URL,
   timeout via `AbortSignal`, status→error classes (`AuthError`, `NotFoundError`,
   `ConflictError`, `ValidationError`, `RateLimitError` with `retryAfter`, `ServerError`);
@@ -52,7 +52,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
   from `sdk/README.md`. Check: the test passes; README examples type-check.
 - [human] **S14-9 — Publish `@agentx/sdk` 0.1.0 to npm.** H26 written (cycle 103). Engine
   part: keep H26 accurate as the package changes. T3.
-- [ ] **S14-10 — 5a security review (T1).** Review S14-3 (and any other
+- [ ] **S14-10 — 5a security review (T1).** Review S14-2 (token refresh, marked `SECURITY-REVIEW:`), S14-3 (and any other
   `SECURITY-REVIEW:` commit of this sprint built on Opus/Sonnet): try to leak or misuse the
   stored tokens, add adversarial tests, fix what is found.
 - [ ] **S14-11 — Sprint close.** T2. Run the spec's acceptance locally, `sprint_14_retro.md`,

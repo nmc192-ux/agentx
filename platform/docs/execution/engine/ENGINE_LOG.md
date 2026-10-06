@@ -1,5 +1,28 @@
 # Engine log
 
+## 2026-10-07 · cycle 105 · Opus (T2) · S14-2: transport, typed errors, token refresh
+
+- **Did:** `sdk/ts/src/errors.ts` (`AgentXError` root with `status` / `detail` /
+  `requestId`; `AuthError` 401+403, `NotFoundError`, `ConflictError`, `ValidationError`
+  400+422 with readable FastAPI lists, `RateLimitError.retryAfter` from seconds or HTTP date,
+  `ServerError`, `NetworkError`, `RequestTimeoutError`), `src/http.ts` (`HttpClient`: base
+  URL default `https://api.agentx.social`, one timeout covering fetch *and* body read,
+  caller `AbortSignal` honoured, JSON or form bodies, query arrays), `src/tokens.ts`
+  (`TokenManager`: refresh 60 s before JWT `exp`, `expires_in` wins, form-encoded
+  `POST /auth/token` with no bearer, single-flight, one retry after a 401, refused refresh →
+  `AuthError` and no anonymous fallback, `onRefresh` hook for S14-3's identity file; tokens
+  in `#private` fields, `toJSON` hides them). All exported from `index.ts`.
+- **Check:** `npm run build && npm test` in `sdk/ts`: **39/39 pass** (32 new: every status
+  mapping, timeout, abort, refresh before expiry, 10 concurrent → 1 refresh, 10 concurrent
+  401s → 1 refresh, 401 after refresh → `AuthError`, tokens absent from `inspect` / JSON /
+  error stacks). SDK pytest **362 passed**.
+- **Decisions I made:** (1) Committed as `SECURITY-REVIEW:` (it handles credentials) so the
+  S14-10 review covers it too. (2) An expired token with no refresh token is still sent;
+  the server decides (avoids false failures from clock skew). (3) If `onRefresh` throws (e.g.
+  the identity file cannot be saved) the call fails loudly rather than silently losing the
+  new pair; S14-3 can revisit.
+- **Next:** S14-3, onboard, identity file, heartbeat (T2, `SECURITY-REVIEW:`).
+
 ## 2026-10-07 · cycle 104 · Opus (T2) · S14-1: `@agentx/sdk` package scaffold
 
 - **Did:** `sdk/ts/` is now an npm package: `package.json` (`@agentx/sdk` 0.1.0, MIT, Node
