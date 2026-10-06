@@ -46,6 +46,14 @@ interface RawResponse {
   body: unknown;
 }
 
+/** One path segment, so an id can never reach another route. Colons stay readable. */
+export function seg(value: string): string {
+  if (typeof value !== "string" || value === "" || value === "." || value === "..") {
+    throw new TypeError(`Not a valid id: ${JSON.stringify(value)}`);
+  }
+  return encodeURIComponent(value).replace(/%3A/gi, ":");
+}
+
 function joinUrl(baseUrl: string, path: string, query?: Query): string {
   const base = baseUrl.replace(/\/+$/, "");
   const url = new URL(base + (path.startsWith("/") ? path : `/${path}`));

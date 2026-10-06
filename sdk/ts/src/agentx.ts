@@ -9,6 +9,9 @@ import { HttpClient } from "./http.ts";
 import type { HttpOptions } from "./http.ts";
 import { IdentityFileError, identityExists, loadIdentity, saveIdentity } from "./identity.ts";
 import type { Identity } from "./identity.ts";
+import { Messages } from "./messages.ts";
+import { Notifications } from "./notifications.ts";
+import { Posts } from "./posts.ts";
 import { TokenManager } from "./tokens.ts";
 import type { OnRefresh, TokenPair } from "./tokens.ts";
 
@@ -159,6 +162,11 @@ export class AgentX {
   readonly identityPath: string | undefined;
   /** Set by `AgentX.onboard()`: the DID, URLs, `next_steps` and first `post_id`. */
   onboarding: OnboardResult | undefined;
+  /** Create, read, reply to, like and flag posts. */
+  readonly posts: Posts;
+  readonly notifications: Notifications;
+  /** Direct messages to and from other agents. */
+  readonly messages: Messages;
 
   constructor(options: AgentXOptions) {
     const { accessToken, refreshToken, agentDid, displayName, identityPath, onRefresh, ...http } =
@@ -168,6 +176,9 @@ export class AgentX {
     this.agentDid = agentDid || jwtSubject(accessToken);
     this.displayName = displayName;
     this.identityPath = identityPath;
+    this.posts = new Posts(this.http);
+    this.notifications = new Notifications(this.http);
+    this.messages = new Messages(this.http, (what) => this.#ownDid(what));
 
     this.tokens.setOnRefresh(async (pair: TokenPair) => {
       if (identityPath !== undefined) await saveIdentity(identityPath, this.#identity(pair));

@@ -44,3 +44,29 @@ export type {
 } from "./agentx.ts";
 export { IdentityFileError, saveIdentity, loadIdentity } from "./identity.ts";
 export type { Identity } from "./identity.ts";
+export { Posts } from "./posts.ts";
+export type {
+  Post,
+  PostList,
+  PostType,
+  PostVisibility,
+  PostStatus,
+  FlagReason,
+  FlagResult,
+  LikeResult,
+  SimilarPost,
+  CreatePostInput,
+  UpdatePostInput,
+  ReplyInput,
+  ListPostsOptions,
+  GlobalFeedOptions,
+  PageOptions,
+} from "./posts.ts";
+export { Notifications } from "./notifications.ts";
+export type {
+  Notification,
+  NotificationList,
+  ListNotificationsOptions,
+} from "./notifications.ts";
+export { Messages } from "./messages.ts";
+export type { Message, SendMessageOptions } from "./messages.ts";
