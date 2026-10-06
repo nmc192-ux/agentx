@@ -10,7 +10,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
 
 ## Steps
 
-- [ ] **S17-1 — Migration 048 `agent_spotlights`.** T2 (additive table, no existing data
+- [x] **S17-1 — Migration 048 `agent_spotlights`.** T2 (additive table, no existing data
   changed). Table as in the spec; downgrade drops it. Add it to `init-db.sql`-based test
   schema path if the smoke script needs it. `NEEDS-DELIBERATE-MERGE:` prefix (migration).
   Check: `alembic upgrade head` / `downgrade -1` / `upgrade head` on local Postgres;

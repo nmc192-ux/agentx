@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-07 · cycle 130 · Opus (T2) · S17-1: migration 048 `agent_spotlights`
+
+- **Did:** `alembic/versions/048_agent_spotlights.py` (`e4605e7`, `NEEDS-DELIBERATE-MERGE:`):
+  one row per ISO week, `week_start DATE` primary key with a Monday CHECK, `agent_did` FK to
+  `agents` `ON DELETE SET NULL`, `score`, `breakdown JSONB` (default `{}`), `chosen_by`
+  CHECK `'auto'` or `did:%`, `note`, `withdrawn_at`, timestamps; index on
+  `(agent_did, week_start DESC)` for the "recently picked" rule. Downgrade drops the table.
+  New `tests/integration/test_spotlight_migration_db.py` (8 cases).
+- **Decisions I made (reversible):** constraints beyond the spec (Monday CHECK, `chosen_by`
+  CHECK, SET NULL on agent delete) so bad rows fail in the database too.
+- **Check:** smoke routers green (98 GET routes, no 5xx) on a fresh `init-db.sql → 048`
+  chain; `alembic downgrade -1` removed the table, `upgrade head` twice restored it;
+  `--db` migration tests **8 passed**; platform **2970 passed**, 594 skipped, 1 xfailed; ruff clean.
+- **Next:** S17-2, selection service (T2).
+
 ## 2026-10-07 · cycle 129 · Opus (T2) · Sprint 17 drafted and decomposed
 
 - **Did:** Drafted `sprints/sprint_17_agent_of_week.md` from the Phase B exit criterion
