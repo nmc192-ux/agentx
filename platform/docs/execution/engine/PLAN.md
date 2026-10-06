@@ -1,57 +1,66 @@
-# Engine PLAN — Phase A closed
+# Engine PLAN — Sprint 13: Phase A tidy-up
 
-**Branch:** `engine/phase-a` · **Status:** `PHASE_COMPLETE` (cycle 85, 2026-10-04)
-**Briefing:** `platform/docs/sprints/briefing_2026-10-04_engine.md`
-**Closed plans:** `archive/PLAN_sprint_9.md` … `archive/PLAN_sprint_12.md`; retros in `platform/docs/sprints/`.
+**Branch:** `engine/phase-b` · **Spec:** `platform/docs/sprints/sprint_13_phase_a_tidy.md`
+**Started:** cycle 96, 2026-10-06 (DrJ's note: tidy-up first, then Phase B).
+**Previous plan:** `archive/PLAN_phase_a_close.md` (V-2, V-3 carry into the Phase B VPS sprint).
 
-All engine-doable Phase A work is done. The remaining Phase A exit criteria need production
-and DrJ (see HUMAN_ACTIONS: H5, H1, merge, H3, H9, H10, H6, H13, H14, H12).
+Steps run in this order (cheap, low-risk first; the one Fable step last). "DrJ #n" is the
+item's number in DrJ's note.
 
 ## Steps
 
-- [x] **P-1 — Merge origin/main (H5 hotfix) into the branch.** T2. Check: merge commits, tree
-  unchanged, tests pass. Done cycle 86 (`463d0c8`).
-- [x] **P-2 — Why production did not migrate on deploy; safe plan for DrJ.** T2 (debugging,
-  runbook). Check: cause shown in the repo, and DrJ's step-by-step plan written. Done cycle 86:
-  `sprints/briefing_2026-10-04_migrations.md`, H18 added, H1 updated.
-- [x] **P-3 — `/posts?type=…` / `?status=…` with an unknown label is a 500 (Sentry).** T2.
-  Check: 422 in unit tests and against real Postgres. Done cycle 86 (`ffaedc5`).
-- [x] **P-4 — After DrJ reports H18 done: merge main, drop the xfail marker on
-  `tests/test_fly_release_command.py`, run tests.** T3. Done cycle 91 (`09f1fe1`): main merged
-  by the engine before the cycle, guard now strict, 2954 passed.
-- [x] **P-5 — One public API address, `https://api.agentx.social` (DrJ's note, Phase 1).** T2.
-  Production skill.md / agent.json print only that address; SDK (Python + TS) default, sample
-  agents, quickstart, protocol spec and READMEs use it. Check: tests fail on fly.dev, localhost
-  or http:// in skill.md, agent.json, the SDK defaults (fail on the old code); platform and SDK
-  suites green. Done cycle 87 (`afe5149`). H19 (DNS + Fly certificate) must come before merge.
-- [x] **P-6 — Answer DrJ's H5 role finding: does H10 need to assign FOUNDER?** T2. Check:
-  answered in HUMAN_ACTIONS H20 (no; one separate admin agent needs it). Done cycle 87.
-- [x] **P-7 — Phase 2 plan: move the backend from Fly to the Pink Popcorn VPS (plan only, no
-  changes).** T2. Done cycle 88: `platform/docs/execution/vps_migration_plan.md` (Docker, Caddy,
-  scheduler hand-over, deploy workflow, health checks, rollback, cutover, website, Fly
-  switch-off in two stages). H21 (VPS facts) added. Follow-up steps V-1..V-3 below.
-- [x] **P-8 — Safe steps to give FOUNDER to one admin agent of DrJ's (H20).** T1 (grants a
-  role in production). Check: a dry-run-first tool that can only touch the one named agent,
-  refuses the 8 founder bots, writes the audit log; tests prove it fails closed; H20 rewritten
-  with copy-paste steps. Done cycle 90 (`eb8209a`): `platform/scripts/grant_founder.py`,
-  39 real-Postgres tests.
-
-- [x] **V-1 — Website points at `https://api.agentx.social`.** T2 (configuration). `ui/vercel.json`
-  rewrites + `NEXT_PUBLIC_API_URL`, the seven fly.dev / localhost fallbacks in `ui/`, CSP
-  `connect-src` gains `https://api.agentx.social wss://api.agentx.social`. Check: a test fails on
-  fly.dev in `ui/vercel.json` and the fallbacks (fails on the old code); `npm run build` and the
-  UI tests pass. Merge after H19. Done cycle 89 (`215bb8e`); H19 step 6 covers the Vercel
-  dashboard value.
-- [ ] **V-2 — `deploy/vps/`: compose file (api-1, api-2, scheduler, caddy), Caddyfile,
-  `api.env.example`, `smoke.sh`.** T2. [waits on H21] Check: the stack starts locally against
-  local Postgres/Redis, smoke script passes (sign-up, login, feed, WebSocket, real caller address
-  seen), rolling one API container leaves `/health` answering throughout.
-- [ ] **V-3 — `.github/workflows/deploy-vps.yml`, manual trigger only, `production` approval.**
-  T2. [waits on V-2] `NEEDS-DELIBERATE-MERGE:`. Check: `actionlint` clean; migrate-then-roll
-  order; no secret values in the repo.
+- [ ] **T-1 — CI skips the engine's draft PR (DrJ #1).** T2 (CI configuration).
+  `ci.yml`: keep `push: [main, develop]`; `pull_request` gains
+  `types: [opened, reopened, synchronize, ready_for_review]`; every job gets
+  `if: github.event_name != 'pull_request' || !github.event.pull_request.draft`; add
+  `workflow_dispatch` so DrJ can start it by hand. `deploy.yml` is untouched (it waits on CI
+  for `main`, which still runs). Check: `actionlint` clean; new `tests/test_ci_triggers.py`
+  pins push-to-main, ready_for_review, the draft guard on all jobs and workflow_dispatch
+  (fails on the old file); platform suite green.
+- [ ] **T-2 — Scheduler on shared-cpu-1x 512 MB (DrJ #2).** T2 (configuration, runbook).
+  `[human]` for the edit itself. Write H23: the exact two `[[vm]]` blocks (`processes =
+  ["app"]` shared-cpu-2x 512mb; `processes = ["scheduler"]` shared-cpu-1x 512mb) for
+  `platform/fly.toml` and `platform/fly.staging.toml`, how to commit them, what the next
+  deploy does, and how to check (`fly scale show`). Add a guard test, xfail until DrJ's edit
+  lands. Check: test xfails now and passes against a scratch copy with the blocks applied.
+- [ ] **T-3 — Sentry `automaticVercelMonitors` deprecation (DrJ #4).** T3 (small config).
+  Move it under the `webpack` options `@sentry/nextjs` 10 expects, still `false`. Check:
+  `npm run build` in `ui/` has no deprecation line for it; UI tests pass.
+- [ ] **T-4 — Commits use DrJ's GitHub noreply address (DrJ #5).** T2 (configuration).
+  Find the address (`<id>+nmc192-ux@users.noreply.github.com`, read-only GitHub lookup).
+  The engine's commit identity is set outside the repo by the engine runner, so this is most
+  likely `[human]`: write H24 with the exact setting for DrJ, and say that past commits keep
+  their author (only new commits change). Check: H24 written; if the engine can set it, the
+  next commit's author email is the noreply address.
+- [ ] **T-5 — Safe removal of the April test accounts (DrJ #3).** **T1** (script deletes
+  production data). `platform/scripts/remove_test_accounts.py`, modelled on
+  `grant_founder.py`: `show` / `remove`, dry run unless `--apply` (the dry run runs the same
+  statements and rolls back); matches only `A189_-002`, `A386_-002`, `A652_-002`,
+  `canary-*`, `sdk-canary-*`, `Prod Smoke *`; refuses any founder, any FOUNDER/ADMIN role,
+  any agent with a non-zero balance or open escrow, and any match count above a cap unless
+  named; prints every row it would touch (agent, posts, follows, etc.); writes `audit_logs`
+  in the same transaction. `SECURITY-REVIEW:`. Check: real-Postgres tests prove every
+  refusal leaves the database unchanged and the dry run changes nothing; H25 written with
+  dry run first, then apply.
+- [ ] **T-6 — Sprint close.** T2. Sprint acceptance (spec) run locally; retro
+  `sprint_13_retro.md`; `state_of_agentx.md` updated; short briefing for DrJ to merge this
+  sprint. (The 5a security review is only needed for `SECURITY-REVIEW:` commits built on
+  Opus/Sonnet; T-5 is built on Fable.)
+- [ ] **T-7 — Draft the Phase B sprints and plan the first.** T2 (planning). From plan v2 §4
+  Phase B. Work that needs no live founder data first. Working draft order:
+  - **Sprint 14 — TypeScript SDK MVP:** `sdk/ts` is one file with no package today; build
+    `@agentx/sdk` with parity to `agentx-py` 0.4 (auth, onboard, heartbeat, posts, replies,
+    follows, rooms, tasks/bounties), tests against the local API, `npm pack` works.
+    Publishing to npm becomes a HUMAN_ACTION.
+  - **Sprint 15 — Developer docs and samples:** quickstart in both languages under ten
+    minutes, measured; TypeScript versions of the sample agents; README for a cold reader;
+    sample-agents repo ready to publish (H15).
+  - **Sprint 16 — VPS migration prep:** V-2 (`deploy/vps/` compose, Caddy, smoke) and V-3
+    (manual deploy workflow) from `archive/PLAN_phase_a_close.md`; waits on H21.
+  - **Later, needs live data:** "Agent of the week", 100-agent tracking, the public alpha
+    announcement kit — after DrJ's live findings (H13, H14).
 
 ## Open DrJ items (see HUMAN_ACTIONS)
 
-H1, H2, H5, H18, H19 done (5 Oct). **H22: merge `engine/phase-a` now** (nothing blocks it).
-Done since: H22, H3 (5 Oct), H10 + D8 (6 Oct; H13 step 1 now filled in). Open: H4, H6–H9, H11–H17, H20, H21; H21 unblocks V-2. D10 open (not blocking). Every unticked step
-above waits on DrJ (V-2 on H21, V-3 on V-2).
+Open: H6, H8, H11–H17, H20, H21; D10 (not blocking). H13 (founder heartbeat) is next on
+DrJ's list and unblocked. H21 unblocks Sprint 16.

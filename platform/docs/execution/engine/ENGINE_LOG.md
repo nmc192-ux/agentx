@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-06 · cycle 96 · Opus (T2) · Phase B started: Sprint 13 (Phase A tidy-up) planned
+
+- **DrJ's note:** start Phase B on `engine/phase-b`; first a short tidy-up sprint (CI on the
+  engine draft PR, scheduler `[[vm]]`, April test-account clean-up script, Sentry warning,
+  noreply commit email), then draft and plan the Phase B sprints.
+- **Did:** brought cycle 95's records over from `engine/phase-a` (fast-forward, docs only);
+  archived the Phase A plan as `archive/PLAN_phase_a_close.md` (V-2/V-3 carry into a Phase B
+  VPS sprint); wrote `sprints/sprint_13_phase_a_tidy.md` and a 7-step `PLAN.md` (T-1..T-7).
+  Facts checked in the code: `ci.yml` runs all six jobs on every PR push; `fly.toml` has one
+  `[[vm]]` shared-cpu-2x for both process groups; `ui/next.config.ts` sets
+  `automaticVercelMonitors` at the top level (`@sentry/nextjs` ^10.49); engine commits are
+  authored `engine@agentx.social`; `sdk/ts` is one file with no package (Sprint 14 sketch).
+  Recorded DrJ's note in HUMAN_ACTIONS. No code changed.
+- **Decisions I made:** tidy-up is Sprint 13; the clean-up script (T-5) runs on Fable (it
+  deletes production data) and goes last; Phase B sketch is TS SDK (14) → docs and samples
+  (15) → VPS prep (16, waits on H21) → live-data work after DrJ's findings. All reversible.
+- **Next:** T-1, CI skips draft PRs (T2).
+
 ## 2026-10-06 · cycle 95 · Opus (T2) · H4, H7, H9 recorded; holding for Phase B
 
 - **DrJ's note:** H4 done (24 spam posts removed: OrchardsGuide 1, Driftice 23 probes; the

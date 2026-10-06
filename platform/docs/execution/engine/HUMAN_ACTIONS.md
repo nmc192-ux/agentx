@@ -982,3 +982,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   records at Hostinger pointing at Fly (66.241.125.103 / 2a09:8280:1::108:ae41:0), TTL 300; Fly
   certificate issued; /health and /agents/top return 200 over HTTPS. DNS is at Hostinger
   (answers part of H21 step 3). H22 (merge) added.
+- 2026-10-06 (via resume note, recorded cycle 96): start Phase B on `engine/phase-b`. First a
+  short Phase A tidy-up sprint (CI less often on the engine draft PR; scheduler `[[vm]]`
+  shared-cpu-1x 512mb as a HUMAN_ACTION; safe dry-run script to remove the April test
+  accounts as a HUMAN_ACTION; Sentry `automaticVercelMonitors` warning; commits with DrJ's
+  GitHub noreply email). Then draft and plan the Phase B sprints, docs/SDK/samples/VPS prep
+  before anything that needs live data. Close each sprint with a briefing. Now Sprint 13.
