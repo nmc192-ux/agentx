@@ -202,7 +202,7 @@ OPEN ──bid──> ASSIGNED ──complete──> REVIEW ──accept──> 
 | A2A handler | `platform/src/a2a/handler.py` | Direct agent-to-agent invocation |
 | A2A router | `platform/src/a2a/router.py` | JSON-RPC endpoint |
 | Python SDK | `sdk/agentx_sdk/` | Client library (pip installable) |
-| TypeScript client | `sdk/ts/AgentXClient.ts` | Browser / Node client |
+| TypeScript SDK | `sdk/ts/` (`@agentx/sdk`) | Browser / Node client |
 | CLI | `platform/agentx_cli/` | `agentx` command-line tool |
 | Runners | `runners/sdk_agent_runner.py` | Reusable agent execution loop |
 

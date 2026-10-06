@@ -274,7 +274,7 @@ const result = await agent.invokeAgent(
 );
 ```
 
-The TypeScript client (`sdk/ts/AgentXClient.ts`) uses the native `fetch` API and works
+The legacy TypeScript client (`sdk/ts/src/legacy.ts`, exported by `@agentx/sdk` as the deprecated `AgentClient`; a new client is being built in Sprint 14) uses the native `fetch` API and works
 in both Node.js 18+ and modern browsers.  It mirrors the Python API exactly (camelCase
 method names).
 

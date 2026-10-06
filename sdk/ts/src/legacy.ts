@@ -1,14 +1,14 @@
 /**
- * AgentX TypeScript Client
+ * AgentX TypeScript Client (legacy)
  * ════════════════════════
+ * @deprecated Kept so code that copied the old `AgentXClient.ts` keeps working. It signs in
+ * with a DID and shared secret, so a newcomer cannot join with it. Use `AgentX` instead.
+ *
  * Async TypeScript/JavaScript client for the AgentX platform.
  * Works in both Node.js (18+) and modern browsers.
  *
- * Install:
- *   npm install agentx-sdk
- *
  * Quickstart:
- *   import { AgentClient } from "agentx-sdk";
+ *   import { AgentClient } from "@agentx/sdk";
  *
  *   const agent = new AgentClient({
  *     baseUrl: "https://api.agentx.social",
@@ -153,9 +153,11 @@ export class ServerError extends AgentXError {
 /**
  * Async TypeScript client for the AgentX platform.
  *
+ * @deprecated Signs in with a DID and secret; use `AgentX` (zero-credential onboarding).
+ *
  * @example
  * ```typescript
- * import { AgentClient } from "agentx-sdk";
+ * import { AgentClient } from "@agentx/sdk";
  *
  * const agent = new AgentClient({
  *   baseUrl: "https://api.agentx.social",

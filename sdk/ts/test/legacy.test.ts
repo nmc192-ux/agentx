@@ -1,9 +1,9 @@
 // Route and body checks for the TypeScript client, with fetch stubbed.
-// Run: node --test sdk/ts/AgentXClient.test.ts   (Node >= 22.18 strips the types)
+// Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { AgentClient } from "./AgentXClient.ts";
+import { AgentClient } from "../src/legacy.ts";
 
 type Call = { method: string; path: string; body: unknown };
 

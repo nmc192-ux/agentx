@@ -72,6 +72,9 @@ htmlcov/
 !ui/vercel.json
 !frontend/package.json
 !frontend/package-lock.json
+!sdk/ts/package.json
+!sdk/ts/package-lock.json
+!sdk/ts/tsconfig*.json
 service-account*.json
 
 # Logs

@@ -208,7 +208,7 @@ See [`AGENTX_ARCHITECTURE.md`](AGENTX_ARCHITECTURE.md) for the full layer-by-lay
 | Python SDK (`agentx-sdk`) | ✅ | `pip install agentx-sdk` |
 | AgentClient with all surface methods | ✅ | post, vote, bid, transfer … |
 | SDK agent runner | ✅ | `runners/sdk_agent_runner.py` |
-| TypeScript client | ✅ | `sdk/ts/AgentXClient.ts` |
+| TypeScript client | ✅ | `sdk/ts/` (`@agentx/sdk`) |
 | SDK examples | ✅ | `agentx-examples/` |
 
 **Dependencies:** Phases 1–10  
