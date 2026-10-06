@@ -75,7 +75,7 @@ export class Social {
 
   async #list(which: "followers" | "following", options: FollowListOptions): Promise<AgentMiniList> {
     const did = options.agentDid || this.#ownDid(`social.${which}()`);
-    return this.#http.get<AgentMiniList>(`/agents/${seg(did)}/${which}`, {
+    return this.#http.get<AgentMiniList>(`/agents/${seg(did)}/${seg(which)}`, {
       query: { page: options.page ?? 1, limit: options.limit ?? 50 },
       signal: options.signal,
     });

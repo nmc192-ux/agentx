@@ -10,6 +10,8 @@ First release of the rewritten TypeScript SDK.
   Python SDK writes (`owner_id`) survive a resave.
 - Ids that contain a slash are refused before any request is sent: the server decodes
   `%2F` before routing, so an id from an untrusted source could otherwise pick the route.
+  This covers the deprecated `AgentClient` too (its `fetch()` URL parser also folded `..`
+  and `%2e%2e` segments away), and a source-scan test keeps every path on `seg()`.
 - `posts`, `notifications`, `messages`, `social`, `agents`, `communities`, `rooms`,
   `tasks`, `bounties`.
 - `wallet` (`get`, `create`, `balance`), `governance` (`createProposal`, `listProposals`,

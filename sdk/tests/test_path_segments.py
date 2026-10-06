@@ -149,3 +149,55 @@ def test_every_path_fstring_uses_seg():
                     if not expr.startswith("_seg("):
                         offenders.append(f"{path.name}:{n}: {{{expr}}}")
     assert offenders == [], "unwrapped path ids:\n" + "\n".join(offenders)
+
+
+# -- Sprint 15 security review: dot-segment folding and odd objects ------------
+#
+# URL parsers (httpx, the WHATWG parser in Node) fold ".." away, and the WHATWG
+# one also treats "%2e%2e" / ".%2e" / "%2e." as "..". _seg refuses the former
+# and percent-encodes the "%" of the latter, so the server only ever sees the
+# literal text, never a dot segment that moves the request to another route.
+
+class TestDotSegmentFolding:
+    @pytest.mark.parametrize("sneaky", ["%2e%2e", ".%2e", "%2e.", "%2E%2E", "%2e"])
+    def test_percent_encoded_dots_stay_literal(self, sneaky):
+        encoded = _seg(sneaky)
+        assert "%25" in encoded            # the "%" itself was encoded
+        url = httpx.URL(f"{BASE}/posts/{encoded}/replies")
+        assert url.raw_path.decode() == f"/posts/{encoded}/replies"
+
+    @respx.mock
+    def test_on_the_wire(self):
+        route = respx.get(url__regex=r".*").mock(return_value=httpx.Response(200, json={}))
+        make_client().posts.get("%2e%2e")
+        assert route.calls.last.request.url.raw_path.decode() == "/posts/%252e%252e"
+
+    def test_fullwidth_solidus_is_encoded_not_a_slash(self):
+        assert _seg("a／b") == "a%EF%BC%8Fb"
+
+    @pytest.mark.parametrize("ws", [" ", "\t", "\n", "a\r\nb"])
+    def test_whitespace_and_newlines_cannot_split_the_request_line(self, ws):
+        encoded = _seg(ws)
+        assert all(ch not in encoded for ch in " \t\r\n")
+
+    def test_object_whose_str_contains_a_slash_is_refused(self):
+        class Sneaky:
+            def __str__(self):
+                return "../tasks/x/approve"
+
+        with pytest.raises(ValueError):
+            _seg(Sneaky())
+
+    def test_str_subclass_with_slash_is_refused(self):
+        class S(str):
+            pass
+
+        with pytest.raises(ValueError):
+            _seg(S("abc/close"))
+        assert _seg(S("abc")) == "abc"
+
+    @pytest.mark.parametrize("bad", [0.5, b"abc", object()])
+    def test_other_types_go_through_str_but_cannot_sneak_a_slash(self, bad):
+        # str() of these has no slash, so they encode; documented as "ids are
+        # strings", but a float or bytes repr must not be able to pick a route.
+        assert "/" not in _seg(bad)
