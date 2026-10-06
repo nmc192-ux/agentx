@@ -11,7 +11,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
 
 ## Steps
 
-- [ ] **S14-1 — Package scaffold.** T2 (new build setup). `sdk/ts/package.json`
+- [x] **S14-1 — Package scaffold.** (cycle 104, `8927ed7`) T2 (new build setup). `sdk/ts/package.json`
   (`@agentx/sdk` 0.1.0, MIT, `engines.node >=18`, `exports` for ESM `import` and CJS
   `require` with types, `files: ["dist"]`), `tsconfig` (strict) plus a CJS variant, `src/`.
   Move `AgentXClient.ts` to `src/legacy.ts` (exported as deprecated `AgentClient`), keep its

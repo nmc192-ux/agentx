@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-07 · cycle 104 · Opus (T2) · S14-1: `@agentx/sdk` package scaffold
+
+- **Did:** `sdk/ts/` is now an npm package: `package.json` (`@agentx/sdk` 0.1.0, MIT, Node
+  >=18, `exports` with ESM `import` / CJS `require` and types, `files: ["dist"]`), strict
+  `tsconfig.json` + `tsconfig.cjs.json`, lockfile, `LICENSE`. Old client moved to
+  `src/legacy.ts`, re-exported from `src/index.ts` as deprecated `AgentClient`; its test is
+  `test/legacy.test.ts`. `test_ts_client.py` now runs every `sdk/ts/test/*.test.ts`;
+  `test_default_base_url.py` scans `sdk/ts/src/*.ts`. `.gitignore` had a blanket `*.json`
+  rule that would have hidden `package.json`; added exceptions for `sdk/ts`. Doc pointers to
+  the old path updated (`AGENTX_ARCHITECTURE.md`, `PROJECT_ROADMAP.md`, `sdk/README.md`).
+- **Check:** `npm ci && npm run build && npm test` in `sdk/ts`: build OK, 7/7 pass. SDK
+  pytest **362 passed**. Packed tarball installed in a scratch dir: `import` and `require`
+  both load; `tsc --strict` resolves the types under nodenext, node10 and bundler.
+- **Decisions I made:** (1) `typescript ~5.9.3` (the stable JS compiler), not 7.x. (2) Source
+  imports use `.ts` with `rewriteRelativeImportExtensions`, so tests run straight from `src/`
+  under Node's type stripping (no test build step). Emitted `.d.ts` keep `./x.ts` specifiers;
+  TS 5.x resolves them fine; S14-8's pack check should confirm or rewrite them to `.js`.
+  (3) Only `AgentClient` (+ its options type) is re-exported from the legacy file, so its old
+  error classes do not clash with the new ones in S14-2.
+- **Next:** S14-2, transport, errors and token refresh (T2).
+
 ## 2026-10-07 · cycle 103 · Opus (T2) · T-7: Phase B sprints drafted, Sprint 14 planned
 
 - **Did:** checked the code: `sdk/ts/` is one 664-line file with no package, and it signs in
