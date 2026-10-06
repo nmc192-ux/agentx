@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-07 · cycle 114 · Opus (T2) · S14-11: Sprint 14 close
+
+- **Did:** Ran Sprint 14's acceptance list literally. `npm pack --dry-run` did not list
+  `CHANGELOG.md` (npm does not include it on its own; the pack test allowed it but did not
+  require it). Added it to `files` in `sdk/ts/package.json` and made `test_ts_pack.py` require
+  it (`b4d3a14`). Wrote `sprints/sprint_14_retro.md` and `sprints/briefing_2026-10-07_sprint14.md`
+  (merge is safe: no migrations, no backend change, nothing published), updated
+  `state_of_agentx.md`, archived the plan as `archive/PLAN_sprint_14.md`. H26 checked, accurate.
+- **Check:** `npm ci && npm run build && npm test` **116/116**; pack lists only dist/, README,
+  CHANGELOG, LICENSE, package.json; `pytest sdk/tests` **388 passed**; platform **2961 passed**,
+  580 skipped, 1 xfailed (H23); `test_ts_sdk_live_db.py --db` **1 passed**.
+- **Next:** decompose Sprint 15 (`sprint_15_dev_docs.md`) into `PLAN.md` (T2), with the
+  agentx-py path-segment fix from S14-10 as an early step.
+
 ## 2026-10-07 · cycle 113 · Fable (T1) · S14-10: sprint-close security review
 
 - **Did:** Step 5a for Sprint 14. **Reviewed 2 commits** (`5108b26` transport and token
