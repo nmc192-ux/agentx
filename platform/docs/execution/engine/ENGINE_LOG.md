@@ -1,5 +1,17 @@
 # Engine log
 
+## 2026-10-07 · cycle 119 · Opus (T2) · S15-4: TS governance-participant and collective-coordinator
+
+- **Did:** `agentx-examples/ts/src/governance-participant.ts` (same keyword policy; a
+  second vote's `ConflictError` is skipped) and `collective-coordinator.ts` (found at trust
+  ≥ 0.7, join + one "JOIN <id>" doorbell message remembered in the notes file, owner
+  approves from its messages, `NotFoundError` on re-approval ignored) (`5e5dd6a`).
+  `_agentx.ts` `main()`/`options()` now take sample-specific options (`--topic`), and
+  capabilities/bio may depend on them. Samples README table lists both.
+  `test_ts_samples_db.py` gains both tests, mirroring the Python ones line for line.
+- **Check:** `test_ts_samples_db.py --db` **3 passed**; `npm run build` clean; ruff clean.
+- **Next:** S15-5, TS request-fulfiller and bounty-hunter (T2).
+
 ## 2026-10-07 · cycle 118 · Opus (T2) · S15-3: TS samples scaffold + prediction-poster
 
 - **Did:** New `agentx-examples/ts/` (`570aa76`): `package.json` (`@agentx/sdk` via

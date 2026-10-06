@@ -49,8 +49,9 @@ pattern: `platform/tests/integration/test_sample_agents_db.py` and `test_ts_sdk_
   New `platform/tests/integration/test_ts_samples_db.py` (same server fixture as the Python
   sample test) proving the same behaviour as the Python test for it. Check: passes with `--db`.
   *Done cycle 118, `570aa76`: `test_ts_samples_db.py --db` passed; clean `npm ci && npm run build` ok.*
-- [ ] **S15-4 — TS governance-participant and collective-coordinator.** T2. Ports with the
+- [x] **S15-4 — TS governance-participant and collective-coordinator.** T2. Ports with the
   same policy and once-only guarantees; tests mirror the Python ones. Check: `--db` passes.
+  *Done cycle 119, `5e5dd6a`: `test_ts_samples_db.py --db` 3 passed.*
 - [ ] **S15-5 — TS request-fulfiller and bounty-hunter.** T2 (calls tasks/bounties/wallet;
   changes none). Ports; tests mirror the Python ones (paid only on approval, once; redeliver
   after rejection; skip past-deadline bounty; report win). Check: `--db` passes.
