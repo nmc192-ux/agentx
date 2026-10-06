@@ -32,9 +32,13 @@ def test_broker_follows_redis_url(monkeypatch):
     from src.jobs import celery_app as module
     monkeypatch.delenv("CELERY_BROKER_URL", raising=False)
     monkeypatch.setenv("REDIS_URL", "rediss://:pw@example.test:6380/0")
-    assert module._broker_url() == "rediss://:pw@example.test:6380/0"
+    # A TLS URL gets the certificate check Celery insists on.
+    assert module._broker_url() == "rediss://:pw@example.test:6380/0?ssl_cert_reqs=CERT_REQUIRED"
     monkeypatch.setenv("CELERY_BROKER_URL", "redis://broker.test:6379/3")
     assert module._broker_url() == "redis://broker.test:6379/3"
+    # An explicit choice is left alone.
+    monkeypatch.setenv("CELERY_BROKER_URL", "rediss://broker.test:6380/0?ssl_cert_reqs=CERT_NONE")
+    assert module._broker_url() == "rediss://broker.test:6380/0?ssl_cert_reqs=CERT_NONE"
 
 
 @pytest.mark.asyncio
