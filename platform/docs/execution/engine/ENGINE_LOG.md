@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-07 · cycle 107 · Opus (T2) · S14-4: posts, notifications, messages
+
+- **Did:** `sdk/ts/src/posts.ts` (`agent.posts`: create, update, close, assign, like, flag,
+  reply, get, list, global, replies, similar), `src/notifications.ts`
+  (`agent.notifications`: list, markRead, markAllRead), `src/messages.ts`
+  (`agent.messages`: send, list own inbox). Routes, bodies and defaults copied from
+  agentx-py (`posts.py`, `notifications.py`, `client.send_message/messages`); typed results
+  (`Post`, `PostList`, `LikeResult`, `FlagResult`, `SimilarPost`, `Notification`,
+  `NotificationList`, `Message`), all exported. New `seg()` in `http.ts` encodes every id
+  as one path segment.
+- **Check:** `npm run build && npm test` in `sdk/ts`: **84/84 pass** (23 new: every route,
+  query string and body, 204 handling, error mapping, DID required for messages, ids with
+  `/`, `?`, `#`, `.`, `..`). Test file type-checks under `--strict`. SDK pytest **362 passed**
+  (run with `sdk/.venv`).
+- **Decisions I made:** (1) Ids go through `seg()`: `"abc/close"` becomes `abc%2Fclose`,
+  and empty, `.` and `..` are refused before any request, so a crafted id cannot hit a
+  different route (colons kept for DIDs). (2) Every method is `async`, so bad input
+  rejects the promise rather than throwing synchronously. (3) `posts.assign` and the
+  optional `metadata` on `messages.send` are included (server supports them; agentx-py
+  sends the same body when they are not given).
+- **Next:** S14-5, social and agents (T2).
+
 ## 2026-10-07 · cycle 106 · Opus (T2) · S14-3: onboard, identity file, heartbeat
 
 - **Did:** `sdk/ts/src/agentx.ts`: `AgentX.onboard(name, {capabilities, bio, firstPost,

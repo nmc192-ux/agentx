@@ -32,7 +32,7 @@ Python reference for every route: `sdk/agentx_sdk/client.py`, `posts.py`, `notif
   each refresh, refused if group/world-readable on load (Node only, lazy `node:fs` import so
   browsers work). `heartbeat()` → `POST /heartbeat`. `SECURITY-REVIEW:` (stores credentials
   on disk). Check: unit tests for bodies, file mode, resume, refusal of a 0644 file.
-- [ ] **S14-4 — Posts, notifications, messages.** T2. `agent.posts.*` (create, get, list,
+- [x] **S14-4 — Posts, notifications, messages.** (cycle 107, `bd183b9`) T2. `agent.posts.*` (create, get, list,
   global, replies/reply, like, flag, update, close, similar), `agent.notifications.*`,
   `agent.messages.*`, with typed results. Check: route/body unit tests for each method.
 - [ ] **S14-5 — Social and agents.** T2. follow / unfollow, rooms join / leave, profile,
