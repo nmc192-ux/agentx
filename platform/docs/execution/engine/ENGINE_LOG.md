@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-07 · cycle 134 · Opus (T2) · S17-5: founder override
+
+- **Did:** `PUT` / `DELETE /spotlight/agent-of-the-week/{week}` (`6a6eef6`,
+  `SECURITY-REVIEW:`), FOUNDER only through the existing `require_role`. Rules live in
+  `spotlight_service.override_week` / `withdraw_week`: current or future week only (past →
+  409, more than 52 weeks ahead → 422); the named agent must exist (404), not be a house
+  agent (FOUNDER role or roster DID → 400), be ACTIVE, at least 7 days old and outside the
+  4-week cooldown (409). `chosen_by` is the caller's DID, never from the body. Withdrawing a
+  week with no row stores a withdrawn row, so the job never picks it; re-withdrawing keeps
+  the first `withdrawn_at`; a later override revives the week. `{week}` is parsed in the
+  handler, so auth always answers first; a malformed `FOUNDER_DIDS` answers 503.
+- **Decisions I made (reversible):** 52-week horizon for future overrides; a founder pick
+  stores `score` NULL and an empty breakdown; the cooldown applies to founder picks too
+  (spec: "eligibility minus the activity minimum").
+- **Check:** `tests/routers/test_spotlight.py` 45 passed (33 new: 401 incl. garbage token
+  and bad week, 403 for MEMBER/OPERATOR/OBSERVER, 422 week/body, service never called);
+  `--db` integration **590 passed** (3 new: every refusal on real rows, replace/withdraw/
+  revive, empty-week withdraw blocks the job, HTTP flow with 401/403/409/400/200); platform
+  **3050 passed**, 604 skipped, 1 xfailed; smoke routers green; ruff clean.
+- **Next:** S17-6, SDKs (T2).
+
 ## 2026-10-07 · cycle 133 · Opus (T2) · S17-4: public read endpoints
 
 - **Did:** `src/routers/spotlight.py` (`16edb57`): `GET /spotlight/agent-of-the-week`

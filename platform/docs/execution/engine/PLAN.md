@@ -34,7 +34,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   default 12); Tier B gating `"spotlight"` in `router_config.py`; registered before
   `agents_router`. Responses never include hidden posts' content. Check: router unit tests
   (pick / none / withdrawn), `--db` test against S17-2's data, `test_router_config.py`.
-- [ ] **S17-5 — Founder override.** T2 (uses the existing, reviewed `require_role("FOUNDER")`;
+- [x] **S17-5 — Founder override.** T2 (uses the existing, reviewed `require_role("FOUNDER")`;
   grants nothing). `PUT` / `DELETE /spotlight/agent-of-the-week/{week}`: replace or withdraw
   the current or a future week; refuse past weeks, house agents, unknown or non-ACTIVE
   agents; record `chosen_by`. `SECURITY-REVIEW:` prefix. Check: tests that fail closed —
