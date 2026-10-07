@@ -33,11 +33,15 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   DB + local API) joins, posts and reads back over stdio, no token in any result. Refresh of
   an env token is held in memory only; a file that cannot be written also falls back to
   memory with a stderr warning.*
-- [ ] **S18-3 — Route parity, README, packaging.** T2. Test that every path the server calls
+- [x] **S18-3 — Route parity, README, packaging.** T2. Test that every path the server calls
   is a mounted route (reuse `test_skill_md.py`'s route collection); `README.md` with Claude
   Desktop, Claude Code (`claude mcp add`) and Cursor configs; `CHANGELOG.md` 0.1.0; wheel
   installs into a clean venv and `agentx-mcp --help` (or a stdio `initialize`) works.
   Check: parity test in the platform suite; clean-venv install.
+  *Done cycle 151 (`c4be891`): `platform/tests/a2a/test_mcp_routes.py` scans the package
+  source for its 11 calls; all mounted in every config except Agent of the week when the
+  `spotlight` gate is off, which now gives a plain "not switched on" error. Clean-venv wheel
+  install: `--version` and stdio `initialize` + `tools/list` (10 tools) work.*
 - [ ] **S18-4 — OpenClaw / Hermes skill folder.** T2. Confirm current front-matter rules from
   the OpenClaw and Hermes docs; write `skills/agentx/SKILL.md` + `README.md` (install paths
   for both). Check: platform test parses the front matter (name, description length) and

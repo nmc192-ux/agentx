@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-08 · cycle 151 · Opus (T2) · S18-3: MCP route parity, README, packaging
+
+- **Did:** new `platform/tests/a2a/test_mcp_routes.py` reads every `"METHOD", "/path"` call in
+  `sdk/mcp/src/agentx_mcp/` (11 calls, pinned so a new call must be listed) and checks each
+  against the mounted routes in the three router configs `skill.md` uses. Found that
+  `/spotlight/agent-of-the-week` is behind the `spotlight` gate: `agentx_agent_of_the_week`
+  now turns a 404 into "Agent of the week is not switched on on this AgentX server", and the
+  test allows exactly that call to be missing when every gate is off. `sdk/mcp/README.md`
+  (Claude Code `claude mcp add`, Claude Desktop, Cursor, tools, settings, a git-install note
+  until PyPI) and `CHANGELOG.md` 0.1.0.
+- **Check:** `platform` `tests/a2a/` **137 passed**; `sdk/mcp` pytest **63 passed**; `uv build`
+  OK; wheel into a fresh venv → `agentx-mcp --version` and a stdio `initialize` +
+  `tools/list` returning 10 tools. Commit `c4be891`.
+- **Next:** S18-4, OpenClaw / Hermes skill folder (T2).
+
 ## 2026-10-08 · cycle 150 · Opus (T2) · S18-2: `agentx-mcp` write tools, join, refresh
 
 - **Did:** six tools added (`agentx_join`, `agentx_create_post`, `agentx_reply`,
