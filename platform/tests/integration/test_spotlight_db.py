@@ -343,3 +343,108 @@ async def test_endpoints_over_http(clean, agents, client):
             "DELETE FROM agent_spotlights WHERE week_start >= $1",
             this_week - timedelta(days=7),
         )
+
+
+# ── S17-5: founder override ───────────────────────────────────────────────────
+
+async def test_override_rules_against_real_rows(clean, agents):
+    founder = await _agent(clean, agents, "ovfounder", role="FOUNDER")
+    roster_did = await _agent(clean, agents, "ovroster")
+    alice = await _agent(clean, agents, "ovalice")
+    bob = await _agent(clean, agents, "ovbob")
+    gone = await _agent(clean, agents, "ovgone", status="SUSPENDED")
+    week = date(1999, 6, 7)
+    newbie = await _agent(clean, agents, "ovnew", created=datetime(1999, 6, 3, tzinfo=timezone.utc))
+    roster = {"nova": roster_did.did}
+    today = week + timedelta(days=2)
+
+    async def refused(code, did, wk=week):
+        with pytest.raises(spot.SpotlightRefused) as exc:
+            async with clean.acquire() as conn:
+                await spot.override_week(conn, wk, did, None, founder.did,
+                                         roster=roster, today=today)
+        assert exc.value.status_code == code, did
+
+    await refused(400, founder.did)                      # FOUNDER role
+    await refused(400, roster_did.did)                   # on the founder roster
+    await refused(404, "did:agentx:nobody-001")
+    await refused(409, gone.did)                         # not ACTIVE
+    await refused(409, newbie.did)                       # under 7 days old
+    await refused(409, alice.did, week - timedelta(days=7))      # past week
+    await refused(422, alice.did, week + timedelta(weeks=53))    # too far ahead
+    await _store(clean, week - timedelta(days=14), bob)
+    await refused(409, bob.did)                          # 4-week cooldown
+    assert await clean.fetchval(
+        "SELECT COUNT(*) FROM agent_spotlights WHERE week_start = $1", week) == 0
+
+    # an automatic pick is replaced; the founder's DID is recorded
+    await _store(clean, week, bob)
+    async with clean.acquire() as conn:
+        row = await spot.override_week(conn, week, alice.did, "great work", founder.did,
+                                       roster=roster, today=today)
+        assert row["agent_did"] == alice.did and row["chosen_by"] == founder.did
+        assert row["score"] is None and row["withdrawn_at"] is None
+        cur = await spot.current_spotlight(conn, today)
+        assert cur["agent"]["agent_did"] == alice.did
+        assert cur["chosen_by"] == "founder" and cur["note"] == "great work"
+
+        # withdrawn: shows no pick, keeps who was withdrawn, a re-override revives it
+        row = await spot.withdraw_week(conn, week, founder.did, today=today)
+        assert row["withdrawn_at"] is not None and row["agent_did"] == alice.did
+        assert (await spot.current_spotlight(conn, today))["agent"] is None
+        first = row["withdrawn_at"]
+        again = await spot.withdraw_week(conn, week, founder.did, today=today)
+        assert again["withdrawn_at"] == first                 # idempotent
+        row = await spot.override_week(conn, week, alice.did, None, founder.did,
+                                       roster=roster, today=today)
+        assert row["withdrawn_at"] is None and row["note"] is None
+
+
+async def test_withdrawing_an_empty_week_stops_the_job_picking_it(clean, agents):
+    founder = await _agent(clean, agents, "wdfounder", role="FOUNDER")
+    week = date(1999, 7, 5)
+    seed = await _seed_week(clean, agents, week)
+    async with clean.acquire() as conn:
+        row = await spot.withdraw_week(conn, week, founder.did, today=week)
+        assert row["agent_did"] is None and row["chosen_by"] == founder.did
+        assert await spot.pick_for_week(conn, week, roster=_roster(seed)) is None
+    rows = await clean.fetch(
+        "SELECT agent_did, withdrawn_at FROM agent_spotlights WHERE week_start = $1", week)
+    assert len(rows) == 1 and rows[0]["agent_did"] is None and rows[0]["withdrawn_at"]
+
+
+async def test_override_over_http_fails_closed(clean, agents, client):
+    founder = await _agent(clean, agents, "httpfounder", role="FOUNDER")
+    member = await _agent(clean, agents, "httpmember")
+    operator = await _agent(clean, agents, "httpoperator", role="OPERATOR")
+    alice = await _agent(clean, agents, "httpovalice")
+    this_week = spot.week_start_of(datetime.now(timezone.utc))
+    url = f"/spotlight/agent-of-the-week/{this_week.isoformat()}"
+    body = {"agent_did": alice.did, "note": "hello"}
+    await clean.execute("DELETE FROM agent_spotlights WHERE week_start = $1", this_week)
+    try:
+        assert (await client.put(url, json=body)).status_code == 401
+        assert (await client.delete(url)).status_code == 401
+        for who in (member, operator):
+            h = {"X-Test-Caller": who.did}
+            assert (await client.put(url, json=body, headers=h)).status_code == 403
+            assert (await client.delete(url, headers=h)).status_code == 403
+        assert await clean.fetchval(
+            "SELECT COUNT(*) FROM agent_spotlights WHERE week_start = $1", this_week) == 0
+
+        h = {"X-Test-Caller": founder.did}
+        past = (this_week - timedelta(days=7)).isoformat()
+        r = await client.put(f"/spotlight/agent-of-the-week/{past}", json=body, headers=h)
+        assert r.status_code == 409
+        r = await client.put(url, json={"agent_did": founder.did}, headers=h)
+        assert r.status_code == 400
+        r = await client.put(url, json=body, headers=h)
+        assert r.status_code == 200 and r.json()["chosen_by"] == founder.did
+        r = await client.get("/spotlight/agent-of-the-week")
+        assert r.json()["agent"]["agent_did"] == alice.did
+        r = await client.delete(url, headers=h)
+        assert r.status_code == 200 and r.json()["withdrawn"] is True
+        assert (await client.get("/spotlight/agent-of-the-week")).json()["agent"] is None
+    finally:
+        await clean.execute("DELETE FROM agent_spotlights WHERE week_start >= $1",
+                            this_week - timedelta(days=7))

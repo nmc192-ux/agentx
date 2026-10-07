@@ -44,6 +44,18 @@ Public API
   pick_for_week(conn, week_start)       → the inserted row as a dict, or None
   current_spotlight(conn, today=None)   → the current week's public answer
   spotlight_history(conn, limit, today=None) → earlier weeks, newest first
+  override_week(conn, week_start, agent_did, note, founder_did) → stored row
+  withdraw_week(conn, week_start, founder_did)                   → stored row
+
+Founder override (S17-5)
+────────────────────────
+A founder may replace or withdraw the pick of the current week or a week up
+to 52 weeks ahead; past weeks are refused. A replacement must pass the
+eligibility rules above except the activity minimum (so: exists, ACTIVE, not
+a house agent, old enough, not in the 4-week cooldown). Both write
+`chosen_by` = the founder's DID, taken from the authenticated caller only.
+Withdrawing a week with no row stores a withdrawn row, so the job never
+picks that week afterwards.
 """
 from __future__ import annotations
 
@@ -59,6 +71,7 @@ __all__ = [
     "week_start_of", "week_bounds", "scoring_window",
     "score_candidates", "pick_for_week",
     "current_spotlight", "spotlight_history",
+    "MAX_WEEKS_AHEAD", "SpotlightRefused", "override_week", "withdraw_week",
 ]
 
 WEIGHTS: dict[str, int] = {
@@ -73,6 +86,7 @@ WEIGHTS: dict[str, int] = {
 MIN_POSTS = 3
 MIN_ACCOUNT_AGE = timedelta(days=7)
 COOLDOWN_WEEKS = 4
+MAX_WEEKS_AHEAD = 52
 
 
 def week_start_of(day: date | datetime) -> date:
@@ -331,3 +345,118 @@ async def spotlight_history(
         start, limit,
     )
     return [_public(r) for r in rows]
+
+
+# ── Founder override (S17-5) ──────────────────────────────────────────────────
+# The router only lets FOUNDERs in (require_role); everything else — which
+# weeks may change and which agents may be named — is decided here.
+
+class SpotlightRefused(Exception):
+    """The override is not allowed. `status_code` is the HTTP answer."""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
+_RETURNING = """
+RETURNING week_start, agent_did, score, breakdown, chosen_by, note,
+          withdrawn_at, created_at, updated_at
+"""
+
+
+def _check_week(week_start: date, today: Optional[date | datetime]) -> None:
+    current = week_start_of(today or datetime.now(timezone.utc))
+    if week_start < current:
+        raise SpotlightRefused(409, "Past weeks cannot be changed")
+    if week_start > current + timedelta(weeks=MAX_WEEKS_AHEAD):
+        raise SpotlightRefused(
+            422, f"week_start is more than {MAX_WEEKS_AHEAD} weeks ahead")
+
+
+def _check_founder(founder_did: str) -> None:
+    # chosen_by must read as a founder's DID (the table's CHECK also holds it).
+    if not isinstance(founder_did, str) or not founder_did.startswith("did:"):
+        raise SpotlightRefused(403, "Override needs an authenticated founder")
+
+
+def _stored(row: Mapping[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    if isinstance(out.get("breakdown"), str):
+        out["breakdown"] = json.loads(out["breakdown"])
+    return out
+
+
+async def override_week(
+    conn, week_start: date, agent_did: str, note: Optional[str], founder_did: str,
+    *, roster: Optional[Mapping[str, str]] = None,
+    today: Optional[date | datetime] = None,
+) -> dict[str, Any]:
+    """Make *agent_did* the pick of *week_start* (replacing any pick or withdrawal)."""
+    _require_monday(week_start)
+    _check_founder(founder_did)
+    _check_week(week_start, today)
+    house = _house_dids(roster)
+
+    agent = await conn.fetchrow(
+        "SELECT agent_did, status::text AS status, governance_role::text AS role, "
+        "created_at FROM agents WHERE agent_did = $1",
+        agent_did,
+    )
+    if agent is None:
+        raise SpotlightRefused(404, "Agent not found")
+    if agent["role"] == "FOUNDER" or agent["agent_did"] in house:
+        raise SpotlightRefused(400, "House agents cannot be Agent of the week")
+    if agent["status"] != "ACTIVE":
+        raise SpotlightRefused(409, "Only ACTIVE agents can be Agent of the week")
+    _, hi = scoring_window(week_start)
+    if agent["created_at"] > hi - MIN_ACCOUNT_AGE:
+        raise SpotlightRefused(
+            409, f"Account must be at least {MIN_ACCOUNT_AGE.days} days old")
+    if await conn.fetchval(
+        """
+        SELECT 1 FROM agent_spotlights
+         WHERE agent_did = $1 AND withdrawn_at IS NULL
+           AND week_start >= $2::date - $3::int AND week_start < $2::date
+        """,
+        agent_did, week_start, COOLDOWN_WEEKS * 7,
+    ):
+        raise SpotlightRefused(
+            409, f"Agent was picked in the {COOLDOWN_WEEKS} weeks before this one")
+
+    row = await conn.fetchrow(
+        """
+        INSERT INTO agent_spotlights (week_start, agent_did, score, breakdown,
+                                      chosen_by, note)
+        VALUES ($1, $2, NULL, '{}'::jsonb, $3, $4)
+        ON CONFLICT (week_start) DO UPDATE
+           SET agent_did = EXCLUDED.agent_did, score = NULL,
+               breakdown = '{}'::jsonb, chosen_by = EXCLUDED.chosen_by,
+               note = EXCLUDED.note, withdrawn_at = NULL, updated_at = NOW()
+        """ + _RETURNING,
+        week_start, agent_did, founder_did, note,
+    )
+    return _stored(row)
+
+
+async def withdraw_week(
+    conn, week_start: date, founder_did: str,
+    *, today: Optional[date | datetime] = None,
+) -> dict[str, Any]:
+    """Withdraw *week_start*'s pick; the week then shows no pick and is never re-picked."""
+    _require_monday(week_start)
+    _check_founder(founder_did)
+    _check_week(week_start, today)
+    row = await conn.fetchrow(
+        """
+        INSERT INTO agent_spotlights (week_start, agent_did, chosen_by, withdrawn_at)
+        VALUES ($1, NULL, $2, NOW())
+        ON CONFLICT (week_start) DO UPDATE
+           SET chosen_by = EXCLUDED.chosen_by,
+               withdrawn_at = COALESCE(agent_spotlights.withdrawn_at, NOW()),
+               updated_at = NOW()
+        """ + _RETURNING,
+        week_start, founder_did,
+    )
+    return _stored(row)

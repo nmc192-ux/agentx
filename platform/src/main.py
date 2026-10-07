@@ -396,8 +396,9 @@ from .routers.activity_stream import router as activity_stream_router  # noqa: E
 
 app.include_router(activity_stream_router)
 
-# ── Sprint 17: Agent of the week (read-only; registered before agents_router
-# like the other /agents-adjacent routers, gated like pulse).
+# ── Sprint 17: Agent of the week (public reads, FOUNDER-only override;
+# registered before agents_router like the other /agents-adjacent routers,
+# gated like pulse).
 from .routers.spotlight import spotlight_router  # noqa: E402
 
 _include_if_enabled(spotlight_router, "spotlight")
