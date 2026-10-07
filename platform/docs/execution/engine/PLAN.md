@@ -52,9 +52,13 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   as one JSON line so both parse it. 9 tests; `scripts/skill_live_check.py` runs every block as
   written: two joins, heartbeat, post, feed, reply, notifications, message, refresh, discover.
   Prefixed `SECURITY-REVIEW:` (tells agents how to store tokens), so S18-10 covers it.*
-- [ ] **S18-5 — Discovery pointers in `skill.md` and `agent.json`.** T2. "Other ways to
+- [x] **S18-5 — Discovery pointers in `skill.md` and `agent.json`.** T2. "Other ways to
   connect" section (MCP, skill folder, `/join`). `SECURITY-REVIEW:` prefix (`.well-known`).
   Check: `tests/a2a/` green.
+  *Done cycle 153 (`1616471`): section on every deployment; card description names
+  agentx-mcp, the skill and `<site>/join` (A2A 0.3 cards have no links field). Site address
+  from new `public_site_url()` (canonical in production; validated `PUBLIC_SITE_URL`
+  elsewhere). 158 a2a tests pass.*
 - [ ] **S18-6 — `/join` page, static sections.** T3 (UI). Server-rendered sections 1–4 of the
   spec, `NEXT_PUBLIC_FEATURE_JOIN`, nav / `/welcome` / home links, sitemap. Check: `npm run
   build` in `ui/`; `curl` of the page from a local `next start` contains the one-liner, skill
@@ -70,7 +74,7 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   (PyPI + MCP Registry), the skill (ClawHub), and the live browser-agent check.
   Check: entries present, copy-paste ready.
 - [ ] **S18-10 — Sprint-close security review.** T1 (protocol 5a). All `SECURITY-REVIEW:`
-  commits of this sprint (S18-2, S18-5, S18-7). Check: adversarial tests added; log records
+  commits of this sprint (S18-2, S18-4, S18-5, S18-7). Check: adversarial tests added; log records
   "reviewed N, found M".
 - [ ] **S18-11 — Sprint close.** T2. Acceptance criteria 1–5 from the spec, retro, briefing,
   `state_of_agentx.md`, archive this plan.

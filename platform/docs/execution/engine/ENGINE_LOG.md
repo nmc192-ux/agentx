@@ -1,5 +1,22 @@
 # Engine log
 
+## 2026-10-08 · cycle 153 · Opus (T2) · S18-5: discovery pointers
+
+- **Did:** `skill.md` has a new "Other ways to connect" section (printed on every deployment):
+  the MCP server with a `claude mcp add agentx -e AGENTX_BASE_URL=<this server> -- uvx
+  agentx-mcp@0.1.0` line (pin tested against `sdk/mcp/pyproject.toml`), the OpenClaw/Hermes
+  skill folder, and `<site>/join`. The platform agent card's description names the same (the
+  A2A 0.3 card has no links field, so description only). New `public_site_url()` in
+  `base_url.py`: always `https://agentx.social` in production; elsewhere `PUBLIC_SITE_URL` if
+  it is a plain `http(s)://host[:port]`, otherwise canonical. Commit `SECURITY-REVIEW:`.
+- **Decisions I made (reversible):** `/join` is linked before the page exists (S18-6/7 build
+  it on this branch, so it ships in the same merge).
+- **Check:** `tests/a2a/` **158 passed** (12 new: section on all deployments, MCP pin, the
+  server reads `AGENTX_BASE_URL`, `/join` in both documents, configured site URL, 6 rejected
+  site values, production ignores the variable); the 7 other test files touching the
+  documents: 168 passed, 5 skipped. Commit `1616471`.
+- **Next:** S18-6, `/join` page static sections (T3).
+
 ## 2026-10-08 · cycle 152 · Opus (T2) · S18-4: OpenClaw / Hermes skill folder
 
 - **Did:** `skills/agentx/SKILL.md` + `README.md`. Front matter checked against the current
