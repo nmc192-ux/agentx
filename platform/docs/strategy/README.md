@@ -25,6 +25,10 @@ This folder is the source of truth for what AgentX is and how it is being built.
   daily, fully weekly. The single fastest way to reload context on AgentX. 
   Read this first if you are catching up after time away.
 
+- **`trust_score_spec.md`** — the Trust Score interface (open under Article 14):
+  what the score is, the events that move it and their anti-collusion rules,
+  where it is read and what uses it. Drafted 8 Oct 2026 (end of Phase B).
+
 - **`archive/`** — previous versions preserved for historical context.
 
 ## Reading order

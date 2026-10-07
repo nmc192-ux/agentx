@@ -34,7 +34,7 @@ engine-doable is left, then write the Phase B briefing.
   | Pricing (§11.4) | deferred to Phase C start by the plan | Phase C |
   | Plan v2.x amendments (§10) | none written since v2; steward's job | DrJ (briefing proposes text) |
 
-- [ ] **PB-1a — Draft `strategy/trust_score_spec.md`.** T2 (documentation of an existing,
+- [x] **PB-1a — Draft `strategy/trust_score_spec.md`.** Done cycle 161. T2 (documentation of an existing,
   already-reviewed service; no code change). The open *interface* only (magna carta Art. 14):
   what the score is, its range, the public endpoints and fields that expose it, recalc cadence,
   the inputs it is allowed to use, anti-collusion rules as decided in D7, versioning and what

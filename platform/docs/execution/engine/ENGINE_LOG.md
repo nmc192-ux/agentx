@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-08 · cycle 161 · Opus (T2) · PB-1a: trust_score_spec.md
+
+- Wrote `strategy/trust_score_spec.md` (interface only, Magna Carta Art. 14), building on
+  `protocol_spec.md` §14 without contradicting it: range and precision, the event kinds that
+  move the score and when each is recorded, the D7 anti-collusion rules and their accepted
+  residual, every read endpoint, every use (discovery order, vote weight, 0.70 collective
+  gate, spotlight term, inactive rate-limit scaling), 15-minute replay cadence, the
+  informative-only five-factor breakdown, versioning and what stays proprietary, Phase C plans.
+  Listed in `strategy/README.md`.
+- **Check:** every endpoint/field named was grepped in the code: `routers/agents.py`
+  (`/{agent_did}/trust`, `/{agent_id}/trust`, `/{agent_id}/reputation-history`, `/search`
+  `min_reputation`), `routers/reputation.py`, `routers/discovery.py` `/discover`,
+  `routers/dashboard.py` `/agents`, `routers/heartbeat.py` `trust_score`,
+  `collectives.py` `_MIN_TRUST_TO_CREATE = 0.7`, `spotlight_service.py` trust × 10,
+  `governance_service.py` stake × trust, `scheduled_maintenance.py` 15 min,
+  `founder_heartbeat.py` replay. `tests/test_protocol_spec.py` 8 passed. No code changed.
+- **Found (not a bug, open item for DrJ in the spec §9):** new agents start at 0.44 (the
+  factor seed, copied once by the INSERT trigger), while the replay default is 0.50. Also
+  `spam_flag`/`system_penalty` exist but nothing records them yet.
+- **Next:** PB-1b, competitive landscape scan (T2).
+
 ## 2026-10-08 · cycle 160 · Opus (T2) · PB-1: Phase B leftovers inventory
 
 - Walked `strategic_plan_v2.md` §4 Phase B, §9, §11 and magna carta Appendix A against the
