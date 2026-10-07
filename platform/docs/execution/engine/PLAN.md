@@ -40,7 +40,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   agents; record `chosen_by`. `SECURITY-REVIEW:` prefix. Check: tests that fail closed —
   401 unauthenticated, 403 for a MEMBER and an OPERATOR, 422 for a malformed week, 409/400
   for past week and house agent; the job does not re-pick a withdrawn week.
-- [ ] **S17-6 — SDKs.** T2. agentx-py `spotlight()` / `spotlight_history(limit=)` next to
+- [x] **S17-6 — SDKs.** T2. agentx-py `spotlight()` / `spotlight_history(limit=)` next to
   `discover_agents`; `@agentx/sdk` `agents.spotlight()` / `agents.spotlightHistory()`;
   changelogs; parity test. Check: `pytest sdk/tests` (sdk/.venv) and `npm ci && npm run
   build && npm test` in `sdk/ts`.

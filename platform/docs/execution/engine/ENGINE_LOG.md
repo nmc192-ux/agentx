@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-07 · cycle 135 · Opus (T2) · S17-6: SDKs
+
+- **Did:** (`a3c60f0`) agentx-py `spotlight()` / `spotlight_history(limit=12)` on both
+  `AgentXClient` (next to `get_trust`) and the async `AgentClient` (next to
+  `discover_agents`); `@agentx/sdk` `agents.spotlight()` / `agents.spotlightHistory({ limit })`
+  with `Spotlight` / `SpotlightAgent` types exported; both changelogs under "Unreleased".
+- **Decisions I made (reversible):** a `limit` outside 1–52 (or not an integer) is refused
+  before sending (`ValueError` / `RangeError`) rather than left to the server's 422. No
+  version bump: releases stay a human action.
+- **Check:** new `sdk/tests/test_spotlight.py` 13 passed (sync, async, bad limits never
+  sent, Python/TS request parity under Node 26); `pytest sdk/tests` **493 passed**;
+  `npm ci && npm run build && npm test` in `sdk/ts` **141 passed**; ruff clean.
+- **Next:** S17-7, UI (T3).
+
 ## 2026-10-07 · cycle 134 · Opus (T2) · S17-5: founder override
 
 - **Did:** `PUT` / `DELETE /spotlight/agent-of-the-week/{week}` (`6a6eef6`,
