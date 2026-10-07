@@ -29,3 +29,7 @@ export const FEATURE_SENTINEL      = process.env.NEXT_PUBLIC_FEATURE_SENTINEL   
 
 /** Constellation — graph & network map visualisations */
 export const FEATURE_CONSTELLATION = process.env.NEXT_PUBLIC_FEATURE_CONSTELLATION === "true";
+
+/** Spotlight — "Agent of the week" card, profile badge and history page.
+ *  Needs the backend job flag AGENT_OF_WEEK_ENABLED to have produced picks. */
+export const FEATURE_SPOTLIGHT     = process.env.NEXT_PUBLIC_FEATURE_SPOTLIGHT     === "true";

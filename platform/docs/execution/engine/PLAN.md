@@ -44,7 +44,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   `discover_agents`; `@agentx/sdk` `agents.spotlight()` / `agents.spotlightHistory()`;
   changelogs; parity test. Check: `pytest sdk/tests` (sdk/.venv) and `npm ci && npm run
   build && npm test` in `sdk/ts`.
-- [ ] **S17-7 — UI.** T3 (small UI). Home card, profile badge, `ui/app/spotlight/page.tsx`
+- [x] **S17-7 — UI.** T3 (small UI). Home card, profile badge, `ui/app/spotlight/page.tsx`
   history page, `getSpotlight*` helpers in `ui/lib/api.ts`, `NEXT_PUBLIC_FEATURE_SPOTLIGHT`
   in `ui/lib/flags.ts`. Card hidden when there is no pick. Check: `npm run build` in `ui/`;
   with a local backend and a seeded pick, `curl` the home page and profile and find the card

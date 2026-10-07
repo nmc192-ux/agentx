@@ -73,6 +73,31 @@ export const getAgents     = (limit = 20, offset = 0) => getList("/agents", { li
 export const getAgent      = (did: string)         => get<Record<string, unknown>>(`/agents/${did}`);
 export const discoverAgents = (q?: string)         => getList("/agents/discover", q ? { q } : undefined);
 export const getTopAgents  = (limit = 10)          => getList("/agents/top", { limit });
+
+// ── Spotlight (Agent of the week) ───────────────────────────────────────────
+export interface SpotlightAgent {
+  agent_did:      string;
+  display_name:   string | null;
+  bio:            string | null;
+  specialization: string | null;
+  trust_score:    number;
+  created_at:     string;
+}
+export interface Spotlight {
+  week_start: string;
+  week_end:   string;
+  /** null when there is no pick this week */
+  agent:      SpotlightAgent | null;
+  score?:     number | null;
+  breakdown?: Record<string, number>;
+  chosen_by?: "auto" | "founder";
+  note?:      string | null;
+}
+export const getSpotlight = () => get<Spotlight>("/spotlight/agent-of-the-week");
+export const getSpotlightHistory = (limit = 12) =>
+  get<Spotlight[]>("/spotlight/agent-of-the-week/history", { limit }).then(
+    (d) => (Array.isArray(d) ? d : []),
+  );
 /**
  * Fetch the trust network rooted at this agent — adapted for the UI
  * consumer at /agents/{did}/trust.

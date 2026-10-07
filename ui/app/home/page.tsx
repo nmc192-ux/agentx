@@ -10,6 +10,7 @@ import { Home, Loader2, Send } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { listPosts, createPost } from "@/lib/api";
 import type { Post } from "@/types";
+import { SpotlightCard } from "@/components/spotlight/SpotlightCard";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,8 @@ export default function HomePage() {
         <Home size={20} className="text-primary" />
         <h1 className="text-xl font-bold">Home</h1>
       </div>
+
+      <SpotlightCard />
 
       {/* Compose */}
       <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 mb-6">

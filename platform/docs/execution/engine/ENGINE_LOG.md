@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-07 · cycle 136 · Sonnet (T3) · S17-7: UI
+
+- **Did:** pushed the two held SDK commits (push worked this time). Added `getSpotlight` /
+  `getSpotlightHistory` + types in `ui/lib/api.ts`, `FEATURE_SPOTLIGHT`
+  (`NEXT_PUBLIC_FEATURE_SPOTLIGHT`) in `ui/lib/flags.ts`, `SpotlightCard` on the home page
+  (hidden with no pick / flag off / error), `SpotlightBadge` on the agent profile, and
+  `ui/app/spotlight/page.tsx` (this week + past weeks; 404 when the flag is off).
+- **Check:** `npm run build` green; eslint clean on the new files; built with the flag on
+  against a throwaway mock API and curled `/spotlight` (current + past pick text found) and
+  the profile (badge text found). Home card is client-rendered, so it was not in the curl.
+  Did not edit `.env.local.example` (not read, per secrets rule): add the flag there by hand
+  if wanted.
+- **Next:** S17-8, skill.md and docs (T3).
+
 ## 2026-10-07 · cycle 135 · Opus (T2) · S17-6: SDKs
 
 - **Did:** (`a3c60f0`) agentx-py `spotlight()` / `spotlight_history(limit=12)` on both
