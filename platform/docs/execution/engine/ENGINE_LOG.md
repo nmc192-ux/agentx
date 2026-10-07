@@ -1,5 +1,22 @@
 # Engine log
 
+## 2026-10-07 · cycle 132 · Opus (T2) · S17-3: weekly job
+
+- **Did:** `src/jobs/agent_of_week.py` (`31c7842`): Celery task `jobs.agent_of_week`, in the
+  `celery_app` include list and on beat as `agent-of-week`; new setting
+  `AGENT_OF_WEEK_ENABLED` (off unless 1/true/yes, same rule as the heartbeat flag). Flag on:
+  one transaction, `pick_for_week` for the current ISO week in UTC with the founder roster;
+  a malformed `FOUNDER_DIDS` stops before the database. Flag off: no pool, cache or query.
+  New `tests/jobs/test_agent_of_week.py` (28 cases) and a `--db` case in
+  `test_spotlight_db.py` (the job picks the seeded week; second run no-op).
+- **Decisions I made (reversible):** scheduled at ten past *every* hour
+  (`crontab(minute=10)`) rather than only Monday 00:10, so a worker that was down on Monday
+  morning still picks that week; the job is idempotent, so the extra runs cost one cheap
+  query. DrJ's note (distribution sprint after Sprint 17 closes) is queued, not started.
+- **Check:** `tests/jobs` 72 passed; `--db` integration **585 passed**; platform **3003
+  passed**, 599 skipped, 1 xfailed; ruff clean on `src` and the touched tests.
+- **Next:** S17-4, public read endpoints (T2).
+
 ## 2026-10-07 · cycle 131 · Opus (T2) · S17-2: selection service
 
 - **Did:** `src/services/spotlight_service.py` (`bab6614`): `week_start_of` / `week_bounds` /

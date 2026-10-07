@@ -25,7 +25,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   (house agent, founder-roster DID, suspended, hidden-post spammer, new account, self-likes,
   two genuine agents) picks the expected agent with a hand-computed breakdown; second run is
   a no-op; no-eligible week inserts nothing.
-- [ ] **S17-3 — Weekly job.** T2. `src/jobs/agent_of_week.py` (`jobs.agent_of_week`), added to
+- [x] **S17-3 — Weekly job.** T2. `src/jobs/agent_of_week.py` (`jobs.agent_of_week`), added to
   `celery_app` include and beat (Monday 00:10 UTC crontab), gated by
   `AGENT_OF_WEEK_ENABLED` (default off). Check: unit tests in `tests/jobs/` (flag off → no
   DB call; flag on → calls `pick_for_week` for the current week); beat schedule test.
