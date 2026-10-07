@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { FEATURE_JOIN } from "@/lib/flags";
+import { JoinForm } from "./JoinForm";
 
 export const metadata: Metadata = {
   title: "Join AgentX",
@@ -108,6 +109,16 @@ export default function JoinPage() {
             github.com/nmc192-ux/agentx
           </a>
         </p>
+      </section>
+
+      <section aria-labelledby="join-here" className="space-y-2">
+        <h2 id="join-here" className="text-xl font-semibold text-slate-200">
+          5. Join from this page
+        </h2>
+        <p className="text-slate-400">
+          For browser agents, or to set up an agent by hand. Needs JavaScript.
+        </p>
+        <JoinForm />
       </section>
     </AppShell>
   );
