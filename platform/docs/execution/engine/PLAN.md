@@ -1,101 +1,28 @@
-# Engine PLAN — Sprint 18: Distribution
+# Engine PLAN — Phase B close
 
-**Branch:** `engine/phase-b` · **Spec:** `platform/docs/sprints/sprint_18_distribution.md`
-**Started:** cycle 148, 2026-10-08 (drafted and decomposed). **Previous plan:**
-`archive/PLAN_sprint_16.md` (closed cycle 147). Sprints 13–17 are closed on the branch, not
-merged.
+**Branch:** `engine/phase-b` · **Goal:** `strategy/strategic_plan_v2.md` §4 Phase B.
+**Previous plan:** `archive/PLAN_sprint_18.md` (Sprint 18 closed cycle 159). Sprints 13–18 are
+closed on the branch, not merged.
 
-The design choices (Python stdio MCP server talking HTTP directly, one AgentSkills folder for
-OpenClaw and Hermes, server-rendered `/join` with a browser form, Playwright browser-agent
-test) are reversible defaults recorded under "Decisions" in the cycle 148 log entry.
+Every Phase B exit criterion still open needs DrJ or the outside world: `pip install
+agentx-py` (H12) and `npm install @agentx/sdk` (H26) working, a public samples repo (H15), 100+
+outside agents joined and posting, an outside agent with real trust, "Agent of the week" live
+(merge + H27), the alpha announcement (H28). The engine's job now is to check nothing
+engine-doable is left, then write the Phase B briefing.
 
 ## Steps
 
-- [x] **S18-0 — Draft the Sprint 18 spec and decompose it into this file.** T2 (planning).
-  Check: spec exists; this file has the step list; DrJ-only items are in HUMAN_ACTIONS.
-- [x] **S18-1 — `agentx-mcp` package and read-only tools.** T2 (new package). `sdk/mcp/`
-  (`pyproject.toml`, `src/agentx_mcp/`, own `.venv` like `sdk/`), FastMCP stdio server,
-  `httpx` client with base URL from `AGENTX_BASE_URL`, credential loading (env, then
-  `~/.agentx/credentials.json`). Tools: `agentx_whoami`, `agentx_read_feed`,
-  `agentx_discover_agents`, `agentx_agent_of_the_week`. Check: `pytest sdk/mcp/tests`
-  (mocked HTTP; in-memory MCP client lists the four tools with typed schemas); `uv build`.
-  *Done cycle 149 (`3015e32`): 18 tests pass, wheel builds, stdio subprocess lists the tools.
-  Note: `mcp` is now 2.x, where `FastMCP` is `MCPServer`; pinned `mcp>=2.3,<3`.*
-- [x] **S18-2 — Write tools, join and token refresh.** T2 (calls the reviewed `/onboard` and
-  `/auth/token`; changes neither). `agentx_join`, `agentx_create_post`, `agentx_reply`,
-  `agentx_notifications`, `agentx_heartbeat`, `agentx_send_message`; credentials file `0600`
-  in a `0700` dir, refuse join when credentials exist; one refresh-and-retry on 401; no token
-  in any tool result or log. `SECURITY-REVIEW:` prefix (stores credentials). Check: unit tests
-  that fail closed (no credentials → clear error, refresh fails → clear error, file mode,
-  token-absence scan of every tool result); live run over stdio against a local backend:
-  join → post → read the post back from the feed.
-  *Done cycle 150 (`e823052`): 62 tests pass; `platform/scripts/mcp_live_check.py` (throwaway
-  DB + local API) joins, posts and reads back over stdio, no token in any result. Refresh of
-  an env token is held in memory only; a file that cannot be written also falls back to
-  memory with a stderr warning.*
-- [x] **S18-3 — Route parity, README, packaging.** T2. Test that every path the server calls
-  is a mounted route (reuse `test_skill_md.py`'s route collection); `README.md` with Claude
-  Desktop, Claude Code (`claude mcp add`) and Cursor configs; `CHANGELOG.md` 0.1.0; wheel
-  installs into a clean venv and `agentx-mcp --help` (or a stdio `initialize`) works.
-  Check: parity test in the platform suite; clean-venv install.
-  *Done cycle 151 (`c4be891`): `platform/tests/a2a/test_mcp_routes.py` scans the package
-  source for its 11 calls; all mounted in every config except Agent of the week when the
-  `spotlight` gate is off, which now gives a plain "not switched on" error. Clean-venv wheel
-  install: `--version` and stdio `initialize` + `tools/list` (10 tools) work.*
-- [x] **S18-4 — OpenClaw / Hermes skill folder.** T2. Confirm current front-matter rules from
-  the OpenClaw and Hermes docs; write `skills/agentx/SKILL.md` + `README.md` (install paths
-  for both). Check: platform test parses the front matter (name, description length) and
-  checks every path against mounted routes; a script runs the skill's curl blocks against a
-  local backend and the agent joins and posts.
-  *Done cycle 152 (`9a025b7`): front matter checked against both docs (Hermes: name =
-  folder, `version`, description ≤1,024; OpenClaw: `metadata.openclaw.requires.bins`), metadata
-  as one JSON line so both parse it. 9 tests; `scripts/skill_live_check.py` runs every block as
-  written: two joins, heartbeat, post, feed, reply, notifications, message, refresh, discover.
-  Prefixed `SECURITY-REVIEW:` (tells agents how to store tokens), so S18-10 covers it.*
-- [x] **S18-5 — Discovery pointers in `skill.md` and `agent.json`.** T2. "Other ways to
-  connect" section (MCP, skill folder, `/join`). `SECURITY-REVIEW:` prefix (`.well-known`).
-  Check: `tests/a2a/` green.
-  *Done cycle 153 (`1616471`): section on every deployment; card description names
-  agentx-mcp, the skill and `<site>/join` (A2A 0.3 cards have no links field). Site address
-  from new `public_site_url()` (canonical in production; validated `PUBLIC_SITE_URL`
-  elsewhere). 158 a2a tests pass.*
-- [x] **S18-6 — `/join` page, static sections.** T3 (UI). Server-rendered sections 1–4 of the
-  spec, `NEXT_PUBLIC_FEATURE_JOIN`, nav / `/welcome` / home links, sitemap. Check: `npm run
-  build` in `ui/`; `curl` of the page from a local `next start` contains the one-liner, skill
-  URL, MCP snippets and skill install line.
-  *Done cycle 154: `ui/app/join/page.tsx` (server-rendered sections 1–4; section 5 form is S18-7),
-  `FEATURE_JOIN` flag (on unless set to `"false"`), links in top nav, footer, `/welcome` and
-  sitemap. Build passes; `next start` + `curl` shows the one-liner, skill URL, MCP and skill
-  snippets in the HTML.*
-- [x] **S18-7 — "Join from this page" form.** T2 (shows credentials; calls `/onboard`
-  unchanged). Client component; credentials shown once, never stored; 409/429/422 messages.
-  `SECURITY-REVIEW:` prefix. Check: `npm run build`; manual local run joins an agent; grep
-  the built bundle for `localStorage`/`sessionStorage`/`document.cookie` use in the component.
-  *Done cycle 155 (`2cbea37`): `ui/app/join/JoinForm.tsx`, section 5 of the page. Fetch with
-  `credentials: "omit"`, state only, no app logger. Build passes; the form's chunk has no
-  storage calls; local API replay from origin `localhost:3000`: preflight allowed, 201 with
-  the fields the form reads, no cookie, 409 repeat, 422 empty, first post in the feed.*
-- [x] **S18-8 — Browser-agent join test.** T2. Playwright dev dependency in `ui/`,
-  `ui/e2e/join.spec.ts` with the reader (JS off) and actor scenarios, `npm run test:e2e`.
-  Check: both pass against a local backend and UI.
-  *Done cycle 156 (`7070e27`): 3 tests pass via `platform/scripts/join_e2e_check.py`
-  (throwaway DB + API + UI on a free port from 3100; port 3000 is taken on this machine). The
-  reader test found every page showed only "Loading…" with JS off (React streams the page into
-  a hidden block); a `<noscript>` style in the root layout fixes it.*
-- [x] **S18-9 — Human actions H31–H33.** T3. Exact instructions for publishing `agentx-mcp`
-  (PyPI + MCP Registry), the skill (ClawHub), and the live browser-agent check.
-  Check: entries present, copy-paste ready.
-  *Done cycle 157: H31–H33 written out in HUMAN_ACTIONS.md. Commands for `twine`, `mcp-publisher` and `clawhub` come from memory of their CLIs and carry a "check --help" fallback.*
-- [x] **S18-10 — Sprint-close security review.** T1 (protocol 5a). All `SECURITY-REVIEW:`
-  commits of this sprint (S18-2, S18-4, S18-5, S18-7). Check: adversarial tests added; log records
-  "reviewed N, found M".
-  *Done cycle 158: reviewed 4 commits, found 3 issues (all in the skill folder and MCP error
-  text, none a token leak in normal use), fixed in the same cycle with 16 new adversarial tests
-  (MCP 74, skill folder 15, e2e 4). Details in the log.*
-- [ ] **S18-11 — Sprint close.** T2. Acceptance criteria 1–5 from the spec, retro, briefing,
-  `state_of_agentx.md`, archive this plan.
+- [ ] **PB-1 — Inventory engine-doable Phase B leftovers.** T2 (planning). Walk the Phase B
+  section and the open-commitments list of `strategic_plan_v2.md` (e.g. the `trust_score_spec.md`
+  draft promised "by end of Phase B"; the human-role user-research note) against the code and
+  docs. For each: done / engine-doable (add a step here) / DrJ-only (HUMAN_ACTIONS).
+  Check: this file lists every leftover with its owner.
+- [ ] **PB-2 — Phase B briefing.** T2. `sprints/briefing_<date>_engine.md` in the protocol's
+  format: what merging the whole branch will do, the combined live-test checklist, the
+  ordered DrJ list. Then report `PHASE_COMPLETE`.
+  Check: briefing exists; status file says `PHASE_COMPLETE`.
 
 ## Open human items touching the branch
 
-Merge (Sprints 13–17, migration 048); H29, H30 (VPS); H26, H12 (publish); H27, H28.
-H31–H33 (this sprint) are placeholders until S18-9 writes them out.
+Merge (Sprints 13–18, migration 048); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
+(publish); H27, H28.

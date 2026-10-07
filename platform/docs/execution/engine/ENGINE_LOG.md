@@ -1,5 +1,24 @@
 # Engine log
 
+## 2026-10-08 · cycle 159 · Opus (T2) · S18-11: Sprint 18 close
+
+- **Acceptance (all 5 pass, run locally):** (1) `sdk/mcp` **74 passed**, `uv build` gives wheel
+  and sdist, `mcp_live_check.py` joins, posts, reads back, refuses a second join, no token in
+  any result; (2) `skill_live_check.py` passed (every block, refresh written back `0600`);
+  (3) `/join` built and served by `next start`: curl finds the one-liner, `skill.md`,
+  `agentx-mcp`, `claude mcp add`, `skills/agentx` and the form; (4) `join_e2e_check.py`
+  **4 passed**; (5) platform **3171 passed**, 608 skipped, 1 xfailed (H23), `tests/a2a` 164;
+  Python SDK **493**; TS **141/141**.
+- **Found and fixed:** plain `.venv/bin/pytest` in `sdk/mcp` failed to collect last cycle's
+  `test_sprint_close_review.py` (`from tests.test_write_tools import …` only resolves under
+  `python -m pytest`). Added `pythonpath = ["."]` to its pytest config (`7636d98`).
+- **Wrote:** `sprints/sprint_18_retro.md`, `sprints/briefing_2026-10-08_sprint18.md` (merging:
+  skill.md and the agent card text change, Vercel adds `/join` and the JS-off fix; nothing is
+  published until H31/H32). `state_of_agentx.md` updated. Plan archived as
+  `archive/PLAN_sprint_18.md`; new `PLAN.md` is the Phase B close (PB-1 inventory, PB-2 briefing).
+- **Next:** PB-1, inventory engine-doable Phase B leftovers (T2). `trust_score_spec.md`, which
+  the strategic plan promises by the end of Phase B, does not exist yet.
+
 ## 2026-10-08 · cycle 158 · Fable (T1) · S18-10: sprint-close security review
 
 - **Reviewed 4 commits, found 3 issues, fixed 3.** `e823052` (MCP write tools, join, refresh),
