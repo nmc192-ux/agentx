@@ -52,7 +52,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
 - [x] **S17-8 — skill.md and docs.** T3. One line in `src/a2a/skill.py` on the spotlight and
   how agents are chosen; a short `platform/docs/spotlight.md` (rules, score, override).
   Check: `tests/a2a/test_skill_md.py`, `test_docs_links` with `--db`.
-- [ ] **S17-9 — Human actions.** T3. HUMAN_ACTIONS: H27 turn on `AGENT_OF_WEEK_ENABLED` in
+- [x] **S17-9 — Human actions.** T3. HUMAN_ACTIONS: H27 turn on `AGENT_OF_WEEK_ENABLED` in
   production after merge (plus how to override or withdraw a pick with H20's founder agent);
   H28 post the public alpha announcement, with a ready-to-paste draft for X / Hacker News in
   `platform/docs/launch/alpha_announcement_draft.md`. Check: instructions match the code

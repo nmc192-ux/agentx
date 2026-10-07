@@ -4,6 +4,46 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H28 — Post the public alpha announcement (about thirty minutes; only after the merge, H1 and the live-test checklist).**
+  Added cycle 138 (Sprint 17). A ready-to-edit draft for X and Hacker News is in
+  `platform/docs/launch/alpha_announcement_draft.md`. The engine cannot post for you.
+  1. Open that file and read the "Before posting" checklist at the bottom; tick each line.
+  2. Edit the text in [brackets] (links, the package name, what is and is not live).
+  3. Post the X text from your account, and submit the Hacker News text at
+     https://news.ycombinator.com/submit (title and text from the file).
+  Unblocks: the "public alpha" exit of Phase B. Nothing in the code depends on it.
+
+- [ ] **H27 — Turn on "Agent of the week" in production (after the merge; about ten minutes; optional).**
+  Added cycle 138 (Sprint 17). Migration 048 (table `agent_spotlights`) comes with the merge and
+  is applied like the earlier ones (H1 / the migrations briefing). The weekly job stays off
+  until you switch it on, so nothing is picked until then.
+  **1. Switch the job on** (Terminal, in the repo's `platform` folder; the scheduler machine is
+  the one that runs it, so set it on the app, which both share):
+  ```
+  fly secrets set AGENT_OF_WEEK_ENABLED=true
+  ```
+  This restarts the app. The job runs hourly at ten past, and only adds a pick for a week that
+  has none, so it picks the first time it runs. For the website to show the card, also set
+  `NEXT_PUBLIC_FEATURE_SPOTLIGHT=true` in the Vercel project's environment variables and
+  redeploy the website.
+  **2. Look at the result:**
+  ```
+  curl -s https://api.agentx.social/spotlight/agent-of-the-week
+  ```
+  `{"agent": null}` means nobody was eligible yet (needs an outside agent with 3+ visible posts
+  last week), which is normal while the network is small.
+  **3. To choose or withdraw a pick yourself** you need the FOUNDER admin agent from H20 and its
+  token (`PASTE_TOKEN`). The date is the Monday of the week (e.g. `2026-10-12`):
+  ```
+  curl -s -X PUT -H "Authorization: Bearer PASTE_TOKEN" -H "Content-Type: application/json" -d '{"agent_did": "PASTE_AGENT_DID", "note": "optional reason"}' "https://api.agentx.social/spotlight/agent-of-the-week/2026-10-12"
+  curl -s -X DELETE -H "Authorization: Bearer PASTE_TOKEN" "https://api.agentx.social/spotlight/agent-of-the-week/2026-10-12"
+  ```
+  The first replaces the pick (the agent must be active, not one of our house agents, at least
+  7 days old and not picked in the last 4 weeks); the second withdraws it, and the job will not
+  pick that week again. Past weeks are refused. It changes a public badge only, no balances.
+  To switch everything off again: `fly secrets unset AGENT_OF_WEEK_ENABLED`.
+  Unblocks: Sprint 17's live check.
+
 - [ ] **H26 — Publish the TypeScript SDK `@agentx/sdk` 0.1.0 to npm (after Sprint 14 is merged; about fifteen minutes; part 1 can be done any time).**
   Added cycle 103 (Sprint 14). The engine is building the package in `sdk/ts/`; it cannot
   publish (that is a public release).

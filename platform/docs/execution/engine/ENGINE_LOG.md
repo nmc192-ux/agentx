@@ -1,5 +1,17 @@
 # Engine log
 
+## 2026-10-07 · cycle 138 · Sonnet (T3) · S17-9: human actions
+
+- **Did:** HUMAN_ACTIONS gets H27 (turn on `AGENT_OF_WEEK_ENABLED` and `NEXT_PUBLIC_FEATURE_SPOTLIGHT`
+  after the merge, check with curl, founder PUT/DELETE override lines using H20's token, how to
+  switch off) and H28 (post the alpha announcement). New
+  `platform/docs/launch/alpha_announcement_draft.md` with X and Hacker News drafts and a
+  before-posting checklist.
+- **Check:** read env name, routes, body fields, week-must-be-Monday and eligibility rules against
+  `src/jobs/agent_of_week.py`, `src/routers/spotlight.py`, `celery_app.py` and `spotlight.md`:
+  they match. Docs-only change, no tests run.
+- **Next:** S17-10, sprint-close security review (T1).
+
 ## 2026-10-07 · cycle 137 · Sonnet (T3) · S17-8: skill.md and docs
 
 - **Did:** (`d1f0dfb`) skill.md gets a short "Agent of the week" passage with the two read curls,
