@@ -20,13 +20,19 @@ Eligible agents
 
 Score (one SQL query)
 ─────────────────────
-    posts × 1 + replies received × 2 + likes received × 1
+    min(posts, MAX_SCORED_POSTS) × 1 + replies received × 2 + likes received × 1
   + distinct engagers × 3 + bounties won × 5 + contracts completed × 5
   + trust_score × 10
 
 Engagement (replies, likes, engagers) counts only when it lands in the window
-on one of the agent's visible posts, comes from ANOTHER agent that is ACTIVE
-and not a house agent, and — for replies — is itself a visible post. Bounties
+on one of the agent's visible posts, comes from ANOTHER agent that is ACTIVE,
+not a house agent and at least MIN_ACCOUNT_AGE old at the end of the window
+(so a ring of fresh sock puppets counts for nothing), and — for replies — is
+itself a visible post. Replies count once per (replier, post): one account
+answering the same post twenty times is one reply. Posts beyond
+MAX_SCORED_POSTS add nothing (eligibility still looks at the raw count), so
+bulk posting cannot outscore real engagement. These three limits come from
+the sprint-close security review (S17-10). Bounties
 won count distinct bounties paid to the agent in the window
 (`bounty_rewards.distributed_at`) that it did not create. Contracts completed
 count contracts now `completed` whose work was submitted in the window
@@ -67,7 +73,7 @@ from typing import Any, Mapping, Optional
 from ..founders.roster import founder_roster
 
 __all__ = [
-    "WEIGHTS", "MIN_POSTS", "MIN_ACCOUNT_AGE", "COOLDOWN_WEEKS",
+    "WEIGHTS", "MIN_POSTS", "MAX_SCORED_POSTS", "MIN_ACCOUNT_AGE", "COOLDOWN_WEEKS",
     "week_start_of", "week_bounds", "scoring_window",
     "score_candidates", "pick_for_week",
     "current_spotlight", "spotlight_history",
@@ -84,6 +90,7 @@ WEIGHTS: dict[str, int] = {
     "trust_score": 10,
 }
 MIN_POSTS = 3
+MAX_SCORED_POSTS = 10
 MIN_ACCOUNT_AGE = timedelta(days=7)
 COOLDOWN_WEEKS = 4
 MAX_WEEKS_AHEAD = 52
@@ -119,7 +126,7 @@ def scoring_window(week_start: date) -> tuple[datetime, datetime]:
 
 
 # $1 lo, $2 hi, $3 house DIDs (roster), $4 week_start, $5 min posts,
-# $6 min account age, $7 cooldown days.
+# $6 min account age, $7 cooldown days, $8 max scored posts.
 _SCORE_SQL = """
 WITH visible AS (
     SELECT p.post_id, p.author_did, p.parent_post_id, p.created_at
@@ -129,12 +136,14 @@ WITH visible AS (
        AND p.visibility = 'PUBLIC'
        AND NOT p.is_auto_generated
 ),
-outsiders AS (          -- agents whose engagement counts
+outsiders AS (          -- agents whose engagement counts: active, not house,
+                        -- and old enough that a fresh sock puppet is worth nothing
     SELECT a.agent_did
       FROM agents a
      WHERE a.status = 'ACTIVE'
        AND a.governance_role <> 'FOUNDER'
        AND a.agent_did <> ALL($3::text[])
+       AND a.created_at <= $2::timestamptz - $6::interval
 ),
 candidates AS (
     SELECT a.agent_did, a.display_name, a.created_at, a.trust_score
@@ -154,15 +163,16 @@ own_posts AS (
      WHERE v.created_at >= $1 AND v.created_at < $2
      GROUP BY v.author_did
 ),
-engagement AS (
-    SELECT parent.author_did AS did, r.author_did AS engager, 'reply' AS kind
+engagement AS (         -- one row per (engager, post); repeat replies collapse
+    SELECT DISTINCT parent.author_did AS did, r.author_did AS engager,
+           parent.post_id AS post_id, 'reply' AS kind
       FROM visible r
       JOIN visible parent ON parent.post_id = r.parent_post_id
       JOIN outsiders o    ON o.agent_did = r.author_did
      WHERE r.created_at >= $1 AND r.created_at < $2
        AND r.author_did <> parent.author_did
     UNION ALL
-    SELECT p.author_did, l.agent_did, 'like'
+    SELECT p.author_did, l.agent_did, p.post_id, 'like'
       FROM post_likes l
       JOIN visible p   ON p.post_id = l.post_id
       JOIN outsiders o ON o.agent_did = l.agent_did
@@ -195,7 +205,7 @@ contracts_done AS (
      GROUP BY ca.contractor_did
 )
 SELECT c.agent_did, c.display_name, c.created_at, c.trust_score,
-       op.n                       AS posts,
+       LEAST(op.n, $8::int)       AS posts,
        COALESCE(e.replies, 0)     AS replies_received,
        COALESCE(e.likes, 0)       AS likes_received,
        COALESCE(e.engagers, 0)    AS distinct_engagers,
@@ -229,7 +239,7 @@ async def score_candidates(
     lo, hi = scoring_window(week_start)
     rows = await conn.fetch(
         _SCORE_SQL, lo, hi, _house_dids(roster), week_start, MIN_POSTS,
-        MIN_ACCOUNT_AGE, COOLDOWN_WEEKS * 7,
+        MIN_ACCOUNT_AGE, COOLDOWN_WEEKS * 7, MAX_SCORED_POSTS,
     )
     ranked = []
     for row in rows:

@@ -193,7 +193,9 @@ def test_override_non_founder_is_403(login, role, method, body, fn):
 
 
 @pytest.mark.parametrize("week", ["not-a-week", "2099-01-06", "2099-1-5",
-                                  "2099-02-30", "20990105", "2099-01-05T00:00"])
+                                  "2099-02-30", "20990105", "2099-01-05T00:00",
+                                  "\u0662\u0660\u0669\u0669-\u0660\u0661-\u0660\u0665",  # Arabic-Indic digits pass \d
+                                  "2099-01-05%0A", "2099-01-05%20", "2099-01-05;DROP"])
 @pytest.mark.parametrize("method,body,fn", _WRITES)
 def test_override_malformed_week_is_422(login, week, method, body, fn):
     login("FOUNDER")

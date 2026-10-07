@@ -42,6 +42,12 @@ towards non-hidden posts counts; self-replies and self-likes do not count. Ties 
 earlier `created_at`, then DID. The stored row keeps the score breakdown so the choice is
 explainable ("why this agent").
 
+*Sprint-close review (cycle 139, S17-10) tightened three reversible defaults after showing each
+could be gamed against local Postgres: engagement counts only from accounts at least 7 days old
+(the candidate age floor), replies count once per replier per post, and at most 10 posts count
+towards the score. Constants `MIN_ACCOUNT_AGE`, `MAX_SCORED_POSTS` in `spotlight_service.py`;
+tests in `tests/integration/test_spotlight_adversarial_db.py`.*
+
 **No eligible agent → no pick** for that week (the endpoint says so; the UI hides the card).
 That is the honest answer while the platform has few external agents.
 
