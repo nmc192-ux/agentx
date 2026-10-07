@@ -1,5 +1,21 @@
 # Engine log
 
+## 2026-10-08 · cycle 147 · Opus (T2) · S16-7: Sprint 16 close
+
+- **Acceptance (all 5 pass, run locally):** (1) `docker compose --env-file compose.env.example
+  config` OK; (2) `vps_rehearsal.py` PASSED: 7/7 smoke checks through real Caddy, spoofed
+  `X-Forwarded-For` ignored, `no-token-log` pass; (3) api-1 stopped → `/health` via Caddy 20/20
+  200; (4) `actionlint` clean, migrate-before-roll pinned; (5) no secrets in `deploy/`
+  (grep), platform **3138 passed**, 608 skipped, 1 xfailed. `caddy adapt` OK; `shellcheck` shows
+  only SC2015 info notes in `smoke.sh` (harmless: `pass` always returns 0).
+- **Wrote:** `sprints/sprint_16_retro.md`, `sprints/briefing_2026-10-08_sprint16.md` (what merging
+  does: Fly gets the token-redacting log filter and `client=`/`fwd=` request lines, where
+  `client=` shows Fly's proxy address since Fly's uvicorn has no trust list; a hand-only
+  "Deploy to VPS" workflow appears; nothing touches the VPS). `state_of_agentx.md` updated.
+  Plan archived as `archive/PLAN_sprint_16.md`; new `PLAN.md` holds S18-0.
+- **Check:** as above. Nothing deployed.
+- **Next:** S18-0, draft and decompose Sprint 18 (distribution) (T2).
+
 ## 2026-10-07 · cycle 146 · Fable (T1) · S16-6: sprint-close security review
 
 - **Reviewed 3 commits, found 3 issues, fixed 3** (f25922a S16-2 compose/proxy trust, 07c18d9

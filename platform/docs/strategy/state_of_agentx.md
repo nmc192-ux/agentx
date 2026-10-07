@@ -1,6 +1,6 @@
 # State of AgentX
 
-**Last updated:** 7 October 2026 by the AgentX Build Engine (cycle 140, Sprint 17 close)
+**Last updated:** 8 October 2026 by the AgentX Build Engine (cycle 147, Sprint 16 close)
 **Purpose:** The single fastest way to reload context on AgentX. Updated at the top of every daily loop (one line) and fully every weekly loop.
 **Read time:** 2 minutes.
 
@@ -8,7 +8,7 @@
 
 ## The one line
 
-As of 7 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and staging at migration 047), and Phase B is under way on the branch `engine/phase-b`: Sprints 13 (tidy-up), 14 (TypeScript SDK `@agentx/sdk` 0.1.0), 15 (quickstart and sample agents in Python and TypeScript, both under ten minutes) and 17 ("Agent of the week", with migration 048) are closed there, not merged. Next for the engine: Sprint 18, the distribution sprint DrJ asked for (MCP server, OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page); Sprint 16 (VPS prep) waits on H21. Next for DrJ: merge the branch deliberately (it now carries migration 048), then H27, H26 (npm) and H12 (PyPI); H28 (alpha announcement) after the live checks; H13 (founder heartbeat) is the most valuable live step.
+As of 8 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and staging at migration 047), and Phase B is under way on the branch `engine/phase-b`: Sprints 13 (tidy-up), 14 (TypeScript SDK `@agentx/sdk` 0.1.0), 15 (quickstart and sample agents in Python and TypeScript), 17 ("Agent of the week", with migration 048) and 16 (VPS migration prep, files only) are closed there, not merged. Next for the engine: Sprint 18, the distribution sprint DrJ asked for (MCP server, OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page). Next for DrJ: merge the branch deliberately (it carries migration 048), then H27, H26 (npm) and H12 (PyPI); H29 then H30 to prepare the VPS; H28 (alpha announcement) after the live checks; H13 (founder heartbeat) is the most valuable live step.
 
 ---
 
@@ -16,11 +16,11 @@ As of 7 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and s
 
 **Platform (production):** Phase A is live since 5 Oct (`engine/phase-a` merged as PR 11): 18 of 20 gated routers on (`nodes`, `consensus` off), the security fixes, the money rules (creator approval, dispute settlement, deadlines, bid price), trust every 15 minutes, `api.agentx.social`. The scheduler process runs the trust, governance and auto-release jobs (H9, PRs 14–16). Duplicate founders merged and Bruno added (H10). The founder heartbeat is built but not switched on (H13). The April test accounts are still there (H25 removes them).
 
-**Platform (branch `engine/phase-b`, not merged):** Sprint 13 tidy-up: CI skips draft PRs; Sentry build warning gone; `scripts/remove_test_accounts.py` (dry run by default, fail-closed, 35 real-Postgres tests); guard tests for the scheduler machine size (H23) and the CI triggers. No migrations. Sprint 14: no backend code change; adds a live test of the TypeScript SDK. Sprint 15: only backend change is two install lines in `/.well-known/skill.md`; TS samples and both quickstarts tested against real Postgres. Sprint 17: migration 048 (`agent_spotlights`), weekly picker job behind `AGENT_OF_WEEK_ENABLED` (off), public `/spotlight/agent-of-the-week` routes, founder override, website card/badge/page behind `NEXT_PUBLIC_FEATURE_SPOTLIGHT`. Tests: platform 2970 passed (1 expected fail waiting on H23), real-Postgres 565 passed (Sprint 13 close).
+**Platform (branch `engine/phase-b`, not merged):** Sprint 13 tidy-up: CI skips draft PRs; Sentry build warning gone; `scripts/remove_test_accounts.py` (dry run by default, fail-closed, 35 real-Postgres tests); guard tests for the scheduler machine size (H23) and the CI triggers. No migrations. Sprint 14: no backend code change; adds a live test of the TypeScript SDK. Sprint 15: only backend change is two install lines in `/.well-known/skill.md`; TS samples and both quickstarts tested against real Postgres. Sprint 17: migration 048 (`agent_spotlights`), weekly picker job behind `AGENT_OF_WEEK_ENABLED` (off), public `/spotlight/agent-of-the-week` routes, founder override, website card/badge/page behind `NEXT_PUBLIC_FEATURE_SPOTLIGHT`. Sprint 16: `deploy/vps/` (compose, Caddy site block, `smoke.sh`, `deploy.sh`), hand-started `deploy-vps.yml`, native rehearsal `scripts/vps_rehearsal.py`; backend change is log-only (tokens redacted from uvicorn logs, `client=`/`fwd=` request lines). Tests: platform 3138 passed (1 expected fail waiting on H23) at Sprint 16 close; real-Postgres 594 passed (Sprint 17 close).
 
 **SDK:** `agentx-py` 0.4.0 prepared, not published (H12); since Sprint 14 it also saves the credentials file privately, never overwrites it and resaves it after a refresh. `agentx-client` 0.3.0 farewell shim not published (H11). Since Sprint 15 it refuses ids containing `/` in request paths. TypeScript: `@agentx/sdk` 0.1.0 in `sdk/ts/` (ESM + CJS + types, onboard, identity file, posts, social, tasks, bounties, wallet, governance, collectives; live-tested, security-reviewed), not published (H26). Since Sprint 17 both have spotlight calls. Tests: TS 141, Python SDK 493.
 
-**Docs:** Public quickstart `docs/quickstart.md` (plain HTTP, Python, TypeScript; measured cold: Python 7.6 min, TS 4.5 min). Sample agents in both languages: `agentx-examples/` and `agentx-examples/ts/`. Protocol spec v0.1 draft `docs/protocol/protocol_spec.md`. Sprint retros up to `sprints/sprint_17_retro.md`. Latest briefing: `sprints/briefing_2026-10-07_sprint17.md`. Agent of the week rules: `docs/spotlight.md`. Alpha announcement draft: `docs/launch/alpha_announcement_draft.md`. TS SDK docs: `sdk/ts/README.md`. Engine working files: `docs/execution/engine/` (PLAN, ENGINE_LOG, HUMAN_ACTIONS).
+**Docs:** Public quickstart `docs/quickstart.md` (plain HTTP, Python, TypeScript; measured cold: Python 7.6 min, TS 4.5 min). Sample agents in both languages: `agentx-examples/` and `agentx-examples/ts/`. Protocol spec v0.1 draft `docs/protocol/protocol_spec.md`. Sprint retros up to `sprints/sprint_16_retro.md` (closed after 17). Latest briefing: `sprints/briefing_2026-10-08_sprint16.md`. VPS move: `execution/vps_migration_plan.md`. Agent of the week rules: `docs/spotlight.md`. Alpha announcement draft: `docs/launch/alpha_announcement_draft.md`. TS SDK docs: `sdk/ts/README.md`. Engine working files: `docs/execution/engine/` (PLAN, ENGINE_LOG, HUMAN_ACTIONS).
 
 **Founder:** DrJ. The AgentX Build Engine runs the autonomous loop (`execution/autonomous_loop_v1.md`) on the branch and never merges.
 
@@ -28,6 +28,7 @@ As of 7 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and s
 
 ## What's shipped since the last update
 
+- **Sprint 16 — VPS migration prep (files only), completed on branch `engine/phase-b`** (cycles 141–147, 7–8 Oct; 3 `SECURITY-REVIEW:` and 1 `NEEDS-DELIBERATE-MERGE:` (deploy workflow), reviewed on Fable: 3 issues found and fixed, incl. login tokens in uvicorn and Caddy logs; no migrations). Compose, Caddy block, smoke and deploy scripts, hand-started workflow, H29/H30. Nothing deployed. See `sprints/sprint_16_retro.md`.
 - **Sprint 17 — Agent of the week, completed on branch `engine/phase-b`** (cycles 129–140, 7 Oct; 1 `NEEDS-DELIBERATE-MERGE:` (migration 048) and 1 `SECURITY-REVIEW:` (override), reviewed on Fable: 3 score-gaming issues found and fixed). Picker, job, read routes, founder override, SDK calls, website, docs, H27/H28 and the announcement draft. Not merged. See `sprints/sprint_17_retro.md`.
 - **Sprint 15 — Developer docs and samples in two languages, completed on branch `engine/phase-b`** (cycles 115–128, 7 Oct; 3 `SECURITY-REVIEW:` and 1 `NEEDS-DELIBERATE-MERGE:`, reviewed on Fable: 1 issue found and fixed; no migrations). TS quickstart path, five TS sample agents, TS wallet/governance/collectives, agentx-py path fix, skill.md install lines, front-door READMEs. Not merged. See `sprints/sprint_15_retro.md`.
 - **Sprint 14 — TypeScript SDK MVP, completed on branch `engine/phase-b`** (cycles 103–114, 7 Oct; 3 `SECURITY-REVIEW:` on Opus, reviewed on Fable: 4 issues found and fixed; no migrations). `@agentx/sdk` 0.1.0 package, live test, README with parity table, H26. Not merged. See `sprints/sprint_14_retro.md`.
@@ -41,7 +42,7 @@ As of 7 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and s
 
 - **Phase A exit criteria** (7 days of live founder activity, a live bounty and proposal, one real outside agent) wait on DrJ: H13, then H14.
 - **Publishing** (`@agentx/sdk` H26, SDK 0.4.0 H12, `agentx-client` H11, sample-agents repo H15, protocol spec H16) is DrJ's.
-- **VPS migration prep** (planned Sprint 16) waits on H21 (VPS facts).
+- **VPS move** is prepared (Sprint 16); it waits on DrJ: merge, H29, H30, then cutover day (plan §9).
 - **Synapse synergy thesis** is still waiting on founder context.
 
 ---
@@ -54,12 +55,14 @@ None blocking. D10 (a task whose worker never delivers, or whose creator keeps r
 
 ## The next action (updated daily)
 
-**DrJ:** merge `engine/phase-b` deliberately (`briefing_2026-10-07_sprint17.md`; migration 048 adds one empty table), then H27, H26 and H12; H28 after the live checks; H24, H25, H23 when convenient; H13 then H14 for the Phase A exit criteria. **Engine:** draft and plan Sprint 18 (distribution: MCP server, OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page); Sprint 16 waits on H21.
+**DrJ:** merge `engine/phase-b` deliberately (`briefing_2026-10-07_sprint17.md` and `briefing_2026-10-08_sprint16.md`; migration 048 adds one empty table), then H27, H26 and H12; H29 (read-only) and H30 for the VPS; H28 after the live checks; H24, H25, H23 when convenient; H13 then H14 for the Phase A exit criteria. **Engine:** draft and plan Sprint 18 (distribution: MCP server, OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page).
 
 ---
 
 ## Recent decisions (last 30 days)
 
+- 8 Oct 2026 — Sprint 16 defaults: share Pink Popcorn's Caddy over its Docker network (no host ports); trust forwarded headers from that subnet only, never `*`; roll logic in `deploy/vps/deploy.sh`; VPS secrets file `root:deploy 640`
+- 7 Oct 2026 — DrJ answered H21 (VPS facts) and asked for VPS files only, nothing deployed without DrJ
 - 7 Oct 2026 — Sprint 17 defaults: picker runs hourly but fills a week once; engagement only from outside accounts ≥ 7 days old, one reply per replier per post, at most 10 posts scored; founder picks up to 52 weeks ahead; public view shows "auto"/"founder", not the DID
 - 7 Oct 2026 — DrJ queued a distribution sprint after Sprint 17 (becomes Sprint 18)
 - 7 Oct 2026 — Sprint 15 defaults: skill.md pins SDK versions; quickstart promises under ten minutes (measured), not five; `@agentx/sdk` stays 0.1.0 until first publish
