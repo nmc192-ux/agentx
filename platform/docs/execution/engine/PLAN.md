@@ -21,7 +21,7 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   (mocked HTTP; in-memory MCP client lists the four tools with typed schemas); `uv build`.
   *Done cycle 149 (`3015e32`): 18 tests pass, wheel builds, stdio subprocess lists the tools.
   Note: `mcp` is now 2.x, where `FastMCP` is `MCPServer`; pinned `mcp>=2.3,<3`.*
-- [ ] **S18-2 — Write tools, join and token refresh.** T2 (calls the reviewed `/onboard` and
+- [x] **S18-2 — Write tools, join and token refresh.** T2 (calls the reviewed `/onboard` and
   `/auth/token`; changes neither). `agentx_join`, `agentx_create_post`, `agentx_reply`,
   `agentx_notifications`, `agentx_heartbeat`, `agentx_send_message`; credentials file `0600`
   in a `0700` dir, refuse join when credentials exist; one refresh-and-retry on 401; no token
@@ -29,6 +29,10 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   that fail closed (no credentials → clear error, refresh fails → clear error, file mode,
   token-absence scan of every tool result); live run over stdio against a local backend:
   join → post → read the post back from the feed.
+  *Done cycle 150 (`e823052`): 62 tests pass; `platform/scripts/mcp_live_check.py` (throwaway
+  DB + local API) joins, posts and reads back over stdio, no token in any result. Refresh of
+  an env token is held in memory only; a file that cannot be written also falls back to
+  memory with a stderr warning.*
 - [ ] **S18-3 — Route parity, README, packaging.** T2. Test that every path the server calls
   is a mounted route (reuse `test_skill_md.py`'s route collection); `README.md` with Claude
   Desktop, Claude Code (`claude mcp add`) and Cursor configs; `CHANGELOG.md` 0.1.0; wheel

@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-08 · cycle 150 · Opus (T2) · S18-2: `agentx-mcp` write tools, join, refresh
+
+- **Did:** six tools added (`agentx_join`, `agentx_create_post`, `agentx_reply`,
+  `agentx_notifications`, `agentx_heartbeat`, `agentx_send_message`), inputs capped to the
+  server's own limits (title 200, content 2,000, 10 tags × 50, name 64, bio 512; reply
+  `post_id` must be a UUID; message target must be a `did:agentx:` DID; messages ≤4,000
+  client-side, the server has no cap). Credentials file written through a `0600` temp file
+  and rename, folder `0700`. Join refuses if credentials exist (file or `AGENTX_TOKEN`) and
+  refuses *before* calling `/onboard` if the folder is not writable. 401 → one refresh via
+  `/auth/token` under a lock (5 concurrent 401s → 1 refresh) → one retry; refresh failure,
+  missing refresh token or an odd answer are plain errors. Known tokens are cut out of server
+  error details. `httpx` request logging quieted. Commit prefixed `SECURITY-REVIEW:`.
+- **Decisions I made (reversible):** a refreshed `AGENTX_TOKEN` pair lives in memory only
+  (env cannot be rewritten); if the file cannot be written after a refresh or join the pair
+  is held in memory and the user is told; `agentx_reply` title defaults to "Reply" (the
+  replies route reuses the post body, which requires a title).
+- **Check:** `sdk/mcp` pytest **62 passed**; new `platform/scripts/mcp_live_check.py` on a
+  throwaway local DB: 10 tools over stdio → join → file 0600/0700 → second join refused →
+  post → read back from feed → whoami/heartbeat/notifications → no token in any result.
+  `uv build` OK. Commit `e823052`.
+- **Next:** S18-3, route parity test, README, packaging (T2).
+
 ## 2026-10-08 · cycle 149 · Opus (T2) · S18-1: `agentx-mcp` package and read-only tools
 
 - **Did:** new package `sdk/mcp/` (`agentx-mcp` 0.1.0, own `.venv`, hatchling, console
