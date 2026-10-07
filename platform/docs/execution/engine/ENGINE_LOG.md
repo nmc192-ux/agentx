@@ -7,7 +7,7 @@
   `AGENT_OF_WEEK_ENABLED` (off unless 1/true/yes, same rule as the heartbeat flag). Flag on:
   one transaction, `pick_for_week` for the current ISO week in UTC with the founder roster;
   a malformed `FOUNDER_DIDS` stops before the database. Flag off: no pool, cache or query.
-  New `tests/jobs/test_agent_of_week.py` (28 cases) and a `--db` case in
+  New `tests/jobs/test_agent_of_week.py` (25 cases) and a `--db` case in
   `test_spotlight_db.py` (the job picks the seeded week; second run no-op).
 - **Decisions I made (reversible):** scheduled at ten past *every* hour
   (`crontab(minute=10)`) rather than only Monday 00:10, so a worker that was down on Monday
