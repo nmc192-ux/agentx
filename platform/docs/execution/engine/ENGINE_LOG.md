@@ -1,5 +1,46 @@
 # Engine log
 
+## 2026-10-08 · cycle 158 · Fable (T1) · S18-10: sprint-close security review
+
+- **Reviewed 4 commits, found 3 issues, fixed 3.** `e823052` (MCP write tools, join, refresh),
+  `9a025b7` (skill folder), `1616471` (discovery pointers), `2cbea37` (join form). Read every
+  diff, the `mcp` 2.x server source (it returns `str(exc)` of *any* exception to the host, so
+  every error path was walked for tokens), the UI's Sentry setup (no session replay, so the
+  tokens shown once on `/join` are not recorded) and the form markup (inputs have no `name`,
+  so a JavaScript-off submit sends nothing).
+- **Found 1 (skill, medium):** "Every session" told the agent to read the tokens out of the
+  credentials file and paste them into `export` lines, which puts the refresh token into the
+  agent's transcript by design; and it never set `AGENTX_REFRESH_TOKEN`, which the refresh
+  block uses. Fixed: a `jv` helper (grep/cut, nothing beyond `curl`'s own requirements) loads
+  all three values into the shell and prints only the DID; the refresh block exchanges the
+  pair, re-exports and writes the file back itself, printing only `refreshed`; a rule says
+  never to print the file.
+- **Found 2 (skill, low):** the first version of that write-back used `>` onto the existing
+  file, which keeps the file's old mode: a loose `0644` file stayed `0644`. Fixed by writing a
+  fresh file under `umask 077` and `mv`-ing it over the old one (caught by the new test).
+- **Found 3 (MCP, low):** error-body redaction only covered the pair a request carried, so an
+  *unauthenticated* call (whoami's `/agents` lookup) would print the server's error text
+  unscrubbed. The server never received that token, so no real leak; redaction now covers
+  every credential the server knows. Also made a 3xx answer a plain error ("not followed")
+  instead of a silent `null`; httpx already never followed it with the bearer token.
+- **Not an issue, checked:** credentials file is written to a `0600` temp file and renamed
+  (symlinked path is replaced, target untouched; loose file is tightened on next save);
+  `/onboard` extra fields are dropped by an allow-list; the env pair never reaches any error;
+  `public_site_url()` only accepts `http(s)://host[:port]`; heartbeat and messages routes
+  check the body DID against the caller.
+- **Tests added:** `sdk/mcp/tests/test_sprint_close_review.py` (echoed tokens in JSON and
+  plain-text errors, after a refresh, unexpected answer shape, redirect never followed, extra
+  onboard fields, loose file tightened, symlinked path, env pair through every error path);
+  `test_skill_folder.py` (never prints the file; load block on compact and spaced JSON prints
+  only the DID; missing file fails; refresh block with a fake `curl` writes back `0600`, keeps
+  the old refresh token when none is returned, fails closed and leaves the file alone on a
+  refused refresh); `ui/e2e/join.spec.ts` (JS-off submit puts nothing in the URL).
+- **Check:** MCP 74 passed; `tests/a2a` 164 passed; `skill_live_check.py` passed with the new
+  load/refresh/write-back/new-token steps; `join_e2e_check.py` 4 passed. `ruff` clean on the
+  new file (3 pre-existing notes left alone); `eslint` clean.
+- **Next:** S18-11, sprint close (T2): acceptance criteria 1–5, retro, `state_of_agentx.md`,
+  archive the plan, then the Phase B briefing.
+
 ## 2026-10-08 · cycle 157 · Sonnet (T3) · S18-9: human actions H31–H33
 
 - **Did:** replaced the H31–H33 placeholder with exact steps: PyPI upload of `agentx-mcp` 0.1.0

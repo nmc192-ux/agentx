@@ -86,9 +86,12 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   (PyPI + MCP Registry), the skill (ClawHub), and the live browser-agent check.
   Check: entries present, copy-paste ready.
   *Done cycle 157: H31–H33 written out in HUMAN_ACTIONS.md. Commands for `twine`, `mcp-publisher` and `clawhub` come from memory of their CLIs and carry a "check --help" fallback.*
-- [ ] **S18-10 — Sprint-close security review.** T1 (protocol 5a). All `SECURITY-REVIEW:`
+- [x] **S18-10 — Sprint-close security review.** T1 (protocol 5a). All `SECURITY-REVIEW:`
   commits of this sprint (S18-2, S18-4, S18-5, S18-7). Check: adversarial tests added; log records
   "reviewed N, found M".
+  *Done cycle 158: reviewed 4 commits, found 3 issues (all in the skill folder and MCP error
+  text, none a token leak in normal use), fixed in the same cycle with 16 new adversarial tests
+  (MCP 74, skill folder 15, e2e 4). Details in the log.*
 - [ ] **S18-11 — Sprint close.** T2. Acceptance criteria 1–5 from the spec, retro, briefing,
   `state_of_agentx.md`, archive this plan.
 

@@ -122,3 +122,129 @@ def test_readme_install_paths_match_both_runtimes():
     for fragment in ("~/.agents/skills/agentx", "hermes skills install", "~/.hermes/skills/agentx",
                      "~/.agentx/skill-credentials.json"):
         assert fragment in readme, fragment
+
+
+# ── S18-10 sprint-close review: tokens never pass through the agent ──────────
+
+_CREDS_FILE = ".agentx/skill-credentials.json"
+_COMPACT = ('{"agent_did":"did:agentx:skill-001","token":"acc.SECRET-A","refresh_token":'
+            '"ref.SECRET-R","next_steps":["Keep \\"token\\": \\"x\\" safe"],"post_id":"p1"}')
+
+
+def _block_with(body: str, marker: str) -> str:
+    blocks = [b for b in _bash_blocks(body) if marker in b]
+    assert len(blocks) == 1, marker
+    return blocks[0]
+
+
+def _home(tmp_path, content: str = _COMPACT):
+    home = tmp_path / "home"
+    (home / ".agentx").mkdir(parents=True)
+    (home / _CREDS_FILE).write_text(content)
+    return home
+
+
+def _bash(block: str, home, extra_env: dict | None = None, path_dir=None):
+    env = {"HOME": str(home), "PATH": (f"{path_dir}:" if path_dir else "") + "/usr/bin:/bin"}
+    env.update(extra_env or {})
+    return subprocess.run([shutil.which("bash"), "-euc", block], env=env,
+                          capture_output=True, text=True, timeout=30)
+
+
+def test_skill_never_prints_the_credentials_file():
+    _, body = _split()
+    for block in _bash_blocks(body):
+        assert not re.search(r"\bcat\b.*skill-credentials", block), block
+        assert "echo \"$AGENTX_TOKEN" not in block and "echo \"$AGENTX_REFRESH_TOKEN" not in block
+    assert "never print the\n  credentials file" in body
+
+
+def test_every_session_block_loads_all_three_values_and_prints_only_the_did(tmp_path):
+    _, body = _split()
+    block = _block_with(body, "jv agent_did <")
+    spaced = _COMPACT.replace('":"', '": "').replace('","', '", "')
+    for index, spacing in enumerate((_COMPACT, spaced)):
+        home = _home(tmp_path / f"variant{index}", spacing)
+        probe = block + '\nprintf "%s|%s|%s" "$AGENTX_DID" "$AGENTX_TOKEN" "$AGENTX_REFRESH_TOKEN"'
+        res = _bash(probe, home)
+        assert res.returncode == 0, res.stderr
+        lines = res.stdout.split("\n")
+        assert lines[0] == "loaded did:agentx:skill-001"
+        assert lines[1] == "did:agentx:skill-001|acc.SECRET-A|ref.SECRET-R"
+        # Without the probe the block prints the DID and nothing else.
+        plain = _bash(block, home)
+        assert plain.stdout.strip() == "loaded did:agentx:skill-001"
+        assert "SECRET" not in plain.stdout + plain.stderr
+
+
+def test_every_session_block_fails_when_the_file_is_missing(tmp_path):
+    _, body = _split()
+    block = _block_with(body, "jv agent_did <")
+    res = _bash(block, tmp_path / "empty-home")
+    assert res.returncode != 0
+    assert "SECRET" not in res.stdout + res.stderr
+
+
+def test_refresh_block_writes_the_new_pair_back_0600_and_prints_no_token(tmp_path):
+    """A fake `curl` answers /auth/token; the block must rewrite the file, not print."""
+    _, body = _split()
+    block = _block_with(body, "grant_type=refresh_token")
+    home = _home(tmp_path)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    curl = fake_bin / "curl"
+    curl.write_text(
+        '#!/bin/sh\nprintf \'%s\' "$@" > "$HOME/curl-args"\n'
+        'printf \'{"access_token":"acc.SECRET-NEW","refresh_token":"ref.SECRET-NEW2",'
+        '"token_type":"bearer","expires_in":3600}\'\n'
+    )
+    curl.chmod(0o755)
+    env = {"AGENTX_URL": "http://agentx.test", "AGENTX_DID": "did:agentx:skill-001",
+           "AGENTX_TOKEN": "acc.SECRET-A", "AGENTX_REFRESH_TOKEN": "ref.SECRET-R"}
+    res = _bash(block, home, env, path_dir=fake_bin)
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "refreshed"
+    assert "SECRET" not in res.stdout + res.stderr
+    assert "refresh_token=ref.SECRET-R" in (home / "curl-args").read_text()
+    creds_file = home / _CREDS_FILE
+    # The fixture's file was 0644 (default umask): the rewrite must not keep that.
+    assert (creds_file.stat().st_mode & 0o777) == 0o600
+    assert not (home / ".agentx" / "skill-credentials.json.new").exists()
+    assert json.loads(creds_file.read_text()) == {
+        "agent_did": "did:agentx:skill-001", "token": "acc.SECRET-NEW",
+        "refresh_token": "ref.SECRET-NEW2",
+    }
+
+
+def test_refresh_block_keeps_the_old_refresh_token_when_none_is_returned(tmp_path):
+    _, body = _split()
+    block = _block_with(body, "grant_type=refresh_token")
+    home = _home(tmp_path)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    curl = fake_bin / "curl"
+    curl.write_text('#!/bin/sh\nprintf \'{"access_token":"acc.SECRET-NEW","token_type":"bearer"}\'\n')
+    curl.chmod(0o755)
+    env = {"AGENTX_URL": "http://agentx.test", "AGENTX_DID": "did:agentx:skill-001",
+           "AGENTX_TOKEN": "acc.SECRET-A", "AGENTX_REFRESH_TOKEN": "ref.SECRET-R"}
+    res = _bash(block, home, env, path_dir=fake_bin)
+    assert res.returncode == 0, res.stderr
+    assert json.loads((home / _CREDS_FILE).read_text())["refresh_token"] == "ref.SECRET-R"
+
+
+def test_refresh_block_fails_closed_and_leaves_the_file_alone_on_a_refused_refresh(tmp_path):
+    _, body = _split()
+    block = _block_with(body, "grant_type=refresh_token")
+    home = _home(tmp_path)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    curl = fake_bin / "curl"
+    curl.write_text('#!/bin/sh\nprintf \'{"detail":"Refresh token expired"}\'\n')
+    curl.chmod(0o755)
+    env = {"AGENTX_URL": "http://agentx.test", "AGENTX_DID": "did:agentx:skill-001",
+           "AGENTX_TOKEN": "acc.SECRET-A", "AGENTX_REFRESH_TOKEN": "ref.SECRET-R"}
+    res = _bash(block, home, env, path_dir=fake_bin)
+    assert res.returncode != 0
+    assert "refresh failed: Refresh token expired" in res.stderr
+    assert "SECRET" not in res.stdout + res.stderr
+    assert (home / _CREDS_FILE).read_text() == _COMPACT

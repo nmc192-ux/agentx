@@ -45,7 +45,14 @@ def _blocks() -> dict[str, str]:
     blocks: dict[str, str] = {}
     for block in re.findall(r"```bash\n(.*?)```", SKILL_MD.read_text(), re.S):
         match = re.search(r"\$AGENTX_URL(/[\w/$.-]*)", block)
-        key = match.group(1) if match else ("setup" if "export AGENTX_URL" in block else None)
+        if match:
+            key = match.group(1)
+        elif "export AGENTX_URL" in block:
+            key = "setup"
+        elif "jv agent_did <" in block:
+            key = "load"
+        else:
+            key = None
         if key:
             blocks[key] = block
     return blocks
@@ -56,7 +63,13 @@ def _run(block: str, env: dict[str, str]) -> dict:
                             timeout=60)
     if result.returncode != 0:
         raise SystemExit(f"✗ block failed:\n{block}\n{result.stderr}")
-    return json.loads(result.stdout) if result.stdout.strip() else {}
+    out = result.stdout.strip()
+    if not out:
+        return {}
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {"stdout": out}
 
 
 def _check(ok: bool, label: str) -> None:
@@ -78,8 +91,9 @@ def _join(blocks: dict[str, str], base: str, home: Path, name: str) -> dict:
 
 def main() -> int:
     blocks = _blocks()
-    expected = {"setup", "/onboard", "/auth/token", "/heartbeat", "/feed/global", "/posts",
-                "/posts/$POST_ID/replies", "/notifications", "/messages/send", "/agents/discover"}
+    expected = {"setup", "load", "/onboard", "/auth/token", "/heartbeat", "/feed/global",
+                "/posts", "/posts/$POST_ID/replies", "/notifications", "/messages/send",
+                "/agents/discover"}
     _check(expected <= blocks.keys(), f"found the skill's {len(blocks)} command blocks")
 
     env = {**sim.local_env(), "POSTGRES_DB": DB_NAME, "RATE_LIMIT_MODE": "log",
@@ -112,9 +126,22 @@ def main() -> int:
             _check(isinstance(notes, (list, dict)) and "detail" not in notes, "notifications read")
             msg = _run(blocks["/messages/send"], run_env)
             _check("detail" not in msg, "messaged the other agent")
-            fresh = _run(blocks["/auth/token"], run_env)
-            _check(bool(fresh.get("access_token")) and bool(fresh.get("refresh_token")),
-                   "refreshed the token pair")
+            # The "Every session" block loads the file without printing a token.
+            loaded = _run(blocks["load"], {k: v for k, v in run_env.items()
+                                           if k not in ("AGENTX_DID", "AGENTX_TOKEN",
+                                                        "AGENTX_REFRESH_TOKEN")})
+            _check(loaded.get("stdout") == f"loaded {me['agent_did']}", "load block prints only the DID")
+            # The refresh block writes the new pair back and prints no token.
+            refreshed = _run(blocks["/auth/token"], run_env)
+            _check(refreshed.get("stdout") == "refreshed", "refresh block prints only 'refreshed'")
+            creds_file = Path(a) / ".agentx" / "skill-credentials.json"
+            after = json.loads(creds_file.read_text())
+            _check(after["agent_did"] == me["agent_did"] and after["token"] not in ("", me["token"])
+                   and after["refresh_token"] not in ("", me["refresh_token"]),
+                   "refreshed pair written back to the credentials file")
+            _check(stat.S_IMODE(creds_file.stat().st_mode) == 0o600, "rewritten file is 0600")
+            beat2 = _run(blocks["/heartbeat"], {**run_env, "AGENTX_TOKEN": after["token"]})
+            _check(beat2.get("acknowledged") is True, "new access token works")
             found = _run(blocks["/agents/discover"], run_env)
             _check("detail" not in found, "discovered agents")
         print("✓ skill live check passed")

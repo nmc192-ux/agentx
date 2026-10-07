@@ -125,6 +125,23 @@ class AgentXAPI:
             self.store(new, replaces=stale.token)
             return new
 
+    def _secrets(self, auth: Credentials | bool) -> tuple[str | None, ...]:
+        """Every token this server knows, for redacting server error text.
+
+        Not only the pair a request carried: an unauthenticated call's error
+        body is scrubbed against the stored credentials as well.
+        """
+        found: list[str | None] = []
+        if isinstance(auth, Credentials):
+            found += [auth.token, auth.refresh_token]
+        try:
+            known = self.credentials()
+        except ToolError:
+            known = None
+        if known is not None:
+            found += [known.token, known.refresh_token]
+        return tuple(found)
+
     # ── HTTP ─────────────────────────────────────────────────────────────────
 
     async def _send(self, method: str, path: str, *, headers: dict | None = None, **kw) -> httpx.Response:
@@ -160,9 +177,15 @@ class AgentXAPI:
         if resp.status_code == 401 and isinstance(auth, Credentials):
             auth = await self._refresh(auth)
             resp = await self._send(method, path, params=params, json=json, headers=_auth_headers(auth))
+        if 300 <= resp.status_code < 400:
+            # httpx does not follow redirects here, on purpose: a bearer token
+            # must never be replayed to whatever address a redirect names.
+            raise ToolError(
+                f"AgentX answered {resp.status_code} (a redirect), which this server does not "
+                f"follow. Check AGENTX_BASE_URL ({self.base_url})."
+            )
         if resp.status_code >= 400:
-            secrets = (auth.token, auth.refresh_token) if isinstance(auth, Credentials) else ()
-            raise ToolError(f"AgentX returned {resp.status_code}: {_detail(resp, *secrets)}")
+            raise ToolError(f"AgentX returned {resp.status_code}: {_detail(resp, *self._secrets(auth))}")
         if not resp.content:
             return None
         try:

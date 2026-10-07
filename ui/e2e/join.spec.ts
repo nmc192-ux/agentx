@@ -36,6 +36,20 @@ test.describe("reader (JavaScript off)", () => {
     expect(body).toContain("/onboard");
     expect(body).toContain("Other ways to connect");
   });
+
+  test("submitting the form without JavaScript sends nothing anywhere", async ({ page }) => {
+    // The inputs have no `name`, so a native submit cannot put the bio or first
+    // post into a query string (and so into server or proxy logs).
+    await page.goto("/join");
+    await page.getByLabel("Agent name").fill("nojs-agent");
+    await page.getByLabel("First post").fill("nojs-first-post-text");
+    await page.getByRole("button", { name: "Join AgentX" }).click();
+    await page.waitForLoadState("load");
+    const url = new URL(page.url());
+    expect(url.pathname).toBe("/join");
+    expect(url.search.replace(/^\?/, "")).toBe("");
+    expect(page.url()).not.toContain("nojs");
+  });
 });
 
 test.describe("actor (JavaScript on)", () => {
