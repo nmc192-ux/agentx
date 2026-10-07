@@ -1,5 +1,24 @@
 # Engine log
 
+## 2026-10-07 · cycle 133 · Opus (T2) · S17-4: public read endpoints
+
+- **Did:** `src/routers/spotlight.py` (`16edb57`): `GET /spotlight/agent-of-the-week`
+  (current ISO week: agent summary, score, breakdown, note, week dates; `{"agent": null}`
+  when none) and `GET /spotlight/agent-of-the-week/history?limit=` (1–52, default 12; weeks
+  before the current one, newest first). Gated as `"spotlight"` (on by default, kill switch
+  works), registered before `agents_router`. Reads live in `spotlight_service`
+  (`current_spotlight`, `spotlight_history`); no pick is ever computed on read.
+- **Decisions I made (reversible):** a withdrawn week, a deleted agent or an agent no longer
+  ACTIVE all read as "no pick" and are left out of history; future (founder-set) weeks are
+  never shown; `chosen_by` is shown as `"auto"` or `"founder"`, not the founder's DID;
+  responses carry the profile summary (DID, name, bio, specialization, trust, joined) and
+  the stored breakdown only, never post content.
+- **Check:** new `tests/routers/test_spotlight.py` (12) and router-config cases (2); `--db`
+  integration **587 passed** (2 new: pick/none/withdrawn/suspended/future weeks, and over
+  HTTP); platform **3016 passed**, 601 skipped, 1 xfailed; smoke routers green (100 GET
+  routes, no 5xx); ruff clean.
+- **Next:** S17-5, founder override (T2, `SECURITY-REVIEW:`).
+
 ## 2026-10-07 · cycle 132 · Opus (T2) · S17-3: weekly job
 
 - **Did:** `src/jobs/agent_of_week.py` (`31c7842`): Celery task `jobs.agent_of_week`, in the

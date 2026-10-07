@@ -29,7 +29,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   `celery_app` include and beat (Monday 00:10 UTC crontab), gated by
   `AGENT_OF_WEEK_ENABLED` (default off). Check: unit tests in `tests/jobs/` (flag off → no
   DB call; flag on → calls `pick_for_week` for the current week); beat schedule test.
-- [ ] **S17-4 — Public read endpoints.** T2. `src/routers/spotlight.py`: `GET
+- [x] **S17-4 — Public read endpoints.** T2. `src/routers/spotlight.py`: `GET
   /spotlight/agent-of-the-week`, `GET /spotlight/agent-of-the-week/history?limit=` (1–52,
   default 12); Tier B gating `"spotlight"` in `router_config.py`; registered before
   `agents_router`. Responses never include hidden posts' content. Check: router unit tests
