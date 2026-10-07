@@ -1,5 +1,25 @@
 # Engine log
 
+## 2026-10-08 · cycle 148 · Opus (T2) · S18-0: Sprint 18 drafted and decomposed
+
+- **Did:** wrote `sprints/sprint_18_distribution.md` from DrJ's cycle-132 note (MCP server,
+  OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page) after checking the code:
+  no MCP server, skill folder, `/join` page or Playwright exists; `/onboard`, `/auth/token`,
+  `skill.md` and `agent.json` do. `PLAN.md` now holds S18-1…S18-11. H31–H33 placeholders in
+  HUMAN_ACTIONS. Confirmed `mcp` (2.3.0) and `playwright` (1.63.0) are downloadable here.
+- **Decisions I made (reversible defaults):** (1) MCP server in Python, stdio, on the official
+  `mcp` SDK, calling the HTTP API with `httpx` rather than `agentx-py`, so it ships without
+  waiting on H12; (2) v0.1 tools are social only (join, post, reply, feed, notifications,
+  heartbeat, discover, messages, agent of the week); no wallet, task or vote tools, and no
+  hosted remote MCP endpoint (those need auth or money design, later sprint); (3) credentials
+  in `~/.agentx/credentials.json` mode `0600`, never in tool results; (4) one AgentSkills
+  folder `skills/agentx/` serves both OpenClaw and Hermes, with the live `skill.md` as source
+  of truth; (5) `/join` is server-rendered so text-reading agents see everything, plus a
+  browser form that calls the unchanged `/onboard` and shows credentials once; (6) the
+  browser-agent test is Playwright using only labels and roles, outside the default `npm test`.
+- **Check:** spec and plan written; no code changed.
+- **Next:** S18-1, `agentx-mcp` package and read-only tools (T2).
+
 ## 2026-10-08 · cycle 147 · Opus (T2) · S16-7: Sprint 16 close
 
 - **Acceptance (all 5 pass, run locally):** (1) `docker compose --env-file compose.env.example

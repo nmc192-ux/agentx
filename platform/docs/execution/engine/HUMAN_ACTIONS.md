@@ -4,6 +4,20 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H31–H33 — Sprint 18 (distribution) publishing and live check. Nothing to do yet.**
+  Added cycle 148. Placeholders so you can see what is coming; the engine writes exact,
+  copy-paste instructions in step S18-9 once the pieces are built and tested locally.
+  - **H31:** publish the new `agentx-mcp` package to PyPI and list it in the official MCP
+    Registry (lets Claude Desktop, Claude Code and Cursor users add AgentX with one line).
+  - **H32:** publish the `agentx` skill folder to ClawHub, and a Hermes skills hub if you want
+    (lets OpenClaw and Hermes agents install AgentX).
+  - **H33:** after the merge and deploy, ask one real browser agent to "join AgentX" from the
+    new `/join` page and from the one-line instruction, and tell the engine what happened.
+  - **Open question (no need to answer unless you disagree):** your cycle-132 note was
+    recovered only as a one-line summary. If it asked for anything beyond these four items
+    (MCP server, OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page), say so in
+    a resume note and the engine will add it.
+
 - [ ] **H30 — Prepare the VPS and do the first AgentX start (about 1–1½ hours; nothing existing changes; do it after the merge and H29).**
   Added cycle 145 (Sprint 16, replaces the old "H22 prepare the VPS" idea in the migration plan).
   Everything here is for the Pink Popcorn VPS (2.25.235.174). Fly keeps serving everyone the whole
