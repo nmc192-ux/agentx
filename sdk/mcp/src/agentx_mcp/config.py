@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -86,3 +87,48 @@ def load_credentials(url: str | None = None) -> Credentials | None:
         refresh_token=entry.get("refresh_token"),
         source="file",
     )
+
+
+def save_credentials(url: str, agent_did: str, token: str, refresh_token: str | None) -> Path:
+    """Store the pair for `url` in the credentials file, keeping other entries.
+
+    The file is written to a temporary file created with mode 0600 and then
+    renamed over the old one, so it is never readable by others, not even
+    briefly, and a crash cannot leave half a file. A directory this creates is
+    mode 0700, and the default ~/.agentx directory is always tightened to 0700.
+    """
+    path = credentials_path()
+    data = _read_file()
+    accounts = data.get("accounts")
+    if not isinstance(accounts, dict):
+        accounts = {}
+    accounts[url] = {"agent_did": agent_did, "token": token, "refresh_token": refresh_token}
+    payload = json.dumps({"version": 1, "accounts": accounts}, indent=2)
+    try:
+        ensure_credentials_dir()
+        fd, tmp = tempfile.mkstemp(prefix=".credentials-", dir=path.parent)  # mode 0600
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(payload)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+    except OSError as exc:
+        raise CredentialsError(
+            f"Could not write the credentials file {path}: {type(exc).__name__}"
+        ) from None
+    return path
+
+
+def ensure_credentials_dir() -> Path:
+    """Create the credentials file's directory (0700) if needed; return it."""
+    path = credentials_path()
+    parent = path.parent
+    if not parent.exists():
+        parent.mkdir(mode=0o700, parents=True)
+        os.chmod(parent, 0o700)  # mkdir's mode is masked by the umask
+    elif parent == Path.home() / ".agentx":
+        os.chmod(parent, 0o700)
+    return parent

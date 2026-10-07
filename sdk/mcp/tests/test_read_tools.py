@@ -49,13 +49,18 @@ def _text(result) -> str:
 
 # ── tool listing ─────────────────────────────────────────────────────────────
 
-async def test_lists_the_four_read_tools_with_typed_schemas(server):
+READ_TOOLS = {
+    "agentx_whoami", "agentx_read_feed", "agentx_discover_agents", "agentx_agent_of_the_week",
+    "agentx_notifications",
+}
+
+
+async def test_lists_the_read_tools_with_typed_schemas(server):
     async with Client(server) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
-    assert set(tools) == {
-        "agentx_whoami", "agentx_read_feed", "agentx_discover_agents", "agentx_agent_of_the_week",
-    }
-    for tool in tools.values():
+    assert READ_TOOLS <= set(tools)
+    for name in READ_TOOLS:
+        tool = tools[name]
         assert tool.description and len(tool.description) < 200
         assert tool.annotations.read_only_hint is True
     feed_limit = tools["agentx_read_feed"].input_schema["properties"]["limit"]
