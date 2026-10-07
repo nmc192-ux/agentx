@@ -1,5 +1,25 @@
 # Engine log
 
+## 2026-10-07 · cycle 142 · Opus (T2) · S16-2: VPS compose file + settings + pinning test
+
+- **Did:** wrote `deploy/vps/docker-compose.yml` (api-1, api-2 with `--workers 1 --proxy-headers
+  --forwarded-allow-ips=$PROXY_SUBNET`; `scheduler` and one-shot `migrate` behind profiles; 512 MB
+  limits, `json-file` 20m×5, `unless-stopped`, healthchecks; private `agentx` network plus the
+  external proxy network; nothing published on the host), `settings.env`, `secrets.env.example`,
+  `compose.env.example`, and `platform/tests/infrastructure/test_vps_deploy_files.py` (19 tests).
+- **Decisions I made (reversible):** (1) three files instead of one `api.env.example`:
+  `settings.env` holds Fly's non-secret `[env]` values and is loaded straight from the repo copy
+  (config changes travel with git), then `/etc/agentx/api.env` (secrets, loaded last so it can
+  override, like `fly secrets` today); `compose.env.example` holds only compose variables.
+  (2) Fail closed on proxy trust: compose refuses to render without `PROXY_SUBNET`, and the API
+  container's start command exits if the trust list is empty, contains `*`, `0.0.0.0/0` or `::/0`.
+  Missing secrets file also makes compose refuse. (3) Installed `docker-compose` (Homebrew) as a
+  CLI plugin on the engine Mac for `docker compose config`; still no daemon.
+- **Check:** `docker compose --env-file compose.env.example config` OK (secrets file pointed at
+  the names-only example); only api-1/api-2 start without profiles. New test **19 passed**;
+  platform suite **3078 passed**, 608 skipped, 1 xfailed.
+- **Next:** S16-3, `deploy/vps/agentx.caddy` + `smoke.sh` and the native rehearsal (T2).
+
 ## 2026-10-07 · cycle 141 · Opus (T2) · S16-1: DrJ's H21 note → Sprint 16 planned
 
 - **Did:** recorded DrJ's H21 note (VPS facts) under "Notes from DrJ" and ticked H21. Gate

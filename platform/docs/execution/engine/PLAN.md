@@ -17,7 +17,10 @@ rehearsed natively.
 - [x] **S16-1 — Record H21, update the spec, decompose.** T2 (planning). Done cycle 141: H21
   ticked with its facts, H29 added (Caddy network + Upstash region), spec rewritten for option
   B (shared Caddy via an external Docker network). Check: this file exists; HUMAN_ACTIONS has H29.
-- [ ] **S16-2 — `deploy/vps/docker-compose.yml` + `api.env.example`.** T2 (configuration).
+- [x] **S16-2 — `deploy/vps/docker-compose.yml` + `api.env.example`.** T2 (configuration).
+  *Done cycle 142:* split into `settings.env` (Fly's `[env]`, loaded directly), `secrets.env.example`
+  (names only → `/etc/agentx/api.env`) and `compose.env.example` (image, tag, proxy network/subnet);
+  API refuses to start if the trust list is empty or a wildcard. 19 tests.
   api-1, api-2 (image `ghcr.io/…/agentx-platform:${IMAGE_TAG}`, uvicorn flags from plan §3 with
   `--forwarded-allow-ips=${PROXY_SUBNET}`), `scheduler` under a compose profile so it never
   starts by default, one-shot `migrate` (`alembic upgrade head`) under a profile, `env_file:
