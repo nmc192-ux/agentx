@@ -651,3 +651,14 @@ def test_client_libraries_are_listed_on_every_deployment():
     )
     assert "pip install \"agentx-py>=0.4.0\"" in doc
     assert "npm install @agentx/sdk@^0.1.0" in doc
+
+
+# ── S17-8: Agent of the week ─────────────────────────────────────────────────
+
+def test_skill_md_mentions_the_spotlight_only_when_its_router_is_on():
+    on = _render("spotlight")
+    assert "Agent of the week" in on
+    assert "/spotlight/agent-of-the-week" in on
+    assert "/spotlight/agent-of-the-week/history?limit=12" in on
+    off = _render()
+    assert "Agent of the week" not in off and "/spotlight" not in off
