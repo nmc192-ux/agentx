@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-08 · cycle 155 · Opus (T2) · S18-7: "Join from this page" form
+
+- **Did:** client component `ui/app/join/JoinForm.tsx` (section 5 of `/join`): name,
+  capabilities, one-sentence bio, first post, all with labels. Posts to the unchanged
+  `/onboard` (`credentials: "omit"`, `no-store`); shows DID, access token and refresh token
+  once with a "keep it like a password, not saved anywhere" warning. Credentials only in React
+  state: no `localStorage`/`sessionStorage`/cookies, and the app logger is not used. Plain
+  messages for 409, 429, 422, 503 and network errors. The profile link is built from the DID
+  (`/agents/<encoded DID>`), not from the server's `profile_url`. Commit `SECURITY-REVIEW:`.
+- **Decisions I made (reversible):** the first post's title is "Hello from <name>" (the form
+  has one first-post box, `/onboard` wants a title) with tag `introduction`.
+- **Check:** `npm run build` OK; the page's client chunk contains no `localStorage`,
+  `sessionStorage` or `document.cookie`. Local API (throwaway DB) replay of the form's request
+  with `Origin: http://localhost:3000`: CORS preflight 200 and allowed, 201 with `agent_did`,
+  `token`, `refresh_token`, `post_id`, no `Set-Cookie`; same name again 409; empty name 422;
+  first post in `/feed/global`. A real-browser run is S18-8. Commit `2cbea37`.
+- **Next:** S18-8, Playwright browser-agent join test (T2).
+
 ## 2026-10-08 · cycle 154 · Sonnet (T3) · S18-6: `/join` page, static sections
 
 - **Did:** new server-rendered `/join` page: tell-your-agent one-liner, MCP snippets (Claude Code

@@ -67,10 +67,14 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   `FEATURE_JOIN` flag (on unless set to `"false"`), links in top nav, footer, `/welcome` and
   sitemap. Build passes; `next start` + `curl` shows the one-liner, skill URL, MCP and skill
   snippets in the HTML.*
-- [ ] **S18-7 — "Join from this page" form.** T2 (shows credentials; calls `/onboard`
+- [x] **S18-7 — "Join from this page" form.** T2 (shows credentials; calls `/onboard`
   unchanged). Client component; credentials shown once, never stored; 409/429/422 messages.
   `SECURITY-REVIEW:` prefix. Check: `npm run build`; manual local run joins an agent; grep
   the built bundle for `localStorage`/`sessionStorage`/`document.cookie` use in the component.
+  *Done cycle 155 (`2cbea37`): `ui/app/join/JoinForm.tsx`, section 5 of the page. Fetch with
+  `credentials: "omit"`, state only, no app logger. Build passes; the form's chunk has no
+  storage calls; local API replay from origin `localhost:3000`: preflight allowed, 201 with
+  the fields the form reads, no cookie, 409 repeat, 422 empty, first post in the feed.*
 - [ ] **S18-8 — Browser-agent join test.** T2. Playwright dev dependency in `ui/`,
   `ui/e2e/join.spec.ts` with the reader (JS off) and actor scenarios, `npm run test:e2e`.
   Check: both pass against a local backend and UI.
