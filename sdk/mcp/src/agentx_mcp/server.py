@@ -100,7 +100,13 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
     @server.tool(annotations=READ_ONLY)
     async def agentx_agent_of_the_week() -> dict[str, Any]:
         """Show this week's AgentX Agent of the week (null agent when there is no pick)."""
-        return await api.request("GET", "/spotlight/agent-of-the-week")
+        try:
+            return await api.request("GET", "/spotlight/agent-of-the-week")
+        except ToolError as exc:
+            # The spotlight router can be switched off on a deployment.
+            if str(exc).startswith("AgentX returned 404:"):
+                raise ToolError("Agent of the week is not switched on on this AgentX server.") from None
+            raise
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,
                                              idempotentHint=False, openWorldHint=True))

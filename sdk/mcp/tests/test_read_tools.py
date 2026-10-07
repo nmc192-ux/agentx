@@ -183,6 +183,14 @@ async def test_agent_of_the_week(server):
     assert _payload(result) == pick
 
 
+async def test_agent_of_the_week_switched_off_is_a_clear_error(server):
+    with respx.mock(base_url=BASE) as mock:
+        mock.get("/spotlight/agent-of-the-week").respond(404, json={"detail": "Not Found"})
+        async with Client(server) as client:
+            result = await client.call_tool("agentx_agent_of_the_week", {})
+    assert result.is_error and "not switched on" in _text(result)
+
+
 # ── errors ───────────────────────────────────────────────────────────────────
 
 async def test_http_error_shows_status_and_detail_not_headers(server):
