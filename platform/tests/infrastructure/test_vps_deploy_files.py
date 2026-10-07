@@ -15,6 +15,13 @@ S16-3 adds:
      X-Forwarded-For override), so a caller cannot choose the address the API believes.
   6. smoke.sh runs every check the plan lists, and the API's access log reports the
      resolved caller (client=), not the raw header, which is what smoke.sh reads.
+S16-4 adds:
+  7. deploy-vps.yml runs only by hand, behind the production environment, with every action
+     pinned to a commit, the dispatch input never pasted into shell code, a pinned SSH host
+     key, and only commits already on main.
+  8. deploy.sh (driven here against a fake `docker`) migrates before replacing any container,
+     replaces api-1 then api-2 only once each is healthy, never starts a scheduler that was
+     not running, and stops before replacing anything when the migration fails.
 """
 import json
 import os
@@ -32,6 +39,8 @@ VPS = REPO / "deploy" / "vps"
 COMPOSE = VPS / "docker-compose.yml"
 CADDY = VPS / "agentx.caddy"
 SMOKE = VPS / "smoke.sh"
+DEPLOY_SH = VPS / "deploy.sh"
+WORKFLOW = REPO / ".github" / "workflows" / "deploy-vps.yml"
 FLY_TOML = REPO / "platform" / "fly.toml"
 
 SECRET_NAMES = {
@@ -280,3 +289,180 @@ class TestAccessLogReportsResolvedCaller:
         assert lines and "client=127.0.0.1 " in lines[0], lines
         assert "client=203.0.113.77" not in lines[0]
         assert "fwd=203.0.113.77" in lines[0]
+
+
+def _workflow() -> dict:
+    return yaml.safe_load(WORKFLOW.read_text())
+
+
+def _steps() -> list[dict]:
+    return _workflow()["jobs"]["deploy"]["steps"]
+
+
+class TestDeployWorkflow:
+    def test_manual_trigger_only(self):
+        triggers = _workflow()[True]  # PyYAML reads the key `on` as True
+        assert set(triggers) == {"workflow_dispatch"}
+        assert set(triggers["workflow_dispatch"]["inputs"]) == {"commit"}
+
+    def test_production_environment_and_least_privilege(self):
+        wf = _workflow()
+        assert wf["permissions"] == {}
+        assert set(wf["jobs"]) == {"deploy"}
+        job = wf["jobs"]["deploy"]
+        assert job["environment"]["name"] == "production"
+        assert job["permissions"] == {"contents": "read", "packages": "write"}
+        assert wf["concurrency"]["cancel-in-progress"] is False
+
+    def test_actions_pinned_to_commits(self):
+        uses = [step["uses"] for step in _steps() if "uses" in step]
+        assert uses, "expected at least actions/checkout"
+        for ref in uses:
+            assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
+
+    def test_checkout_does_not_keep_token(self):
+        checkout = next(s for s in _steps() if s.get("uses", "").startswith("actions/checkout@"))
+        assert checkout["with"]["persist-credentials"] is False
+
+    def test_dispatch_input_never_inline_in_shell(self):
+        for step in _steps():
+            run = step.get("run", "")
+            assert "${{" not in run, step.get("name")
+        assert _workflow()["jobs"]["deploy"]["env"]["COMMIT"] == "${{ inputs.commit }}"
+
+    def test_commit_validated_and_on_main(self):
+        text = "\n".join(step.get("run", "") for step in _steps())
+        assert '"$COMMIT" =~ ^[0-9a-f]{40}$' in text
+        assert 'git merge-base --is-ancestor "$COMMIT" origin/main' in text
+
+    def test_ssh_host_key_pinned(self):
+        text = WORKFLOW.read_text()
+        assert "StrictHostKeyChecking yes" in text
+        assert "StrictHostKeyChecking no" not in text
+        assert "ssh-keyscan" not in text
+        assert "secrets.VPS_KNOWN_HOSTS" in text
+
+    def test_step_order_build_migrate_roll_verify(self):
+        names = [step.get("name", step.get("uses", "")) for step in _steps()]
+        order = [
+            "Validate commit input", "Only commits already on main", "Build and push image",
+            "Set up SSH (pinned host key)", "Copy compose files to the VPS",
+            "Migrate, then roll api-1 and api-2", "Verify the new commit is serving",
+        ]
+        assert [n for n in names if n in order] == order
+        assert names.index(order[0]) < names.index(next(n for n in names if n.startswith("actions/checkout@")))
+
+    def test_builds_fly_dockerfile_with_commit(self):
+        build = next(s for s in _steps() if s.get("name") == "Build and push image")["run"]
+        assert "--platform linux/amd64" in build
+        assert '--build-arg GIT_COMMIT="$COMMIT"' in build
+        assert "-f platform/Dockerfile.fly" in build
+
+    def test_secrets_only_via_env_and_key_removed(self):
+        for step in _steps():
+            assert "secrets." not in step.get("run", ""), step.get("name")
+        last = _steps()[-1]
+        assert last["if"] == "always()" and 'rm -rf "$RUNNER_TEMP/ssh"' in last["run"]
+
+    def test_rollback_line_skips_migration(self):
+        rollback = next(s for s in _steps() if s.get("name") == "Rollback instructions")
+        assert rollback["if"] == "failure()"
+        assert "SKIP_MIGRATE=1 bash deploy.sh" in rollback["run"]
+
+    @pytest.mark.skipif(shutil.which("actionlint") is None, reason="actionlint not installed")
+    def test_actionlint_clean(self):
+        result = subprocess.run(["actionlint", str(WORKFLOW)], capture_output=True, text=True, timeout=120)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+FAKE_DOCKER = r"""#!/usr/bin/env bash
+echo "$*" >> "$FAKE_LOG"
+case "$*" in
+  *"com.docker.compose.service=scheduler"*) [ "${FAKE_SCHEDULER:-0}" = 1 ] && echo sched1; exit 0 ;;
+  *"run --rm migrate"*) exit "${FAKE_MIGRATE_RC:-0}" ;;
+  *" ps -q "*) echo "cid-${*: -1}"; exit 0 ;;
+  "inspect "*) echo "${FAKE_HEALTH:-healthy}"; exit 0 ;;
+esac
+exit 0
+"""
+
+NEW = "a" * 40
+OLD = "b" * 40
+
+
+class TestDeployScript:
+    @pytest.fixture
+    def run(self, tmp_path):
+        fakebin = tmp_path / "bin"
+        fakebin.mkdir()
+        docker = fakebin / "docker"
+        docker.write_text(FAKE_DOCKER)
+        docker.chmod(0o755)
+        workdir = tmp_path / "opt"
+        workdir.mkdir()
+        (workdir / "compose.env").write_text(f"AGENTX_IMAGE=ghcr.io/x/agentx-platform\nIMAGE_TAG={OLD}\n")
+        log = tmp_path / "docker.log"
+
+        def _run(tag=NEW, **env):
+            log.write_text("")
+            result = subprocess.run(
+                ["bash", str(DEPLOY_SH), tag],
+                env={"PATH": f"{fakebin}:/usr/bin:/bin", "AGENTX_DIR": str(workdir),
+                     "FAKE_LOG": str(log), "HEALTH_TIMEOUT": "6", **env},
+                capture_output=True, text=True, timeout=60,
+            )
+            calls = [line for line in log.read_text().splitlines() if line]
+            return result, calls, (workdir / "compose.env").read_text()
+        return _run
+
+    @staticmethod
+    def _index(calls, needle):
+        return next(i for i, c in enumerate(calls) if needle in c)
+
+    def test_executable_and_shellcheck(self):
+        assert os.access(DEPLOY_SH, os.X_OK)
+        if shutil.which("shellcheck"):
+            assert subprocess.run(["shellcheck", str(DEPLOY_SH)]).returncode == 0
+
+    @pytest.mark.parametrize("tag", ["", "abc", NEW.upper(), NEW + "; rm -rf /", "main", f"{NEW[:39]}"])
+    def test_rejects_anything_but_a_full_sha(self, run, tag):
+        result, calls, env = run(tag)
+        assert result.returncode == 2 and "usage" in result.stderr
+        assert calls == [] and f"IMAGE_TAG={OLD}" in env
+
+    def test_migrates_before_rolling_api_1_then_api_2(self, run):
+        result, calls, env = run()
+        assert result.returncode == 0, result.stderr
+        migrate = self._index(calls, "run --rm migrate")
+        up1 = self._index(calls, "up -d --no-deps api-1")
+        up2 = self._index(calls, "up -d --no-deps api-2")
+        inspect1 = self._index(calls, "inspect -f {{.State.Health.Status}} cid-api-1")
+        assert self._index(calls, "pull api-1") < migrate < up1 < inspect1 < up2
+        assert not any("scheduler up" in c for c in calls)
+        assert f"IMAGE_TAG={NEW}" in env
+        assert f"previous={OLD}" in result.stdout
+
+    def test_failed_migration_replaces_nothing(self, run):
+        result, calls, env = run(FAKE_MIGRATE_RC="1")
+        assert result.returncode != 0
+        assert not any(" up " in f" {c} " for c in calls)
+        assert f"IMAGE_TAG={OLD}" in env
+
+    def test_unhealthy_api_1_stops_before_api_2(self, run):
+        result, calls, env = run(FAKE_HEALTH="unhealthy")
+        assert result.returncode != 0
+        assert any("up -d --no-deps api-1" in c for c in calls)
+        assert not any("api-2" in c and " up " in f" {c} " for c in calls)
+        assert f"IMAGE_TAG={OLD}" in env
+
+    def test_restarts_scheduler_only_if_it_was_running(self, run):
+        result, calls, _ = run(FAKE_SCHEDULER="1")
+        assert result.returncode == 0, result.stderr
+        assert self._index(calls, "up -d --no-deps api-2") < self._index(
+            calls, "--profile scheduler up -d --no-deps scheduler")
+
+    def test_rollback_skips_migration(self, run):
+        result, calls, env = run(OLD, SKIP_MIGRATE="1")
+        assert result.returncode == 0, result.stderr
+        assert not any("migrate" in c for c in calls)
+        assert f"IMAGE_TAG={OLD}" in env

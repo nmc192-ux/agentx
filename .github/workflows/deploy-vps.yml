@@ -1,0 +1,156 @@
+name: Deploy to VPS
+
+# Sprint 16 (files only). Plan: platform/docs/execution/vps_migration_plan.md §6.
+# Runs only when started by hand (Actions → Deploy to VPS → Run workflow) and only after
+# approval in the `production` environment. deploy.yml (Fly) is not affected.
+#
+# Order: build → push to ghcr.io → copy compose files → migrate → api-1 (healthy) → api-2
+# (healthy) → scheduler only if it was already running → verify /health reports the commit.
+# The roll itself is deploy/vps/deploy.sh, so a manual run or rollback does the same thing.
+#
+# Needs in the `production` environment (HUMAN_ACTIONS): secrets VPS_SSH_KEY, VPS_HOST,
+# VPS_KNOWN_HOSTS (the server's host key line; never trust-on-first-use); optional variable
+# VPS_PUBLIC_URL (default https://api-vps.agentx.social).
+#
+# Pinned by platform/tests/infrastructure/test_vps_deploy_files.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Full 40-character commit SHA on main to deploy"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to VPS (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.VPS_PUBLIC_URL || 'https://api-vps.agentx.social' }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # The dispatch input only ever reaches shell code through this variable, never inline.
+      COMMIT: ${{ inputs.commit }}
+      PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL || 'https://api-vps.agentx.social' }}
+
+    steps:
+      - name: Validate commit input
+        run: |
+          if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit must be a full 40-character lowercase SHA"
+            exit 1
+          fi
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ env.COMMIT }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Only commits already on main
+        run: |
+          [ "$(git rev-parse HEAD)" = "$COMMIT" ]
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
+            echo "::error::$COMMIT is not on main; only reviewed, merged code is deployed"
+            exit 1
+          fi
+
+      - name: Build and push image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          IMAGE="ghcr.io/${OWNER,,}/agentx-platform"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker build --platform linux/amd64 \
+            --build-arg GIT_COMMIT="$COMMIT" \
+            -f platform/Dockerfile.fly -t "$IMAGE:$COMMIT" platform
+          docker push "$IMAGE:$COMMIT"
+          docker logout ghcr.io
+
+      - name: Set up SSH (pinned host key)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          for name in VPS_SSH_KEY VPS_HOST VPS_KNOWN_HOSTS; do
+            [ -n "${!name}" ] || { echo "::error::secret $name is not set"; exit 1; }
+          done
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
+          {
+            echo "Host vps"
+            echo "  HostName $VPS_HOST"
+            echo "  User deploy"
+            echo "  IdentityFile $RUNNER_TEMP/ssh/key"
+            echo "  IdentitiesOnly yes"
+            echo "  UserKnownHostsFile $RUNNER_TEMP/ssh/known_hosts"
+            echo "  StrictHostKeyChecking yes"
+            echo "  BatchMode yes"
+            echo "  ConnectTimeout 20"
+          } > "$RUNNER_TEMP/ssh/config"
+          echo "SSH=ssh -F $RUNNER_TEMP/ssh/config" >> "$GITHUB_ENV"
+
+      - name: Copy compose files to the VPS
+        run: |
+          scp -F "$RUNNER_TEMP/ssh/config" \
+            deploy/vps/docker-compose.yml deploy/vps/settings.env deploy/vps/deploy.sh \
+            vps:/opt/agentx/
+
+      - name: Migrate, then roll api-1 and api-2
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | $SSH vps "docker login ghcr.io -u $(printf '%q' "$ACTOR") --password-stdin"
+          set +e
+          $SSH vps "cd /opt/agentx && bash deploy.sh $COMMIT" 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          $SSH vps "docker logout ghcr.io" || true
+          exit "$status"
+
+      - name: Verify the new commit is serving
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            BODY="$(curl -sf --max-time 10 "$PUBLIC_URL/health" || true)"
+            STATUS="$(printf '%s' "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || true)"
+            SERVING="$(printf '%s' "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('commit',''))" 2>/dev/null || true)"
+            echo "attempt $attempt: status=${STATUS:-unreachable} commit=${SERVING:-?}"
+            if [ "$STATUS" = "ok" ] && [ "$SERVING" = "$COMMIT" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::$PUBLIC_URL/health is not serving $COMMIT"
+          exit 1
+
+      - name: Rollback instructions
+        if: failure()
+        run: |
+          PREVIOUS="$(sed -n 's/^previous=//p' "$RUNNER_TEMP/deploy.log" 2>/dev/null | tail -n 1)"
+          echo "::error::VPS deploy of $COMMIT failed."
+          if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "none" ]; then
+            echo "::error::Roll back on the VPS with: cd /opt/agentx && SKIP_MIGRATE=1 bash deploy.sh $PREVIOUS"
+          else
+            echo "::error::If the migration failed, nothing was replaced. Otherwise roll back on the VPS with: cd /opt/agentx && SKIP_MIGRATE=1 bash deploy.sh <previous commit>"
+          fi
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"
