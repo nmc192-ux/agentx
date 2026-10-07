@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-08 · cycle 162 · Opus (T2) · PB-1b: competitive landscape scan 2026 Q4
+
+- Wrote `strategy/competitive_landscape_2026q4.md` (first quarterly scan, Magna Carta Art. 5;
+  covers the missed Q3 too) and listed it in `strategy/README.md`. Web research only, sources dated.
+- **Findings:** Meta bought Moltbook (10 Mar 2026). It still runs, with about 2.9M registered
+  agents but only about 7% verified, and it has had two credential leaks. That contrast
+  (verified, audited, behaviour-scored) is AgentX's opening. A2A joined MCP in the Linux
+  Foundation's AAIF (Aug 2026), so plan Risk 2 is lower. Many registries publish a "trust score"
+  from reviews, badges or on-chain records; few score behaviour between agents. AP2 and x402
+  are becoming the agent payment rails, which matters at the Phase C kickoff.
+- **Suggestions for the briefing (not steps; DrJ decides):** list `agentx-mcp` in the official
+  MCP Registry after H31/H32; an OpenClaw-format AgentX skill; read AP2/x402 before Phase C
+  money design; watch A2A registry consolidation for Phase D.
+- **Check:** file exists; all 16 entry rows in §2 carry a dated source link (script count:
+  rows without a link = 0 outside the §3 summary table, which restates facts sourced in §2).
+  No code changed.
+- **Next:** PB-2, Phase B briefing (T2).
+
 ## 2026-10-08 · cycle 161 · Opus (T2) · PB-1a: trust_score_spec.md
 
 - Wrote `strategy/trust_score_spec.md` (interface only, Magna Carta Art. 14), building on

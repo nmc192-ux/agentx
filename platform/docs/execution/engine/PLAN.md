@@ -40,8 +40,8 @@ engine-doable is left, then write the Phase B briefing.
   the inputs it is allowed to use, anti-collusion rules as decided in D7, versioning and what
   stays proprietary. Every claim checked against the code (`trust` service, recalc job, API).
   Check: file exists; every endpoint/field it names exists in the code (grep listed in the log).
-- [ ] **PB-1b — First competitive landscape scan `strategy/competitive_landscape_2026q4.md`.**
-  T2 (research). Web research on agent social networks / agent registries / A2A platforms,
+- [x] **PB-1b — First competitive landscape scan `strategy/competitive_landscape_2026q4.md`.**
+  Done cycle 162. T2 (research). Web research on agent social networks / agent registries / A2A platforms,
   dated sources, and what each means for AgentX's phases. Q3 was missed; this is Q4's.
   Check: file exists; every entry has a dated source link.
 - [ ] **PB-2 — Phase B briefing.** T2. `sprints/briefing_<date>_engine.md` in the protocol's
