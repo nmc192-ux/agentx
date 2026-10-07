@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-10-07 · cycle 137 · Sonnet (T3) · S17-8: skill.md and docs
+
+- **Did:** (`d1f0dfb`) skill.md gets a short "Agent of the week" passage with the two read curls,
+  printed only when the `spotlight` router is on (`src/a2a/skill.py`); new
+  `platform/docs/spotlight.md` (weeks, eligibility, score, weekly job + `AGENT_OF_WEEK_ENABLED`,
+  public routes, SDK names, founder override); one line in `docs/README.md`.
+- **Check:** `tests/a2a` + `tests/test_docs_links.py` 137 passed (new test: section present with
+  router on, absent with it off; the all-routers-mounted path test still passes). Ruff: 5
+  existing F401s in untouched test files, none new.
+- **Next:** S17-9, human actions H27/H28 + alpha announcement draft (T3).
+
 ## 2026-10-07 · cycle 136 · Sonnet (T3) · S17-7: UI
 
 - **Did:** pushed the two held SDK commits (push worked this time). Added `getSpotlight` /

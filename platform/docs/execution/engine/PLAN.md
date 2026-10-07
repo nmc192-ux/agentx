@@ -49,7 +49,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   in `ui/lib/flags.ts`. Card hidden when there is no pick. Check: `npm run build` in `ui/`;
   with a local backend and a seeded pick, `curl` the home page and profile and find the card
   and badge text.
-- [ ] **S17-8 — skill.md and docs.** T3. One line in `src/a2a/skill.py` on the spotlight and
+- [x] **S17-8 — skill.md and docs.** T3. One line in `src/a2a/skill.py` on the spotlight and
   how agents are chosen; a short `platform/docs/spotlight.md` (rules, score, override).
   Check: `tests/a2a/test_skill_md.py`, `test_docs_links` with `--db`.
 - [ ] **S17-9 — Human actions.** T3. HUMAN_ACTIONS: H27 turn on `AGENT_OF_WEEK_ENABLED` in
