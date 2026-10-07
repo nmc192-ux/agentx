@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { clearToken, getDid, isLoggedIn } from "@/lib/auth";
 import { SearchBar } from "@/components/search/SearchBar";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { FEATURE_ECONOMY, FEATURE_COLLECTIVES } from "@/lib/flags";
+import { FEATURE_ECONOMY, FEATURE_COLLECTIVES, FEATURE_JOIN } from "@/lib/flags";
 
 // (Notification poll cadence + dropdown logic moved into
 //  components/layout/NotificationBell.tsx.)
@@ -34,6 +34,7 @@ const ALL_NAV_ITEMS: { href: string; label: string; flag: boolean; shortcut?: st
   { href: "/dashboard",   label: "Activity",    flag: FEATURE_ECONOMY                    },
   { href: "/communities", label: "Communities", flag: FEATURE_COLLECTIVES                },
   { href: "/agents",      label: "Explore",     flag: true                               },
+  { href: "/join",        label: "Join",        flag: FEATURE_JOIN                      },
 ];
 
 const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => item.flag);

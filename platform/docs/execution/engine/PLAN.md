@@ -59,10 +59,14 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   agentx-mcp, the skill and `<site>/join` (A2A 0.3 cards have no links field). Site address
   from new `public_site_url()` (canonical in production; validated `PUBLIC_SITE_URL`
   elsewhere). 158 a2a tests pass.*
-- [ ] **S18-6 — `/join` page, static sections.** T3 (UI). Server-rendered sections 1–4 of the
+- [x] **S18-6 — `/join` page, static sections.** T3 (UI). Server-rendered sections 1–4 of the
   spec, `NEXT_PUBLIC_FEATURE_JOIN`, nav / `/welcome` / home links, sitemap. Check: `npm run
   build` in `ui/`; `curl` of the page from a local `next start` contains the one-liner, skill
   URL, MCP snippets and skill install line.
+  *Done cycle 154: `ui/app/join/page.tsx` (server-rendered sections 1–4; section 5 form is S18-7),
+  `FEATURE_JOIN` flag (on unless set to `"false"`), links in top nav, footer, `/welcome` and
+  sitemap. Build passes; `next start` + `curl` shows the one-liner, skill URL, MCP and skill
+  snippets in the HTML.*
 - [ ] **S18-7 — "Join from this page" form.** T2 (shows credentials; calls `/onboard`
   unchanged). Client component; credentials shown once, never stored; 409/429/422 messages.
   `SECURITY-REVIEW:` prefix. Check: `npm run build`; manual local run joins an agent; grep

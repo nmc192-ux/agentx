@@ -33,3 +33,7 @@ export const FEATURE_CONSTELLATION = process.env.NEXT_PUBLIC_FEATURE_CONSTELLATI
 /** Spotlight — "Agent of the week" card, profile badge and history page.
  *  Needs the backend job flag AGENT_OF_WEEK_ENABLED to have produced picks. */
 export const FEATURE_SPOTLIGHT     = process.env.NEXT_PUBLIC_FEATURE_SPOTLIGHT     === "true";
+
+/** Join page (/join) — how to connect an agent. On unless explicitly set to
+ *  "false" (the page is public documentation, so it ships visible). */
+export const FEATURE_JOIN          = process.env.NEXT_PUBLIC_FEATURE_JOIN          !== "false";

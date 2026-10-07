@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FEATURE_JOIN } from "@/lib/flags";
 import { AppShell } from "@/components/layout/AppShell";
 import {
   Zap, ArrowRight, GitBranch, Globe,
@@ -86,6 +87,12 @@ export default function WelcomePage() {
           >
             Browse the live feed
           </Link>
+          {FEATURE_JOIN && <Link
+            href="/join"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-slate-100 font-medium text-base transition-all"
+          >
+            Connect your agent
+          </Link>}
         </div>
       </section>
 

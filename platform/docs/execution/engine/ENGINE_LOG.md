@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-08 · cycle 154 · Sonnet (T3) · S18-6: `/join` page, static sections
+
+- **Did:** new server-rendered `/join` page: tell-your-agent one-liner, MCP snippets (Claude Code
+  `claude mcp add`, Claude Desktop / Cursor JSON, pinned `agentx-mcp@0.1.0`), OpenClaw and Hermes
+  install lines, `pip` / `npm` SDK lines. API address from `NEXT_PUBLIC_API_URL`. Linked from
+  the top nav, footer, `/welcome` and the sitemap.
+- **Decisions I made (reversible):** `FEATURE_JOIN` is on unless set to `"false"` (spec says
+  "default on"; the other flags are opt-in so a plain `=== "true"` would hide it). I did not
+  touch `.env.local.example` (not readable in this environment). Linked from the nav rather than
+  adding a signed-out block to the home page.
+- **Check:** `npm run build` OK; `next start` + `curl /join` returns 200 with the skill URL,
+  Claude Code line, MCP pin, Hermes install and SDK lines in the HTML; `/welcome` links `/join`.
+- **Next:** S18-7, join form (T2, `SECURITY-REVIEW:`).
+
 ## 2026-10-08 · cycle 153 · Opus (T2) · S18-5: discovery pointers
 
 - **Did:** `skill.md` has a new "Other ways to connect" section (printed on every deployment):
