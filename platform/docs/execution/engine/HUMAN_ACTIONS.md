@@ -4,6 +4,25 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H29 — Two more read-only facts about the VPS's Caddy, plus the Upstash region (about five minutes; changes nothing).**
+  Added cycle 141 (Sprint 16). Your H21 answer says Pink Popcorn's Caddy container already serves
+  80/443, so AgentX will join it instead of starting its own. To fill in the last two blanks of
+  the VPS files the engine needs to know which Docker network that Caddy is on and where its
+  Caddyfile lives. **1.** SSH into the VPS and paste (they only read):
+  ```
+  docker ps --format '{{.Names}}  {{.Image}}  {{.Ports}}' | grep -i caddy
+  docker inspect $(docker ps -q --filter ancestor=caddy --filter publish=443 | head -1) --format '{{json .NetworkSettings.Networks}} {{range .Mounts}}{{.Source}} -> {{.Destination}}; {{end}}'
+  python3 -c "import socket,time;h='vast-jay-35806.upstash.io';socket.getaddrinfo(h,6379);r=[];exec('for _ in range(5):\n t=time.time();socket.create_connection((h,6379),5).close();r.append((time.time()-t)*1000)');print('Upstash ms:',sorted(round(x) for x in r))"
+  ```
+  If the second line prints nothing, run `docker ps` and send the Caddy line instead.
+  **2.** Also say in which region the Upstash database is (Upstash console → the database →
+  "Region"). **3.** Put it all in a resume note starting `H29:`.
+  Why the Upstash number matters: every request checks a rate limit in Redis, so a slow Redis
+  slows every request. The first line measures it again without the DNS lookup. Under about 20 ms
+  is fine; if it stays near 146 ms the engine will suggest moving Redis (a separate small step).
+  Unblocks: the final network name in `deploy/vps/` (the engine uses a placeholder until then)
+  and the Redis part of the move decision.
+
 - [ ] **H28 — Post the public alpha announcement (about thirty minutes; only after the merge, H1 and the live-test checklist).**
   Added cycle 138 (Sprint 17). A ready-to-edit draft for X and Hacker News is in
   `platform/docs/launch/alpha_announcement_draft.md`. The engine cannot post for you.
@@ -235,7 +254,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   over HTTPS. Engine re-checked `/health`: 200, certificate valid. Step 6 still applies after
   the merge (it is part of H22).
 
-- [ ] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
+- [x] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
   Added cycle 88. The plan for moving the backend off Fly is written:
   `platform/docs/execution/vps_migration_plan.md` (read sections 1 and 11 for the overview).
   Before the engine builds the VPS files it needs a few facts about the VPS, above all how far
@@ -255,6 +274,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Cloudflare, the switch can be done with no gap at all.
   **4.** Put all of the output in a resume note, starting `H21:`. Nothing on Fly changes.
   Unblocks: engine steps V-2 and V-3 (the VPS files and the deploy workflow).
+  **Done 2026-10-07 (cycle 141):** Boston, 2 CPU, 7.8 GiB RAM, Docker 29.8.1 / Compose v5.5.1,
+  Neon 14–16 ms (fine, under 20 ms), Upstash 146 ms (one sample incl. DNS; see H29), and a
+  Pink Popcorn Caddy container already on 80/443, so AgentX joins that Caddy (plan §4 option
+  B). Sprint 16 is now planned in `PLAN.md`.
 
 - [ ] **H20 — Make yourself one admin agent with the FOUNDER role (after you merge; about ten minutes; only on a day you need it).**
   Added cycle 87, steps written and tested cycle 90 (PLAN P-8). Background, from your H5 check:
@@ -1158,3 +1181,12 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   accounts as a HUMAN_ACTION; Sentry `automaticVercelMonitors` warning; commits with DrJ's
   GitHub noreply email). Then draft and plan the Phase B sprints, docs/SDK/samples/VPS prep
   before anything that needs live data. Close each sprint with a briefing. Now Sprint 13.
+- 2026-10-07 (via resume note, recorded cycle 141): H21. Pink Popcorn VPS = 2.25.235.174, Boston
+  US. Ubuntu 24.04.5 x86_64, 2 CPU, 7.8 GiB RAM (6.6 free), 96 GB disk (35% used). Docker
+  29.8.1, Compose v5.5.1. Ports 80/443 already served by a Caddy container (docker-proxy) used
+  by Pink Popcorn, so AgentX must share that Caddy, not replace it. Neon us-east-1 connect
+  14/14/15/16 ms (first 173 ms incl DNS). Upstash connect 146 ms (one sample incl DNS; region
+  being checked). ScoopFeeds VPS (Kuala Lumpur, Neon 237 ms) ruled out. DNS for agentx.social
+  to be confirmed in a later note. Go ahead with V-2/V-3 when Sprint 16 comes up; prepare
+  files only, nothing is deployed without DrJ. (H29 asks for the Caddy network and Upstash
+  region.)

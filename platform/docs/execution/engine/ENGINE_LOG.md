@@ -1,5 +1,24 @@
 # Engine log
 
+## 2026-10-07 · cycle 141 · Opus (T2) · S16-1: DrJ's H21 note → Sprint 16 planned
+
+- **Did:** recorded DrJ's H21 note (VPS facts) under "Notes from DrJ" and ticked H21. Gate
+  passed: Neon 14–16 ms from the VPS (plan's threshold is 20 ms). Rewrote
+  `sprints/sprint_16_vps_prep.md` around the facts and decomposed it into `PLAN.md` (S16-1..7).
+  Added H29 (read-only: which Docker network and Caddyfile Pink Popcorn's Caddy uses, Upstash
+  re-measured without DNS, Upstash region). Sprint 18 (distribution) queued after Sprint 16.
+- **Decisions I made (reversible):** (1) Sprint 16 before Sprint 18, because it was only
+  waiting on H21 and DrJ said go ahead "when Sprint 16 comes up". (2) Share Pink Popcorn's Caddy
+  by joining its Docker network as an external network (Caddy runs in a container, so host
+  ports on 127.0.0.1 would mean changing that container); trust forwarded headers from that
+  network's subnet only. (3) No Docker daemon on the engine Mac: compose checked with
+  `docker compose config`, processes rehearsed natively behind a local Caddy; the in-container
+  start becomes the first step of DrJ's VPS preparation. (4) Upstash 146 ms is an open risk, not
+  a gate: files are the same either way; the close briefing will recommend moving Redis if H29
+  confirms it.
+- **Check:** planning only; `PLAN.md` and H29 exist, no code changed.
+- **Next:** S16-2, `deploy/vps/docker-compose.yml` + `api.env.example` + pinning test (T2).
+
 ## 2026-10-07 · cycle 140 · Opus (T2) · S17-11: Sprint 17 close
 
 - **Did:** ran Sprint 17's acceptance list literally. (1)–(3) by the `--db` spotlight tests and,
