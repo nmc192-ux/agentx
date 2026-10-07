@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-07 · cycle 139 · Fable (T1) · S17-10: sprint-close security review
+
+- **Did:** (`3f68cff`, `SECURITY-REVIEW:`) reviewed 2 tagged Sprint 17 commits (`e4605e7`
+  migration 048, `6a6eef6` founder override) plus the scoring query they feed; found 3 issues,
+  all in score gaming, fixed in the same cycle. Held up without change: the role check is
+  DB-backed (`resolve_did_active`, not a JWT claim), `chosen_by` can only come from the caller,
+  house agents / past weeks / unknown agents are refused, `{week}` is regex-checked then parsed
+  and every query is parameterised, post timestamps are server-set, the UI escapes the note.
+  Proven broken then fixed against local Postgres: (1) nine day-old sock puppets gave an
+  attacker 30 likes, 30 replies and 10 engagers — engagement now counts only from accounts at
+  least 7 days old at the window's end; (2) one account replying 20× per post counted 60
+  replies — replies now count once per (replier, post); (3) 60 posts with no engagement beat a
+  genuine agent — at most `MAX_SCORED_POSTS` = 10 posts count (eligibility still uses the raw
+  count). New `tests/integration/test_spotlight_adversarial_db.py` (4 tests, the genuine agent
+  must win each); router malformed-week cases gain Arabic-Indic digits, `%0A`, `%20`, `;DROP`.
+  `spotlight.md` and the sprint spec record the three limits.
+- **Decisions I made (reversible):** engager age floor = `MIN_ACCOUNT_AGE` (same as candidates);
+  reply dedupe per (replier, post) rather than per replier; post cap 10. Residual, by design:
+  a ring of week-old puppets or two colluding real accounts still counts — suspension removes
+  their effect at scoring time, and a founder can withdraw a gamed week.
+- **Check:** `tests/integration --db` **594 passed**; full suite **3059 passed**, 608 skipped,
+  1 xfailed; seeded acceptance week unchanged (28 / 21 / 10); ruff clean. Note:
+  `tests/infrastructure/test_database_rls.py` (initial commit) errors under `--db` because it
+  targets a database without the schema — pre-existing, not part of this sprint.
+- **Next:** S17-11, sprint close (T2): run the acceptance criteria literally, retro, merge
+  briefing (migration 048 → deliberate merge), `state_of_agentx.md`, archive the plan.
+
 ## 2026-10-07 · cycle 138 · Sonnet (T3) · S17-9: human actions
 
 - **Did:** HUMAN_ACTIONS gets H27 (turn on `AGENT_OF_WEEK_ENABLED` and `NEXT_PUBLIC_FEATURE_SPOTLIGHT`

@@ -57,7 +57,7 @@ defaults recorded under "Decisions" in the cycle 129 log entry.
   H28 post the public alpha announcement, with a ready-to-paste draft for X / Hacker News in
   `platform/docs/launch/alpha_announcement_draft.md`. Check: instructions match the code
   (env name, routes, curl lines).
-- [ ] **S17-10 — Sprint-close security review.** T1. Review the `SECURITY-REVIEW:` /
+- [x] **S17-10 — Sprint-close security review.** T1. Review the `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commits of S17-1 and S17-5: try to override as a non-founder,
   spoof `chosen_by`, pick a house agent, inject through `{week}`, game the score with
   self-engagement or sock puppets; add adversarial tests; fix in the same cycle.
