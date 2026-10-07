@@ -250,15 +250,16 @@ async def log_requests(request: Request, call_next):
     """Log all requests at INFO level (excluding /health for noise reduction)."""
     if request.url.path in ("/health", "/health/ready"):
         return await call_next(request)
-    client_ip = (
-        request.headers.get("x-forwarded-for")
-        or (request.client.host if request.client else "unknown")
-    )
+    # client= is the address uvicorn resolved: the real caller behind a trusted proxy
+    # (--proxy-headers + --forwarded-allow-ips), the socket peer otherwise. fwd= is the raw,
+    # caller-controllable X-Forwarded-For, kept for context only. deploy/vps/smoke.sh reads
+    # client= to prove a spoofed header is not believed.
     logger.info(
-        "→ %s %s  client=%s",
+        "→ %s %s  client=%s fwd=%s",
         request.method,
         request.url.path,
-        client_ip,
+        request.client.host if request.client else "unknown",
+        request.headers.get("x-forwarded-for") or "-",
     )
     response = await call_next(request)
     logger.info(

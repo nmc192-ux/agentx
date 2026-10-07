@@ -9,6 +9,12 @@ unsafe shape:
   3. scheduler and migrate are profile-gated, so a plain `up` never starts a second
      scheduler or a migration.
   4. settings.env carries exactly Fly's [env] values; no secret-looking values in deploy/.
+S16-3 adds:
+  5. agentx.caddy serves the two API names from api-1/api-2:8000 with active health checks
+     and retries, and never trusts incoming forwarded headers (no trusted_proxies, no
+     X-Forwarded-For override), so a caller cannot choose the address the API believes.
+  6. smoke.sh runs every check the plan lists, and the API's access log reports the
+     resolved caller (client=), not the raw header, which is what smoke.sh reads.
 """
 import json
 import os
@@ -24,6 +30,8 @@ import yaml
 REPO = Path(__file__).resolve().parents[3]
 VPS = REPO / "deploy" / "vps"
 COMPOSE = VPS / "docker-compose.yml"
+CADDY = VPS / "agentx.caddy"
+SMOKE = VPS / "smoke.sh"
 FLY_TOML = REPO / "platform" / "fly.toml"
 
 SECRET_NAMES = {
@@ -167,3 +175,108 @@ class TestComposeConfig:
 
     def test_config_fails_without_proxy_subnet(self):
         assert self._config(PROXY_SUBNET="").returncode != 0
+
+
+def _caddy_text() -> str:
+    """Site block without comments."""
+    return "\n".join(line.split("#", 1)[0] for line in CADDY.read_text().splitlines())
+
+
+class TestCaddySiteBlock:
+    def test_serves_both_names_by_default(self):
+        assert "{$AGENTX_SITE:api.agentx.social, api-vps.agentx.social} {" in _caddy_text()
+
+    def test_upstreams_are_the_compose_api_services(self):
+        match = re.search(r"reverse_proxy \{\$AGENTX_UPSTREAMS:([^}]*)\}", _caddy_text())
+        assert match, "reverse_proxy must use the overridable upstream list"
+        assert match.group(1).split() == [f"{name}:8000" for name in API_SERVICES]
+        assert set(API_SERVICES) <= set(_compose()["services"])
+
+    def test_health_checks_and_retries(self):
+        text = _caddy_text()
+        for directive in ("health_uri /health", "lb_try_duration", "flush_interval -1"):
+            assert directive in text, directive
+
+    def test_never_trusts_incoming_forwarded_headers(self):
+        text = _caddy_text()
+        assert "trusted_proxies" not in text
+        assert not re.search(r"header_up\s+[+-]?X-Forwarded", text, re.I)
+        assert "client_ip_headers" not in text
+
+    def test_publishes_nothing_itself(self):
+        # Pink Popcorn's Caddy owns the global options and 80/443; this file is a site block only.
+        assert not re.match(r"\s*\{\s*\n", _caddy_text().lstrip("\n"))
+
+
+@pytest.mark.skipif(shutil.which("caddy") is None, reason="caddy not installed")
+class TestCaddyAdapts:
+    def _adapt(self, **extra_env) -> dict:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("AGENTX_")}
+        result = subprocess.run(
+            ["caddy", "adapt", "--config", str(CADDY), "--adapter", "caddyfile"],
+            env={**env, **extra_env}, capture_output=True, text=True, timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        return json.loads(result.stdout)
+
+    @staticmethod
+    def _routes(config: dict) -> list[tuple[list[str], list[str]]]:
+        out = []
+        for server in config["apps"]["http"]["servers"].values():
+            for route in server["routes"]:
+                hosts = [h for m in route.get("match", []) for h in m.get("host", [])]
+                dials = re.findall(r'"dial": "([^"]+)"', json.dumps(route))
+                out.append((hosts, dials))
+        return out
+
+    def test_production_defaults(self):
+        assert self._routes(self._adapt()) == [
+            (["api.agentx.social", "api-vps.agentx.social"], ["api-1:8000", "api-2:8000"]),
+        ]
+
+    def test_rehearsal_overrides(self):
+        config = self._adapt(
+            AGENTX_SITE="http://127.0.0.1:18080", AGENTX_UPSTREAMS="127.0.0.1:18001 127.0.0.1:18002",
+        )
+        assert self._routes(config) == [(["127.0.0.1"], ["127.0.0.1:18001", "127.0.0.1:18002"])]
+
+
+class TestSmokeScript:
+    def test_executable_and_parses(self):
+        assert os.access(SMOKE, os.X_OK)
+        assert subprocess.run(["bash", "-n", str(SMOKE)]).returncode == 0
+
+    def test_usage_without_base_url(self):
+        result = subprocess.run([str(SMOKE)], capture_output=True, text=True, timeout=30)
+        assert result.returncode == 2
+        assert "usage" in result.stderr
+
+    def test_runs_every_planned_check(self):
+        text = SMOKE.read_text()
+        for name in ("health", "ready", "signup", "login", "feed", "websocket", "real-ip"):
+            assert re.search(rf"(pass|fail|skip) {re.escape(name)} ", text), name
+        for path in ("/health", "/health/ready", "/onboard", "/auth/token", "/feed", "/ws?token="):
+            assert path in text, path
+
+    def test_spoofed_address_is_reserved_test_net(self):
+        assert 'SPOOFED_IP="203.0.113.77"' in SMOKE.read_text()
+
+
+class TestAccessLogReportsResolvedCaller:
+    """smoke.sh reads client= from the access log; it must be the address uvicorn resolved."""
+
+    @pytest.mark.asyncio
+    async def test_spoofed_header_is_not_client(self, caplog):
+        import logging
+
+        from httpx import ASGITransport, AsyncClient
+
+        from src.main import app
+
+        caplog.set_level(logging.INFO, logger="agentx.api")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
+            await c.get("/smoke-realip-test", headers={"X-Forwarded-For": "203.0.113.77"})
+        lines = [r.getMessage() for r in caplog.records if "/smoke-realip-test" in r.getMessage()]
+        assert lines and "client=127.0.0.1 " in lines[0], lines
+        assert "client=203.0.113.77" not in lines[0]
+        assert "fwd=203.0.113.77" in lines[0]
