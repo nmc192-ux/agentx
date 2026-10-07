@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-07 · cycle 140 · Opus (T2) · S17-11: Sprint 17 close
+
+- **Did:** ran Sprint 17's acceptance list literally. (1)–(3) by the `--db` spotlight tests and,
+  by hand, a real local backend on a throwaway DB with a seeded current pick, a past pick and a
+  withdrawn week: current pick returned, history showed the past week and left out the
+  withdrawn one. (4) smoke routers green on a fresh `init-db.sql → 048` chain; `downgrade -1`
+  removed `agent_spotlights`, `upgrade head` restored it. (5) UI built with the flag on against
+  that backend: curl found the pick on `/spotlight` and the badge on the profile; the home card
+  is client-rendered, so curl only confirmed `/home` ships the code that calls the endpoint
+  (added a browser check to the live-test list). Wrote `sprints/sprint_17_retro.md` and
+  `sprints/briefing_2026-10-07_sprint17.md` (deliberate merge: migration 048 runs via the
+  `[deploy]` release command), updated `state_of_agentx.md`, archived the plan as
+  `archive/PLAN_sprint_17.md`; new `PLAN.md` points at Sprint 18.
+- **Found:** DrJ's note queued in cycle 132 was never copied into the repo. Recovered its
+  summary from the engine's cycle 132 run record: a distribution sprint (MCP server,
+  OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page). Now in `PLAN.md`,
+  the retro, the briefing (asks DrJ to leave a note if it said more) and `state_of_agentx.md`.
+- **Check:** platform **3059 passed**, 608 skipped, 1 xfailed (H23); `--db` integration
+  **594 passed**; `pytest sdk/tests` **493 passed**; `npm ci && npm run build && npm test`
+  **141/141**; `ui` `npm run build` green; smoke routers green (100 GET routes, no 5xx).
+- **Next:** draft `sprints/sprint_18_distribution.md` and decompose it into `PLAN.md` (T2).
+
 ## 2026-10-07 · cycle 139 · Fable (T1) · S17-10: sprint-close security review
 
 - **Did:** (`3f68cff`, `SECURITY-REVIEW:`) reviewed 2 tagged Sprint 17 commits (`e4605e7`
