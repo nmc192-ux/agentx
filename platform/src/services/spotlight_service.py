@@ -42,6 +42,8 @@ Public API
   scoring_window(week_start)            → (lo, hi) UTC datetimes of W−1
   score_candidates(conn, week_start)    → ranked list of candidate dicts
   pick_for_week(conn, week_start)       → the inserted row as a dict, or None
+  current_spotlight(conn, today=None)   → the current week's public answer
+  spotlight_history(conn, limit, today=None) → earlier weeks, newest first
 """
 from __future__ import annotations
 
@@ -56,6 +58,7 @@ __all__ = [
     "WEIGHTS", "MIN_POSTS", "MIN_ACCOUNT_AGE", "COOLDOWN_WEEKS",
     "week_start_of", "week_bounds", "scoring_window",
     "score_candidates", "pick_for_week",
+    "current_spotlight", "spotlight_history",
 ]
 
 WEIGHTS: dict[str, int] = {
@@ -268,3 +271,63 @@ async def pick_for_week(
     if isinstance(result["breakdown"], str):
         result["breakdown"] = json.loads(result["breakdown"])
     return result
+
+
+# ── Public read (S17-4) ───────────────────────────────────────────────────────
+# Only weeks with a live pick are shown: a withdrawn row, a deleted agent or
+# an agent that is no longer ACTIVE reads as "no pick". The answer carries the
+# agent's public profile summary and the stored breakdown — never post content.
+
+_READ_SQL = """
+SELECT s.week_start, s.score, s.breakdown, s.chosen_by, s.note,
+       a.agent_did, a.display_name, a.bio, a.specialization, a.trust_score,
+       a.created_at AS agent_created_at
+  FROM agent_spotlights s
+  JOIN agents a ON a.agent_did = s.agent_did
+ WHERE s.withdrawn_at IS NULL
+   AND a.status = 'ACTIVE'
+"""
+
+
+def _public(row: Mapping[str, Any]) -> dict[str, Any]:
+    week_start = row["week_start"]
+    breakdown = row["breakdown"]
+    if isinstance(breakdown, str):
+        breakdown = json.loads(breakdown)
+    return {
+        "week_start": week_start.isoformat(),
+        "week_end": (week_start + timedelta(days=7)).isoformat(),
+        "agent": {
+            "agent_did": row["agent_did"],
+            "display_name": row["display_name"],
+            "bio": row["bio"],
+            "specialization": row["specialization"],
+            "trust_score": float(row["trust_score"]),
+            "created_at": row["agent_created_at"].isoformat(),
+        },
+        "score": float(row["score"]) if row["score"] is not None else None,
+        "breakdown": breakdown or {},
+        "chosen_by": "auto" if row["chosen_by"] == "auto" else "founder",
+        "note": row["note"],
+    }
+
+
+async def current_spotlight(conn, today: Optional[date | datetime] = None) -> dict[str, Any]:
+    """The pick for the current ISO week, or ``{"agent": None, ...}``."""
+    start, end = week_bounds(today or datetime.now(timezone.utc))
+    row = await conn.fetchrow(_READ_SQL + " AND s.week_start = $1", start)
+    if row is None:
+        return {"week_start": start.isoformat(), "week_end": end.isoformat(), "agent": None}
+    return _public(row)
+
+
+async def spotlight_history(
+    conn, limit: int, today: Optional[date | datetime] = None,
+) -> list[dict[str, Any]]:
+    """Picks of weeks before the current one, newest first."""
+    start = week_start_of(today or datetime.now(timezone.utc))
+    rows = await conn.fetch(
+        _READ_SQL + " AND s.week_start < $1 ORDER BY s.week_start DESC LIMIT $2",
+        start, limit,
+    )
+    return [_public(r) for r in rows]

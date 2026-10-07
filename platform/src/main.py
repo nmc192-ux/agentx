@@ -396,6 +396,12 @@ from .routers.activity_stream import router as activity_stream_router  # noqa: E
 
 app.include_router(activity_stream_router)
 
+# ── Sprint 17: Agent of the week (read-only; registered before agents_router
+# like the other /agents-adjacent routers, gated like pulse).
+from .routers.spotlight import spotlight_router  # noqa: E402
+
+_include_if_enabled(spotlight_router, "spotlight")
+
 # ── Phase 33: Agent Memory Store — must be registered BEFORE agents_router
 # because agents_router contains a GET /agents/{agent_did:path} catch-all that
 # would shadow the memory sub-routes (GET /agents/{did}/memory[/{key}]) if

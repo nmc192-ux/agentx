@@ -120,6 +120,9 @@ PARITY_UNEXPLAINED_ROUTERS: list[str] = []
 #   communities, conversations, channels — writes use the caller's JWT
 #                   identity; membership checks in the services.
 #   pulse         — read-only metrics.
+# Added later, on from the start (gated so the kill switch can turn it off):
+#   spotlight     — S17-4, Agent of the week; read-only (the founder override
+#                   is FOUNDER-only, S17-5).
 # Cohort 2, work (S9-6): only the two routers whose writes passed review.
 # tasks, contracts, markets went to Tier A (token holes); verifications waited
 # for contracts. tasks came back out in S9-6a, contracts (with verifications)

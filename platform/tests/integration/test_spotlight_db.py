@@ -272,3 +272,74 @@ async def test_the_weekly_job_stores_the_pick_once(clean, agents, monkeypatch):
     assert second["picked"] is None and second["skipped"] is None
     rows = await clean.fetch("SELECT agent_did FROM agent_spotlights WHERE week_start = $1", week)
     assert [r["agent_did"] for r in rows] == [seed["alice"].did]
+
+
+# ── S17-4: the public read side ───────────────────────────────────────────────
+
+async def _store(pool, week, agent, *, withdrawn=False, chosen_by="auto", note=None):
+    await pool.execute(
+        """
+        INSERT INTO agent_spotlights (week_start, agent_did, score, breakdown,
+                                      chosen_by, note, withdrawn_at)
+        VALUES ($1, $2, 12, '{"posts": 3}'::jsonb, $3, $4,
+                CASE WHEN $5 THEN NOW() END)
+        """,
+        week, agent.did if agent else None, chosen_by, note, withdrawn,
+    )
+
+
+async def test_read_pick_none_and_withdrawn_weeks(clean, agents):
+    alice = await _agent(clean, agents, "readalice")
+    bob = await _agent(clean, agents, "readbob")
+    gone = await _agent(clean, agents, "readgone", status="SUSPENDED")
+    w = [date(1999, 3, 1) + timedelta(days=7 * i) for i in range(6)]
+    await _store(clean, w[0], alice)
+    await _store(clean, w[1], bob, withdrawn=True)
+    await _store(clean, w[2], gone)
+    # w[3]: no row at all
+    await _store(clean, w[4], bob, chosen_by=bob.did, note="override")
+    await _store(clean, w[5], alice)      # a future week, as seen from w[4]
+    today = w[4] + timedelta(days=3)
+
+    async with clean.acquire() as conn:
+        cur = await spot.current_spotlight(conn, today)
+        assert cur["agent"]["agent_did"] == bob.did
+        assert cur["chosen_by"] == "founder" and cur["note"] == "override"
+        assert cur["week_start"] == "1999-03-29"
+        assert cur["breakdown"] == {"posts": 3}
+
+        for day, why in ((w[1], "withdrawn"), (w[2], "suspended"), (w[3], "none")):
+            got = await spot.current_spotlight(conn, day)
+            assert got["agent"] is None, why
+            assert got["week_start"] == day.isoformat()
+
+        hist = await spot.spotlight_history(conn, 52, today)
+        # older 1999 weeks only; the current and the future week are not history
+        mine = [h["week_start"] for h in hist if h["week_start"].startswith("1999")]
+        assert mine == ["1999-03-01"]
+        assert len(await spot.spotlight_history(conn, 1, today)) == 1
+
+
+async def test_endpoints_over_http(clean, agents, client):
+    alice = await _agent(clean, agents, "httpalice")
+    this_week = spot.week_start_of(datetime.now(timezone.utc))
+    await clean.execute("DELETE FROM agent_spotlights WHERE week_start = $1", this_week)
+    try:
+        r = await client.get("/spotlight/agent-of-the-week")
+        assert r.status_code == 200 and r.json()["agent"] is None
+
+        await _store(clean, this_week, alice)
+        await _store(clean, this_week - timedelta(days=7), alice)
+        r = await client.get("/spotlight/agent-of-the-week")
+        assert r.status_code == 200
+        assert r.json()["agent"]["agent_did"] == alice.did
+
+        r = await client.get("/spotlight/agent-of-the-week/history", params={"limit": 1})
+        assert r.status_code == 200
+        assert [h["week_start"] for h in r.json()] == [
+            (this_week - timedelta(days=7)).isoformat()]
+    finally:
+        await clean.execute(
+            "DELETE FROM agent_spotlights WHERE week_start >= $1",
+            this_week - timedelta(days=7),
+        )
