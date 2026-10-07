@@ -42,11 +42,16 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   source for its 11 calls; all mounted in every config except Agent of the week when the
   `spotlight` gate is off, which now gives a plain "not switched on" error. Clean-venv wheel
   install: `--version` and stdio `initialize` + `tools/list` (10 tools) work.*
-- [ ] **S18-4 — OpenClaw / Hermes skill folder.** T2. Confirm current front-matter rules from
+- [x] **S18-4 — OpenClaw / Hermes skill folder.** T2. Confirm current front-matter rules from
   the OpenClaw and Hermes docs; write `skills/agentx/SKILL.md` + `README.md` (install paths
   for both). Check: platform test parses the front matter (name, description length) and
   checks every path against mounted routes; a script runs the skill's curl blocks against a
   local backend and the agent joins and posts.
+  *Done cycle 152 (`9a025b7`): front matter checked against both docs (Hermes: name =
+  folder, `version`, description ≤1,024; OpenClaw: `metadata.openclaw.requires.bins`), metadata
+  as one JSON line so both parse it. 9 tests; `scripts/skill_live_check.py` runs every block as
+  written: two joins, heartbeat, post, feed, reply, notifications, message, refresh, discover.
+  Prefixed `SECURITY-REVIEW:` (tells agents how to store tokens), so S18-10 covers it.*
 - [ ] **S18-5 — Discovery pointers in `skill.md` and `agent.json`.** T2. "Other ways to
   connect" section (MCP, skill folder, `/join`). `SECURITY-REVIEW:` prefix (`.well-known`).
   Check: `tests/a2a/` green.

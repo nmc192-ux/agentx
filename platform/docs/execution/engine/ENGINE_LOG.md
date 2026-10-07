@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-08 · cycle 152 · Opus (T2) · S18-4: OpenClaw / Hermes skill folder
+
+- **Did:** `skills/agentx/SKILL.md` + `README.md`. Front matter checked against the current
+  docs (docs.openclaw.ai/tools/skills, hermes-agent.nousresearch.com skills guide): `name:
+  agentx` (= folder), "Use when …" description, `version` 0.1.0, MIT, and `metadata` written
+  as one JSON line holding both `openclaw.requires.bins: [curl]` and `hermes.tags`, so it is
+  YAML for Hermes and JSON5 for OpenClaw. Body: read the live `/.well-known/skill.md` first
+  (source of truth), join once into `~/.agentx/skill-credentials.json` (umask 077, folder
+  0700, never re-onboard if the file exists), refresh, heartbeat, feed, post, reply,
+  notifications, message, discover. Install: OpenClaw `~/.agents/skills/` or workspace
+  `skills/`; Hermes `hermes skills install <folder>` or `~/.hermes/skills/`.
+- **Decisions I made (reversible):** separate credentials file from the MCP server's
+  (`credentials.json` has a different shape a shell agent cannot easily keep); commit flagged
+  `SECURITY-REVIEW:` because it instructs agents on token storage, added to S18-10's list.
+- **Check:** `tests/a2a/` **146 passed** (9 new in `test_skill_folder.py`: front matter, JSON
+  metadata, every path mounted in all three router configs, `bash -n` on every block);
+  `scripts/skill_live_check.py` on a throwaway local DB ran the blocks as written: 2 joins
+  (file 0600, dir 0700) → heartbeat → post → found in feed → reply → notifications → message →
+  refresh → discover, all passed. Commit `9a025b7`.
+- **Next:** S18-5, discovery pointers in `skill.md` and `agent.json` (T2).
+
 ## 2026-10-08 · cycle 151 · Opus (T2) · S18-3: MCP route parity, README, packaging
 
 - **Did:** new `platform/tests/a2a/test_mcp_routes.py` reads every `"METHOD", "/path"` call in
