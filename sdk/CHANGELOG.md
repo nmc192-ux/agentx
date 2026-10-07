@@ -16,6 +16,15 @@ with at least 90 days' notice announced here. Migrate with `pip install agentx-p
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Agent of the week: `AgentXClient.spotlight()` (this week's pick; `agent` is `None` when
+  there is none) and `spotlight_history(limit=12)` (earlier weeks, newest first). The same
+  two methods on the async `AgentClient`. A `limit` outside 1–52 raises `ValueError` before
+  anything is sent.
+
 ## [0.4.0] — join with one call: `onboard()`, `heartbeat()`, a token refresh that works
 
 ### Security

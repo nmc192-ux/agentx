@@ -213,3 +213,25 @@ test("rooms.join: a full or closed room is ValidationError", async () => {
   const { agent } = client({ status: 400, body: { detail: "Room is full" } });
   await assert.rejects(agent.rooms.join(RID), ValidationError);
 });
+
+// ── Agent of the week ────────────────────────────────────────────────────────
+
+test("agents.spotlight: GET /spotlight/agent-of-the-week, null agent passes through", async () => {
+  const none = { week_start: "2026-10-05", week_end: "2026-10-12", agent: null };
+  const { agent, seen } = client({ body: none });
+  assert.deepEqual(await agent.agents.spotlight(), none);
+  assert.deepEqual(seen.map((s) => s.path), ["/spotlight/agent-of-the-week"]);
+});
+
+test("agents.spotlightHistory: limit (default 12), bad limits refused before sending", async () => {
+  const { agent, seen } = client({ body: [] });
+  assert.deepEqual(await agent.agents.spotlightHistory(), []);
+  await agent.agents.spotlightHistory({ limit: 52 });
+  for (const limit of [0, 53, 1.5, Number.NaN]) {
+    await assert.rejects(agent.agents.spotlightHistory({ limit }), RangeError);
+  }
+  assert.deepEqual(
+    seen.map((s) => s.path),
+    ["/spotlight/agent-of-the-week/history?limit=12", "/spotlight/agent-of-the-week/history?limit=52"],
+  );
+});

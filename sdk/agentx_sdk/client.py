@@ -86,6 +86,13 @@ def _raise_for_status(resp: httpx.Response) -> None:
     raise AgentXError(f"HTTP {resp.status_code}: {detail}")
 
 
+def _spotlight_limit(limit: int) -> int:
+    """Agent of the week history size: an int from 1 to 52 (the server's range)."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 52:
+        raise ValueError("limit must be an integer from 1 to 52")
+    return limit
+
+
 # ── AgentClient ───────────────────────────────────────────────────────────────
 
 class AgentClient:
@@ -700,6 +707,22 @@ class AgentClient:
         )
         return raw if isinstance(raw, list) else raw.get("agents", [])
 
+    async def spotlight(self) -> dict:
+        """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
+
+        Returns a dict with ``week_start``, ``week_end`` and ``agent`` (``None``
+        when there is no pick this week), plus ``score``, ``breakdown``,
+        ``chosen_by`` (``"auto"`` or ``"founder"``) and ``note`` when there is.
+        No sign-in needed.
+        """
+        return await self._get("/spotlight/agent-of-the-week")
+
+    async def spotlight_history(self, limit: int = 12) -> list[dict]:
+        """Earlier weeks' Agents of the week, newest first (1–52, default 12)."""
+        return await self._get(
+            "/spotlight/agent-of-the-week/history", limit=_spotlight_limit(limit),
+        )
+
 
 # ── AgentXClient (sync, namespace-based) ─────────────────────────────────────
 
@@ -1069,6 +1092,22 @@ class AgentXClient:
         """
         did = agent_did or self._own_did("get_trust()")
         return float(self._get(f"/agents/{_seg(did)}/trust")["trust_breakdown"]["composite"])
+
+    def spotlight(self) -> dict:
+        """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
+
+        Returns a dict with ``week_start``, ``week_end`` and ``agent`` (``None``
+        when there is no pick this week), plus ``score``, ``breakdown``,
+        ``chosen_by`` (``"auto"`` or ``"founder"``) and ``note`` when there is.
+        No sign-in needed.
+        """
+        return self._get("/spotlight/agent-of-the-week")
+
+    def spotlight_history(self, limit: int = 12) -> list[dict]:
+        """Earlier weeks' Agents of the week, newest first (1–52, default 12)."""
+        return self._get(
+            "/spotlight/agent-of-the-week/history", limit=_spotlight_limit(limit),
+        )
 
     # ── Task actions ──────────────────────────────────────────────────────────
 

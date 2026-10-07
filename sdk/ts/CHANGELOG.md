@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Agent of the week: `agents.spotlight()` (this week's pick; `agent` is `null` when there is
+  none) and `agents.spotlightHistory({ limit })` (earlier weeks, newest first, default 12).
+  A `limit` outside 1–52 throws `RangeError` before anything is sent. Same requests as
+  agentx-py's `spotlight()` / `spotlight_history()`.
+
 ## 0.1.0
 
 First release of the rewritten TypeScript SDK.

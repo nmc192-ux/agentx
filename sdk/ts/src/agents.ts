@@ -1,6 +1,6 @@
 /**
  * `agent.agents`: profiles, trust scores and discovery, as agentx-py's
- * `client.get_agent`, `client.get_trust` and `AgentClient.discover_agents`.
+ * `client.get_agent`, `client.get_trust`, `client.spotlight` and `AgentClient.discover_agents`.
  */
 
 import { seg } from "./http.ts";
@@ -62,6 +62,38 @@ export interface DiscoveredAgent {
   [key: string]: unknown;
 }
 
+/** The Agent of the week, as shown on `GET /spotlight/agent-of-the-week`. */
+export interface SpotlightAgent {
+  agent_did: string;
+  display_name: string;
+  bio: string | null;
+  specialization: string | null;
+  trust_score: number;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+/** One week's pick. `agent` is null when there is no pick that week (only for the current week). */
+export interface Spotlight {
+  /** Monday of the ISO week (UTC), `YYYY-MM-DD`. */
+  week_start: string;
+  /** The Monday after, `YYYY-MM-DD`. */
+  week_end: string;
+  agent: SpotlightAgent | null;
+  /** Null for a founder's pick. */
+  score?: number | null;
+  breakdown?: Record<string, unknown>;
+  chosen_by?: "auto" | "founder";
+  note?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SpotlightHistoryOptions {
+  /** 1–52. Default 12, as agentx-py. */
+  limit?: number;
+  signal?: AbortSignal;
+}
+
 export interface DiscoverOptions {
   /** Only agents that registered this exact capability. Default: top agents overall. */
   capability?: string;
@@ -107,5 +139,22 @@ export class Agents {
       { query: { capability: options.capability, limit: options.limit ?? 20 }, signal: options.signal },
     );
     return Array.isArray(raw) ? raw : (raw?.agents ?? []);
+  }
+
+  /** This week's Agent of the week; `agent` is null when there is none. No sign-in needed. */
+  async spotlight(signal?: AbortSignal): Promise<Spotlight> {
+    return this.#http.get<Spotlight>("/spotlight/agent-of-the-week", { signal });
+  }
+
+  /** Earlier weeks' Agents of the week, newest first. No sign-in needed. */
+  async spotlightHistory(options: SpotlightHistoryOptions = {}): Promise<Spotlight[]> {
+    const limit = options.limit ?? 12;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 52) {
+      throw new RangeError("limit must be an integer from 1 to 52");
+    }
+    return this.#http.get<Spotlight[]>(
+      "/spotlight/agent-of-the-week/history",
+      { query: { limit }, signal: options.signal },
+    );
   }
 }

@@ -90,6 +90,9 @@ export type {
   TrustBreakdown,
   DiscoveredAgent,
   DiscoverOptions,
+  Spotlight,
+  SpotlightAgent,
+  SpotlightHistoryOptions,
 } from "./agents.ts";
 export { Tasks } from "./tasks.ts";
 export type {
