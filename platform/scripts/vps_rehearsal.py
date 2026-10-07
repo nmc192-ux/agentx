@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -108,6 +109,21 @@ def _wait_ok(url: str, proc: subprocess.Popen, log_path: Path) -> None:
     raise SystemExit(2)
 
 
+def check_no_token_in_logs(paths: list[Path]) -> bool:
+    """PASS when every log shows the WebSocket token redacted and none shows it raw."""
+    raw = re.compile(r"token=(?!REDACTED)[^&\s\"']+")
+    leaked = [p.name for p in paths if p.exists() and raw.search(p.read_text(errors="replace"))]
+    redacted = [p.name for p in paths if p.exists() and "token=REDACTED" in p.read_text(errors="replace")]
+    if leaked:
+        print(f"FAIL  no-token-log  raw token in {leaked}")
+        return False
+    if not redacted:
+        print("FAIL  no-token-log  no log recorded the WebSocket request at all (check not exercised)")
+        return False
+    print(f"PASS  no-token-log  token=REDACTED in {redacted}, raw token nowhere")
+    return True
+
+
 def main() -> int:
     env = local_env()
     smoke.build_database(DB_NAME, env)
@@ -133,6 +149,12 @@ def main() -> int:
         smoke_env = {**os.environ, "SMOKE_LOG_CMD": "cat " + " ".join(str(p) for p in logs)}
         print(f"• smoke.sh {base}")
         ok = subprocess.run([str(VPS_DIR / "smoke.sh"), base], env=smoke_env).returncode == 0
+
+        # Security review (S16-6): smoke.sh opened a WebSocket with ?token=<jwt>. uvicorn logs
+        # that request line and Caddy logs the URI, so both logs must show token=REDACTED and
+        # never the token itself.
+        time.sleep(1)
+        ok = check_no_token_in_logs([*logs, *([caddy_log] if has_caddy else [])]) and ok
 
         if has_caddy:
             procs[0].terminate()

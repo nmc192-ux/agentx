@@ -32,5 +32,14 @@
 
 	log {
 		output stdout
+		# The WebSocket endpoint carries the access token as ?token=; never log it.
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					replace token REDACTED
+				}
+			}
+		}
 	}
 }

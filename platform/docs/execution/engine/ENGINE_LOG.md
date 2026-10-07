@@ -1,5 +1,39 @@
 # Engine log
 
+## 2026-10-07 · cycle 146 · Fable (T1) · S16-6: sprint-close security review
+
+- **Reviewed 3 commits, found 3 issues, fixed 3** (f25922a S16-2 compose/proxy trust, 07c18d9
+  S16-3 Caddy block + access log, e23df04 S16-4 workflow + deploy.sh). Read every file side by
+  side with the plan and the installed uvicorn 0.32.1 / Caddy 2.11.7 sources.
+- **Found and fixed:** (1) uvicorn prints every WebSocket handshake as
+  `"WebSocket /ws?token=<jwt>" [accepted]` on its `uvicorn.error` logger (and HTTP lines with
+  query strings on `uvicorn.access`), so every live access token was going into the container
+  log; this is true on Fly today as well. New `src/log_redaction.py` installs a filter on both
+  loggers from `main.py` so the log shows `token=REDACTED` (also `refresh_token=`). (2) Caddy's
+  access log logged the same URI; `agentx.caddy` now uses `format filter` to replace the `token`
+  query value. (3) `deploy-vps.yml` ran a bare `git fetch origin main` after a checkout with
+  `persist-credentials: false`; that fails on a private repository. `fetch-depth: 0` already
+  fetched every branch, so the step now verifies `origin/main` exists and fails closed.
+- **Checked and sound:** uvicorn 0.32.1 parses the CIDR trust list (tests drive its
+  `ProxyHeadersMiddleware` with the real `PROXY_SUBNET`: proxy believed, stranger ignored,
+  rightmost untrusted hop wins, `*` would believe anyone, which is what the compose guard
+  blocks); Caddy ignores incoming `X-Forwarded-*` without `trusted_proxies`; dispatch input
+  reaches shell only via `$COMMIT` after a 40-hex check, and `deploy.sh` re-checks it; host key
+  pinned, key removed `always()`; token for ghcr.io is the job's short-lived `GITHUB_TOKEN`,
+  logged out on both sides; `$ACTOR` quoted with `%q`; rollback line only carries hex.
+- **Accepted risks, written up for DrJ:** anything on Caddy's Docker network can reach
+  `api-1:8000` directly and set forwarded headers (shared-network trust, inherent to option B):
+  H29 now asks which containers share that network so a dedicated Caddy-plus-AgentX network can
+  be proposed. H30 step 6 now checks Pink Popcorn's Caddyfile for a global `trusted_proxies`,
+  and step 8 asks for the `production` environment's "Selected branches: main" rule, without
+  which "Run workflow" on another branch runs that branch's workflow with the secrets. The
+  `deploy` SSH key is root-equivalent on the VPS (already stated in H30).
+- **Check:** `test_vps_deploy_files.py` **79 passed** (32 new); `caddy adapt` OK; `actionlint`
+  and `shellcheck` clean; native rehearsal **PASSED** including the new `no-token-log` check
+  (`token=REDACTED` in api-1's and Caddy's logs, raw token nowhere, 20/20 failover). Platform
+  suite **3138 passed**, 608 skipped, 1 xfailed. Nothing deployed.
+- **Next:** S16-7, sprint close (T2).
+
 ## 2026-10-07 · cycle 145 · Sonnet (T3) · S16-5: VPS human-action write-up
 
 - **Did:** wrote H30 in HUMAN_ACTIONS (deploy user and key, `/opt/agentx`, `/etc/agentx/api.env`,

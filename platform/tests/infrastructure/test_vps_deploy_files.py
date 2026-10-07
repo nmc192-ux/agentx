@@ -22,6 +22,14 @@ S16-4 adds:
   8. deploy.sh (driven here against a fake `docker`) migrates before replacing any container,
      replaces api-1 then api-2 only once each is healthy, never starts a scheduler that was
      not running, and stops before replacing anything when the migration fails.
+S16-6 (sprint-close security review) adds:
+  9. The compose trust list really works in the pinned uvicorn: a forwarded header is believed
+     only from the proxy subnet, a stranger's header is ignored, and "*" would believe anyone
+     (which is why the container refuses to start with it).
+ 10. No access token in any log: uvicorn's "WebSocket /ws?token=..." line and Caddy's access
+     log both show token=REDACTED.
+ 11. The workflow never fetches main anonymously (fails on a private repository); it fails
+     closed if origin/main is missing.
 """
 import json
 import os
@@ -216,6 +224,12 @@ class TestCaddySiteBlock:
         # Pink Popcorn's Caddy owns the global options and 80/443; this file is a site block only.
         assert not re.match(r"\s*\{\s*\n", _caddy_text().lstrip("\n"))
 
+    def test_access_log_redacts_the_websocket_token(self):
+        text = _caddy_text()
+        log_block = re.search(r"\n\tlog \{(.*?)\n\t\}", text, re.S)
+        assert log_block, "site block must configure its own access log"
+        assert re.search(r"request>uri query \{\s*replace token REDACTED\s*\}", log_block.group(1))
+
 
 @pytest.mark.skipif(shutil.which("caddy") is None, reason="caddy not installed")
 class TestCaddyAdapts:
@@ -242,6 +256,16 @@ class TestCaddyAdapts:
         assert self._routes(self._adapt()) == [
             (["api.agentx.social", "api-vps.agentx.social"], ["api-1:8000", "api-2:8000"]),
         ]
+
+    def test_adapted_log_encoder_redacts_token(self):
+        logs = self._adapt()["logging"]["logs"]
+        encoders = [log["encoder"] for name, log in logs.items() if name != "default"]
+        assert encoders, "site log missing"
+        for enc in encoders:
+            assert enc["format"] == "filter"
+            uri = enc["fields"]["request>uri"]
+            assert uri["filter"] == "query"
+            assert {"parameter": "token", "type": "replace", "value": "REDACTED"} in uri["actions"]
 
     def test_rehearsal_overrides(self):
         config = self._adapt(
@@ -291,6 +315,157 @@ class TestAccessLogReportsResolvedCaller:
         assert "fwd=203.0.113.77" in lines[0]
 
 
+class TestForwardedTrust:
+    """Drive uvicorn's ProxyHeadersMiddleware (what --proxy-headers/--forwarded-allow-ips
+    install) with the compose example's PROXY_SUBNET. The pinned uvicorn must understand the
+    CIDR; a stranger's X-Forwarded-For must never become the client."""
+
+    SPOOF = "203.0.113.77"
+
+    @staticmethod
+    async def _client_seen_by_app(trusted: str, peer: str, xff: str | None) -> str:
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+        seen: list[str] = []
+
+        async def app(scope, receive, send):
+            seen.append(scope["client"][0])
+
+        headers = [(b"host", b"api.agentx.social")]
+        if xff is not None:
+            headers.append((b"x-forwarded-for", xff.encode()))
+        scope = {"type": "http", "client": (peer, 40000), "headers": headers, "scheme": "http"}
+        await ProxyHeadersMiddleware(app, trusted_hosts=trusted)(scope, None, None)
+        return seen[0]
+
+    @pytest.fixture
+    def subnet(self) -> str:
+        return _env_file(VPS / "compose.env.example")["PROXY_SUBNET"]
+
+    @staticmethod
+    def _inside(subnet: str) -> str:
+        import ipaddress
+
+        return str(list(ipaddress.ip_network(subnet).hosts())[7])
+
+    @staticmethod
+    def _outside(subnet: str) -> str:
+        import ipaddress
+
+        for candidate in ("198.51.100.9", "10.200.1.1", "192.168.77.3"):
+            if ipaddress.ip_address(candidate) not in ipaddress.ip_network(subnet):
+                return candidate
+        raise AssertionError("no address outside the subnet")
+
+    async def test_proxy_in_subnet_is_believed(self, subnet):
+        assert await self._client_seen_by_app(subnet, self._inside(subnet), self.SPOOF) == self.SPOOF
+
+    async def test_rightmost_untrusted_hop_wins(self, subnet):
+        chain = f"{self.SPOOF}, {self._inside(subnet)}"
+        assert await self._client_seen_by_app(subnet, self._inside(subnet), chain) == self.SPOOF
+
+    async def test_stranger_header_is_ignored(self, subnet):
+        peer = self._outside(subnet)
+        assert await self._client_seen_by_app(subnet, peer, self.SPOOF) == peer
+
+    async def test_no_header_keeps_peer(self, subnet):
+        peer = self._inside(subnet)
+        assert await self._client_seen_by_app(subnet, peer, None) == peer
+
+    async def test_wildcard_would_believe_anyone(self, subnet):
+        """This is the hole the compose guard closes: with "*" the stranger picks their address."""
+        assert await self._client_seen_by_app("*", self._outside(subnet), self.SPOOF) == self.SPOOF
+
+    def test_compose_subnet_matches_caddy_default_subnet_shape(self, subnet):
+        import ipaddress
+
+        net = ipaddress.ip_network(subnet)
+        assert net.is_private and net.prefixlen >= 16
+
+
+class TestNoTokenInLogs:
+    """uvicorn logs the request line with its query string; /ws takes ?token=<jwt>. The
+    redaction filter installed by src.main must scrub it on both uvicorn loggers."""
+
+    JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkaWQ6YWdlbnR4OmFiYyJ9.c2lnbmF0dXJl"
+
+    @pytest.fixture(autouse=True)
+    def _app(self):
+        import src.main  # noqa: F401 — installs the filter
+
+    def test_installed_once_on_both_uvicorn_loggers(self):
+        import logging
+
+        from src.log_redaction import UVICORN_LOGGERS, RedactQueryTokenFilter, install
+
+        install()
+        install()
+        for name in UVICORN_LOGGERS:
+            filters = [f for f in logging.getLogger(name).filters if isinstance(f, RedactQueryTokenFilter)]
+            assert len(filters) == 1, name
+
+    def test_websocket_accept_line_is_redacted(self, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="uvicorn.error")
+        logging.getLogger("uvicorn.error").info(
+            '%s - "WebSocket %s" [accepted]', ("203.0.113.5", 0), f"/ws?token={self.JWT}",
+        )
+        assert "token=REDACTED" in caplog.text
+        assert self.JWT not in caplog.text and "eyJ" not in caplog.text
+
+    def test_http_access_line_is_redacted(self, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="uvicorn.access")
+        logging.getLogger("uvicorn.access").info(
+            '%s - "%s %s HTTP/%s" %d', "203.0.113.5:1234", "GET", f"/ws?a=1&token={self.JWT}&b=2", "1.1", 403,
+        )
+        assert "/ws?a=1&token=REDACTED&b=2" in caplog.text
+        assert self.JWT not in caplog.text
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("/ws?token=abc.def", "/ws?token=REDACTED"),
+        ("/ws?TOKEN=abc", "/ws?TOKEN=REDACTED"),
+        ("/ws?token=abc&x=1", "/ws?token=REDACTED&x=1"),
+        ("/ws?x=1&token=abc", "/ws?x=1&token=REDACTED"),
+        ("/feed?refresh_token=abc", "/feed?refresh_token=REDACTED"),
+        ("GET /ws?token=abc HTTP/1.1", "GET /ws?token=REDACTED HTTP/1.1"),
+        ("/ws?tokens=abc", "/ws?tokens=abc"),
+        ("/ws", "/ws"),
+        (42, 42),
+        (None, None),
+    ])
+    def test_redact_values(self, raw, expected):
+        from src.log_redaction import redact
+
+        assert redact(raw) == expected
+
+    def test_preformatted_message_and_dict_args(self, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="uvicorn.error")
+        log = logging.getLogger("uvicorn.error")
+        log.info(f"client opened /ws?token={self.JWT}")
+        log.info("path=%(path)s", {"path": f"/ws?token={self.JWT}"})
+        assert caplog.text.count("token=REDACTED") == 2
+        assert self.JWT not in caplog.text
+
+    async def test_app_access_log_prints_path_without_query(self, caplog):
+        import logging
+
+        from httpx import ASGITransport, AsyncClient
+
+        from src.main import app
+
+        caplog.set_level(logging.INFO, logger="agentx.api")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
+            await c.get(f"/ws?token={self.JWT}")
+        lines = [r.getMessage() for r in caplog.records if r.name == "agentx.api" and "/ws" in r.getMessage()]
+        assert lines, caplog.text
+        assert all("token=" not in line and self.JWT not in line for line in lines), lines
+
+
 def _workflow() -> dict:
     return yaml.safe_load(WORKFLOW.read_text())
 
@@ -334,6 +509,21 @@ class TestDeployWorkflow:
         text = "\n".join(step.get("run", "") for step in _steps())
         assert '"$COMMIT" =~ ^[0-9a-f]{40}$' in text
         assert 'git merge-base --is-ancestor "$COMMIT" origin/main' in text
+
+    def test_main_comes_from_checkout_not_an_anonymous_fetch(self):
+        """fetch-depth 0 fetches every branch with the job token; a bare `git fetch` would fail
+        on a private repository and must not be relied on. Missing origin/main fails closed."""
+        checkout = next(s for s in _steps() if s.get("uses", "").startswith("actions/checkout@"))
+        assert checkout["with"]["fetch-depth"] == 0
+        commands = "\n".join(
+            line for step in _steps() for line in step.get("run", "").splitlines()
+            if not line.strip().startswith("#")
+        )
+        assert "git fetch" not in commands
+        assert "git rev-parse --verify --quiet origin/main" in commands
+        on_main = next(s for s in _steps() if s.get("name") == "Only commits already on main")["run"]
+        assert on_main.index("rev-parse --verify") < on_main.index("merge-base --is-ancestor")
+        assert "exit 1" in on_main.split("merge-base")[0]
 
     def test_ssh_host_key_pinned(self):
         text = WORKFLOW.read_text()

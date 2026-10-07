@@ -89,6 +89,13 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   docker exec <caddy container name> caddy validate --config /etc/caddy/Caddyfile
   docker exec <caddy container name> caddy reload --config /etc/caddy/Caddyfile
   ```
+  Before the reload, one read-only check (added by the Sprint 16 security review): the file must
+  not already trust forwarded addresses for everyone. Run this; it must print nothing:
+  ```
+  grep -n trusted_proxies <path to Pink Popcorn's Caddyfile>
+  ```
+  If it prints a line, do not add the `import`; send the engine that line (a wide `trusted_proxies`
+  would let any caller pick the address AgentX believes, and `smoke.sh` step 10 would fail on it).
   If `validate` complains, do NOT reload; remove the `import` line again and send the message to the
   engine. Caddy will only fetch a certificate for `api-vps.agentx.social` after step 7; the
   `api.agentx.social` name keeps pointing at Fly, so its certificate is not obtainable yet and
@@ -104,6 +111,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   ssh-keyscan -t ed25519 localhost | sed 's/^localhost/2.25.235.174/'
   ```
   Optional variable (only if the test name differs): `VPS_PUBLIC_URL` = `https://api-vps.agentx.social`.
+  In the same environment page, under "Deployment branches and tags", choose **Selected branches
+  and tags** and add `main` (added by the Sprint 16 security review). Without it, "Run workflow" on
+  any other branch would run that branch's copy of the workflow file with these secrets; with it,
+  only the workflow as it is on `main` can use them.
   Then delete the private key from your Mac: `rm ~/agentx_deploy_key ~/agentx_deploy_key.pub`.
   **9. First run (scheduler stays off).** GitHub → Actions → "Deploy to VPS" → Run workflow →
   paste the full 40-character commit hash of the newest commit on `main`
@@ -140,6 +151,14 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   python3 -c "import socket,time;h='vast-jay-35806.upstash.io';socket.getaddrinfo(h,6379);r=[];exec('for _ in range(5):\n t=time.time();socket.create_connection((h,6379),5).close();r.append((time.time()-t)*1000)');print('Upstash ms:',sorted(round(x) for x in r))"
   ```
   If the second line prints nothing, run `docker ps` and send the Caddy line instead.
+  **1b.** (added by the Sprint 16 security review) Also paste the names of everything else on
+  Caddy's network, so the engine knows who else could talk to the API directly:
+  ```
+  docker network inspect <Caddy's network name from 1> --format '{{range .Containers}}{{.Name}} {{end}}'
+  ```
+  The API trusts "which address did the caller come from" only from that network. If Pink
+  Popcorn's own app containers are on it too, the engine will propose a small separate network
+  shared by Caddy and AgentX only (one extra line in the files, nothing for you to run yet).
   **2.** Also say in which region the Upstash database is (Upstash console → the database →
   "Region"). **3.** Put it all in a resume note starting `H29:`.
   Why the Upstash number matters: every request checks a rate limit in Redis, so a slow Redis

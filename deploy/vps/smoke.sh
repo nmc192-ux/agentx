@@ -10,7 +10,7 @@
 #
 # The last check needs to read the API's log. Set SMOKE_LOG_CMD to a command that prints the
 # last minutes of it, e.g. on the VPS:
-#   SMOKE_LOG_CMD="docker compose -f /opt/agentx/docker-compose.yml logs --since 5m api-1 api-2"
+#   SMOKE_LOG_CMD="cd /opt/agentx && docker compose --env-file compose.env logs --since 5m api-1 api-2"
 # Without it the check is reported as SKIP (not as a pass).
 #
 # Creates one agent named smoke-<random> on the target. Needs bash, curl and python3.

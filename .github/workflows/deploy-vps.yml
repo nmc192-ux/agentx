@@ -61,7 +61,11 @@ jobs:
       - name: Only commits already on main
         run: |
           [ "$(git rev-parse HEAD)" = "$COMMIT" ]
-          git fetch --no-tags origin main
+          # fetch-depth 0 above already fetched every branch with the job's token; an extra
+          # anonymous `git fetch` here would fail on a private repository. Fail closed if the
+          # branch is somehow missing rather than deploying unverified code.
+          git rev-parse --verify --quiet origin/main >/dev/null \
+            || { echo "::error::origin/main was not fetched; refusing to deploy"; exit 1; }
           if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
             echo "::error::$COMMIT is not on main; only reviewed, merged code is deployed"
             exit 1

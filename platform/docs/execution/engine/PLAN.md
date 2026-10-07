@@ -63,7 +63,13 @@ rehearsed natively.
   variable, rollback `SKIP_MIGRATE=1 bash deploy.sh <prev>`. Cutover day stays
   plan §9, written up only when DrJ asks. Update `vps_migration_plan.md` §3/§4/§11 for option B.
   Check: every command matches the files from S16-2..4 (read side by side).
-- [ ] **S16-6 — Sprint-close security review.** T1. Review `NEEDS-DELIBERATE-MERGE:` commits
+- [x] **S16-6 — Sprint-close security review.** T1. *Done cycle 146:* reviewed 3 commits
+  (S16-2, S16-3, S16-4), found 3 issues, fixed all: (1) uvicorn logged `WebSocket /ws?token=<jwt>`
+  on every connection → `src/log_redaction.py` filter on the uvicorn loggers; (2) Caddy's access log
+  logged the same query → `format filter` redacts `token`; (3) the workflow fetched `main`
+  anonymously (fails on a private repo) → verify `origin/main` from the checkout, fail closed.
+  32 adversarial tests (uvicorn trust list with the real subnet, redaction, workflow); rehearsal
+  gained a `no-token-log` check. H29/H30 gained three checks. Review `NEEDS-DELIBERATE-MERGE:` commits
   (S16-4, S16-2's proxy trust, S16-3's Caddy block and access-log change): forwarded-header spoofing, secret exposure in logs/workflow,
   SSH host-key pinning, workflow injection through the dispatch input. Adversarial tests.
 - [ ] **S16-7 — Sprint close.** T2. Acceptance list from the spec literally, retro, merge

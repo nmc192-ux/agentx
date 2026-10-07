@@ -36,6 +36,7 @@ from slowapi.errors import RateLimitExceeded
 from .cache import check_cache_health, close_cache, init_cache
 from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
+from .log_redaction import install as install_log_redaction
 from .path_converters import register_did_converter
 from .websocket.manager import connection_manager
 
@@ -65,6 +66,8 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 logger = logging.getLogger("agentx.api")
+# uvicorn logs "WebSocket /ws?token=<jwt>" lines; never let a token reach the log.
+install_log_redaction()
 
 settings = get_settings()
 
