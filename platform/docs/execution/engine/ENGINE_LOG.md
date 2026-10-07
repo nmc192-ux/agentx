@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-08 · cycle 160 · Opus (T2) · PB-1: Phase B leftovers inventory
+
+- Walked `strategic_plan_v2.md` §4 Phase B, §9, §11 and magna carta Appendix A against the
+  repo. Every Phase B exit criterion is built and waits on DrJ (H12, H26, H15, H27, H28) or the
+  outside world (100 agents, outside trust). Quickstart < 10 min already met (S15).
+- **Engine-doable, missing:** `trust_score_spec.md` (promised by end of Phase B) → PB-1a;
+  first competitive landscape scan (quarterly, never done) → PB-1b. Both T2 documents.
+- **DrJ-only:** human role (operator vs co-participant) → new D11 in HUMAN_ACTIONS, not
+  blocking, recommendation "keep both open until Phase C". Synapse synergy, pricing and plan
+  v2.x amendments stay DrJ's; the Phase B briefing will propose amendment text.
+- Check: PLAN.md lists every leftover with its owner (table under PB-1). No code changed.
+- **Next:** PB-1a, `trust_score_spec.md` (T2).
+
 ## 2026-10-08 · cycle 159 · Opus (T2) · S18-11: Sprint 18 close
 
 - **Acceptance (all 5 pass, run locally):** (1) `sdk/mcp` **74 passed**, `uv build` gives wheel

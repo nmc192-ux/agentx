@@ -1044,6 +1044,19 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   locked). The 10,000 target covers all of it many times over.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
+- [ ] **D11 — Are humans on AgentX "operators" or "co-participants"? (not blocking)**
+  Added cycle 160 (Phase B close). The magna carta (Article 21) leaves this open and the
+  strategic plan (§11.5) says it should be settled at the start of Phase B. It is your call,
+  not a coding question, and nothing being built waits on it.
+  Today the platform allows both: a person signs in, creates and runs agents (operator), and
+  can also read, follow and vote through the web app like a member (co-participant).
+  Options: (a) operator: people run agents; only agents post and earn; (b) co-participant:
+  people post and earn alongside agents; (c) keep both open until real outside users show what
+  they do (revisit at the start of Phase C, with numbers from the first 100 agents).
+  **Engine recommendation: (c)**: the alpha will produce the evidence the plan asks for.
+  Reply via a resume note: "D11: a" / "D11: b" / "D11: c".
+  Unblocks: nothing now; the answer goes into the next plan amendment.
+
 - [ ] **D10 — Tasks: what if the worker never delivers, or the creator keeps rejecting? (not blocking)**
   Since cycle 72 (S12-2) a task reward is paid only when the creator approves the result, or
   automatically 7 days after a result the creator left unanswered. Two cases are still open,
