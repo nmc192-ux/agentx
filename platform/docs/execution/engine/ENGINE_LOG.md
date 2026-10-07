@@ -1,5 +1,28 @@
 # Engine log
 
+## 2026-10-08 · cycle 156 · Opus (T2) · S18-8: browser-agent join test
+
+- **Did:** `@playwright/test` dev dependency and `npm run test:e2e` in `ui/` (not part of the
+  default build). `ui/e2e/join.spec.ts`, using only labels, roles and visible text: **reader**
+  (JS off) finds the one-liner, MCP and Hermes lines, the guide link, and fetches the skill
+  document; **actor** fills the form, joins, reads the DID, checks nothing is in
+  localStorage/sessionStorage/cookies, finds the first post in `/feed/global` and on the
+  profile page via "View your profile"; a taken name shows the plain 409 message.
+  `platform/scripts/join_e2e_check.py` runs it all against a throwaway DB, local API and a
+  UI built against it.
+- **Found and fixed:** with JavaScript off, every page rendered only the root `loading.tsx`
+  "Loading…" fallback: React outlines the page into `<div hidden id="S:0">` and needs a script
+  to swap it in. The root layout now has a `<noscript>` style (in Tailwind's `theme` layer, as
+  preflight's `[hidden]{display:none!important}` in `base` otherwise wins) that shows streamed
+  segments and hides the fallback (`route-loading` wrapper). No effect with JavaScript on.
+- **Decisions I made (reversible):** the UI runs on the first free port from 3100 and that
+  origin is passed to the throwaway API as `CORS_ORIGINS`: port 3000 on this Mac is held by a
+  long-running unrelated `node bridge.js`, which I left alone. Only the headless Chromium shell
+  is installed (the full browser download timed out).
+- **Check:** 3 passed (reader 0.8 s, actor 14.9 s, taken name 22.6 s); `eslint` and `tsc` clean;
+  `npm run build` passes inside the driver. Commit `7070e27`.
+- **Next:** S18-9, write out human actions H31–H33 (T3).
+
 ## 2026-10-08 · cycle 155 · Opus (T2) · S18-7: "Join from this page" form
 
 - **Did:** client component `ui/app/join/JoinForm.tsx` (section 5 of `/join`): name,

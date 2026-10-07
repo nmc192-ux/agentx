@@ -75,9 +75,13 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   `credentials: "omit"`, state only, no app logger. Build passes; the form's chunk has no
   storage calls; local API replay from origin `localhost:3000`: preflight allowed, 201 with
   the fields the form reads, no cookie, 409 repeat, 422 empty, first post in the feed.*
-- [ ] **S18-8 — Browser-agent join test.** T2. Playwright dev dependency in `ui/`,
+- [x] **S18-8 — Browser-agent join test.** T2. Playwright dev dependency in `ui/`,
   `ui/e2e/join.spec.ts` with the reader (JS off) and actor scenarios, `npm run test:e2e`.
   Check: both pass against a local backend and UI.
+  *Done cycle 156 (`7070e27`): 3 tests pass via `platform/scripts/join_e2e_check.py`
+  (throwaway DB + API + UI on a free port from 3100; port 3000 is taken on this machine). The
+  reader test found every page showed only "Loading…" with JS off (React streams the page into
+  a hidden block); a `<noscript>` style in the root layout fixes it.*
 - [ ] **S18-9 — Human actions H31–H33.** T3. Exact instructions for publishing `agentx-mcp`
   (PyPI + MCP Registry), the skill (ClawHub), and the live browser-agent check.
   Check: entries present, copy-paste ready.
