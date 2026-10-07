@@ -4,6 +4,131 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H30 — Prepare the VPS and do the first AgentX start (about 1–1½ hours; nothing existing changes; do it after the merge and H29).**
+  Added cycle 145 (Sprint 16, replaces the old "H22 prepare the VPS" idea in the migration plan).
+  Everything here is for the Pink Popcorn VPS (2.25.235.174). Fly keeps serving everyone the whole
+  time; the VPS gets its own test name `api-vps.agentx.social` first. Do the steps in order.
+  Lines starting `# ` are comments, not commands. `<…>` means "replace with your value".
+  **0. Before you start:** H29 answered (the engine then writes the Caddy network name and subnet
+  into the example file) and the branch merged to `main` (the workflow only deploys code that is on
+  `main`). Nothing here puts a second scheduler on the VPS; the scheduler stays off until H23 cutover.
+  **1. Make a `deploy` user (run on the VPS as root or with sudo).** This is the account GitHub logs
+  in as. Being in the `docker` group is effectively root on that machine, which is why the key is
+  used for nothing else and lives only in GitHub's protected `production` environment.
+  ```
+  sudo adduser --disabled-password --gecos "" deploy
+  sudo usermod -aG docker deploy
+  sudo mkdir -p /opt/agentx /etc/agentx
+  sudo chown deploy:deploy /opt/agentx
+  sudo chown root:deploy /etc/agentx && sudo chmod 750 /etc/agentx
+  ```
+  **2. Make a key just for this (on your Mac, Terminal).** No passphrase, because GitHub has to use it unattended.
+  ```
+  ssh-keygen -t ed25519 -N "" -C "agentx-github-deploy" -f ~/agentx_deploy_key
+  cat ~/agentx_deploy_key.pub
+  ```
+  On the VPS, put the `.pub` line (one line starting `ssh-ed25519`) into the deploy user's allowed keys:
+  ```
+  sudo -u deploy mkdir -p /home/deploy/.ssh && sudo chmod 700 /home/deploy/.ssh
+  echo '<paste the ssh-ed25519 line>' | sudo -u deploy tee -a /home/deploy/.ssh/authorized_keys >/dev/null
+  sudo chmod 600 /home/deploy/.ssh/authorized_keys
+  ```
+  **3. Write the AgentX settings file on the VPS.** The Postgres and Redis passwords are the ones
+  Fly already uses (Neon console / Upstash console, "connection details"). Type the values yourself
+  where it says `<…>`; do not paste them anywhere else.
+  ```
+  sudo nano /etc/agentx/api.env
+  ```
+  Put exactly these lines in it (names are listed, with no values, in `deploy/vps/secrets.env.example`):
+  ```
+  POSTGRES_PASSWORD=<Neon password>
+  REDIS_PASSWORD=<Upstash password>
+  SENTRY_DSN=<same as on Fly, or leave empty>
+  JWT_SECRET=<added in step 4, not by typing>
+  ```
+  Save (Ctrl+O, Enter, Ctrl+X), then:
+  ```
+  sudo chown root:deploy /etc/agentx/api.env && sudo chmod 640 /etc/agentx/api.env
+  ```
+  Why `640` and group `deploy`, not "root only 600": the deploy user runs `docker compose`, and
+  compose reads this file as that user. A root-only file would stop every deploy with "permission
+  denied". Only root and `deploy` can read it; nobody else on the machine can.
+  **4. Copy `JWT_SECRET` from Fly without ever seeing it (Mac Terminal).** It must be exactly
+  Fly's value, or everyone logged in through Fly is rejected by the VPS and the other way round.
+  This sends it straight from Fly into the file; nothing is printed.
+  ```
+  fly ssh console -a agentx-platform -C "printenv JWT_SECRET" | tr -d '\r\n' | ssh <your login>@2.25.235.174 "sudo sed -i '/^JWT_SECRET=/d' /etc/agentx/api.env && { printf 'JWT_SECRET='; cat; echo; } | sudo tee -a /etc/agentx/api.env >/dev/null"
+  ```
+  Check that it landed, by length only (the two numbers must be equal and not 0):
+  ```
+  fly ssh console -a agentx-platform -C "printenv JWT_SECRET" | tr -d '\r\n' | wc -c
+  ssh <your login>@2.25.235.174 "sudo awk -F= '/^JWT_SECRET=/{print length(\$2)}' /etc/agentx/api.env"
+  ```
+  If they differ, tell the engine (resume note) what both numbers were; do not paste the secret.
+  **5. The compose settings file on the VPS.** Run as the deploy user:
+  ```
+  sudo -u deploy nano /opt/agentx/compose.env
+  ```
+  Contents (use the network name and subnet from your H29 answer; the engine will put the real
+  values in `deploy/vps/compose.env.example` once you answer, so you can copy that file instead):
+  ```
+  AGENTX_IMAGE=ghcr.io/<your GitHub user or organisation, all lowercase>/agentx-platform
+  IMAGE_TAG=none
+  PROXY_NETWORK=<Caddy's Docker network name from H29>
+  PROXY_SUBNET=<that network's subnet, e.g. 172.20.0.0/16>
+  ```
+  `PROXY_SUBNET` must be the network's real range, never `*` or `0.0.0.0/0`: the API refuses to
+  start with those (so strangers cannot pretend to be someone else's address).
+  **6. Give AgentX a name in Caddy.** Copy `deploy/vps/agentx.caddy` (it is in the repo; GitHub's
+  deploy copies the other files, not this one) to the folder holding Pink Popcorn's Caddyfile
+  (H29 tells which), add this one line at the end of that Caddyfile, and reload:
+  ```
+  import agentx.caddy
+  ```
+  ```
+  docker exec <caddy container name> caddy validate --config /etc/caddy/Caddyfile
+  docker exec <caddy container name> caddy reload --config /etc/caddy/Caddyfile
+  ```
+  If `validate` complains, do NOT reload; remove the `import` line again and send the message to the
+  engine. Caddy will only fetch a certificate for `api-vps.agentx.social` after step 7; the
+  `api.agentx.social` name keeps pointing at Fly, so its certificate is not obtainable yet and
+  Caddy will keep retrying quietly; that is expected until H23.
+  **7. DNS (Hostinger → Domains → agentx.social → DNS records).** Add: type `A`, name `api-vps`,
+  points to `2.25.235.174`, TTL `300`. Do not touch the `api` record.
+  **8. GitHub settings (repo → Settings → Environments → `production`).** The environment already
+  exists with you as required reviewer (as for the Fly deploy). Add three **secrets**:
+  `VPS_SSH_KEY` = the whole contents of `~/agentx_deploy_key` (the private one, including the
+  BEGIN/END lines), `VPS_HOST` = `2.25.235.174`, and `VPS_KNOWN_HOSTS` = the output of this command
+  run **on the VPS itself** (not from your Mac, so it cannot be tampered with in transit):
+  ```
+  ssh-keyscan -t ed25519 localhost | sed 's/^localhost/2.25.235.174/'
+  ```
+  Optional variable (only if the test name differs): `VPS_PUBLIC_URL` = `https://api-vps.agentx.social`.
+  Then delete the private key from your Mac: `rm ~/agentx_deploy_key ~/agentx_deploy_key.pub`.
+  **9. First run (scheduler stays off).** GitHub → Actions → "Deploy to VPS" → Run workflow →
+  paste the full 40-character commit hash of the newest commit on `main`
+  (`git rev-parse origin/main`, or the "Commits" page) → Run → approve it when GitHub asks. It builds
+  the image, runs the database migration step (a no-op if the database is current), starts
+  api-1, waits until it is healthy, then api-2, then checks the new version answers. On the VPS
+  confirm the scheduler is not running: `docker ps --filter name=scheduler` must list nothing.
+  **10. Smoke test (Mac Terminal, from the repo's `deploy/vps` folder).** It creates one throwaway
+  agent called `smoke-…` on the shared database.
+  ```
+  bash smoke.sh https://api-vps.agentx.social
+  ```
+  Every line must say PASS (the "real caller address" line says SKIP unless you also give it the
+  log command; to include it, run on the VPS:
+  `SMOKE_LOG_CMD="cd /opt/agentx && docker compose --env-file compose.env logs --since 5m api-1 api-2" bash smoke.sh https://api-vps.agentx.social`
+  after copying `smoke.sh` there).
+  **11. Uptime monitor.** On UptimeRobot or Better Stack (free plan) add an HTTPS monitor for
+  `https://api-vps.agentx.social/health`, every minute, email you on failure. On a VPS nobody
+  notices an outage unless this exists. After cutover (H23) change it to `api.agentx.social`.
+  **If a deploy goes wrong:** the workflow prints the exact rollback line. It is
+  `cd /opt/agentx && SKIP_MIGRATE=1 bash deploy.sh <previous commit>` (run on the VPS as `deploy`;
+  `SKIP_MIGRATE=1` because older code cannot migrate past a newer database). Fly is untouched.
+  **12. Tell the engine** in a resume note: `H30 done` plus the last lines of `smoke.sh`.
+  Unblocks: the cutover plan (H23, migration plan §9), which the engine writes up only when you ask.
+
 - [ ] **H29 — Two more read-only facts about the VPS's Caddy, plus the Upstash region (about five minutes; changes nothing).**
   Added cycle 141 (Sprint 16). Your H21 answer says Pink Popcorn's Caddy container already serves
   80/443, so AgentX will join it instead of starting its own. To fill in the last two blanks of

@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-07 · cycle 145 · Sonnet (T3) · S16-5: VPS human-action write-up
+
+- **Did:** wrote H30 in HUMAN_ACTIONS (deploy user and key, `/opt/agentx`, `/etc/agentx/api.env`,
+  `JWT_SECRET` copied from Fly unseen with a length-only check, `compose.env`, the Caddy `import`
+  line and reload, `api-vps` DNS record, GitHub `production` secrets incl. host key from the VPS
+  itself, first run with the scheduler off, `smoke.sh`, uptime monitor, rollback line). Updated
+  `vps_migration_plan.md` §3/§4/§11 for the shared-Caddy option B.
+- **Found while reading side by side:** compose reads `/etc/agentx/api.env` as the `deploy` user, so
+  the plan's "root-only 600" would break every deploy; H30 uses `root:deploy` `640`. The
+  `SMOKE_LOG_CMD` example in `smoke.sh`'s header lacks `--env-file compose.env` (compose would
+  fail on the required variables); H30 has the working form; the header comment is left as is.
+- **Check:** commands read against `deploy.sh`, `docker-compose.yml`, `deploy-vps.yml`, `smoke.sh`.
+  Docs only; no code touched. Nothing deployed.
+- **Next:** S16-6, sprint-close security review (T1).
+
 ## 2026-10-07 · cycle 144 · Opus (T2) · S16-4: manual VPS deploy workflow
 
 - **Did:** wrote `.github/workflows/deploy-vps.yml` (hand-started only, `production` approval,

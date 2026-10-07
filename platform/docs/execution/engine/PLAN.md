@@ -52,7 +52,7 @@ rehearsed natively.
   if it was running → `curl` verify `commit`; on failure print the rollback line. Extend the S16-2
   test: migrate step before any `up -d`, no `push:`/`pull_request:` trigger, third-party actions
   pinned. Check: `actionlint` clean; tests pass.
-- [ ] **S16-5 — Human-action write-up for the VPS (prepare + first start).** T3 (docs).
+- [x] **S16-5 — Human-action write-up for the VPS (prepare + first start).** T3 (docs). *Done cycle 145:* HUMAN_ACTIONS H30; migration plan §3/§4/§11 updated for option B.
   HUMAN_ACTIONS item(s): deploy user + key, `/opt/agentx`, `/etc/agentx/api.env` (root, 600,
   `JWT_SECRET` copied from Fly unseen), GitHub `production` secrets, the Caddyfile `import` line
   and `caddy reload`, `api-vps` DNS record at Hostinger, first run of the workflow with the
