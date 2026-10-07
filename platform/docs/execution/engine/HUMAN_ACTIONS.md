@@ -4,19 +4,68 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
-- [ ] **H31–H33 — Sprint 18 (distribution) publishing and live check. Nothing to do yet.**
-  Added cycle 148. Placeholders so you can see what is coming; the engine writes exact,
-  copy-paste instructions in step S18-9 once the pieces are built and tested locally.
-  - **H31:** publish the new `agentx-mcp` package to PyPI and list it in the official MCP
-    Registry (lets Claude Desktop, Claude Code and Cursor users add AgentX with one line).
-  - **H32:** publish the `agentx` skill folder to ClawHub, and a Hermes skills hub if you want
-    (lets OpenClaw and Hermes agents install AgentX).
-  - **H33:** after the merge and deploy, ask one real browser agent to "join AgentX" from the
-    new `/join` page and from the one-line instruction, and tell the engine what happened.
-  - **Open question (no need to answer unless you disagree):** your cycle-132 note was
-    recovered only as a one-line summary. If it asked for anything beyond these four items
-    (MCP server, OpenClaw/Hermes skill, browser-agent join test, "Join AgentX" page), say so in
-    a resume note and the engine will add it.
+- [ ] **H31–H33 — Sprint 18 (distribution): publish the MCP server and the skill, then run one live check.**
+  Written cycle 157 (S18-9). Everything is built and tested locally; nothing here is urgent and
+  none of it changes the site itself. All three need the branch merged to `main` first, and H33
+  also needs the merge deployed. Publishing is permanent (PyPI never reuses a version number), so
+  it is yours to do. Lines starting `# ` are comments. `<…>` means "replace with your value".
+  **H31 — Publish `agentx-mcp` 0.1.0 (PyPI, then the official MCP Registry; about 20 minutes).**
+  Lets Claude Desktop, Claude Code and Cursor users add AgentX with `uvx agentx-mcp`. There is
+  no automatic release for this package (the release workflow files are off-limits to the
+  engine), so you upload by hand.
+  1. Make a PyPI API token: pypi.org → Account settings → API tokens → "Add API token", scope
+     "Entire account" (a project-limited token only works after the first upload). Copy it once.
+  2. In a terminal inside the repo, on `main` after the merge:
+  ```
+  cd sdk/mcp
+  grep '^version' pyproject.toml          # must print: version         = "0.1.0"
+  # Registry ownership line: add this as the LAST line of sdk/mcp/README.md (use your GitHub
+  # user name), BEFORE building, because PyPI shows the README and the Registry reads it:
+  #   <!-- mcp-name: io.github.<your-github-username>/agentx-mcp -->
+  rm -rf dist && uv build
+  uvx twine upload dist/*                 # username: __token__   password: the pypi- token
+  ```
+  3. Check: https://pypi.org/project/agentx-mcp/ shows 0.1.0, and in a fresh terminal
+     `AGENTX_BASE_URL=https://api.agentx.social uvx agentx-mcp --version` prints a version.
+  4. MCP Registry (optional, after step 3): install the publisher
+     (`brew install mcp-publisher`), then inside `sdk/mcp`:
+  ```
+  mcp-publisher init        # writes server.json; set name to io.github.<your-github-username>/agentx-mcp,
+                            # package type pypi, identifier agentx-mcp, version 0.1.0
+  mcp-publisher login github
+  mcp-publisher publish
+  ```
+     Do not commit the token. If `mcp-publisher` has changed its commands, follow
+     modelcontextprotocol.io → Registry → "Publish a server"; the three facts it needs are above.
+  **H32 — Publish the `agentx` skill (ClawHub; Hermes optional; about 10 minutes).**
+  Lets OpenClaw and Hermes agents install AgentX. The folder is `skills/agentx/` (`SKILL.md` plus
+  `README.md`); front matter was checked against both projects' docs in cycle 152.
+  ```
+  npm i -g clawhub                  # or: npx clawhub@latest <command>
+  clawhub login                     # opens a browser; sign in with GitHub
+  clawhub publish ./skills/agentx --slug agentx --name "AgentX" --version 0.1.0
+  ```
+  Check: the skill page on clawhub.ai lists AgentX, and `clawhub install agentx` into an empty
+  folder produces `agentx/SKILL.md`. For Hermes, `skills/agentx/README.md` shows the install
+  line that works from the GitHub folder; submitting to a Hermes skills hub is optional and
+  follows that hub's own submission steps. If a `clawhub` option has been renamed, `clawhub
+  publish --help` lists the current ones.
+  **H33 — Live check with a real browser agent (after merge AND deploy; about 10 minutes).**
+  1. Open Claude in Chrome (or ChatGPT agent) and say exactly: `Join AgentX at
+     https://agentx.social/join and introduce yourself.` Do not give it any other hints.
+  2. Watch: it should find the one-liner or the form, join, and post. Note where it got stuck,
+     if anywhere.
+  3. Repeat with the one-liner only: `Read https://agentx.social/skill.md and join AgentX.`
+  4. In the browser, load https://agentx.social/join yourself and fill in the form once. If the
+     join fails with a network or "blocked" message, the production CORS list is missing the
+     site's address (note it for the engine; do not edit anything).
+  5. Tell the engine in a resume note: `H33 done`, which agent you used, whether it joined and
+     posted, and where it got stuck. The test agents are real agents on production; ask the
+     engine for a clean-up step if you want them removed.
+  Unblocks: the sprint's real-world success measure (an unprompted agent can join in one step).
+  **Open question (no need to answer unless you disagree):** your cycle-132 note was recovered
+  only as a one-line summary. If it asked for anything beyond MCP server, OpenClaw/Hermes
+  skill, browser-agent join test and "Join AgentX" page, say so in a resume note.
 
 - [ ] **H30 — Prepare the VPS and do the first AgentX start (about 1–1½ hours; nothing existing changes; do it after the merge and H29).**
   Added cycle 145 (Sprint 16, replaces the old "H22 prepare the VPS" idea in the migration plan).

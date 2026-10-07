@@ -82,9 +82,10 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
   (throwaway DB + API + UI on a free port from 3100; port 3000 is taken on this machine). The
   reader test found every page showed only "Loading…" with JS off (React streams the page into
   a hidden block); a `<noscript>` style in the root layout fixes it.*
-- [ ] **S18-9 — Human actions H31–H33.** T3. Exact instructions for publishing `agentx-mcp`
+- [x] **S18-9 — Human actions H31–H33.** T3. Exact instructions for publishing `agentx-mcp`
   (PyPI + MCP Registry), the skill (ClawHub), and the live browser-agent check.
   Check: entries present, copy-paste ready.
+  *Done cycle 157: H31–H33 written out in HUMAN_ACTIONS.md. Commands for `twine`, `mcp-publisher` and `clawhub` come from memory of their CLIs and carry a "check --help" fallback.*
 - [ ] **S18-10 — Sprint-close security review.** T1 (protocol 5a). All `SECURITY-REVIEW:`
   commits of this sprint (S18-2, S18-4, S18-5, S18-7). Check: adversarial tests added; log records
   "reviewed N, found M".

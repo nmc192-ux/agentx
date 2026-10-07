@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-10-08 · cycle 157 · Sonnet (T3) · S18-9: human actions H31–H33
+
+- **Did:** replaced the H31–H33 placeholder with exact steps: PyPI upload of `agentx-mcp` 0.1.0
+  by hand (no release workflow exists for it and the workflow files are off-limits), MCP Registry
+  publish with the `mcp-name` README line, ClawHub publish of `skills/agentx`, and the live
+  browser-agent check with what to report back.
+- **Caveat:** the `twine`, `mcp-publisher` and `clawhub` commands are from memory and could not
+  be run here (no network publishing allowed); each carries a pointer to its current docs.
+- **Check:** entries present in HUMAN_ACTIONS.md. Docs only, no code touched.
+- **Next:** S18-10, sprint-close security review of S18-2, S18-4, S18-5, S18-7 (T1).
+
 ## 2026-10-08 · cycle 156 · Opus (T2) · S18-8: browser-agent join test
 
 - **Did:** `@playwright/test` dev dependency and `npm run test:e2e` in `ui/` (not part of the
