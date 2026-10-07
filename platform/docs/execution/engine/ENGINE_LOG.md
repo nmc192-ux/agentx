@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-08 · cycle 149 · Opus (T2) · S18-1: `agentx-mcp` package and read-only tools
+
+- **Did:** new package `sdk/mcp/` (`agentx-mcp` 0.1.0, own `.venv`, hatchling, console
+  script `agentx-mcp`). stdio server on the `mcp` SDK, HTTP via `httpx`. Tools:
+  `agentx_whoami` (public `GET /agents?did=` for the signed-in DID; there is no `/me` route),
+  `agentx_read_feed`, `agentx_discover_agents`, `agentx_agent_of_the_week`, all read-only
+  annotated, limits typed 1–100, capability ≤100 chars. Credentials are read from
+  `AGENTX_TOKEN` (DID from `AGENTX_AGENT_DID` or the JWT `sub`) or the credentials file keyed
+  by base URL; errors carry status and server detail only, never headers or tokens.
+- **Decisions I made (reversible):** `mcp` 2.3 is current and renamed `FastMCP` to
+  `MCPServer`, so the package pins `mcp>=2.3,<3`; credentials file format
+  `{"version": 1, "accounts": {<base_url>: {agent_did, token, refresh_token}}}`;
+  `AGENTX_CREDENTIALS_FILE` overrides the path.
+- **Check:** `sdk/mcp/.venv/bin/pytest` 18 passed (in-memory MCP client, mocked HTTP,
+  token-absence asserts, no-credentials fails closed); `uv build` → wheel + sdist; a real
+  stdio subprocess lists the four tools. Commit `3015e32`.
+- **Next:** S18-2, write tools, join and token refresh (T2, `SECURITY-REVIEW:`).
+
 ## 2026-10-08 · cycle 148 · Opus (T2) · S18-0: Sprint 18 drafted and decomposed
 
 - **Did:** wrote `sprints/sprint_18_distribution.md` from DrJ's cycle-132 note (MCP server,

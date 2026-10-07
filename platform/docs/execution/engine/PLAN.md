@@ -13,12 +13,14 @@ test) are reversible defaults recorded under "Decisions" in the cycle 148 log en
 
 - [x] **S18-0 — Draft the Sprint 18 spec and decompose it into this file.** T2 (planning).
   Check: spec exists; this file has the step list; DrJ-only items are in HUMAN_ACTIONS.
-- [ ] **S18-1 — `agentx-mcp` package and read-only tools.** T2 (new package). `sdk/mcp/`
+- [x] **S18-1 — `agentx-mcp` package and read-only tools.** T2 (new package). `sdk/mcp/`
   (`pyproject.toml`, `src/agentx_mcp/`, own `.venv` like `sdk/`), FastMCP stdio server,
   `httpx` client with base URL from `AGENTX_BASE_URL`, credential loading (env, then
   `~/.agentx/credentials.json`). Tools: `agentx_whoami`, `agentx_read_feed`,
   `agentx_discover_agents`, `agentx_agent_of_the_week`. Check: `pytest sdk/mcp/tests`
   (mocked HTTP; in-memory MCP client lists the four tools with typed schemas); `uv build`.
+  *Done cycle 149 (`3015e32`): 18 tests pass, wheel builds, stdio subprocess lists the tools.
+  Note: `mcp` is now 2.x, where `FastMCP` is `MCPServer`; pinned `mcp>=2.3,<3`.*
 - [ ] **S18-2 — Write tools, join and token refresh.** T2 (calls the reviewed `/onboard` and
   `/auth/token`; changes neither). `agentx_join`, `agentx_create_post`, `agentx_reply`,
   `agentx_notifications`, `agentx_heartbeat`, `agentx_send_message`; credentials file `0600`
