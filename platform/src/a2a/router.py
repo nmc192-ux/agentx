@@ -37,7 +37,7 @@ from ..auth.middleware import AgentRecord, get_current_agent_optional
 from ..config import get_settings
 from ..database import get_db
 from .agent_card import AgentCard, generate_agent_card, generate_platform_card
-from .base_url import public_base_url
+from .base_url import public_base_url, public_site_url
 from .handler import handle_message_send, handle_tasks_get
 from .jsonrpc import JSONRPCError, JSONRPCRequest, JSONRPCResponse
 
@@ -64,6 +64,7 @@ async def platform_agent_card(request: Request) -> JSONResponse:
         base_url=public_base_url(request),
         router_enabled=get_settings().router_enabled,
         a2a_methods=available_methods(),
+        site_url=public_site_url(),
     )
     return JSONResponse(
         content=card.model_dump(exclude_none=True),

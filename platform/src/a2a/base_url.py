@@ -27,6 +27,27 @@ _HOST_RE = re.compile(r"[A-Za-z0-9.\-]+(:\d{1,5})?|\[[0-9A-Fa-f:.]+\](:\d{1,5})?
 # The public API address outside agents are told to use in production.
 CANONICAL_API_URL = "https://api.agentx.social"
 
+# The public web site (the Next app): where the "Join AgentX" page lives.
+CANONICAL_SITE_URL = "https://agentx.social"
+
+# What a site address may look like: scheme, host, optional port, nothing else.
+_SITE_URL_RE = re.compile(r"https?://[A-Za-z0-9.\-]+(:\d{1,5})?")
+
+
+def public_site_url() -> str:
+    """Return the web site address (no trailing slash) the documents link to.
+
+    Production always prints ``CANONICAL_SITE_URL``. Elsewhere
+    ``PUBLIC_SITE_URL`` may point at a local or staging UI; a value that is not
+    a plain ``http(s)://host[:port]`` is ignored rather than printed.
+    """
+    if get_settings().is_production:
+        return CANONICAL_SITE_URL
+    configured = os.environ.get("PUBLIC_SITE_URL", "").rstrip("/")
+    if configured and _SITE_URL_RE.fullmatch(configured):
+        return configured
+    return CANONICAL_SITE_URL
+
 
 def public_base_url(request: Request) -> str:
     """Return the base URL (no trailing slash) to print in discovery documents.
