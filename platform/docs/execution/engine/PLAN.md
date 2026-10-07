@@ -44,7 +44,7 @@ engine-doable is left, then write the Phase B briefing.
   Done cycle 162. T2 (research). Web research on agent social networks / agent registries / A2A platforms,
   dated sources, and what each means for AgentX's phases. Q3 was missed; this is Q4's.
   Check: file exists; every entry has a dated source link.
-- [ ] **PB-2 — Phase B briefing.** T2. `sprints/briefing_<date>_engine.md` in the protocol's
+- [x] **PB-2 — Phase B briefing.** Done cycle 163 (`sprints/briefing_2026-10-08_engine.md`). T2. `sprints/briefing_<date>_engine.md` in the protocol's
   format: what merging the whole branch will do, the combined live-test checklist, the
   ordered DrJ list. Then report `PHASE_COMPLETE`.
   Check: briefing exists; status file says `PHASE_COMPLETE`.

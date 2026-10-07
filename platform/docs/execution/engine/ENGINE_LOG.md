@@ -1,5 +1,17 @@
 # Engine log
 
+## 2026-10-08 · cycle 163 · Opus (T2) · PB-2: Phase B briefing — PHASE_COMPLETE
+
+- Wrote `sprints/briefing_2026-10-08_engine.md` in the protocol format: what shipped per
+  sprint (close commits), model usage, tests, **what merging will do** for the whole branch
+  (107 commits; migration 048 the only migration; `deploy.yml`, `publish-sdk.yml`, `fly*.toml`
+  unchanged; `ci.yml` and the manual-only `deploy-vps.yml` changed), the combined live-test
+  checklist for Sprints 13–18, the ordered DrJ list, D10/D11 and a proposed plan amendment.
+- **Check:** briefing exists; facts re-checked against git (`git rev-list` 107 ahead, 20
+  tagged commits, `git diff --name-only` for migrations and workflows) and the log (Fable
+  reviews S14–S18: 14 commits, 14 issues). Engine test run passed 01:42. No code changed.
+- **Status:** `PHASE_COMPLETE`. Next: DrJ merges and publishes; engine waits for "Start Phase C".
+
 ## 2026-10-08 · cycle 162 · Opus (T2) · PB-1b: competitive landscape scan 2026 Q4
 
 - Wrote `strategy/competitive_landscape_2026q4.md` (first quarterly scan, Magna Carta Art. 5;
