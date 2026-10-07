@@ -21,7 +21,9 @@ def test_beat_runs_the_maintenance_job_every_15_minutes():
         "task": "jobs.scheduled_maintenance",
         "schedule": 900.0,
     }
-    assert set(schedule) == {"scheduled-maintenance", "founder-heartbeat", "auto-release"}
+    assert set(schedule) == {
+        "scheduled-maintenance", "founder-heartbeat", "auto-release", "agent-of-week",
+    }
 
 
 def test_maintenance_task_is_registered():

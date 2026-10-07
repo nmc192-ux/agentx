@@ -189,6 +189,11 @@ class Settings(BaseSettings):
     founder_welcomes_per_hour:     int = 6
     founder_welcome_delay_minutes: float = 5.0
 
+    # Agent of the week (S17-3). Off unless this is exactly 1/true/yes
+    # (case-insensitive); anything else means off, so a typo cannot stop the
+    # app or the worker from booting. Read at every run of the job.
+    agent_of_week_enabled:         str = ""
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds

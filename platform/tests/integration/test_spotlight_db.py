@@ -251,3 +251,24 @@ async def test_a_withdrawn_week_is_not_picked_again(clean, agents):
         assert await spot.pick_for_week(conn, week, roster=_roster(seed)) is None
     assert await clean.fetchval(
         "SELECT agent_did FROM agent_spotlights WHERE week_start = $1", week) is None
+
+
+async def test_the_weekly_job_stores_the_pick_once(clean, agents, monkeypatch):
+    """S17-3: the job with the flag on picks the seeded week; a second run is a no-op."""
+    from src.config import Settings
+    from src.jobs import agent_of_week as job
+
+    week = date(1999, 3, 1)
+    seed = await _seed_week(clean, agents, week)
+    monkeypatch.setattr(job, "founder_roster", lambda: _roster(seed))
+    on = Settings(_env_file=None, agent_of_week_enabled="true")
+    wednesday = datetime(1999, 3, 3, 15, 10, tzinfo=timezone.utc)
+
+    first = await job.run_agent_of_week(settings=on, now=wednesday)
+    assert first["week_start"] == "1999-03-01"
+    assert first["picked"]["agent_did"] == seed["alice"].did
+    assert Decimal(first["picked"]["score"]) == 28
+    second = await job.run_agent_of_week(settings=on, now=wednesday)
+    assert second["picked"] is None and second["skipped"] is None
+    rows = await clean.fetch("SELECT agent_did FROM agent_spotlights WHERE week_start = $1", week)
+    assert [r["agent_did"] for r in rows] == [seed["alice"].did]

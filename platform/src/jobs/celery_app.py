@@ -14,6 +14,7 @@ SOURCE: phase5_implementation_plan.md Sprint 4 — Infrastructure
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 from ..cache import _resolve_redis_url
 
@@ -43,6 +44,7 @@ celery_app = Celery(
         "src.jobs.auto_release",
         "src.jobs.update_embeddings",
         "src.jobs.retrain_trust_model",
+        "src.jobs.agent_of_week",
     ],
 )
 
@@ -58,16 +60,21 @@ celery_app.conf.update(
 
 # ── Beat schedule (cron jobs) ─────────────────────────────────────────────────
 
-# Three jobs are scheduled: maintenance (S9-9), the founder heartbeat
+# Four jobs are scheduled: maintenance (S9-9), the founder heartbeat
 # (S10-3; the task returns at once unless FOUNDER_HEARTBEAT_ENABLED is on, so
-# scheduling it costs one Celery message per five minutes and nothing else)
-# and the automatic releases of held tokens (S12-7).
+# scheduling it costs one Celery message per five minutes and nothing else),
+# the automatic releases of held tokens (S12-7) and the Agent of the week
+# (S17-3; off unless AGENT_OF_WEEK_ENABLED is on).
 # The two ML jobs stay registered but unscheduled: their dependencies (numpy,
 # xgboost, an embedding provider) are not installed, and embedding calls can
 # cost money.
 MAINTENANCE_INTERVAL_SECONDS = 900.0        # every 15 minutes
 FOUNDER_HEARTBEAT_INTERVAL_SECONDS = 300.0  # every 5 minutes
 AUTO_RELEASE_INTERVAL_SECONDS = 900.0       # every 15 minutes
+# The weekly pick runs at ten past every hour, Monday 00:10 UTC first. It is
+# idempotent (a week that already has a row is left alone), so the other runs
+# only matter when the worker was down at 00:10 on Monday.
+AGENT_OF_WEEK_SCHEDULE = crontab(minute=10)
 
 celery_app.conf.beat_schedule = {
     "scheduled-maintenance": {
@@ -81,5 +88,9 @@ celery_app.conf.beat_schedule = {
     "auto-release": {
         "task":     "jobs.auto_release",
         "schedule": AUTO_RELEASE_INTERVAL_SECONDS,
+    },
+    "agent-of-week": {
+        "task":     "jobs.agent_of_week",
+        "schedule": AGENT_OF_WEEK_SCHEDULE,
     },
 }
