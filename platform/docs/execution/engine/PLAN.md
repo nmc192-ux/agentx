@@ -42,7 +42,9 @@ rehearsed natively.
   local Postgres/Redis) passes `smoke.sh`; kill one uvicorn → `/health` via Caddy still 200.
   If Caddy cannot be installed locally, the rehearsal goes straight to uvicorn and the Caddy
   layer is recorded as a gap for the VPS first start.
-- [ ] **S16-4 — `.github/workflows/deploy-vps.yml`.** T2. `NEEDS-DELIBERATE-MERGE:`.
+- [x] **S16-4 — `.github/workflows/deploy-vps.yml`.** T2. `NEEDS-DELIBERATE-MERGE:`. *Done cycle 144
+  (e23df04):* roll logic lives in `deploy/vps/deploy.sh` (also the manual/rollback path,
+  `SKIP_MIGRATE=1` for rollbacks); input must be a 40-hex SHA already on `main`; 24 tests.
   `workflow_dispatch` only (input: commit/tag), `environment: production`, build
   `platform/Dockerfile.fly` for `linux/amd64` with `GIT_COMMIT`, push to ghcr.io with
   `GITHUB_TOKEN` (`packages: write`), SSH via `VPS_SSH_KEY`/`VPS_HOST` secrets with pinned host
@@ -54,7 +56,11 @@ rehearsed natively.
   HUMAN_ACTIONS item(s): deploy user + key, `/opt/agentx`, `/etc/agentx/api.env` (root, 600,
   `JWT_SECRET` copied from Fly unseen), GitHub `production` secrets, the Caddyfile `import` line
   and `caddy reload`, `api-vps` DNS record at Hostinger, first run of the workflow with the
-  scheduler stopped, `smoke.sh https://api-vps.agentx.social`, uptime monitor. Cutover day stays
+  scheduler stopped, `smoke.sh https://api-vps.agentx.social`, uptime monitor. Also from S16-4: `deploy` user
+  owns `/opt/agentx` and is in the `docker` group (root-equivalent; say so), `compose.env` there
+  with `AGENTX_IMAGE=ghcr.io/<owner lowercase>/agentx-platform`, `VPS_KNOWN_HOSTS` secret
+  (`ssh-keyscan` run by DrJ on the VPS itself, not over the network), optional `VPS_PUBLIC_URL`
+  variable, rollback `SKIP_MIGRATE=1 bash deploy.sh <prev>`. Cutover day stays
   plan §9, written up only when DrJ asks. Update `vps_migration_plan.md` §3/§4/§11 for option B.
   Check: every command matches the files from S16-2..4 (read side by side).
 - [ ] **S16-6 — Sprint-close security review.** T1. Review `NEEDS-DELIBERATE-MERGE:` commits

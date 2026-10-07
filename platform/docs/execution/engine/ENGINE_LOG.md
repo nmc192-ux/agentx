@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-07 · cycle 144 · Opus (T2) · S16-4: manual VPS deploy workflow
+
+- **Did:** wrote `.github/workflows/deploy-vps.yml` (hand-started only, `production` approval,
+  build `Dockerfile.fly` for amd64 with `GIT_COMMIT` → ghcr.io → copy compose files → migrate →
+  api-1 healthy → api-2 healthy → scheduler only if it was running → `/health` must report the
+  commit; on failure prints the rollback line) and `deploy/vps/deploy.sh` (the roll itself, so a
+  manual run or rollback does exactly the same). 24 new tests, incl. `deploy.sh` driven against
+  a fake `docker`.
+- **Decisions I made (reversible):** (1) Roll logic in a checked-in script piped over SSH rather
+  than inline YAML: testable, and DrJ's rollback is the same command. (2) Only full SHAs already
+  on `main` can be deployed; the input reaches shell only through an env var. (3) No third-party
+  actions: plain `docker build/push/login` on the runner; only `actions/checkout`, pinned to the
+  v4.3.1 commit. (4) Rollback skips the migration (`SKIP_MIGRATE=1`): older code cannot
+  `upgrade head` past a newer revision. (5) The VPS logs into ghcr.io with the job's short-lived
+  token and logs out afterwards, so the image can stay private. (6) Health is verified on
+  `VPS_PUBLIC_URL` (default `api-vps.agentx.social`) because `api` still points at Fly.
+- **Check:** `actionlint` clean; `shellcheck` clean; file **55 passed** (mutation: moving the
+  migration after the roll fails 2 tests); platform suite **3114 passed**, 608 skipped,
+  1 xfailed. `deploy.yml` untouched. Nothing deployed.
+- **Next:** S16-5, the VPS human-action write-up (T3).
+
 ## 2026-10-07 · cycle 143 · Opus (T2) · S16-3: Caddy site block, smoke script, rehearsal
 
 - **Did:** wrote `deploy/vps/agentx.caddy` (both API names → `api-1:8000 api-2:8000`, active
