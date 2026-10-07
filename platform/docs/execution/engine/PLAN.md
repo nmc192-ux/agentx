@@ -30,7 +30,9 @@ rehearsed natively.
   allow-ips never `*`, scheduler/migrate profile-gated, example env keys ⊇ `fly.toml [env]`
   keys with equal values, no secret-looking values. Check: `docker compose config` with the
   example env succeeds; the new test passes.
-- [ ] **S16-3 — `deploy/vps/agentx.caddy` + `deploy/vps/smoke.sh`.** T2. Site block from plan
+- [x] **S16-3 — `deploy/vps/agentx.caddy` + `deploy/vps/smoke.sh`.** T2. *Done cycle 143:*
+  rehearsal re-runnable as `platform/scripts/vps_rehearsal.py` (Caddy 2.11.7 installed locally);
+  access log now reports the resolved caller as `client=` (raw header as `fwd=`). 12 tests. Site block from plan
   §4 (`api.agentx.social, api-vps.agentx.social`, `reverse_proxy api-1:8000 api-2:8000`,
   health checks, `lb_try_duration`, `flush_interval -1`); upstream names overridable for the
   rehearsal. `smoke.sh BASE_URL`: `/health`, `/health/ready`, sign-up, login, feed, a WebSocket
@@ -56,7 +58,7 @@ rehearsed natively.
   plan §9, written up only when DrJ asks. Update `vps_migration_plan.md` §3/§4/§11 for option B.
   Check: every command matches the files from S16-2..4 (read side by side).
 - [ ] **S16-6 — Sprint-close security review.** T1. Review `NEEDS-DELIBERATE-MERGE:` commits
-  (S16-4, and S16-2's proxy trust): forwarded-header spoofing, secret exposure in logs/workflow,
+  (S16-4, S16-2's proxy trust, S16-3's Caddy block and access-log change): forwarded-header spoofing, secret exposure in logs/workflow,
   SSH host-key pinning, workflow injection through the dispatch input. Adversarial tests.
 - [ ] **S16-7 — Sprint close.** T2. Acceptance list from the spec literally, retro, merge
   briefing (files only; nothing deploys on merge), `state_of_agentx.md`, archive this plan.

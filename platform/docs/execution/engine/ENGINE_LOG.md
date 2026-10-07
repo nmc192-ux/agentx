@@ -1,5 +1,28 @@
 # Engine log
 
+## 2026-10-07 · cycle 143 · Opus (T2) · S16-3: Caddy site block, smoke script, rehearsal
+
+- **Did:** wrote `deploy/vps/agentx.caddy` (both API names → `api-1:8000 api-2:8000`, active
+  health checks, `lb_try_duration` retries, `flush_interval -1`; no `trusted_proxies`, so Caddy
+  overwrites any incoming `X-Forwarded-For`), `deploy/vps/smoke.sh BASE_URL` (health, ready,
+  sign-up via `/onboard`, login via refresh-token exchange, feed, WebSocket 101, real caller
+  address) and `platform/scripts/vps_rehearsal.py` (re-runnable native rehearsal). 12 new tests
+  in `test_vps_deploy_files.py`.
+- **Found and fixed:** the API access log printed the raw, caller-controlled `X-Forwarded-For`
+  as `client=`. It now prints the address uvicorn resolved (`client=`) and the raw header as
+  `fwd=`. On Fly (no `--proxy-headers`) `client=` becomes Fly's proxy address and the caller's
+  address is in `fwd=`, as before. Rate limiting was already on the resolved address.
+- **Decisions I made (reversible):** (1) site address and upstreams are Caddy env placeholders
+  with the production values as defaults, so one file serves the VPS and the rehearsal.
+  (2) The real-caller check reads the API log through `SMOKE_LOG_CMD`; without it the check
+  says SKIP, never PASS. (3) Installed Caddy (Homebrew) on the engine Mac. (4) Rehearsal picks
+  free ports: something unrelated already listens on `*:8001` on this Mac, which made the first
+  failover run answer 404 once api-1 stopped.
+- **Check:** `caddy validate` OK; rehearsal through Caddy **PASSED** (all 7 smoke checks; api-1
+  stopped → 20/20 `/health` 200). Negative check: an API trusting `*` fails `real-ip`. New tests
+  **31 passed** in the file; platform suite **3090 passed**, 608 skipped, 1 xfailed.
+- **Next:** S16-4, `.github/workflows/deploy-vps.yml` (T2).
+
 ## 2026-10-07 · cycle 142 · Opus (T2) · S16-2: VPS compose file + settings + pinning test
 
 - **Did:** wrote `deploy/vps/docker-compose.yml` (api-1, api-2 with `--workers 1 --proxy-headers
