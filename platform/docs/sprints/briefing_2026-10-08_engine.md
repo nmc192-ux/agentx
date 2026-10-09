@@ -1,4 +1,4 @@
-# Briefing — 8 October 2026, refreshed 10 October (AgentX Build Engine, Phase B complete)
+# Briefing — 8 October 2026, refreshed 10 October after RF-2 (AgentX Build Engine, Phase B complete)
 
 ## Bottom line
 Everything in Phase B that the engine can build is built: Sprints 13–18 plus the trust score
@@ -11,9 +11,11 @@ job never runs twice; the founder LLM daily cap is counted in Postgres; and a Re
 longer fail a request or startup (the outage was reproduced in a test and is fixed). **Before you
 merge, do H34: change one line in `platform/fly.toml`** (`scheduler = "python -m
 src.jobs.scheduler"`), then start the scheduler machine after the deploy. Keep
-`REDIS_URL=memory://`. A Fable security review of these changes (RF-2) is the engine's next
-step; merging before it is reasonable because production is currently running without its
-background jobs, but waiting one cycle for the review is the cautious choice.
+`REDIS_URL=memory://`. **The Fable security review of these changes (RF-2, cycle 165) is
+done:** it found 3 problems and fixed all 3 with tests (a crafted login token could skip the
+rate limit on the public feed and discover pages; one stuck background job could stop all the
+others, including the release of held tokens; the founder LLM daily cap could count a call on
+the wrong day). Nothing from the engine is pending: the branch is ready to merge once H34 is in.
 
 ## Stopping reason
 **Phase complete.** Every remaining Phase B exit criterion needs you (merge, publishing,
@@ -23,8 +25,8 @@ engine stops here rather than start Phase C work without your go-ahead.
 ## What shipped (on branch `engine/phase-b`, not yet merged)
 About 110 commits ahead of `main`. **None of it is on `main` or live on agentx.social.**
 The commits marked `SECURITY-REVIEW:` or `NEEDS-DELIBERATE-MERGE:` in Sprints 13–18 were
-reviewed adversarially on Fable at each sprint close; the cycle 164 Redis fix (also marked) is
-reviewed next (RF-2).
+reviewed adversarially on Fable at each sprint close; the cycle 164 Redis fix (also marked) was
+reviewed the same way in cycle 165 (RF-2).
 
 | Sprint | What | Close commit |
 |---|---|---|
@@ -36,20 +38,23 @@ reviewed next (RF-2).
 | 18 | `agentx-mcp` MCP server, OpenClaw/Hermes skill, `/join` page | `560affc` |
 | PB-1a | `strategy/trust_score_spec.md`, the open trust score interface promised for Phase B | `e4b0853` |
 | PB-1b | `strategy/competitive_landscape_2026q4.md`, first quarterly scan | `b07566b` |
-| RF-1 | Redis-free scheduler, Redis fails open, LLM cap in Postgres (migration 049) | see `ENGINE_LOG.md` cycle 164 |
+| RF-1 | Redis-free scheduler, Redis fails open, LLM cap in Postgres (migration 049) | `83c8330` |
+| RF-2 | Fable review of RF-1: 3 issues fixed (rate-limit key never fails, 30-min job timeout, budget day in UTC) | `cbfc1dd` |
 
 Details are in each `sprint_N_retro.md` and per-sprint briefing in this folder.
 
 ## Model usage
 Opus did the building, planning, research and these briefings. Fable wrote the Sprint 13
 test-account removal script and ran the security review at each close of Sprints 14–18
-(14 commits reviewed, 14 issues found, all fixed in the same cycle). Sonnet did small pages,
+(14 commits reviewed, 14 issues found, all fixed in the same cycle) and of the Redis fix (RF-2:
+2 commits reviewed, 3 issues found, all fixed). Sonnet did small pages,
 docs and bookkeeping. Fable was always available; no T1 work ran on a lower tier.
 
 ## Test results
-The engine's full local test run passed on 8 Oct at 01:42 (the cycle before this one). The
-last full count, at Sprint 18 close: platform 3171 passed, 608 skipped, 1 expected fail (waits
-on H23); Python SDK 493; TypeScript SDK 141/141; agentx-mcp 74; browser test of `/join` 4/4;
+The engine's full local test run passed on 10 Oct at 02:14 (after RF-2). Latest platform
+count, with the local Postgres (cycle 165): 3789 passed, 6 skipped, 2 expected fails (wait on
+H23 and H34); two older test files that need a different database setup were left out, and
+they fail the same way on the code before the Redis fix. At Sprint 18 close: Python SDK 493; TypeScript SDK 141/141; agentx-mcp 74; browser test of `/join` 4/4;
 live runs of the MCP server and the skill against a local API joined, posted and read back.
 **Not tested:** anything in production (the engine has no access), real npm/PyPI publishing,
 the VPS (H29, H30), and real outside agents.
@@ -69,6 +74,11 @@ Merge = one pull request from `engine/phase-b` into `main`, "Create a merge comm
   and live WebSocket messages reach only clients on the same machine (there is one API
   machine). If Redis is configured but failing, every request still works: the rate limiter
   switches to memory by itself and `/health/ready` reports "degraded" but stays 200.
+- **Known, accepted limits of running without Redis (from RF-2):** rate-limit counts reset on
+  every deploy; if you ever roll back migration 049, that day's founder LLM count starts again
+  from zero; during a deploy, a job the old scheduler was running waits one extra run of
+  its schedule. A job that runs longer than 30 minutes is now
+  stopped and logged as `failed` so the others keep running.
 - **The `scheduler` process needs H34** (one line in `fly.toml`, the engine may not edit it).
   Without it, the scheduler machine would try to start Celery, which is no longer installed,
   and fail; the website and API are not affected.
@@ -124,7 +134,8 @@ welcomes), and finally H28 (announcement). The full, copy-paste list is `HUMAN_A
       {"status": "disabled", ...}` (Redis off is healthy now).
 - [ ] After H34 step 4: `fly logs -a agentx-platform --no-tail | grep scheduler:` shows
       `scheduler: started` and `scheduled_maintenance ok`, `auto_release ok`; no Celery or Redis
-      errors. A second check 20 minutes later shows them again (every 15 minutes).
+      errors. A second check 20 minutes later shows them again (every 15 minutes). No line
+      says `cancelled after` (that would mean a job hit the new 30-minute limit).
 - [ ] Upstash dashboard (if you keep the database): request count no longer climbs.
 - [ ] The website home page and feed load as before.
 - [ ] `curl -s https://api.agentx.social/spotlight/agent-of-the-week` returns JSON

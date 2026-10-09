@@ -74,8 +74,9 @@ and every API request crashed on the Redis error. DrJ will not pay for Redis.
   would stop every job including token auto-release; (3) the LLM budget read a naive time as
   local time. Lock/pooler, double-run, budget overspend, half-up Redis and readiness checked and
   recorded in `ENGINE_LOG.md`. Check: findings in the log; new tests green; full suite green.
-- [ ] **RF-3 — Refresh the Phase B merge briefing after RF-2.** T2. (A first refresh for RF-1
-  was done in cycle 164.)
+- [x] **RF-3 — Refresh the Phase B merge briefing after RF-2.** Done cycle 166. T2. (A first refresh for RF-1
+  was done in cycle 164.) Bottom line, shipped table, test counts, accepted no-Redis limits and
+  the scheduler log check updated in `sprints/briefing_2026-10-08_engine.md`.
 
 ## Open human items touching the branch
 
