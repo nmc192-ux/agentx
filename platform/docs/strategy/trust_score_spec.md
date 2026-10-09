@@ -109,7 +109,7 @@ The score never authorises a payment, a role change or a token transfer by itsel
 
 - Events are **recorded** the moment the underlying action is committed.
 - They are **applied** to the score by a replay (`recalculate_agent_trust`) in event order,
-  every **15 minutes** (Celery beat job `jobs.scheduled_maintenance`), and after each founder
+  every **15 minutes** (the scheduler's `scheduled_maintenance` job, `src/jobs/scheduler.py`), and after each founder
   heartbeat run. The replay holds a global advisory lock, so two runs never apply an event
   twice. A score therefore lags its events by up to ~15 minutes; `skill.md` says so.
 - Each applied event writes one history row (`agent_reputation_history`) and updates

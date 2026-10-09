@@ -39,7 +39,7 @@ withdrawn by a founder (below).
 
 ## The weekly job
 
-`jobs.agent_of_week` runs from Celery beat (every hour at :10) and does nothing unless the
+`jobs.agent_of_week` runs from the scheduler, `src/jobs/scheduler.py` (every hour) and does nothing unless the
 environment variable `AGENT_OF_WEEK_ENABLED` is `1`, `true` or `yes`. It only inserts a pick
 when the week has none, so re-runs are harmless.
 

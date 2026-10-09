@@ -4,6 +4,51 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H34 — URGENT, do it in the same merge: switch the Fly scheduler from Celery to the new
+  Redis-free scheduler (one line in `platform/fly.toml`, then start the scheduler machine; about
+  10 minutes).** Written cycle 164 after the 9 Oct outage (Upstash ran out of requests).
+  The branch removes Celery completely; the jobs now run in one process, `python -m
+  src.jobs.scheduler`, that needs no Redis (it uses a Postgres lock so a job never runs twice).
+  `fly.toml` is off-limits to the engine, so this one line is yours. **If you merge without it,
+  the scheduler process would try to start Celery, which is no longer installed, and fail
+  (the website and API are not affected; only the background jobs would not run).**
+  1. Before you press "Merge" on the `engine/phase-b` pull request: on GitHub open the pull
+     request → "Files changed" is not needed; instead go to the repo → switch branch to
+     `engine/phase-b` → open `platform/fly.toml` → pencil icon ("Edit this file").
+  2. Near the bottom, under `[processes]`, replace this line:
+  ```
+    scheduler = "celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info"
+  ```
+     with exactly this line (keep the two spaces in front):
+  ```
+    scheduler = "python -m src.jobs.scheduler"
+  ```
+     Leave everything else in the file as it is (the `REDIS_*` lines are harmless: your
+     `REDIS_URL=memory://` secret takes priority over them). "Commit changes…" → commit
+     directly to `engine/phase-b`. CI runs again; wait for it to go green, then merge as the
+     briefing says. The deploy applies migrations 048 and 049 (049 adds two small new tables
+     the scheduler and the founder LLM budget use).
+  3. Keep `REDIS_URL=memory://` on both apps (you already set it). Nothing needs Redis now.
+     Optional tidy-up, any time later: `fly secrets unset REDIS_PASSWORD -a agentx-platform`
+     (the app no longer requires it).
+  4. After the production deploy has finished, start the scheduler again (you stopped it on
+     9 Oct). In a terminal:
+  ```
+  fly machine list -a agentx-platform
+  # find the row whose PROCESS GROUP column says "scheduler" and copy its ID, then:
+  fly machine start <that-ID> -a agentx-platform
+  ```
+     If no scheduler machine is listed: `fly scale count scheduler=1 -a agentx-platform`.
+  5. Check (2–3 minutes later): `fly logs -a agentx-platform --no-tail | grep scheduler:`
+     shows `scheduler: started (...)` and then `scheduler: scheduled_maintenance ok in …s`
+     and `scheduler: auto_release ok in …s`. No line mentions Celery or a Redis error.
+     `curl -s https://api.agentx.social/health` still returns `"status":"ok"`.
+  6. If anything looks wrong: `fly machine stop <that-ID> -a agentx-platform` stops only the
+     background jobs; the site keeps running. Tell the engine in a resume note.
+  Unblocks: trust recalculation, governance closing, automatic releases, the founder heartbeat
+  (H13) and Agent of the week (H27) in production, all without Redis. After it is done, the
+  engine turns `tests/test_fly_scheduler_command.py` into a hard guard.
+
 - [ ] **H31–H33 — Sprint 18 (distribution): publish the MCP server and the skill, then run one live check.**
   Written cycle 157 (S18-9). Everything is built and tested locally; nothing here is urgent and
   none of it changes the site itself. All three need the branch merged to `main` first, and H33
@@ -96,8 +141,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   echo '<paste the ssh-ed25519 line>' | sudo -u deploy tee -a /home/deploy/.ssh/authorized_keys >/dev/null
   sudo chmod 600 /home/deploy/.ssh/authorized_keys
   ```
-  **3. Write the AgentX settings file on the VPS.** The Postgres and Redis passwords are the ones
-  Fly already uses (Neon console / Upstash console, "connection details"). Type the values yourself
+  **3. Write the AgentX settings file on the VPS.** The Postgres password is the one Fly already
+  uses (Neon console, "connection details"). No Redis since cycle 164 (H34): the
+  `REDIS_URL=memory://` line below switches it off, and no Redis password is needed. Type the values yourself
   where it says `<…>`; do not paste them anywhere else.
   ```
   sudo nano /etc/agentx/api.env
@@ -105,7 +151,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Put exactly these lines in it (names are listed, with no values, in `deploy/vps/secrets.env.example`):
   ```
   POSTGRES_PASSWORD=<Neon password>
-  REDIS_PASSWORD=<Upstash password>
+  REDIS_URL=memory://
   SENTRY_DSN=<same as on Fly, or leave empty>
   JWT_SECRET=<added in step 4, not by typing>
   ```
@@ -204,6 +250,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: the cutover plan (H23, migration plan §9), which the engine writes up only when you ask.
 
 - [ ] **H29 — Two more read-only facts about the VPS's Caddy, plus the Upstash region (about five minutes; changes nothing).**
+  **Cycle 164: the Upstash part (step 2 and the Upstash timing line) is no longer needed; AgentX
+  runs without Redis now. Only the Caddy facts are still wanted.**
   Added cycle 141 (Sprint 16). Your H21 answer says Pink Popcorn's Caddy container already serves
   80/443, so AgentX will join it instead of starting its own. To fill in the last two blanks of
   the VPS files the engine needs to know which Docker network that Caddy is on and where its
@@ -355,7 +403,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
 
 - [ ] **H23 — Give the scheduler its own, smaller machine (about ten minutes plus CI and deploy time; saves money, no downtime expected).**
   Added cycle 98 (Sprint 13 T-2, your note item 2). Today `platform/fly.toml` has one `[[vm]]`
-  block, so both the API (`app`) and the scheduler (`scheduler`, one Celery worker) run on
+  block, so both the API (`app`) and the scheduler (`scheduler`, one process since H34) run on
   shared-cpu-2x, 512 MB. The scheduler needs only shared-cpu-1x, 512 MB. The engine may not
   edit Fly files, so this one is yours. `fly.staging.toml` needs **no change** (staging runs
   only the API, already on one shared-cpu-1x machine).
@@ -387,8 +435,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   the API machine keeps its size.
   **5.** Check (Terminal): `fly scale show -a agentx-platform`. It should list `app` as
   shared-cpu-2x 512 MB and `scheduler` as shared-cpu-1x 512 MB. Then
-  `fly logs -a agentx-platform` for a minute: the scheduler should log `celery@… ready` and
-  its beat ticks, with no restarts.
+  `fly logs -a agentx-platform` for a minute: the scheduler should log `scheduler: started`
+  and its job lines (`scheduler: … ok in …s`), with no restarts (after H34; before H34 it logged
+  `celery@… ready`).
   **If something looks wrong:** revert the pull request on GitHub (the "Revert" button on the
   merged PR) and merge the revert; the next deploy puts both back on shared-cpu-2x.
   **6.** Tell the engine in a resume note: `H23 done` plus what `fly scale show` printed. The
@@ -723,8 +772,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   fly secrets set ANTHROPIC_API_KEY="PASTE_KEY" FOUNDER_LLM_PROVIDER=anthropic FOUNDER_LLM_DAILY_CALLS=200
   ```
   200 is the most texts a day across all eight (Claude Haiku, short posts). The count is kept
-  in Redis, which production already has; if Redis is unreachable or the cap is reached, the
-  founders quietly go back to templates. A warning in the logs that the key "loaded from plain
+  in the database (since cycle 164; no Redis needed); if the database is unreachable or the cap
+  is reached, the founders quietly go back to templates. A warning in the logs that the key "loaded from plain
   environment variable" is expected and harmless. To stop: `fly secrets unset FOUNDER_LLM_PROVIDER`.
   **To switch the founders off at any time:**
   ```
@@ -1095,8 +1144,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: nothing right now; changes how natural the founders' posts read.
   Built in cycle 45 (S10-2): if you choose (b), production needs the settings
   `FOUNDER_LLM_PROVIDER=anthropic` and `FOUNDER_LLM_DAILY_CALLS=<N>`, plus the API key mounted
-  as a file secret (not a plain variable). It also needs Redis, which counts the daily cap;
-  without Redis the founders silently use templates. Exact steps: H13, "Optional — natural-sounding posts".
+  as a file secret (not a plain variable). The daily cap is counted in Postgres (since cycle 164;
+  it used to need Redis); if that count fails the founders silently use templates. Exact steps: H13, "Optional — natural-sounding posts".
 
 - [x] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
   **Answered by DrJ (cycle 63 note): a — keep production addresses; list them in `FOUNDER_DIDS` (H13 step 1).**
@@ -1410,3 +1459,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   to be confirmed in a later note. Go ahead with V-2/V-3 when Sprint 16 comes up; prepare
   files only, nothing is deployed without DrJ. (H29 asks for the Caddy network and Upstash
   region.)
+- 2026-10-09 (via resume note, recorded cycle 164): URGENT before the Phase B merge. Production
+  went down 9 Oct ~08:35 UTC: the Upstash free plan hit 500k requests/month (Celery broker
+  polling used it in 3 days) and every API request crashed on the Redis error. DrJ set
+  `REDIS_URL=memory://` on agentx-platform and agentx-platform-staging (API healthy again) and
+  stopped the scheduler machine. DrJ will not pay for Redis. Asked: replace Celery+Redis with a
+  broker-free scheduler (Postgres advisory lock, same jobs, LLM budget in Postgres); every
+  Redis use fails open; a test that API and scheduler run with `REDIS_URL=memory://`; the
+  fly.toml change as a human action (H34); refresh the merge briefing. Done in cycle 164.

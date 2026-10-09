@@ -60,7 +60,7 @@ Four containers, one `docker compose` file, kept in the repo at `deploy/vps/`:
 | Container | Image | Command | Exposed to the internet? |
 |---|---|---|---|
 | `api-1`, `api-2` | the existing `platform/Dockerfile.fly` image, tagged with the git commit | `uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=<caddy's fixed private address>` | **No.** Only Caddy can reach them, on a private Docker network. |
-| `scheduler` | same image | `celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info` (exactly what H9 would run on Fly) | No. It only talks out to Neon and Upstash. |
+| `scheduler` | same image | `python -m src.jobs.scheduler` (the Redis-free scheduler since cycle 164; the same line H34 puts in `fly.toml`) | No. It only talks out to Neon. |
 | `caddy` | `caddy:2` | reads `deploy/vps/Caddyfile` | Yes, ports 80 and 443 only. |
 
 Points that are easy to get wrong:

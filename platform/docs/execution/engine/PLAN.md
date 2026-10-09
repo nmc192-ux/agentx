@@ -49,7 +49,33 @@ engine-doable is left, then write the Phase B briefing.
   ordered DrJ list. Then report `PHASE_COMPLETE`.
   Check: briefing exists; status file says `PHASE_COMPLETE`.
 
+### Urgent fix before the merge (DrJ's note, 9 Oct outage)
+
+Production went down 9 Oct: the Upstash free plan ran out of requests (Celery broker polling)
+and every API request crashed on the Redis error. DrJ will not pay for Redis.
+
+- [x] **RF-1 — Redis-free scheduler, Redis fails open, founder LLM budget in Postgres.** Done
+  cycle 164. T2 (scheduled jobs, configuration; calls the reviewed release/trust services
+  without changing them) with `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` commits for RF-2.
+  `src/jobs/scheduler.py` (one process, `pg_try_advisory_xact_lock` + `scheduler_job_runs` so
+  a job never runs twice), migration 049 (two new tables), Celery removed, rate limiter falls
+  back to memory, cache/SSE/readiness/`REDIS_PASSWORD` fail open.
+  Check: `tests/jobs/test_scheduler.py`, `tests/test_redis_fail_open.py` (API starts and answers
+  in production mode with `REDIS_URL=memory://` and with a dead Redis — the outage reproduced
+  before the fix), `tests/integration/test_scheduler_db.py` (`--once` with `REDIS_URL=memory://`
+  against Postgres; lock, recent-skip, concurrency of the budget); full suite green.
+- [human] **RF-1h — H34: one line in `fly.toml` (`scheduler = "python -m src.jobs.scheduler"`)
+  in the same merge, then start the scheduler machine.** `tests/test_fly_scheduler_command.py`
+  is xfail until then.
+- [ ] **RF-2 — T1 security review of the RF-1 commits.** T1 (DrJ asked for a T1 review; the
+  commits touch rate limiting, the job that releases held tokens, and a migration). Read the
+  diffs, try to break them (double runs across two processes, lock on Neon's transaction
+  pooler, budget overspend, rate limiter bypass when Redis is half-up, readiness), add
+  adversarial tests, fix what is found. Check: findings recorded in `ENGINE_LOG.md`.
+- [ ] **RF-3 — Refresh the Phase B merge briefing after RF-2.** T2. (A first refresh for RF-1
+  was done in cycle 164.)
+
 ## Open human items touching the branch
 
-D11 (human role, not blocking); merge (Sprints 13–18, migration 048); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
+H34 (fly.toml scheduler line, same merge, URGENT); D11 (human role, not blocking); merge (Sprints 13–18, migrations 048 and 049); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
 (publish); H27, H28.

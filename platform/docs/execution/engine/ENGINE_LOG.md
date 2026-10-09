@@ -1,5 +1,31 @@
 # Engine log
 
+## 2026-10-10 · cycle 164 · Opus (T2) · RF-1: Redis-free scheduler after the 9 Oct outage (DrJ's urgent note)
+
+- **Cause:** Upstash free plan exhausted by Celery broker polling; slowapi's Redis storage then
+  raised on every rate-limited request (reproduced locally: production mode + dead Redis →
+  `ConnectionError` on the first `/health`).
+- **Built (`83c8330`, `NEEDS-DELIBERATE-MERGE:` + `SECURITY-REVIEW:`):** `src/jobs/scheduler.py`
+  (one process; per run `pg_try_advisory_xact_lock` + `scheduler_job_runs` row, so no
+  concurrent or repeated run across processes; transaction-level lock because Neon's pooler is
+  in transaction mode); migration 049 (two new tables); Celery removed; founder LLM cap as one
+  atomic upsert in `founder_llm_calls` (fails closed); limiters `in_memory_fallback_enabled` +
+  `swallow_errors`; cache/URL, `/health/ready` (200 unless the DB is down), SSE subscribe and a
+  missing `REDIS_PASSWORD` fail open. VPS/local compose use `python -m src.jobs.scheduler`.
+- **Human:** H34 (one `fly.toml` line in the same merge, then start the scheduler machine);
+  H13/H23/H29/H30 wording updated for "no Redis". Briefing `briefing_2026-10-08_engine.md`
+  refreshed (migrations 048+049, H34 first, Redis-off behaviour, new checklist lines).
+- **Check:** new tests 11 (scheduler unit) + 9 (fail-open, incl. subprocess API with
+  `REDIS_URL=memory://` and dead Redis, scheduler import with memory://) + 7 (Postgres:
+  lock mid-run, recent-skip, crash rollback, budget 20-way concurrency = exactly 5,
+  `--once` with `REDIS_URL=memory://`). Full run `--db`: 3788 passed, 6 skipped, 2 xfailed
+  (H23, H34), 1 failed + 8 errors that fail identically on the untouched branch with `--db`
+  (`test_founder_civics_db` pool clamp; `test_database_rls` expects a different DB) — pre-existing.
+- **Decisions I made (reversible):** agent_of_week runs hourly from process start instead of
+  at :10 (it is idempotent per week); a job counts as "recent" within 90 % of its interval;
+  `/health/ready` no longer 503s on Redis alone.
+- **Next:** RF-2, T1 security review of `83c8330` (DrJ asked for T1 where relevant).
+
 ## 2026-10-08 · cycle 163 · Opus (T2) · PB-2: Phase B briefing — PHASE_COMPLETE
 
 - Wrote `sprints/briefing_2026-10-08_engine.md` in the protocol format: what shipped per
