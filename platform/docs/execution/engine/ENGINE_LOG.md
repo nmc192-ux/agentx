@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-10-10 · cycle 166 · Opus (T2) · RF-3: Phase B merge briefing refreshed after RF-2
+
+- Updated `sprints/briefing_2026-10-08_engine.md`: bottom line now says the RF-2 review is done
+  (3 issues, all fixed) and nothing from the engine is pending beyond DrJ's H34 line; shipped
+  table gains RF-1 `83c8330` and RF-2 `cbfc1dd`; model usage and test counts (3789 passed,
+  6 skipped, 2 xfail) brought up to date; "What merging will do" lists the accepted no-Redis
+  limits from RF-2; live-test checklist checks the scheduler log for `cancelled after` (the new
+  30-minute job timeout). Wording checked against `src/jobs/scheduler.py` log lines.
+- Commit `cb565c6`. Check: docs only, no code changed; engine's test run before this cycle PASSED.
+- Every engine-doable Phase B step is now done; Phase B reported `PHASE_COMPLETE` again.
+
 ## 2026-10-10 · cycle 165 · Fable (T1) · RF-2: security review of the Redis-free scheduler (RF-1)
 
 - **Reviewed 2 commits** (`83c8330` code, `000785f` docs), both built on Opus: read every diff,
