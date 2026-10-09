@@ -21,6 +21,7 @@ Run: cd platform && .venv/bin/python -m pytest tests/integration -v --db
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -154,6 +155,37 @@ async def test_budget_counts_in_postgres_under_concurrency(clean):
     assert await clean.fetchval("SELECT calls FROM founder_llm_calls WHERE day = $1", day) == 5
     assert await budget.try_spend(now) is False
     assert await budget.try_spend(now.replace(day=2)) is True
+
+
+async def test_budget_lowered_cap_refuses_at_once(clean):
+    """RF-2: FOUNDER_LLM_DAILY_CALLS lowered below today's count (a redeploy
+    mid-day) refuses immediately; raised, it allows exactly the difference."""
+    from datetime import datetime, timezone
+    now = datetime(1999, 5, 1, 12, tzinfo=timezone.utc)
+    assert [await DailyCallBudget(3, _db(clean)).try_spend(now) for _ in range(3)] == [True] * 3
+    assert await DailyCallBudget(2, _db(clean)).try_spend(now) is False
+    assert await DailyCallBudget(1, _db(clean)).try_spend(now) is False
+    assert await clean.fetchval(
+        "SELECT calls FROM founder_llm_calls WHERE day = $1", now.date()) == 3
+    assert await DailyCallBudget(4, _db(clean)).try_spend(now) is True
+    assert await DailyCallBudget(4, _db(clean)).try_spend(now) is False
+
+
+async def test_hung_job_releases_the_real_lock_after_the_timeout(clean, monkeypatch):
+    """RF-2: a job that never returns is cancelled; its run is recorded as
+    failed and the advisory lock is free again for the next process."""
+    monkeypatch.setattr(sch, "JOB_TIMEOUT_SECONDS", 0.2)
+
+    async def hang():
+        await asyncio.Event().wait()
+
+    j = Job(_name("hang"), 60.0, hang)
+    assert await sch.run_job_once(j, db=_db(clean)) == "failed"
+    row = await clean.fetchrow("SELECT * FROM scheduler_job_runs WHERE job_name = $1", j.name)
+    summary = row["last_summary"]
+    summary = json.loads(summary) if isinstance(summary, str) else summary
+    assert row["last_status"] == "failed" and summary["error"] == "TimeoutError"
+    await _assert_lock_released(clean, j.name)
 
 
 async def test_budget_uses_the_app_pool_by_default(clean):

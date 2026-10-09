@@ -244,7 +244,13 @@ class DailyCallBudget:
     async def try_spend(self, now: Optional[datetime] = None) -> bool:
         if self.limit <= 0:
             return False
-        day = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).date()
+        now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            # A naive time is UTC here (RF-2): astimezone() would read it as
+            # the machine's local time and could count the call on the
+            # wrong day near midnight.
+            now = now.replace(tzinfo=timezone.utc)
+        day = now.astimezone(timezone.utc).date()
         try:
             db = self._db
             if db is None:

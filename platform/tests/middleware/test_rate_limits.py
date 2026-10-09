@@ -72,6 +72,27 @@ class TestGetAgentDid:
         key = get_agent_did(req)
         assert key == "ip:10.0.0.2"
 
+    def test_falls_back_to_ip_when_the_token_breaks_the_decoder(self, monkeypatch):
+        """RF-2 (T1 review): a bearer token whose header is a deeply nested
+        JSON array makes the JWT library raise RecursionError, not
+        InvalidTokenError. The key function must still answer with the IP
+        bucket: the limiters fail open, so a raise here would mean an
+        unlimited request (and a limiter flipped to its fallback store)."""
+        import base64  # noqa: PLC0415
+        monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long!!")
+        from src.auth.jwt import decode_token  # noqa: PLC0415
+        from src.middleware.rate_limits import _get_trust, get_agent_did  # noqa: PLC0415
+
+        def b64(text: str) -> str:
+            return base64.urlsafe_b64encode(text.encode()).rstrip(b"=").decode()
+
+        token = b64("[" * 100_000 + "]" * 100_000) + "." + b64('{"a":1}') + ".sig"
+        with pytest.raises(RecursionError):       # the precondition: not an InvalidTokenError
+            decode_token(token)
+        req = self._make_request(auth_header=f"Bearer {token}", client_host="10.0.0.3")
+        assert get_agent_did(req) == "ip:10.0.0.3"
+        assert _get_trust(req) == 0.0
+
 
 class TestTrustLimit:
     """_trust_limit() callable scales the limit string with trust score."""

@@ -126,6 +126,16 @@ def get_agent_did(request: Request) -> str:
             return f"did:{claims.agent_did}"
         except InvalidTokenError:
             pass
+        except Exception:   # noqa: BLE001 — see below
+            # RF-2 (T1 review, 10 Oct 2026): a key function must never raise.
+            # The limiters swallow storage errors (fail open), so an error
+            # raised here would let the request through UNLIMITED and flip the
+            # limiter to its fallback store for everyone. A bearer token can
+            # make the decoder raise something other than InvalidTokenError
+            # (e.g. RecursionError from a deeply nested JSON header), so any
+            # failure means "not authenticated": the IP bucket.
+            logger.warning("rate limit key: token unreadable; using the IP bucket",
+                           exc_info=True)
     return f"ip:{get_remote_address(request)}"
 
 
@@ -141,7 +151,7 @@ def _get_trust(request: Request) -> float:
         try:
             claims = decode_token(auth[7:])
             return max(0.0, min(1.0, claims.trust_score))
-        except InvalidTokenError:
+        except Exception:   # noqa: BLE001 — unreadable token = baseline (RF-2)
             pass
     return 0.0
 

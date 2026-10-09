@@ -1,5 +1,50 @@
 # Engine log
 
+## 2026-10-10 · cycle 165 · Fable (T1) · RF-2: security review of the Redis-free scheduler (RF-1)
+
+- **Reviewed 2 commits** (`83c8330` code, `000785f` docs), both built on Opus: read every diff,
+  slowapi 0.1.9's fallback code, the lock/budget SQL, the migration and the job wrappers; tried
+  to break them. **Found 3 issues, fixed all 3** in the same cycle with tests:
+  1. **Rate-limit bypass (medium).** A bearer token whose header is a deeply nested JSON array
+     makes python-jose raise `RecursionError`, not `InvalidTokenError`, so `get_agent_did`
+     raised. Before RF-1 that was a 500. With RF-1's `swallow_errors=True` the limiter ran the
+     handler with NO limit and flipped the whole process to its fallback store (reproduced:
+     5 requests on a 2/min route, none limited). Reachable unauthenticated on the public per-DID
+     routes `/feed/global` and `/agents/discover`; authenticated routes were safe because the
+     auth dependency failed first. Fix: `get_agent_did` and `_get_trust` never raise (any
+     decoder failure = the IP bucket). Tests: decoder raises `RecursionError` as the
+     precondition; key = IP; app-level `[200, 200, 429, 429]` with `_storage_dead` still False.
+  2. **Hung job stops every job (medium, money).** The jobs run one after another; a job that
+     never returns (a query on a stuck lock, a hung HTTP call) held its advisory lock and stopped
+     the loop, including `auto_release` of held tokens, until a restart. Celery had no time limit
+     either, so not a regression, but the new single loop makes it total. Fix:
+     `JOB_TIMEOUT_SECONDS = 1800` cancel, recorded `failed` with `TimeoutError`, lock released,
+     loop continues (every job's writes are their own short transactions, so a cancel loses
+     nothing). Tests: unit (cancelled, recorded, next job runs) and Postgres (real lock free again).
+  3. **Budget day from a naive time (low).** `astimezone()` on a naive datetime reads it as the
+     machine's local time, so a call near midnight could count on the wrong UTC day. Fix: naive
+     = UTC. Test added.
+- **Checked, no issue:** lock is transaction-level and `SET LOCAL`, correct for Neon's
+  transaction-mode pooler (nothing leaks past COMMIT); `hashtextextended` key cannot collide with
+  the heartbeat/trust bigint keys; "recent" uses the DB clock, so no clock skew between
+  machines; a crash rolls the start row back; the budget upsert serialises on the row lock
+  (20-way test) and a cap lowered below today's count refuses at once (new Postgres test);
+  slowapi re-raises `RateLimitExceeded` before swallowing, so 429s are never swallowed; Redis
+  "half-up" (answers some calls, errors on others) is bounded at two windows' worth, never
+  unlimited (new flaky-storage test); `/health/ready` 200 without Redis is right because every
+  Redis use fails open; migration 049 is additive and the app role owns the schema, so no grants
+  are needed; nothing in `src/` dispatches to Celery any more.
+- **Accepted degradations (for the RF-3 briefing):** with `REDIS_URL=memory://` rate limits are
+  per machine and reset on every deploy (one API machine today); downgrading 049 resets the
+  day's LLM budget; during a rolling deploy a job locked by the old scheduler is delayed one
+  interval on the new one; slowapi's "swallow" path in 0.1.9 runs the handler and then 500s, so
+  it only matters when the key function raises, which it no longer can.
+- **Check:** new tests 10 (2 key function, 2 fail-open app-level, 2 scheduler unit, 1 generator,
+  2 Postgres, 1 bound); full run `--db`: 3789 passed, 6 skipped, 2 xfailed (H23, H34), with the
+  two pre-existing failing files deselected (`test_founder_civics_db` pool clamp,
+  `test_database_rls` expects a different DB; both fail identically before RF-1).
+- **Next:** RF-3, refresh the Phase B merge briefing (T2).
+
 ## 2026-10-10 · cycle 164 · Opus (T2) · RF-1: Redis-free scheduler after the 9 Oct outage (DrJ's urgent note)
 
 - **Cause:** Upstash free plan exhausted by Celery broker polling; slowapi's Redis storage then

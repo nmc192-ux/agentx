@@ -34,8 +34,9 @@ connection somebody else gets next.
 
 Inside one process the jobs run one after another, never at the same time.
 A failing job is logged and recorded; the others keep their schedule, and the
-loop itself never stops on an error. SIGTERM / SIGINT finish the current job
-and exit.
+loop itself never stops on an error. A job still running after
+JOB_TIMEOUT_SECONDS (30 min) is cancelled and recorded as failed, so a hung
+job cannot stop the others. SIGTERM / SIGINT finish the current job and exit.
 
 Run (production: the `scheduler` process in fly.toml; see HUMAN_ACTIONS.md):
     cd platform && python -m src.jobs.scheduler
@@ -73,6 +74,15 @@ RECENT_SHARE = 0.9
 
 # How long to wait before retrying when the database is unreachable at start.
 STARTUP_RETRY_SECONDS = 30.0
+
+# A job that has not finished after this long is cancelled and recorded as
+# failed (RF-2, T1 review 10 Oct 2026). Jobs run one after another in this
+# process, so one hung job (a query waiting on a lock, a stuck HTTP call) would
+# otherwise hold its advisory lock and stop EVERY job, including the release
+# of held tokens, until someone restarts the machine. Every job's writes are
+# their own short transactions, so cancelling mid-way loses nothing: the next
+# run picks up what is left.
+JOB_TIMEOUT_SECONDS = 1800.0
 
 
 def _always() -> bool:
@@ -153,7 +163,12 @@ async def run_job_once(job: Job, *, db: Any = None) -> str:
                 await conn.execute(_START, job.name)
                 started = time.monotonic()
                 try:
-                    summary = await job.run()
+                    summary = await asyncio.wait_for(job.run(), timeout=JOB_TIMEOUT_SECONDS)
+                except asyncio.TimeoutError:
+                    logger.error("scheduler: %s cancelled after %ss (hung); recorded as failed",
+                                 job.name, int(JOB_TIMEOUT_SECONDS))
+                    status, summary = "failed", {"error": "TimeoutError",
+                                                 "after_seconds": JOB_TIMEOUT_SECONDS}
                 except Exception as exc:   # noqa: BLE001 — logged and recorded
                     logger.exception("scheduler: %s failed", job.name)
                     status, summary = "failed", {"error": type(exc).__name__}

@@ -232,6 +232,17 @@ async def test_budget_is_per_utc_day():
     assert await budget.try_spend(NOW.replace(day=4)) is True
 
 
+async def test_budget_treats_a_naive_time_as_utc():
+    """RF-2: a naive datetime must count on its UTC day, not the machine's
+    local day (astimezone on a naive value reads it as local time)."""
+    db = FakeBudgetDB()
+    budget = DailyCallBudget(1, db)
+    naive = datetime(2026, 10, 3, 23, 30)
+    assert await budget.try_spend(naive) is True
+    assert list(db.days) == [naive.date()]
+    assert await budget.try_spend(naive.replace(tzinfo=timezone.utc)) is False
+
+
 async def test_budget_database_down_means_no_calls():
     c = client()
     g = AnthropicGenerator(c, "m", DailyCallBudget(100, FakeBudgetDB(fail=True)))

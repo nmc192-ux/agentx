@@ -188,3 +188,92 @@ async def test_agentbus_stream_ends_quietly_when_subscribe_fails(monkeypatch):
     monkeypatch.setattr(agentbus_service, "get_cache", lambda: _Redis())
     frames = [f async for f in agentbus_service.stream_messages("did:agentx:x-001")]
     assert frames == [": keepalive\n\n"]
+
+
+# ── RF-2 (T1 review, 10 Oct 2026): fail-open must not become a bypass ────────
+
+def _bad_bearer() -> str:
+    """A token whose header is a deeply nested JSON array: python-jose raises
+    RecursionError on it, which is not an InvalidTokenError."""
+    import base64
+
+    def b64(text: str) -> str:
+        return base64.urlsafe_b64encode(text.encode()).rstrip(b"=").decode()
+
+    return "Bearer " + b64("[" * 100_000 + "]" * 100_000) + "." + b64('{"a":1}') + ".sig"
+
+
+async def test_key_function_failure_cannot_bypass_the_limit(monkeypatch):
+    """Before the fix, this header made get_agent_did raise; with
+    swallow_errors the limiter then let the request through unlimited (and
+    marked its storage dead for everyone). Now the request lands in the IP
+    bucket and the limit holds; the storage is never marked dead."""
+    from fastapi import FastAPI, Request
+    from httpx import ASGITransport, AsyncClient
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+
+    from src.middleware import rate_limits
+
+    monkeypatch.setenv("JWT_SECRET", "test-secret-at-least-32-bytes-long!!")
+    lim = Limiter(key_func=rate_limits.get_agent_did, storage_uri="memory://",
+                  **rate_limits._LIMITER_FAIL_OPEN)
+    app = FastAPI()
+    app.state.limiter = lim
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    hits = []
+
+    @app.get("/x")
+    @lim.limit("2/minute")
+    async def x(request: Request):
+        hits.append(1)
+        return {"ok": True}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        codes = [(await c.get("/x", headers={"Authorization": _bad_bearer()})).status_code
+                 for _ in range(4)]
+    assert codes == [200, 200, 429, 429]
+    assert len(hits) == 2                      # the handler never ran over the limit
+    assert lim._storage_dead is False
+
+
+async def test_half_up_storage_allows_at_most_two_windows():
+    """Redis "half-up" (answers some calls, errors on others, as Upstash did
+    over quota): the limiter flips to its in-memory fallback on the first
+    error and back when the storage answers again. Each store counts on its
+    own, so the worst case is two windows' worth, never unlimited."""
+    from fastapi import FastAPI, Request
+    from httpx import ASGITransport, AsyncClient
+    from limits.storage.memory import MemoryStorage
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
+
+    from src.middleware import rate_limits
+
+    class FlakyStorage(MemoryStorage):
+        STORAGE_SCHEME = ["flaky"]
+        calls = 0
+
+        def incr(self, *a, **kw):
+            FlakyStorage.calls += 1
+            if FlakyStorage.calls % 2 == 0:
+                raise ConnectionError("ERR max requests limit exceeded")
+            return super().incr(*a, **kw)
+
+    lim = Limiter(key_func=get_remote_address, storage_uri="flaky://",
+                  **rate_limits._LIMITER_FAIL_OPEN)
+    app = FastAPI()
+    app.state.limiter = lim
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @app.get("/x")
+    @lim.limit("2/minute")
+    async def x(request: Request):
+        return {"ok": True}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        codes = [(await c.get("/x")).status_code for _ in range(12)]
+    assert 500 not in codes
+    assert 2 <= codes.count(200) <= 4, codes
+    assert codes[-1] == 429

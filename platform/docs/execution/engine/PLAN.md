@@ -67,11 +67,13 @@ and every API request crashed on the Redis error. DrJ will not pay for Redis.
 - [human] **RF-1h — H34: one line in `fly.toml` (`scheduler = "python -m src.jobs.scheduler"`)
   in the same merge, then start the scheduler machine.** `tests/test_fly_scheduler_command.py`
   is xfail until then.
-- [ ] **RF-2 — T1 security review of the RF-1 commits.** T1 (DrJ asked for a T1 review; the
-  commits touch rate limiting, the job that releases held tokens, and a migration). Read the
-  diffs, try to break them (double runs across two processes, lock on Neon's transaction
-  pooler, budget overspend, rate limiter bypass when Redis is half-up, readiness), add
-  adversarial tests, fix what is found. Check: findings recorded in `ENGINE_LOG.md`.
+- [x] **RF-2 — T1 security review of the RF-1 commits.** Done cycle 165 (Fable). Reviewed
+  `83c8330` + `000785f`; found 3 issues, fixed all with tests: (1) the per-DID rate-limit key
+  function could raise on a crafted bearer token, which with the new fail-open limiter became an
+  unlimited request on the public feed/discover routes; (2) no per-job timeout, so one hung job
+  would stop every job including token auto-release; (3) the LLM budget read a naive time as
+  local time. Lock/pooler, double-run, budget overspend, half-up Redis and readiness checked and
+  recorded in `ENGINE_LOG.md`. Check: findings in the log; new tests green; full suite green.
 - [ ] **RF-3 — Refresh the Phase B merge briefing after RF-2.** T2. (A first refresh for RF-1
   was done in cycle 164.)
 

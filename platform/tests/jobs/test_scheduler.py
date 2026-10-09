@@ -219,3 +219,38 @@ async def test_loop_runs_each_job_when_due_and_stops(monkeypatch):
     # t=0 both, t=300 fast, t=600 fast, t=900 fast (then stop before slow).
     assert ran == ["fast", "slow", "fast", "fast", "fast"]
     assert now[0] == 900.0
+
+
+# ── RF-2 (T1 review): a hung job cannot stop the others ──────────────────────
+
+async def test_hung_job_is_cancelled_recorded_failed_and_the_loop_goes_on(monkeypatch):
+    monkeypatch.setattr(sch, "JOB_TIMEOUT_SECONDS", 0.05)
+    conn = FakeConn()
+    cancelled = []
+
+    async def hang():
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+
+    hung = Job("hung", 60.0, hang)
+    assert await sch.run_job_once(hung, db=fake_db(conn)) == "failed"
+    assert cancelled == [True]
+    finish = conn.log[-2]
+    assert finish[2][:2] == ("hung", "failed")
+    assert json.loads(finish[2][2])["error"] == "TimeoutError"
+    assert conn.log[-1] == ("END",)             # the lock transaction ended
+
+    # The next job still runs on the same connection.
+    nxt, calls = job("next")
+    assert await sch.run_job_once(nxt, db=fake_db(conn)) == "ok"
+    assert calls == ["next"]
+
+
+def test_job_timeout_is_generous_but_bounded():
+    """Long enough for a real backlog (a 15-minute job must get its whole
+    window), short enough that a hung job cannot stop the others for more
+    than an hour."""
+    assert 900.0 <= sch.JOB_TIMEOUT_SECONDS <= 3600.0
