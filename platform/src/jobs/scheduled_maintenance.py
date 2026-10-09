@@ -1,7 +1,7 @@
 """
 AgentX Platform — Scheduled Maintenance Job
 ════════════════════════════════════════════
-Celery task, every 15 minutes via beat (Sprint 9, S9-9):
+Run every 15 minutes by the scheduler (src/jobs/scheduler.py; Sprint 9, S9-9):
 
   1. Trust Score: apply every trust event not yet applied
      (services/reputation.recalculate_agent_trust). This is the score stored
@@ -27,7 +27,6 @@ from ..cache import close_cache
 from ..database import close_pool, init_pool
 from ..services.governance_service import finalize_due_proposals
 from ..services.reputation import recalculate_agent_trust
-from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +59,13 @@ async def run_maintenance() -> dict:
 
 
 async def _run_standalone() -> dict:
-    """Own pool and cache for one run: each Celery run gets a fresh event loop."""
+    """Own pool and cache for one run by hand (the scheduler shares its pool)."""
     await init_pool()
     try:
         return await run_maintenance()
     finally:
         await close_cache()
         await close_pool()
-
-
-@celery_app.task(name="jobs.scheduled_maintenance")
-def scheduled_maintenance() -> dict:
-    """Celery entry point. A failed part is logged and reported, not retried:
-    the next run, 15 minutes later, picks up whatever is left."""
-    return asyncio.run(_run_standalone())
 
 
 if __name__ == "__main__":

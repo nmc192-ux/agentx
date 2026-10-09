@@ -17,6 +17,8 @@ What is proven here:
 """
 from __future__ import annotations
 
+import asyncio
+
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -26,7 +28,7 @@ import pytest
 from src.config import Settings
 from src.founders.personas import FOUNDER_NAMES, PERSONAS
 from src.jobs import founder_heartbeat as fh
-from src.jobs.celery_app import FOUNDER_HEARTBEAT_INTERVAL_SECONDS, celery_app
+from src.jobs.scheduler import FOUNDER_HEARTBEAT_INTERVAL_SECONDS, JOBS
 
 NOON = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)   # no founder is quiet at 12:00 UTC
 
@@ -142,15 +144,12 @@ def test_due_once_the_gap_has_passed():
     assert fh.is_due(quinn, last, due_at + timedelta(hours=1)) is True
 
 
-# ── Celery wiring ─────────────────────────────────────────────────────────────
+# ── Scheduler wiring ─────────────────────────────────────────────────────────────
 
-def test_beat_runs_the_heartbeat_every_5_minutes():
-    assert FOUNDER_HEARTBEAT_INTERVAL_SECONDS == 300.0 == fh.HEARTBEAT_INTERVAL_SECONDS
-    assert celery_app.conf.beat_schedule["founder-heartbeat"] == {
-        "task": "jobs.founder_heartbeat",
-        "schedule": 300.0,
-    }
-    assert "jobs.founder_heartbeat" in celery_app.tasks
+def test_scheduler_runs_the_heartbeat_every_5_minutes():
+    entry = {job.name: job for job in JOBS}["founder_heartbeat"]
+    assert FOUNDER_HEARTBEAT_INTERVAL_SECONDS == 300.0 == fh.HEARTBEAT_INTERVAL_SECONDS == entry.interval
+    assert entry.run is fh.run_tick and entry.enabled is fh.heartbeat_enabled
 
 
 def test_lock_key_is_not_the_trust_replay_key():
@@ -165,7 +164,7 @@ def test_standalone_run_opens_nothing_when_off():
         patch.object(fh, "init_pool", new=AsyncMock(side_effect=lambda: calls.append("init"))),
         patch.object(fh, "run_tick", new=AsyncMock(side_effect=lambda: calls.append("tick"))),
     ):
-        summary = fh.founder_heartbeat()
+        summary = asyncio.run(fh._run_standalone())
     assert calls == []
     assert summary["skipped"] == "disabled" and summary["enabled"] is False
 
@@ -180,5 +179,5 @@ def test_standalone_run_closes_pool_and_cache_even_on_error():
         patch.object(fh, "close_pool", new=AsyncMock(side_effect=lambda: calls.append("pool"))),
         pytest.raises(RuntimeError),
     ):
-        fh.founder_heartbeat()
+        asyncio.run(fh._run_standalone())
     assert calls == ["init", "cache", "pool"]

@@ -12,7 +12,7 @@ Security hardening applied (MARCUS Sprint 1 gates):
 
 Endpoints (Sprint 1):
   GET  /health         — liveness + dependency health
-  GET  /health/ready   — readiness (DB + Redis reachable)
+  GET  /health/ready   — readiness (DB reachable; Redis optional)
 
 All agent-facing API routes (POST /agents, GET /feed, etc.)
 are added in Sprint 2+ as separate router modules.
@@ -335,22 +335,26 @@ async def health(request: Request):
     "/health/ready",
     tags=["Platform"],
     summary="Readiness check",
-    response_description="Returns 200 if DB and cache are reachable",
+    response_description="Returns 200 if the database is reachable",
 )
 @limiter.limit("60/minute")
 async def health_ready(request: Request):
     """
     Readiness probe — checks live database and cache connectivity.
 
-    Returns 200 only if ALL dependencies are reachable.
-    Returns 503 if any dependency is down.
+    Returns 200 when the database is reachable, 503 when it is not. Redis is
+    optional (production runs with REDIS_URL=memory:// since the 9 Oct 2026
+    outage) and every Redis use fails open, so the cache never makes the API
+    unready: a configured Redis that does not answer only turns the status
+    into "degraded".
 
     Used by Kubernetes readiness probe to gate traffic routing.
     """
     db_health    = await check_db_health()
     cache_health = await check_cache_health()
 
-    all_ok = db_health["status"] == "ok" and cache_health["status"] == "ok"
+    ready  = db_health["status"] == "ok"
+    all_ok = ready and cache_health["status"] in ("ok", "disabled")
 
     payload = {
         "status": "ok" if all_ok else "degraded",
@@ -364,7 +368,7 @@ async def health_ready(request: Request):
 
     return JSONResponse(
         content=payload,
-        status_code=status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
+        status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
     )
 
 

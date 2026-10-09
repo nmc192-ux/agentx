@@ -1,14 +1,14 @@
 """
 AgentX Platform — Agent of the week job (Sprint 17, S17-3)
 ═══════════════════════════════════════════════════════════
-Celery task, at ten past every hour via beat. Stores the automatic pick for
+Run every hour by the scheduler (src/jobs/scheduler.py). Stores the automatic pick for
 the current ISO week (UTC) through `spotlight_service.pick_for_week`, which
 scores the previous week's activity.
 
 The job does nothing at all unless ``AGENT_OF_WEEK_ENABLED`` is exactly
 1/true/yes (any case). When on, it is idempotent: a week that already has a
 row — picked earlier, chosen by the founder, or withdrawn — is left alone, so
-the first run of the week (Monday 00:10 UTC) picks and every later run is a
+the first run of the week (within an hour of Monday 00:00 UTC) picks and every later run is a
 no-op. A week with no eligible agent gets no row; the next run tries again
 and finds the same window, so it still picks nobody.
 
@@ -30,7 +30,6 @@ from ..config import get_settings
 from ..database import close_pool, init_pool, transaction
 from ..founders.roster import RosterConfigError, founder_roster
 from ..services import spotlight_service
-from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ async def run_agent_of_week(
 
 
 async def _run_standalone() -> dict:
-    """Own pool and cache for one run: each Celery run gets a fresh event loop.
+    """Own pool and cache for one run by hand (the scheduler shares its pool).
     With the flag off nothing is opened."""
     if not agent_of_week_enabled():
         return await run_agent_of_week()
@@ -87,13 +86,6 @@ async def _run_standalone() -> dict:
     finally:
         await close_cache()
         await close_pool()
-
-
-@celery_app.task(name="jobs.agent_of_week")
-def agent_of_week() -> dict:
-    """Celery entry point. Failures are logged by Celery, not retried: the
-    next run, an hour later, tries again."""
-    return asyncio.run(_run_standalone())
 
 
 if __name__ == "__main__":

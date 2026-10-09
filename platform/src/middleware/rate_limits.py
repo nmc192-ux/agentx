@@ -174,17 +174,27 @@ def _trust_limit(base: int, window: str = "minute") -> Callable:
 # ── Limiter instances ─────────────────────────────────────────────────────────
 # • limiter      IP-keyed   — pre-auth endpoints (/onboard, /health)
 # • limiter_did  DID-keyed  — all social endpoints (trust-aware)
+#
+# Fail open on Redis trouble (9 Oct 2026 outage: Upstash ran out of requests
+# and every rate-limited request raised a 500). in_memory_fallback_enabled:
+# on a storage error the limiter switches to per-process memory counters (the
+# limits still apply, per machine) and re-checks Redis now and then.
+# swallow_errors: if even that fails, the request goes through unlimited
+# rather than failing. A Redis error must never fail a request.
+_LIMITER_FAIL_OPEN = dict(in_memory_fallback_enabled=True, swallow_errors=True)
 
 limiter = Limiter(
     key_func=get_remote_address,
     storage_uri=_STORAGE,
     key_prefix=_KEY_PREFIX,
+    **_LIMITER_FAIL_OPEN,
 )
 
 limiter_did = Limiter(
     key_func=get_agent_did,
     storage_uri=_STORAGE,
     key_prefix=_KEY_PREFIX,
+    **_LIMITER_FAIL_OPEN,
 )
 
 

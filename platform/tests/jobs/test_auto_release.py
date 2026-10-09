@@ -5,25 +5,21 @@ in tests/integration/test_auto_release_job_db.py.
 """
 from __future__ import annotations
 
+import asyncio
+
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from src.jobs import auto_release
-from src.jobs.celery_app import AUTO_RELEASE_INTERVAL_SECONDS, celery_app
+from src.jobs.scheduler import AUTO_RELEASE_INTERVAL_SECONDS, JOBS
 
 
-def test_beat_runs_the_auto_release_job_every_15_minutes():
-    assert AUTO_RELEASE_INTERVAL_SECONDS == 900.0
-    assert celery_app.conf.beat_schedule["auto-release"] == {
-        "task": "jobs.auto_release",
-        "schedule": 900.0,
-    }
-
-
-def test_auto_release_task_is_registered():
-    assert "jobs.auto_release" in celery_app.tasks
+def test_scheduler_runs_the_auto_release_job_every_15_minutes():
+    entry = {job.name: job for job in JOBS}["auto_release"]
+    assert AUTO_RELEASE_INTERVAL_SECONDS == 900.0 == entry.interval
+    assert entry.run is auto_release.run_auto_release
 
 
 def test_the_job_calls_only_the_reviewed_release_functions():
@@ -77,7 +73,7 @@ def test_standalone_run_closes_pool_and_cache_even_on_error():
         patch.object(auto_release, "close_pool", new=AsyncMock(side_effect=lambda: calls.append("pool"))),
         pytest.raises(RuntimeError),
     ):
-        auto_release.auto_release()
+        asyncio.run(auto_release._run_standalone())
     assert calls == ["init", "cache", "pool"]
 
 

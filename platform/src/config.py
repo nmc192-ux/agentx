@@ -149,7 +149,8 @@ class Settings(BaseSettings):
     # Founder post text (S10-2, D9). Templates unless the provider is
     # "anthropic" AND a key is mounted (ANTHROPIC_API_KEY via /run/secrets or
     # *_FILE, read lazily by `founders.generation`). The daily call cap is
-    # counted in Redis before each call; no Redis means no calls.
+    # counted in Postgres (founder_llm_calls) before each call; a database
+    # error means no call.
     founder_llm_provider:        str = ""
     founder_llm_model:           str = "claude-haiku-4-5"
     founder_llm_daily_calls:     int = 200
@@ -205,9 +206,14 @@ class Settings(BaseSettings):
         self.postgres_password = _read_secret(
             "POSTGRES_PASSWORD", "POSTGRES_PASSWORD_FILE", "db_password"
         )
-        self.redis_password = _read_secret(
-            "REDIS_PASSWORD", "REDIS_PASSWORD_FILE", "redis_password"
-        )
+        # Redis is optional (REDIS_URL=memory:// in production since the 9 Oct
+        # 2026 outage): a missing Redis password must not stop the app.
+        try:
+            self.redis_password = _read_secret(
+                "REDIS_PASSWORD", "REDIS_PASSWORD_FILE", "redis_password"
+            )
+        except ValueError:
+            self.redis_password = ""
         self.jwt_secret = _read_secret(
             "JWT_SECRET", "JWT_SECRET_FILE", "jwt_secret"
         )

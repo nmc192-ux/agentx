@@ -2,8 +2,8 @@
 Guard: each Fly process group gets its own machine size.
 
 `platform/fly.toml` runs two process groups (`app`, `scheduler`) under one
-shared `[[vm]]` (shared-cpu-2x, 512 MB). The scheduler is one Celery worker
-with beat at concurrency 1 and needs only shared-cpu-1x, 512 MB.
+shared `[[vm]]` (shared-cpu-2x, 512 MB). The scheduler is one process
+(src/jobs/scheduler.py) running one job at a time and needs only shared-cpu-1x, 512 MB.
 
 The engine may not edit the Fly config files (standing rule 6), so DrJ makes
 the edit (HUMAN_ACTIONS H23, Sprint 13 T-2). Until then the production check

@@ -5,14 +5,16 @@ tests/integration/test_spotlight_db.py.
 
 What is proven here:
   • the flag: only 1/true/yes (any case) switch the job on; a typo means off
-  • with the flag off nothing touches the database, and the Celery entry
-    point opens neither pool nor cache
+  • with the flag off nothing touches the database, and a run by hand
+    opens neither pool nor cache
   • with the flag on the job picks for the current ISO week (UTC), through
     `pick_for_week`, with the founder roster
   • an unusable FOUNDER_DIDS stops the job before the database
-  • the task is registered and on the beat schedule at ten past every hour
+  • the scheduler runs it every hour, behind its flag
 """
 from __future__ import annotations
+
+import asyncio
 
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -24,7 +26,7 @@ import pytest
 from src.config import Settings
 from src.founders.roster import RosterConfigError
 from src.jobs import agent_of_week as job
-from src.jobs.celery_app import AGENT_OF_WEEK_SCHEDULE, celery_app
+from src.jobs.scheduler import AGENT_OF_WEEK_INTERVAL_SECONDS, JOBS
 
 
 def _settings(**env) -> Settings:
@@ -65,13 +67,13 @@ async def test_flag_off_touches_nothing(monkeypatch):
     assert summary == {"enabled": False, "week_start": None, "skipped": "disabled", "picked": None}
 
 
-def test_celery_entry_point_with_flag_off_opens_no_pool(monkeypatch):
+def test_standalone_run_with_flag_off_opens_no_pool(monkeypatch):
     monkeypatch.delenv("AGENT_OF_WEEK_ENABLED", raising=False)
     monkeypatch.setattr(job, "get_settings", lambda: _settings())
     monkeypatch.setattr(job, "init_pool", _no_db)
     monkeypatch.setattr(job, "close_pool", _no_db)
     monkeypatch.setattr(job, "close_cache", _no_db)
-    assert job.agent_of_week()["skipped"] == "disabled"
+    assert asyncio.run(job._run_standalone())["skipped"] == "disabled"
 
 
 # ── Flag on ───────────────────────────────────────────────────────────────────
@@ -142,14 +144,8 @@ async def test_a_failing_pick_raises_and_is_not_swallowed(monkeypatch):
 
 # ── Registration and schedule ─────────────────────────────────────────────────
 
-def test_task_is_registered():
-    assert "jobs.agent_of_week" in celery_app.tasks
-
-
-def test_beat_runs_the_job_at_ten_past_every_hour():
-    entry = celery_app.conf.beat_schedule["agent-of-week"]
-    assert entry["task"] == "jobs.agent_of_week"
-    assert entry["schedule"] is AGENT_OF_WEEK_SCHEDULE
-    assert AGENT_OF_WEEK_SCHEDULE.minute == {10}
-    assert AGENT_OF_WEEK_SCHEDULE.hour == set(range(24))
-    assert AGENT_OF_WEEK_SCHEDULE.day_of_week == set(range(7))
+def test_scheduler_runs_the_job_every_hour_behind_its_flag():
+    entry = {j.name: j for j in JOBS}["agent_of_week"]
+    assert AGENT_OF_WEEK_INTERVAL_SECONDS == 3600.0 == entry.interval
+    assert entry.run is job.run_agent_of_week
+    assert entry.enabled is job.agent_of_week_enabled

@@ -1,7 +1,7 @@
 """
 AgentX Platform — Automatic Release Job
 ════════════════════════════════════════
-Celery task, every 15 minutes via beat (Sprint 12, S12-7 / E6):
+Run every 15 minutes by the scheduler (src/jobs/scheduler.py; Sprint 12, S12-7 / E6):
 
 When the other side stays silent for AUTO_RELEASE_DAYS, held tokens are
 released by the three reviewed release functions — and by nothing else:
@@ -37,7 +37,6 @@ from ..database import close_pool, get_db, init_pool
 from ..services import contract_service, task_service
 from ..services.auto_release import AUTO_RELEASE_DAYS
 from ..services.markets import bounty_service
-from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -134,20 +133,13 @@ async def run_auto_release() -> dict:
 
 
 async def _run_standalone() -> dict:
-    """Own pool and cache for one run: each Celery run gets a fresh event loop."""
+    """Own pool and cache for one run by hand (the scheduler shares its pool)."""
     await init_pool()
     try:
         return await run_auto_release()
     finally:
         await close_cache()
         await close_pool()
-
-
-@celery_app.task(name="jobs.auto_release")
-def auto_release() -> dict:
-    """Celery entry point. Failures are logged and reported, not retried:
-    the next run, 15 minutes later, picks up whatever is left."""
-    return asyncio.run(_run_standalone())
 
 
 if __name__ == "__main__":

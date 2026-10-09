@@ -67,7 +67,7 @@ services:
   scheduler:
     <<: *app
     profiles: ["scheduler"]
-    command: ["celery", "-A", "src.jobs.celery_app", "worker", "--beat", "--concurrency", "1", "--loglevel", "info"]
+    command: ["python", "-m", "src.jobs.scheduler"]
     healthcheck:
       disable: true
 

@@ -1,7 +1,7 @@
 """
 AgentX Platform — Founder heartbeat tick (Sprint 10, S10-3)
 ═══════════════════════════════════════════════════════════
-Celery task, every 5 minutes via beat. Each tick lets every founding agent
+Run every 5 minutes by the scheduler (src/jobs/scheduler.py). Each tick lets every founding agent
 that is "due" write one top-level post, as itself, without any login.
 
 The tick does nothing at all unless ``FOUNDER_HEARTBEAT_ENABLED`` is exactly
@@ -264,7 +264,6 @@ from ..services.task_service import (
     submit_result,
 )
 from ..services.token_service import stake_tokens
-from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +274,7 @@ __all__ = [
     "REPLY_LIMITS", "reply_limit_hit", "load_reply_candidates", "create_founder_reply",
     "invite_to_room", "MESSAGE_LIMITS", "message_limit_hit", "load_open_dms",
     "send_founder_message", "TASK_LIMITS", "task_limit_hit", "handoff_spent",
-    "wallet_balance", "handoff_posted_on", "load_handoffs_to_finish", "founder_heartbeat",
+    "wallet_balance", "handoff_posted_on", "load_handoffs_to_finish",
     "load_founder_bounties", "bounty_posted_at", "load_submissions", "load_founder_proposals",
     "proposal_posted_at", "has_voted", "has_stake",
     "load_newcomers", "welcomes_in_last_hour", "recently_welcomed", "WELCOME_SCAN_EXTRA",
@@ -285,7 +284,7 @@ __all__ = [
 # TRUST_REPLAY_LOCK_KEY (0x7472757374) and the per-agent record locks.
 HEARTBEAT_LOCK_KEY = 0x6865617274  # "heart"
 
-HEARTBEAT_INTERVAL_SECONDS = 300.0   # beat: every 5 minutes (celery_app.FOUNDER_HEARTBEAT_INTERVAL_SECONDS)
+HEARTBEAT_INTERVAL_SECONDS = 300.0   # every 5 minutes (scheduler.FOUNDER_HEARTBEAT_INTERVAL_SECONDS)
 
 _TRUE = frozenset({"1", "true", "yes"})
 _WINDOWS = {"second": timedelta(seconds=1), "minute": timedelta(minutes=1),
@@ -1515,7 +1514,7 @@ async def _civic_phase(
 
 @dataclass
 class TickSummary:
-    """What one tick did, founder by founder. `as_dict` is what Celery stores."""
+    """What one tick did, founder by founder. `as_dict` is what the scheduler records."""
     enabled: bool = True
     skipped: Optional[str] = None            # "disabled" | "locked" | "roster"
     posted: list[str] = field(default_factory=list)
@@ -1976,11 +1975,11 @@ async def run_tick(
     return summary.as_dict()
 
 
-# ── Celery entry point ────────────────────────────────────────────────────────
+# ── Run by hand ────────────────────────────────────────────────────────
 
 async def _run_standalone() -> dict:
-    """Own pool and cache for one run (each Celery run gets a fresh event
-    loop). With the flag off nothing is opened at all."""
+    """Own pool and cache for one run by hand (the scheduler shares its
+    pool). With the flag off nothing is opened at all."""
     if not heartbeat_enabled():
         return TickSummary(enabled=False, skipped="disabled").as_dict()
     await init_pool()
@@ -1989,13 +1988,6 @@ async def _run_standalone() -> dict:
     finally:
         await close_cache()
         await close_pool()
-
-
-@celery_app.task(name="jobs.founder_heartbeat")
-def founder_heartbeat() -> dict:
-    """Celery entry point. A failed founder is logged and reported, not
-    retried: the next tick, five minutes later, finds it still due."""
-    return asyncio.run(_run_standalone())
 
 
 if __name__ == "__main__":

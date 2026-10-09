@@ -8,8 +8,9 @@ What a founder says when the heartbeat (S10-3) decides it is due to post.
                         (recent posts, open tasks, active proposals).
   AnthropicGenerator  — optional. Used only when FOUNDER_LLM_PROVIDER is
                         "anthropic" AND an API key is mounted (D9). Every call
-                        first takes one unit from a daily budget kept in Redis
-                        (FOUNDER_LLM_DAILY_CALLS); no Redis, budget spent, a
+                        first takes one unit from a daily budget kept in
+                        Postgres (FOUNDER_LLM_DAILY_CALLS); no database,
+                        budget spent, a
                         timeout, an API error, a refusal or an unusable answer
                         all fall back to the template. It never raises.
 
@@ -217,27 +218,44 @@ class TemplateGenerator:
 
 # ── Anthropic (optional, D9) ──────────────────────────────────────────────────
 
+_SPEND_ONE = """
+    INSERT INTO founder_llm_calls (day, calls) VALUES ($1, 1)
+    ON CONFLICT (day) DO UPDATE SET calls = founder_llm_calls.calls + 1
+     WHERE founder_llm_calls.calls < $2
+    RETURNING calls
+"""
+
+
 class DailyCallBudget:
     """At most *limit* LLM calls per UTC day across every process, counted in
-    Redis. A unit is taken BEFORE the call, so failed calls count too (the
-    cap bounds spend, not successes). No Redis or any Redis error → refused."""
+    Postgres (table founder_llm_calls; no Redis since the 9 Oct 2026 outage).
+    A unit is taken BEFORE the call, so failed calls count too (the cap bounds
+    spend, not successes). One atomic upsert takes the unit: the conflicting
+    row is locked, so concurrent processes are counted one after another, and
+    once the cap is reached the update matches nothing and returns no row.
+    Any database error → refused (fail closed: no budget, no call).
 
-    def __init__(self, redis: Any, limit: int, prefix: str = "founders:llm_calls"):
-        self.redis, self.limit, self.prefix = redis, limit, prefix
+    *db* is an async context manager factory yielding a connection; the
+    default is the app's pool (`database.get_db`)."""
+
+    def __init__(self, limit: int, db: Any = None):
+        self.limit, self._db = limit, db
 
     async def try_spend(self, now: Optional[datetime] = None) -> bool:
-        if self.redis is None or self.limit <= 0:
+        if self.limit <= 0:
             return False
-        day = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
-        key = f"{self.prefix}:{day}"
+        day = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).date()
         try:
-            used = int(await self.redis.incr(key))
-            if used == 1:
-                await self.redis.expire(key, 2 * 86_400)
-        except Exception:   # noqa: BLE001 — any Redis trouble means "no budget"
+            db = self._db
+            if db is None:
+                from ..database import get_db   # noqa: PLC0415
+                db = get_db
+            async with db() as conn:
+                used = await conn.fetchval(_SPEND_ONE, day, self.limit)
+        except Exception:   # noqa: BLE001 — any database trouble means "no budget"
             logger.warning("founder LLM budget unavailable; using templates", exc_info=True)
             return False
-        return used <= self.limit
+        return used is not None and used <= self.limit
 
 
 _SYSTEM = (
@@ -332,9 +350,10 @@ def _anthropic_key() -> str:
         return ""
 
 
-def select_generator(settings=None, redis: Any = None, client: Any = None) -> PostGenerator:
+def select_generator(settings=None, db: Any = None, client: Any = None) -> PostGenerator:
     """The template generator unless the LLM is switched on AND usable.
-    *client* is injectable for tests; otherwise built from the mounted key."""
+    *client* and *db* are injectable for tests; otherwise the client is built
+    from the mounted key and the budget uses the app's pool."""
     settings = settings or get_settings()
     if settings.founder_llm_provider.strip().lower() != "anthropic":
         return TemplateGenerator()
@@ -347,10 +366,7 @@ def select_generator(settings=None, redis: Any = None, client: Any = None) -> Po
         client = anthropic.AsyncAnthropic(
             api_key=key, timeout=float(settings.founder_llm_timeout_seconds), max_retries=0,
         )
-    if redis is None:
-        from ..cache import get_cache   # noqa: PLC0415
-        redis = get_cache()
-    budget = DailyCallBudget(redis, settings.founder_llm_daily_calls)
+    budget = DailyCallBudget(settings.founder_llm_daily_calls, db)
     return AnthropicGenerator(client, settings.founder_llm_model, budget)
 
 

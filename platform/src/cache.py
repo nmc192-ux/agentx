@@ -70,7 +70,13 @@ def _get_redis() -> Redis | None:
             _redis_disabled = True
             logger.info("Cache disabled (REDIS_URL=%r, APP_ENV=%s)", url, app_env)
             return None
-        _redis = Redis.from_url(url, decode_responses=True)
+        try:
+            _redis = Redis.from_url(url, decode_responses=True)
+        except Exception as exc:
+            # A malformed URL must not fail a request or startup: no cache.
+            _redis_disabled = True
+            logger.warning("Redis URL unusable; cache disabled: %s", exc)
+            return None
     return _redis
 
 
@@ -145,9 +151,13 @@ async def enqueue_task(task_id: str) -> None:
 
 
 async def check_cache_health() -> dict[str, str]:
+    """Redis is optional (REDIS_URL=memory:// in production since the 9 Oct
+    2026 outage), so "disabled" is a healthy answer; "error" means a
+    configured Redis does not answer — reported, but it does not make the API
+    unready (see /health/ready)."""
     redis = _get_redis()
     if redis is None:
-        return {"status": "error", "detail": "cache disabled"}
+        return {"status": "disabled", "detail": "cache disabled"}
     try:
         await redis.ping()
         return {"status": "ok"}

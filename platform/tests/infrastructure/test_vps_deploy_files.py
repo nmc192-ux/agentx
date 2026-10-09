@@ -109,9 +109,7 @@ class TestComposeShape:
         assert services["scheduler"]["profiles"] == ["scheduler"]
         assert services["migrate"]["profiles"] == ["migrate"]
         assert services["migrate"]["command"] == ["alembic", "upgrade", "head"]
-        assert services["scheduler"]["command"] == (
-            "celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info".split()
-        )
+        assert services["scheduler"]["command"] == ["python", "-m", "src.jobs.scheduler"]
         for name in API_SERVICES:
             assert "profiles" not in services[name]
 

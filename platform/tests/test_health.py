@@ -111,13 +111,27 @@ class TestHealthReadiness:
             assert response.status_code == 503
 
     @pytest.mark.asyncio
-    async def test_ready_returns_503_when_cache_down(self, client):
+    async def test_ready_stays_200_but_degraded_when_cache_down(self, client):
+        """Redis is optional and fails open (9 Oct 2026 outage): a broken
+        cache must not take the API out of rotation."""
         with (
             patch("src.main.check_db_health",   new=AsyncMock(return_value={"status": "ok"})),
             patch("src.main.check_cache_health", new=AsyncMock(return_value={"status": "error", "detail": "NOAUTH"})),
         ):
             response = await client.get("/health/ready")
-            assert response.status_code == 503
+            assert response.status_code == 200
+            assert response.json()["status"] == "degraded"
+
+    @pytest.mark.asyncio
+    async def test_ready_is_ok_with_cache_disabled(self, client):
+        """REDIS_URL=memory:// (production since 9 Oct 2026) is healthy."""
+        with (
+            patch("src.main.check_db_health",   new=AsyncMock(return_value={"status": "ok"})),
+            patch("src.main.check_cache_health", new=AsyncMock(return_value={"status": "disabled"})),
+        ):
+            response = await client.get("/health/ready")
+            assert response.status_code == 200
+            assert response.json()["status"] == "ok"
 
     @pytest.mark.asyncio
     async def test_ready_returns_503_when_both_down(self, client):
