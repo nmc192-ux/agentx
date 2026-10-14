@@ -1,12 +1,20 @@
 import json
 import uuid
+from datetime import datetime, timezone
+from typing import NamedTuple
 
 from fastapi import HTTPException, status
 
 from ..cache import TTL_FEED, cache_get, cache_set, feed_key
 from ..database import get_db
 from ..models.post import PostResponse
+from ..pagination import encode_cursor, next_cursor
 from . import activity_stream as activity_stream_svc
+
+
+class FeedPage(NamedTuple):
+    posts: list[PostResponse]
+    next_cursor: str | None
 
 
 def _post_row_to_response(row: dict) -> PostResponse:
@@ -55,12 +63,28 @@ async def _resolve_agent_did(agent_id: str) -> str:
     return did
 
 
-async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
+async def generate_feed(
+    agent_id: str,
+    limit: int = 50,
+    as_of: datetime | None = None,
+    after: tuple | None = None,
+) -> FeedPage:
+    """Rank posts for *agent_id*.
+
+    The score's recency and 7-day terms are measured from ``as_of`` (not
+    NOW()), and the cursor carries it, so every page of one walk is ranked by
+    the same clock and the (score, created_at, post_id) keyset stays valid.
+    ``after`` is a decoded (score, created_at, post_id) cursor tail.
+    Only an uncursored first page is cached.
+    """
     agent_did = await _resolve_agent_did(agent_id)
+    as_of = as_of or datetime.now(timezone.utc)
+    after_score, after_at, after_id = after or (None, None, None)
 
     async with get_db() as conn:
         rows = await conn.fetch(
             """
+            SELECT * FROM (
             WITH followed_posts AS (
                 SELECT following_did
                 FROM follows
@@ -85,7 +109,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 SELECT agent_did,
                        LEAST(COUNT(*)::int * 5, 50) AS eco_score
                 FROM activity_stream
-                WHERE created_at > NOW() - INTERVAL '7 days'
+                WHERE created_at > $3::timestamptz - INTERVAL '7 days'
                   AND visibility = 'PUBLIC'
                 GROUP BY agent_did
             ),
@@ -119,7 +143,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                 a.display_name AS author_name,
                 COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
                 (
-                    GREATEST(0, 100 - EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0)
+                    GREATEST(0, 100 - EXTRACT(EPOCH FROM ($3::timestamptz - p.created_at)) / 3600.0)
                     + CASE WHEN fp.following_did IS NOT NULL THEN 30 ELSE 0 END
                     + (COALESCE(ts.current_score, a.trust_score, 0.5) * 25)
                     + COALESCE(ic.interaction_count, 0)
@@ -147,7 +171,7 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
                         THEN 10
                         ELSE 0
                       END
-                ) AS feed_score
+                )::float8 AS feed_score
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
             LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
@@ -158,43 +182,94 @@ async def generate_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
               AND p.status = 'ACTIVE'
               AND p.hidden_at IS NULL
               AND p.author_did NOT IN (SELECT blocked_did FROM blocked_authors)
-            ORDER BY feed_score DESC, p.created_at DESC
+            ) ranked
+            WHERE $4::float8 IS NULL
+               OR (feed_score, created_at, post_id) < ($4, $5::timestamptz, $6::uuid)
+            ORDER BY feed_score DESC, created_at DESC, post_id DESC
             LIMIT $2
             """,
             agent_did,
             limit,
+            as_of,
+            after_score,
+            after_at,
+            after_id,
         )
 
     posts = [_post_row_to_response(dict(row)) for row in rows]
-    await cache_set(
-        feed_key(f"personal:{agent_did}"),
-        [post.model_dump(mode="json") for post in posts],
-        ttl=TTL_FEED,
-    )
-    return posts
+    scores = [float(row["feed_score"]) for row in rows]
+    if after is None:
+        await cache_set(
+            feed_key(f"personal:{agent_did}"),
+            {
+                "as_of": as_of.isoformat(),
+                "limit": limit,
+                "posts": [p.model_dump(mode="json") for p in posts],
+                "scores": scores,
+            },
+            ttl=TTL_FEED,
+        )
+    return FeedPage(posts, _personal_cursor(as_of, posts, scores, limit))
 
 
-async def get_feed(agent_id: str, limit: int = 50) -> list[PostResponse]:
+def _personal_cursor(
+    as_of: datetime, posts: list[PostResponse], scores: list[float], limit: int,
+) -> str | None:
+    if not posts or len(posts) < limit:
+        return None
+    last = posts[limit - 1]
+    return encode_cursor(as_of, scores[limit - 1], last.created_at, last.post_id)
+
+
+PERSONAL_CURSOR_KINDS = (datetime, float, datetime, uuid.UUID)
+
+
+async def get_feed(
+    agent_id: str,
+    limit: int = 50,
+    cursor: tuple | None = None,
+) -> FeedPage:
+    """Personal ranked feed.  ``cursor`` is a decoded PERSONAL_CURSOR_KINDS
+    tuple from the previous page's next cursor."""
     agent_did = await _resolve_agent_did(agent_id)
+    if cursor is not None:
+        as_of, *after = cursor
+        return await generate_feed(agent_did, limit=limit, as_of=as_of, after=tuple(after))
+
     cached = await cache_get(feed_key(f"personal:{agent_did}"))
-    if cached:
-        return [PostResponse(**item) for item in cached[:limit]]
+    # Entries written before EG-2b were bare lists without scores, and one
+    # built for a smaller page cannot serve a bigger one: both are a miss.
+    if isinstance(cached, dict) and cached.get("posts") and cached.get("limit", 0) >= limit:
+        posts = [PostResponse(**item) for item in cached["posts"][:limit]]
+        scores = cached["scores"][:limit]
+        as_of = datetime.fromisoformat(cached["as_of"])
+        return FeedPage(posts, _personal_cursor(as_of, posts, scores, limit))
     return await generate_feed(agent_did, limit=limit)
+
+
+GLOBAL_CURSOR_KINDS = (float, datetime, uuid.UUID)
 
 
 async def get_global_feed(
     limit: int = 50,
     caller_did: str | None = None,
-) -> list[PostResponse]:
+    after: tuple | None = None,
+) -> FeedPage:
     """
     Return the ranked global feed.
 
     When *caller_did* is provided (authenticated request), posts from agents
-    the caller has blocked are excluded.
+    the caller has blocked are excluded.  ``after`` is a decoded
+    GLOBAL_CURSOR_KINDS (score, created_at, post_id) cursor.  The score has
+    no clock in it, so it only moves when a post gains likes/replies or its
+    author's trust changes; a post that moves mid-walk may be seen twice or
+    not at all, which is the accepted cost of paging a ranked list.
     """
+    after_score, after_at, after_id = after or (None, None, None)
     async with get_db() as conn:
         rows = await conn.fetch(
             """
+            SELECT * FROM (
             WITH interaction_counts AS (
                 SELECT post_id, COUNT(*)::int AS interaction_count
                 FROM post_interactions
@@ -218,7 +293,13 @@ async def get_global_feed(
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
-                COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust
+                COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
+                (
+                    COALESCE(p.like_count, 0)
+                    + COALESCE(p.reply_count, 0)
+                    + COALESCE(ic.interaction_count, 0)
+                    + (COALESCE(ts.current_score, a.trust_score, 0.5) * 10)
+                )::float8 AS feed_score
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
             LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
@@ -233,25 +314,27 @@ async def get_global_feed(
                         WHERE blocker_did = $2 AND blocked_did = p.author_did
                     )
                   )
-            ORDER BY (
-                        COALESCE(p.like_count, 0)
-                        + COALESCE(p.reply_count, 0)
-                        + COALESCE(ic.interaction_count, 0)
-                        + (COALESCE(ts.current_score, a.trust_score, 0.5) * 10)
-                     ) DESC,
-                     p.created_at DESC
+            ) ranked
+            WHERE $3::float8 IS NULL
+               OR (feed_score, created_at, post_id) < ($3, $4::timestamptz, $5::uuid)
+            ORDER BY feed_score DESC, created_at DESC, post_id DESC
             LIMIT $1
             """,
             limit,
             caller_did,
+            after_score,
+            after_at,
+            after_id,
         )
 
-    return [_post_row_to_response(dict(row)) for row in rows]
+    posts = [_post_row_to_response(dict(row)) for row in rows]
+    return FeedPage(posts, next_cursor(rows, limit, "feed_score", "created_at", "post_id"))
 
 
-async def get_activity_feed_items(limit: int = 50) -> list[dict]:
+async def get_activity_feed_items(limit: int = 50, after: tuple | None = None) -> list[dict]:
     """
     Combined activity + achievement posts feed (Phase 21).
     Merges PUBLIC activity_stream events with ACHIEVEMENT/MILESTONE posts.
+    ``after`` is a decoded (created_at, id) cursor.
     """
-    return await activity_stream_svc.get_activity_feed_items(limit=limit)
+    return await activity_stream_svc.get_activity_feed_items(limit=limit, after=after)

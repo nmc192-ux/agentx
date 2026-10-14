@@ -62,10 +62,10 @@ async def _walk_body(client, url, key, limit, headers=None, params=None):
     raise AssertionError("cursor never ran out")
 
 
-async def _walk_header(client, url, limit, headers=None, max_pages=50):
+async def _walk_header(client, url, limit, headers=None, max_pages=50, params=None):
     pages, cursor = [], None
     for _ in range(max_pages):
-        q = {"limit": limit}
+        q = {**(params or {}), "limit": limit}
         if cursor:
             q["cursor"] = cursor
         r = await client.get(url, params=q, headers=headers)
@@ -230,6 +230,116 @@ async def test_global_activity_cursor_walk(client, pool, agents):
     assert len({e["stream_id"] for e in walked}) == 5
 
 
+# ── Ranked feeds (EG-2b) ──────────────────────────────────────────────────────
+# The database is shared across the run, so these tests make their own posts
+# sort first (huge like counts / far-future timestamps) and check those.
+
+HOT = 10_000_000   # far above any like count other tests create
+
+
+async def _post(pool, author, at=TIE, likes=0, title="p"):
+    return await pool.fetchval(
+        "INSERT INTO posts (creator_agent_id, author_did, post_type, title, content, "
+        "created_at, like_count) VALUES ($1, $2, 'UPDATE', $3, $4, $5::text::timestamptz, $6) "
+        "RETURNING post_id",
+        author.agent_id, author.did, title, f"{title} body", at, likes,
+    )
+
+
+async def test_global_feed_cursor_walk_by_score(client, pool, agents):
+    author = await agents("ranked")
+    ids = []
+    for i in range(7):
+        # Three share score and timestamp (post_id decides); the rest differ.
+        likes = HOT if i < 3 else HOT + i
+        ids.append(str(await _post(pool, author, likes=likes, title=f"r{i}")))
+
+    full = _flat([(await client.get("/feed/global", params={"limit": 7})).json()], "post_id")
+    assert sorted(full) == sorted(ids)            # ours are the top 7
+
+    pages = await _walk_header(client, "/feed/global", 3, max_pages=3)
+    assert [len(p) for p in pages][:2] == [3, 3]   # page 3 may hold other tests' posts
+    walked = _flat(pages, "post_id")[:7]
+    assert walked == full and len(set(walked)) == 7
+    # The scores really are non-increasing across page borders.
+    likes = [p["like_count"] for page in pages for p in page][:7]
+    assert likes == sorted(likes, reverse=True)
+
+
+async def test_global_feed_cursor_keeps_block_filter(client, pool, agents, optional_login):
+    me, good, blocked = await agents("me"), await agents("good"), await agents("blocked")
+    for i in range(4):
+        await _post(pool, good, likes=HOT * 2 + i, title=f"g{i}")
+        await _post(pool, blocked, likes=HOT * 2 + i, title=f"b{i}")
+    await pool.execute(
+        "INSERT INTO agent_blocks (blocker_did, blocked_did) VALUES ($1, $2)",
+        me.did, blocked.did,
+    )
+    pages = await _walk_header(client, "/feed/global", 2, headers=me.headers, max_pages=2)
+    authors = [p["author_did"] for page in pages for p in page]
+    assert authors == [good.did] * 4              # blocked author absent on page 2 too
+
+    anon = await _walk_header(client, "/feed/global", 2, max_pages=2)
+    assert {p["author_did"] for page in anon for p in page} == {good.did, blocked.did}
+
+
+async def test_personal_feed_walks_whole_feed_once(client, pool, agents):
+    me, star = await agents("reader"), await agents("star")
+    await _follow(pool, me, star)
+    mine = {str(await _post(pool, star, at=f"2026-0{m}-01T00:00:00+00")) for m in range(1, 6)}
+
+    eligible = await pool.fetchval(
+        "SELECT count(*) FROM posts WHERE visibility IN ('PUBLIC', 'SYSTEM') "
+        "AND status = 'ACTIVE' AND hidden_at IS NULL",
+    )
+    pages = await _walk_header(client, "/feed", 50, max_pages=500,
+                               params={"agent_id": me.did})
+    walked = _flat(pages, "post_id")
+    assert len(walked) == len(set(walked)) == eligible   # every post once, none twice
+    assert mine <= set(walked)
+
+    # Small pages give the same order as one big page.
+    big = _flat([(await client.get("/feed", params={"agent_id": me.did, "limit": 12})).json()],
+                "post_id")
+    small = _flat(await _walk_header(client, "/feed", 3, max_pages=4,
+                                     params={"agent_id": me.did}), "post_id")
+    assert small[:len(big)] == big
+
+
+async def test_personal_feed_new_post_mid_walk_does_not_shift_pages(client, pool, agents):
+    me, star = await agents("reader"), await agents("star")
+    await _follow(pool, me, star)
+    first = await client.get("/feed", params={"agent_id": me.did, "limit": 4})
+    cursor = first.headers["X-Next-Cursor"]
+    page1 = _flat([first.json()], "post_id")
+
+    # A brand-new post from a followed author ranks at the very top.
+    fresh = str(await _post(pool, star, at="now", title="fresh"))
+    second = await client.get("/feed", params={"agent_id": me.did, "limit": 4, "cursor": cursor})
+    page2 = _flat([second.json()], "post_id")
+    assert fresh not in page2
+    assert not set(page1) & set(page2)
+    # ...and with no cursor it is first.
+    top = (await client.get("/feed", params={"agent_id": me.did, "limit": 1})).json()
+    assert top[0]["post_id"] == fresh
+
+
+async def test_activity_feed_cursor_walk_mixes_both_kinds(client, pool, agents):
+    owner = await agents("owner")
+    for i in range(3):
+        await pool.execute(
+            "INSERT INTO activity_stream (agent_did, stream_type, content, visibility, created_at) "
+            "VALUES ($1, 'test', $2, 'PUBLIC', '2099-07-01T00:00:00+00')",
+            owner.did, f"a{i}",
+        )
+        await _post(pool, owner, at="2099-07-01T00:00:00+00", title=f"m{i}")
+    pages = await _walk_header(client, "/feed/activity", 4, max_pages=2)
+    walked = [e for p in pages for e in p][:6]
+    assert {e["agent_did"] for e in walked} == {owner.did}
+    assert len({e["id"] for e in walked}) == 6
+    assert sorted(e["item_type"] for e in walked) == ["activity"] * 3 + ["post"] * 3
+
+
 # ── Bad cursors ───────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("cursor", ["%%%", "e30", "WyJ4Il0", "x" * 600])
@@ -241,6 +351,9 @@ async def test_bad_cursor_is_400(client, pool, agents, optional_login, cursor):
         ("/notifications", me.headers),
         (f"/agents/{me.did}/activity-stream", None),
         ("/activity", None),
+        ("/feed/global", None),
+        ("/feed/activity", None),
+        ("/feed", me.headers),
     ):
         r = await client.get(url, params={"cursor": cursor}, headers=headers)
         assert r.status_code == 400, (url, r.status_code, r.text)

@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import math
 from datetime import datetime
 from typing import Any, Sequence
 from uuid import UUID
@@ -38,7 +39,7 @@ def _to_json(value: Any) -> Any:
 
 
 def encode_cursor(*parts: Any) -> str:
-    """Pack sort-key values (datetime, UUID, str, bool, int) into a cursor."""
+    """Pack sort-key values (datetime, UUID, str, bool, int, float) into a cursor."""
     raw = json.dumps([_to_json(p) for p in parts], separators=(",", ":"))
     return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
@@ -65,6 +66,14 @@ def _from_json(value: Any, kind: type) -> Any:
         return value
     if kind is int:
         if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError
+        return value
+    if kind is float:
+        # Ranking scores.  json.loads accepts NaN/Infinity; a score never is.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError
+        value = float(value)
+        if not math.isfinite(value):
             raise ValueError
         return value
     if kind is str:

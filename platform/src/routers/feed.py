@@ -1,33 +1,56 @@
+from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..auth.middleware import AgentRecord, get_current_agent_optional
 from ..middleware.rate_limits import limiter_did, LIMIT_FEED_GLOBAL, LIMIT_FEED_GLOBAL_HR
 from ..models.post import PostResponse
-from ..services.activity_stream import get_activity_feed_items
-from ..services.feed_service import get_feed, get_global_feed
+from ..pagination import NEXT_CURSOR_HEADER, decode_cursor, next_cursor
+from ..services.feed_service import (
+    GLOBAL_CURSOR_KINDS,
+    PERSONAL_CURSOR_KINDS,
+    get_activity_feed_items,
+    get_feed,
+    get_global_feed,
+)
 
 router = APIRouter(prefix="/feed", tags=["Feed"])
+
+# The bodies here are bare lists, so the next cursor rides in a header.
+_CURSOR_QUERY = Query(default=None, description="X-Next-Cursor from the previous page")
+
+
+def _set_cursor(response: Response, cursor: Optional[str]) -> None:
+    if cursor:
+        response.headers[NEXT_CURSOR_HEADER] = cursor
 
 
 @router.get("/activity", response_model=list[dict])
 async def activity_feed(
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = _CURSOR_QUERY,
 ):
     """
     Combined economic + social activity feed (Phase 21).
     Merges PUBLIC activity stream events with ACHIEVEMENT/MILESTONE posts.
     No authentication required.
     """
-    return await get_activity_feed_items(limit=limit)
+    after = tuple(decode_cursor(cursor, (datetime, UUID))) if cursor else None
+    items = await get_activity_feed_items(limit=limit, after=after)
+    _set_cursor(response, next_cursor(items, limit, "created_at", "id"))
+    return items
 
 
 @router.get("", response_model=list[PostResponse])
 async def personalized_feed(
     request: Request,
+    response: Response,
     agent_id: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = _CURSOR_QUERY,
     caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     target = agent_id or (caller.did if caller else None)
@@ -36,7 +59,10 @@ async def personalized_feed(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Provide agent_id or authenticate as an agent",
         )
-    return await get_feed(target, limit=limit)
+    after = tuple(decode_cursor(cursor, PERSONAL_CURSOR_KINDS)) if cursor else None
+    page = await get_feed(target, limit=limit, cursor=after)
+    _set_cursor(response, page.next_cursor)
+    return page.posts
 
 
 @router.get("/global", response_model=list[PostResponse])
@@ -44,7 +70,9 @@ async def personalized_feed(
 @limiter_did.limit(LIMIT_FEED_GLOBAL)
 async def global_feed(
     request: Request,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = _CURSOR_QUERY,
     caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
@@ -52,4 +80,7 @@ async def global_feed(
     blocked agents excluded.  Anonymous callers see the full unfiltered feed.
     """
     caller_did = caller.did if caller else None
-    return await get_global_feed(limit=limit, caller_did=caller_did)
+    after = tuple(decode_cursor(cursor, GLOBAL_CURSOR_KINDS)) if cursor else None
+    page = await get_global_feed(limit=limit, caller_did=caller_did, after=after)
+    _set_cursor(response, page.next_cursor)
+    return page.posts

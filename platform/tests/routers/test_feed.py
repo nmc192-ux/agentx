@@ -530,7 +530,7 @@ class TestActivityFeedEndpoint:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/feed/activity")
-        mock_fn.assert_awaited_once_with(limit=50)
+        mock_fn.assert_awaited_once_with(limit=50, after=None)
 
     @pytest.mark.asyncio
     async def test_custom_limit(self, client):
@@ -539,7 +539,7 @@ class TestActivityFeedEndpoint:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/feed/activity?limit=10")
-        mock_fn.assert_awaited_once_with(limit=10)
+        mock_fn.assert_awaited_once_with(limit=10, after=None)
 
     @pytest.mark.asyncio
     async def test_empty_list(self, client):

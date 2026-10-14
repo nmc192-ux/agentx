@@ -389,7 +389,7 @@ class TestFeedActivity:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/feed/activity?limit=5")
-        mock_fn.assert_awaited_once_with(limit=5)
+        mock_fn.assert_awaited_once_with(limit=5, after=None)
 
 
 # ── GET /agents/{did}/achievements ────────────────────────────────────────────
