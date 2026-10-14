@@ -19,6 +19,7 @@
   2 xfailed. `--db`: all pass except the known pre-existing `test_founder_civics_db` (5, fails
   identically without this change) and `test_database_rls` (8 errors, different DB). UI `tsc`
   clean.
+- Commit `e9cd92c`.
 - **Next:** EG-2, cursor paging on the heavy lists (T2).
 
 ## 2026-10-10 · cycle 166 · Opus (T2) · RF-3: Phase B merge briefing refreshed after RF-2
