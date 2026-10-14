@@ -112,10 +112,18 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   reads `limit` rows (was 100), ML tasks on page 1 only, cache entry keyed on limit.
   Check: 7 new walk tests in `tests/integration/test_cursor_paging_db.py` + bad cursor 400 on
   all five routes.
-- [ ] **EG-3 — In-process cache, no Redis.** T2. Small TTL cache (per machine) for the global
-  feed, agent list/discover, trust score reads and `/.well-known/skill.md`, plus
-  `Cache-Control` headers so Vercel/browsers reuse responses. Check: second call within the
-  TTL does not touch the DB (test); stale after TTL.
+- [x] **EG-3 — In-process cache, no Redis.** Done cycle 171. T2. `src/local_cache.py`
+  (per-machine TTL + LRU store, lifetime capped at 30 s so cross-machine staleness is
+  bounded). `src.cache` falls back to it when Redis is off, so the existing trust score,
+  agent profile, pulse, feed caches work again with `REDIS_URL=memory://`.
+  `src/middleware/response_cache.py`: anonymous GETs of `/feed/global`, `/feed/activity`,
+  `/posts/global`, `/agents`, `/agents/discover`, `/agents/top`, `/pulse(/trending)`,
+  `/spotlight/agent-of-the-week(/history)` served from memory for 30–60 s with
+  `Cache-Control: public, max-age`; with `Authorization` always live and `private,
+  no-store`; `Vary: Authorization`. skill.md already had `max-age=300`.
+  Hiding/unhiding a post (and auto-hide by flags/edit) drops this machine's cached feeds;
+  a spotlight override/withdraw drops `/spotlight/`. `LOCAL_CACHE=off` switches both off.
+  Check: `tests/test_local_cache.py` (20); `--db` integration: only the known 9 fail.
 - [ ] **EG-4 — In-memory per-IP limits on heavy public lists.** T2. Tighter per-IP slowapi
   limits on unauthenticated list routes (memory store, per machine). Check: 429 test per route.
 - [ ] **EG-5 — Slim list payloads.** T2. List queries select only the columns the list shows

@@ -1,5 +1,36 @@
 # Engine log
 
+## 2026-10-14 · cycle 171 · Opus (T2) · EG-3: in-process cache, no Redis
+
+- New `src/local_cache.py`: per-machine TTL + LRU store (1000 entries, lifetimes capped at
+  30 s so a write on one Fly machine is seen by the others within 30 s). `src.cache` uses it
+  whenever Redis is disabled (production runs `REDIS_URL=memory://` since 9 Oct), so the
+  existing trust score / agent profile / pulse / feed caches work again. A configured Redis
+  that errors still means no cache (fail open), not a silent switch.
+- New `src/middleware/response_cache.py` (inside CORS, so cached answers keep CORS headers;
+  inside the list cap, so `limit=500` and `limit=50` share one entry): anonymous GETs of
+  `/feed/global`, `/feed/activity`, `/posts/global`, `/pulse(/trending)` (30 s) and `/agents`,
+  `/agents/discover`, `/agents/top`, `/spotlight/agent-of-the-week(/history)` (60 s) answered
+  from memory with `Cache-Control: public, max-age`; any request with `Authorization` always
+  reaches the route and gets `private, no-store`; `Vary: Authorization` on both. Only 200s
+  up to 256 KB are stored. Moderation (hide, unhide, auto-hide by flags or edit) and
+  spotlight override/withdraw drop the cached answers on that machine.
+- **Decisions I made:** cached answers skip the routes' own rate limits (they cost no DB);
+  EG-4 adds per-IP limits. A new post can take up to 30 s to show to anonymous readers and
+  followers' personal feeds on other machines; accepted for the 2 GB target. Commit marked
+  `SECURITY-REVIEW:` (a response cache must never hand a logged-in answer to someone else)
+  for the sprint-close review.
+- Check: `tests/test_local_cache.py` 20 new (second anonymous call does not reach the route,
+  stale after TTL, auth bypass both ways, errors not stored, CORS on a hit, off switch, no
+  cached path needs login). `--db` found 3 cache effects, all handled: a hidden post stayed in
+  the cached `/posts/global` (fixed: moderation invalidates), and two tests that write rows
+  straight to the DB or log in with a test-only header (tests updated). `pytest`: 3256
+  passed, 640 skipped, 2 xfailed. `--db tests/integration`: 617 passed, 9 failed (the known
+  civics 5, founder messages 2, trust replay 2). `tests/infrastructure/test_database_rls.py`
+  errors (no `agents` table in its DB) also fail without this change.
+- Commit `fdbc306`.
+- **Next:** EG-4, in-memory per-IP limits on heavy public lists (T2).
+
 ## 2026-10-14 · cycle 170 · Opus (T2) · EG-2c: cursor paging on the agent and post lists
 
 - `/agents` keyset on (trust_score as float8, created_at, agent_did; tie-breaker added);
