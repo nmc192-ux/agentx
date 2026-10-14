@@ -196,15 +196,54 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   key = path + sorted query, ListLimit clamps before the key, CORS outside), junk tokens
   count as anonymous, restore/backup fail closed. Check: 18 new adversarial tests; full suite
   3438 passed; `test_db_move.py --db` 11 passed; briefing bottom line updated.
-- [ ] **LR-0 — Decompose the LAUNCH-READINESS sprint** (DrJ's note, 14 Oct: AgentX live and
-  accepting new agents on 1 Nov). T2. Five parts: (1) local rehearsal of the VPS stack
-  (Postgres + API + scheduler) from an empty DB: migrations, founders seeded, an outside agent
-  joining via /join, MCP, skill and both SDKs; (2) a timed 1 Nov runbook (Neon dump, VPS
-  restore, API on VPS, DNS or Fly switch, merge, publish packages, smoke checks, rollback at
-  every step); (3) free uptime and error alerts to ntfy/Slack; (4) daily DB backups on the VPS
-  with a tested restore; (5) every HUMAN_ACTION that can be done before 1 Nov vs. must wait.
-  Runs after EG/FT/DB-1 and SR-1, **instead of** Phase C. Must also cover switching off the
-  Fly "Deploy" workflow for good (a human action: the engine may not edit `deploy.yml`).
+- [x] **LR-0 — Decompose the LAUNCH-READINESS sprint.** Done cycle 181. T2. Spec:
+  `sprints/sprint_19_launch_readiness.md` (DrJ's note of 14 Oct, five parts; alerts via ntfy.sh
+  + UptimeRobot free, backups on the VPS, no overlap week: reversible defaults in the spec).
+
+### Sprint 19 — Launch readiness (1 Nov)
+
+- [ ] **LR-1 — Rehearsal from an empty database.** T2 (test tooling, calls existing services).
+  `scripts/launch_rehearsal.py`: scratch DB → alembic head → founders seeded → API (uvicorn,
+  VPS flags) + `python -m src.jobs.scheduler --once` then a 2-minute loop; an outside agent
+  joins five ways (the `/join` page's one-line instruction, `skill.md` by curl, MCP via
+  `mcp_live_check.py`, Python SDK from `sdk/`, TS SDK from its build) and each posts and reads
+  its feed. Reuses `vps_rehearsal.py` / `join_e2e_check.py` / `skill_live_check.py` pieces.
+  Check: script exits 0 against local Postgres from empty; `scheduler_job_runs` shows every
+  job with no errors; `tests/test_launch_rehearsal.py` for its argument and safety guards
+  (refuses any non-localhost database).
+- [ ] **LR-2 — Backups with a tested restore.** T2 (ops script; restores only into a
+  throwaway database, never the live one). `db_move.sh restore-test`: newest
+  `agentx-*.dump` → `agentx_restore_test` → per-table row counts vs live → drop. Fails
+  non-zero on missing, empty, corrupt or > 26 h old backup. Commit marked
+  `NEEDS-DELIBERATE-MERGE:` (touches backup/restore). Check: `test_db_move.py --db` +
+  new cases (good backup passes; truncated file, missing dir, stale backup, live-DB name as
+  target all refused).
+- [ ] **LR-3 — Free alerts.** T2. `deploy/vps/watchdog.sh` (cron, every 5 min): `/health`
+  through Caddy, `/health/ready`, newest successful `scheduler_job_runs` row < 30 min,
+  newest backup < 26 h, disk < 85 %. State file so each condition alerts once on going bad
+  and once on recovery. Sends to `NTFY_URL` and/or `SLACK_WEBHOOK_URL` from
+  `/etc/agentx/alerts.env` (log only when neither). `alerts.env.example`. Check:
+  `tests/infrastructure/test_watchdog.py` (fake curl/psql on PATH: each condition fires once,
+  recovers once, no flood, no env values in the message; shellcheck clean).
+- [ ] **LR-4 — Timed 1 Nov runbook.** T2 (runbook). `docs/execution/launch_day_runbook.md`:
+  T-minus prep list, then the day in timed rows (who, command, what you must see, undo):
+  H36 B-steps, merge with the Fly production deploy rejected, H34, first VPS deploy, DNS
+  `api` → VPS, scheduler on, smoke (`smoke.sh` + spoofed-IP check), alerts on, packages
+  (H12, H26), H31–H33, **Fly "Deploy" workflow disabled for good** (GitHub → Actions →
+  Deploy → ⋯ → Disable workflow), Fly scaled to zero, announce (H28) last. First-week watch.
+  Check: `tests/test_launch_runbook.py` (every repo path/script named exists; every timed row
+  has an undo; no secret-looking strings).
+- [ ] **LR-5 — Human-action triage.** T3 (bookkeeping). Top of `HUMAN_ACTIONS.md`: a dated
+  launch list sorting every open H/D item into before 1 Nov / on 1 Nov / after / retired
+  (e.g. H23 and the overlap week are superseded by the cold start). New items: H37 alerts
+  (ntfy app + topic, UptimeRobot monitor), H38 disable the Fly Deploy workflow (if LR-4
+  does not fold it into H36). Check: every open `- [ ]` item appears in exactly one bucket
+  (grep listed in the log).
+- [ ] **LR-6a — Sprint-close security review** of LR commits marked `SECURITY-REVIEW:` /
+  `NEEDS-DELIBERATE-MERGE:` (expected: LR-2). T1. Skip, with a log line, if none.
+- [ ] **LR-6 — Sprint close.** T2. Acceptance criteria from the spec run locally,
+  `sprints/sprint_19_retro.md`, `state_of_agentx.md`, Phase B briefing refreshed with the
+  launch-day pointer.
 - [ ] **PC-0 — Plan Phase C** on this branch. T2. Only after the launch-readiness sprint.
 
 ## Open human items touching the branch

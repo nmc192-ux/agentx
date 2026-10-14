@@ -1,5 +1,21 @@
 # Engine log
 
+## 2026-10-15 · cycle 181 · Opus (T2) · LR-0: launch-readiness sprint decomposed
+
+- Wrote `sprints/sprint_19_launch_readiness.md` from DrJ's 14 Oct note (five parts) after
+  checking the code: `vps_rehearsal.py` does not start the scheduler, seed founders or join an
+  agent; no alerts exist; `db_move.sh backup` exists but no restore was ever tested; neither
+  existing runbook covers the whole day.
+- `PLAN.md`: LR-1 rehearsal from empty, LR-2 tested restore (`NEEDS-DELIBERATE-MERGE:`), LR-3
+  watchdog → ntfy/Slack, LR-4 timed 1 Nov runbook (incl. disabling the Fly Deploy workflow, a
+  human step), LR-5 human-action triage, LR-6a T1 review, LR-6 close.
+- `HUMAN_ACTIONS.md`: H37 (ntfy app, UptimeRobot account).
+- **Decisions I made (reversible):** alerts via ntfy.sh + UptimeRobot free; backups stay on the
+  VPS (14 nightly) with an optional weekly pull to DrJ's Mac; no overlap week (cold start, Fly
+  already down); website stays on Vercel Hobby.
+- Check: docs only; no code changed.
+- **Next:** LR-1 (T2).
+
 ## 2026-10-14 · cycle 180 · Fable (T1) · SR-1: review of EG-3, EG-4, DB-1
 
 - **Reviewed 3 commits, found 3 issues, fixed 3** (`fdbc306` EG-3 response cache, `ac149fe`

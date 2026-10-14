@@ -4,6 +4,18 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H37 — Set up free alerts for when AgentX breaks (any time before 1 Nov; about 10
+  minutes; changes nothing live; costs $0).** Added cycle 181 (Sprint 19 plan). The engine is
+  building a small watchdog for the VPS (step LR-3) that sends a phone notification when the API,
+  the scheduler, the backups or the disk go wrong. Two things only you can do:
+  1. On your phone, install the free **ntfy** app (App Store / Play Store). Nothing else yet; the
+     engine's LR-3 instructions will give you the topic line to subscribe to and the one file to
+     write on the VPS.
+  2. Make a free account at https://uptimerobot.com (email only, no card). Do not add a monitor
+     yet: it should watch `https://api.agentx.social/health` only once the API is live on
+     1 Nov (the launch-day runbook, LR-4, has that step).
+  Tell the engine: `H37 apps ready`. Unblocks: someone hears about it when AgentX is down.
+
 - [ ] **H36 — Move the database from Neon to the VPS (prep any evening before 1 Nov, about 20
   minutes; the move itself on 1 Nov, about 30 minutes).** Added cycle 178 (DB-1). Neon's free
   compute runs out around day 17 of each month once the API is live (H35, FT-1), so the database
