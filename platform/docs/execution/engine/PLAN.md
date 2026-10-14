@@ -218,7 +218,7 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   `NEEDS-DELIBERATE-MERGE:` (touches backup/restore). Check: `test_db_move.py --db` +
   new cases (good backup passes; truncated file, missing dir, stale backup, live-DB name as
   target all refused).
-- [ ] **LR-3 — Free alerts.** T2. `deploy/vps/watchdog.sh` (cron, every 5 min): `/health`
+- [x] **LR-3 — Free alerts.** Done cycle 184 (`291671c`); `test_watchdog.py --db` 23/23. T2. `deploy/vps/watchdog.sh` (cron, every 5 min): `/health`
   through Caddy, `/health/ready`, newest successful `scheduler_job_runs` row < 30 min,
   newest backup < 26 h, disk < 85 %. State file so each condition alerts once on going bad
   and once on recovery. Sends to `NTFY_URL` and/or `SLACK_WEBHOOK_URL` from

@@ -1,5 +1,28 @@
 # Engine log
 
+## 2026-10-15 · cycle 184 · Opus (T2) · LR-3: watchdog with free alerts
+
+- `deploy/vps/watchdog.sh` + `alerts.env.example` (commit `291671c`). Cron every 5 min as
+  `deploy`: `api` (`/health` through Caddy = 200), `ready` (`/health/ready` = 200), `scheduler`
+  (newest `last_status='ok'` row in `scheduler_job_runs` finished < 30 min ago; DB unreadable or
+  no row = bad), `backup` (non-empty `agentx-*.dump` < 26 h), `restore` (LR-2's status file not
+  `fail`, and < 26 h old once it exists), `disk` (< 85 %). State per check in
+  `$BACKUP_DIR/watchdog.state`; a message only on a change (bad, then recovered). If every
+  channel fails the state is not saved, so the next run retries. `alerts.env` is parsed with
+  sed, never sourced; ntfy/Slack URLs never printed; text from files is one printable line,
+  ≤ 200 chars. Exit 1 when any check is bad.
+- H37 step 3 (switch on, 1 Nov, after the API is live: topic, alerts.env, cron line, phone test,
+  UptimeRobot monitor) and runbook A5b.
+- Check: `tests/infrastructure/test_watchdog.py --db` **23 passed** (11 bad conditions × fire
+  once / quiet ×3 / recover once; bad on first run; log-only with no channel or no file;
+  failed delivery retried; Slack-only; no secret in messages or log; alerts.env not executed;
+  status text cleaned; shellcheck clean; example has no values; scheduler SQL against a real
+  local Postgres table). Full suite 3483 passed, 670 skipped, 2 xfailed.
+- **Decision I made (reversible):** the very first run treats every check as previously ok, so
+  a healthy start is silent and a broken one alerts once. No "two failures in a row" damping:
+  curl retries once inside the check instead; revisit if blips page DrJ.
+- **Next:** LR-4 (T2), timed 1 Nov runbook.
+
 ## 2026-10-15 · cycle 183 · Opus (T2) · LR-2: tested restore of the nightly backup
 
 - `deploy/vps/db_move.sh restore-test` (commit `bf4caea`, marked `NEEDS-DELIBERATE-MERGE:`):
