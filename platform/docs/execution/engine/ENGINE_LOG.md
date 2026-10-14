@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-15 · cycle 183 · Opus (T2) · LR-2: tested restore of the nightly backup
+
+- `deploy/vps/db_move.sh restore-test` (commit `bf4caea`, marked `NEEDS-DELIBERATE-MERGE:`):
+  newest `agentx-*.dump` → throwaway `agentx_restore_test` on the same server → table list,
+  alembic version and per-table row counts printed beside the live database's → dropped (EXIT
+  trap, so also on failure). The live database is only read. Fails with one `ALERT:` line and
+  `fail …` in `$BACKUP_DIR/restore-test.status` (for LR-3's watchdog) on: no folder, no file,
+  empty, unreadable/truncated dump, older than 26 h (`MAX_BACKUP_AGE_H`), other migration
+  version, other table set, or under 50 % of the live rows (`RESTORE_MIN_SHARE`). Target name
+  must match `^agentx_restore_test[a-z0-9_]*$` and differ from the live database.
+  `backup`/`restore-test` no longer require Neon settings in `settings.env` (`need_src` only in
+  check/dump/verify). Runbook A5: second cron line at 03:47.
+- Check: `test_db_move.py --db` **20 passed** (9 new: pass + throwaway dropped + live untouched;
+  a day of new rows tolerated; lost rows, truncated, garbage, empty, stale, missing folder/file,
+  other migration, live-DB / injection / uppercase targets all refused). Full suite 3461 passed,
+  669 skipped, 2 xfailed. shellcheck: info notes only, same kinds as before.
+- **Decision I made (reversible):** the restore is compared with the live database, which has
+  moved on since 03:17, so row counts cannot match exactly; the rule is "same tables, same
+  migration, at least half the live rows". A same-day migration makes the next run fail once
+  until the next backup, which is the honest answer.
+- **Next:** LR-3 (T2), watchdog + alerts.
+
 ## 2026-10-15 · cycle 182 · Opus (T2) · LR-1: launch rehearsal from an empty database
 
 - New `platform/scripts/launch_rehearsal.py` (commit `3e858d1`). It builds a scratch database

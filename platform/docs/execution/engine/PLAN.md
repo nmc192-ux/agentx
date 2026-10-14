@@ -211,7 +211,7 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   Check: script exits 0 against local Postgres from empty; `scheduler_job_runs` shows every
   job with no errors; `tests/test_launch_rehearsal.py` for its argument and safety guards
   (refuses any non-localhost database).
-- [ ] **LR-2 — Backups with a tested restore.** T2 (ops script; restores only into a
+- [x] **LR-2 — Backups with a tested restore.** Done cycle 183 (`bf4caea`); `test_db_move.py --db` 20/20. T2 (ops script; restores only into a
   throwaway database, never the live one). `db_move.sh restore-test`: newest
   `agentx-*.dump` → `agentx_restore_test` → per-table row counts vs live → drop. Fails
   non-zero on missing, empty, corrupt or > 26 h old backup. Commit marked
