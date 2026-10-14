@@ -163,9 +163,16 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   (27 % of 2 GB; 50 agents, 300 views/day); ~275 MB fixed (founder tick 175, reconnects 100);
   target holds to ~450 agents or ~6,000 views/day; website ceiling 5.5 GB. Levers listed, none
   needed for launch. Check: script run + `tests/test_measure_egress.py` (6); suite 3374 green.
-- [ ] **FT-1 — Free-tier audit.** T2. Neon (CU-hours, transfer, storage), Fly, Vercel, Upstash
-  against their free limits with estimated monthly use; fix anything near a limit.
-- [ ] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** T2. Extend the Sprint 16 VPS
+- [x] **FT-1 — Free-tier audit.** Done cycle 177. T2. `free_tier_audit.md`: **Neon compute is
+  over** (100 CU-h free; never sleeps because something touches it every ≤ 5 min → ~180 CU-h,
+  pauses ~day 17), so DB-1 is required for 1 Nov; Neon transfer 11 %, storage ~30 MB/month.
+  Fly has no free allowance for new orgs; app is 2x/512 MB → $0 only via the VPS cutover (H23)
+  then stopping Fly. Vercel Hobby ~26 % of 1 M CDN requests (measured ~43 per first visit on a
+  local prod build; browser calls the API directly), breaks at ~1,100 views/day; prefetch lever
+  written, not built. Upstash: 0 commands with `REDIS_URL=memory://`. H35 asks DrJ for real
+  bills. No code change (nothing in code near a limit).
+- [ ] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** T2. **Required (FT-1: Neon
+  free compute cannot carry the live API past ~day 17).** Extend the Sprint 16 VPS
   plan (shared Caddy, backups to disk, no public DB port) and write the runbook: pg_dump from
   Neon, restore on the VPS, switch, verify, keep Neon as fallback. Files only.
 - [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB and RL-1. T2. Live-test
@@ -183,5 +190,5 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
 
 ## Open human items touching the branch
 
-H34 (fly.toml scheduler line, same merge, URGENT); D11 (human role, not blocking); merge (Sprints 13–18, migrations 048 and 049); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
+H34 (fly.toml scheduler line, same merge, URGENT); H35 (read Fly/Neon/Vercel usage); D11 (human role, not blocking); merge (Sprints 13–18, migrations 048 and 049); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
 (publish); H27, H28.

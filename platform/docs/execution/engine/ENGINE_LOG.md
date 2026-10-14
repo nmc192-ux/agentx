@@ -1,5 +1,35 @@
 # Engine log
 
+## 2026-10-14 · cycle 177 · Opus (T2) · FT-1: free-tier audit
+
+- New `docs/execution/engine/free_tier_audit.md`: Neon, Fly, Vercel, Upstash checked against
+  the vendors' pricing pages (read today, linked) and our own measured usage.
+- **Finding: Neon's free compute is over.** 100 CU-hours a month buys 400 awake hours at the
+  0.25 CU minimum. The compute sleeps only after 5 quiet minutes, and the founder tick, the jobs
+  and outside heartbeats touch it at least every 5 minutes, so it never sleeps: about 180
+  CU-hours, and it pauses around day 17. DB-1 (Postgres on the VPS) is therefore required for
+  1 Nov. Neon is only a fallback for about 16 days a month. Transfer is 11 % of 5 GB; storage
+  grows about 30 MB a month (measured 3.6 KB per post with indexes on the EG-7 scratch DB).
+- **Fly:** the pricing page lists no free allowance (old Hobby orgs keep 3 × 1x/256 MB). The
+  app runs 2x/512 MB, so it costs money either way. It reaches $0 only through the VPS cutover
+  (H23) and then stopping Fly.
+- **Vercel Hobby:** measured on a local production build (`npm run build` + `next start`): a
+  first visit is about 43 CDN requests (HTML, 17–21 static files, font, icon, about 20 link
+  prefetches). The browser calls the API directly, so polling never touches Vercel. At 300
+  views a day that is about 26 % of 1 M requests, with CPU and transfer at a few percent.
+  It breaks at about 1,100 views a day, and Hobby pauses the site for 30 days rather than
+  billing. The `prefetch={false}` lever is written down, not built.
+- **Upstash:** 0 commands with `REDIS_URL=memory://`.
+- **Decisions I made:** no code change, because nothing the code controls is near a limit.
+  The two problems (Neon compute, Fly) are solved by moving off those services, which is
+  already planned. Added H35 (DrJ reads the real Fly/Neon/Vercel numbers). Marked DB-1 as
+  required.
+- Check: the vendors' limits were read from their own pages; `ui` production build passed,
+  and assets and prefetch links were counted on 7 pages. No Python/TS source changed, so the
+  suite was not re-run (the engine's run at 23:05 passed: 3374).
+- Commit `48cd8c1`.
+- **Next:** DB-1, Postgres on the VPS + 1 Nov runbook (T2).
+
 ## 2026-10-14 · cycle 176 · Opus (T2) · EG-7: egress estimate
 
 - New `platform/scripts/measure_egress.py`: a byte-counting TCP proxy between the API and local
