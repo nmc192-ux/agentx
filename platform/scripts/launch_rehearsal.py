@@ -25,6 +25,11 @@ VPS will see it:
        mcp         ``sdk/mcp`` over stdio (sdk/mcp/scripts/stdio_journey.py)
        python-sdk  ``sdk/`` built as a wheel, the quickstart's Python block
        ts-sdk      ``sdk/ts`` packed, the quickstart's TypeScript block
+  5. With ``--economy`` only (Phase C, FC-4): stops that API, starts a second
+     one on the same database with ``FAUCET_ENABLED=true`` and runs
+     ``scripts/economy_journey.py`` (two agents claim, then a bounty and a paid
+     task between them; the books must add up). Without it the faucet stays
+     off, as on 1 Nov.
 
 Refuses any database host that is not this machine and any database name that
 does not start with ``agentx_smoke``, before touching anything. Exit code 0 when
@@ -35,6 +40,7 @@ Usage (from ``platform/``):
 
     .venv/bin/python scripts/launch_rehearsal.py
     .venv/bin/python scripts/launch_rehearsal.py --only join-page,mcp --loop-seconds 30
+    .venv/bin/python scripts/launch_rehearsal.py --economy
 """
 from __future__ import annotations
 
@@ -349,6 +355,28 @@ def check_new_agents(db: str, env: dict[str, str], res: Results, want: int) -> N
     res.add(have >= want, "outside posters", f"{have} non-founder agents have posted (want ≥ {want})")
 
 
+# ── Economy (optional) ────────────────────────────────────────────────────────
+
+def run_economy(db: str, env: dict[str, str], res: Results, log: Path) -> None:
+    """The economy journey on a second API with the faucet on (FC-4)."""
+    econ = _load("economy_journey")
+    api, base = smoke.start_server(econ.economy_env(db, env), log)
+    print(f"• economy API on {base}, faucet on (log: {log})", flush=True)
+    try:
+        rows = econ.run_journey(base, db, env)
+    except Exception as exc:  # reported as a failed check, never hides the others
+        rows = [(False, "error", f"{type(exc).__name__}: {exc}")]
+    finally:
+        api.terminate()
+        try:
+            api.wait(20)
+        except subprocess.TimeoutExpired:
+            api.kill()
+    failed = [f"{label}: {detail}" for ok, label, detail in rows if not ok]
+    res.add(econ.journey_passed(rows), "economy",
+            "; ".join(failed) if failed else " → ".join(label for _, label, _ in rows))
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -359,6 +387,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="minimum time the scheduler loop runs (default 120)")
     p.add_argument("--only", default=",".join(JOINS),
                    help=f"comma-separated joins to run (default all: {','.join(JOINS)})")
+    p.add_argument("--economy", action="store_true",
+                   help="afterwards, run the economy journey on a second API with the faucet on")
     args = p.parse_args(argv)
     args.joins = [j.strip() for j in args.only.split(",") if j.strip()]
     unknown = sorted(set(args.joins) - set(JOINS))
@@ -396,6 +426,10 @@ def main(argv: list[str] | None = None) -> int:
         loop = None
         # One posting agent per join (the skill join here makes only one, not skill_live_check's two).
         check_new_agents(args.db, env, res, want=len(args.joins))
+        if args.economy:
+            api.terminate()
+            api.wait(20)
+            run_economy(args.db, env, res, tmp / "agentx_launch_economy_api.log")
     finally:
         for proc in (loop, api):
             if proc is not None and proc.poll() is None:
