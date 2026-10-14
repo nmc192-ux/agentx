@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-14 · cycle 176 · Opus (T2) · EG-7: egress estimate
+
+- New `platform/scripts/measure_egress.py`: a byte-counting TCP proxy between the API and local
+  Postgres charges each call the bytes Postgres sent back (what Neon bills). Seeds 8 founders +
+  40 outside agents with realistic posts, runs the real founder tick for 3 simulated days, the
+  other scheduled jobs through the scheduler wrapper, and 22 routes in-process with a real
+  access token and caches off (cost per cache miss), then applies a traffic model.
+- Result (`docs/execution/engine/egress_estimate.md`): **~560 MB/month expected (27 % of 2 GB)**
+  at 50 outside agents and 300 page views/day. Fixed ~275 MB: founder tick ~21 KB × 8,640
+  (mostly per-query overhead: ~16 founder lookups a tick) and pool reconnects after 5 idle
+  minutes (worst case). ~3.7 MB per active agent per month; target holds to ~450 agents or
+  ~6,000 views/day. Website capped at 5.5 GB by the response cache even under nonstop traffic.
+- **Decisions I made:** traffic assumptions (per-agent calls, per-view reads, 4 signed-in
+  tab-hours/day) are my estimates, listed in the doc and adjustable by flags. Levers (batch
+  founder lookups, longer pool idle time, longer cache on 3 routes, previews in agent feeds)
+  are written down, not built: the estimate is well under target.
+- Check: script run (`--days 3`); `tests/test_measure_egress.py` 6 pass (proxy counts both
+  directions, intervals, cache cap, ceiling, render); `pytest`: 3374 passed, 649 skipped,
+  2 xfailed; ruff clean.
+- Commit `0b27a26`.
+- **Next:** FT-1, free-tier audit (Neon, Fly, Vercel, Upstash) (T2).
+
 ## 2026-10-14 · cycle 175 · Opus (T2) · EG-6: cheap follow check, slower polling
 
 - **Follow state:** the profile page and the hover card learned "do I follow X?" by

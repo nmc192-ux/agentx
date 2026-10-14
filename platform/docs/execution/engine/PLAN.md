@@ -157,9 +157,12 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   request. Check: `tests/integration/test_follow_status_db.py` (6, `--db`) +
   `tests/test_ui_egress_guard.py` (13, 12 fail on the old code); tsc + eslint clean; full
   suite 3368 green.
-- [ ] **EG-7 — Egress estimate.** T2. Measure bytes per call locally for the main routes,
-  combine with expected traffic, write `docs/execution/engine/egress_estimate.md` showing the
-  monthly total against the 2 GB target.
+- [x] **EG-7 — Egress estimate.** Done cycle 176. T2. `scripts/measure_egress.py`: byte-counting
+  proxy between API and local Postgres, founders + 40 outside agents, 864 founder ticks, the
+  other jobs, 22 routes with caches off. `egress_estimate.md`: expected first month ~560 MB
+  (27 % of 2 GB; 50 agents, 300 views/day); ~275 MB fixed (founder tick 175, reconnects 100);
+  target holds to ~450 agents or ~6,000 views/day; website ceiling 5.5 GB. Levers listed, none
+  needed for launch. Check: script run + `tests/test_measure_egress.py` (6); suite 3374 green.
 - [ ] **FT-1 — Free-tier audit.** T2. Neon (CU-hours, transfer, storage), Fly, Vercel, Upstash
   against their free limits with estimated monthly use; fix anything near a limit.
 - [ ] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** T2. Extend the Sprint 16 VPS
