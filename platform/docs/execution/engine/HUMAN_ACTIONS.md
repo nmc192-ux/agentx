@@ -18,6 +18,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
     line in `compose.env` switches the API to the VPS database, then the first deploy (H30 step 9),
     smoke test, scheduler on, first backup. Each row says what you must see and what to do if
     you do not.
+  - **On 1 Nov, when you merge (B9):** the merge also starts the old Fly "Deploy" workflow.
+    **Reject its production step** (GitHub → Actions → Deploy → "Review deployments" → Reject).
+    Approving it would start Fly on Neon after your copy. (Added cycle 179.)
   - **Leave Neon alone for 30 days** afterwards. It is the frozen 1 Nov fallback and uses no
     hours while nothing connects.
   Tell the engine: `H36 prep done`, then `H36 done` plus the `verify` summary line.

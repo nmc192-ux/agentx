@@ -178,9 +178,17 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   check/dump/restore/verify/backup. `docs/execution/db_move_runbook.md` (prep before 1 Nov,
   B1–B14 on the day, going back). H36 for DrJ. Check: `tests/infrastructure/test_db_move.py`
   (8, `--db`, real migration chain) + `TestDatabaseService`/compose config; suite 3384 green.
-- [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB and RL-1. T2. Live-test
-  checklist must include: after deploy, `curl -H 'Fly-Client-IP: 203.0.113.9' https://api…/health`
-  and check the access log shows `client=<your real address>`, not 203.0.113.9.
+- [x] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB and RL-1. Done cycle 179. T2.
+  Spoofed-`Fly-Client-IP` check is in the live-test list, on `/.well-known/skill.md` (the
+  access log skips `/health`). Found: the merge also starts the Fly "Deploy" workflow, whose
+  production step would bring Fly back on Neon after the 1 Nov copy; briefing and runbook B9
+  now say to reject it.
+- [ ] **SR-1 — Fable review of the 14 Oct marked commits built on Opus.** T1 (protocol 5a:
+  response cache must never hand a logged-in answer to another caller; token check deciding
+  who is exempt from the list limit; DB move script handling production data and passwords).
+  `fdbc306` (EG-3), `ac149fe` (EG-4), `9abb526` (DB-1). Try to break them, add adversarial
+  tests, fix in the same cycle, log "reviewed N commits, found M issues", then update the
+  briefing's bottom line. Check: findings in the log; new tests green; full suite green.
 - [ ] **LR-0 — Decompose the LAUNCH-READINESS sprint** (DrJ's note, 14 Oct: AgentX live and
   accepting new agents on 1 Nov). T2. Five parts: (1) local rehearsal of the VPS stack
   (Postgres + API + scheduler) from an empty DB: migrations, founders seeded, an outside agent
@@ -188,7 +196,8 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   restore, API on VPS, DNS or Fly switch, merge, publish packages, smoke checks, rollback at
   every step); (3) free uptime and error alerts to ntfy/Slack; (4) daily DB backups on the VPS
   with a tested restore; (5) every HUMAN_ACTION that can be done before 1 Nov vs. must wait.
-  Runs after EG/FT/DB-1, **instead of** Phase C.
+  Runs after EG/FT/DB-1 and SR-1, **instead of** Phase C. Must also cover switching off the
+  Fly "Deploy" workflow for good (a human action: the engine may not edit `deploy.yml`).
 - [ ] **PC-0 — Plan Phase C** on this branch. T2. Only after the launch-readiness sprint.
 
 ## Open human items touching the branch
