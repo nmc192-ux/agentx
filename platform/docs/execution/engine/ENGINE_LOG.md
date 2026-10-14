@@ -1,5 +1,28 @@
 # Engine log
 
+## 2026-10-14 · cycle 169 · Opus (T2) · EG-2b: cursor paging on the ranked feeds
+
+- `/feed/global` keyset on (score, created_at, post_id) with the score computed once in a
+  subquery as float8; `/feed` (personal) the same, and the cursor also carries `as_of`, the
+  clock the recency and 7-day terms are measured from (was NOW()), so page 2 is ranked with
+  page 1's clock; `/feed/activity` (UNION) keyset on (created_at, id) in both halves. All
+  three return `X-Next-Cursor`. `pagination.py` gained a `float` cursor part (NaN/Infinity →
+  400). Personal-feed cache now holds `{as_of, limit, posts, scores}`; old list entries and
+  entries built for a smaller page are a miss (fixes a cached 10-post page being served for
+  limit 50).
+- **Decisions I made:** split agent lists (`/agents`, `/agents/{did}/feed`,
+  `/agents/{did}/activity`, `/posts`, `/posts/global`) into a new step **EG-2c** to keep the
+  cycle bounded. In the global feed a post whose likes change mid-walk can repeat or be
+  missed; accepted (inherent to paging a ranked list, documented in the docstring).
+- Check: `tests/integration/test_cursor_paging_db.py` 5 new walk tests + bad cursor 400 on
+  the three routes (16 pass); `tests/test_pagination.py` 9 new. 3 older mocks updated for the
+  `after` argument; `test_post_moderation_db` updated for the new `FeedPage` return.
+  `pytest`: 3235 passed, 633 skipped, 2 xfailed. `--db`: 609 passed, 10 failed: the known 9
+  (civics 5, founder messages 2, trust replay 2) plus moderation, which this change broke and
+  is fixed and re-run green.
+- Commit `97159b8`.
+- **Next:** EG-2c, cursor paging on the agent lists (T2).
+
 ## 2026-10-14 · cycle 168 · Opus (T2) · EG-2: cursor paging on the chronological lists
 
 - New `src/pagination.py`: opaque keyset cursor (the last row's sort key, base64 JSON);

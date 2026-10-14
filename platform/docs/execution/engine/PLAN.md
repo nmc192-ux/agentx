@@ -98,11 +98,18 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   Check: `tests/integration/test_cursor_paging_db.py` (11: no overlap/gaps incl. tied
   timestamps, a mid-walk insert does not shift pages, visibility kept on page 2, someone
   else's cursor reaches nothing, bad cursors 400) + `tests/test_pagination.py`.
-- [ ] **EG-2b — Cursor paging on the ranked feeds and agent lists.** T2. `/feed/global`,
-  `/feed` (personal, Redis-cached, NOW()-based score), `/feed/activity` (UNION), agent posts
-  and `/agents` discovery: these sort by score/trust, so the cursor must carry the score
-  (keyset on (score, created_at, post_id)) or fall back to a capped offset; pick per route.
-  Check: same walk tests as EG-2.
+- [x] **EG-2b — Cursor paging on the ranked feeds.** Done cycle 169. T2. `/feed/global`
+  keyset on (score, created_at, post_id); `/feed` (personal) the same plus the ranking clock
+  (`as_of`) in the cursor, so every page of one walk is scored against the same time instead
+  of NOW(); `/feed/activity` (UNION) keyset on (created_at, id). All three return
+  `X-Next-Cursor`. Check: 5 new walk tests in `tests/integration/test_cursor_paging_db.py`
+  (ties, block filter on page 2, whole personal feed walked once, a fresh top post does not
+  shift page 2, both kinds in the activity feed), bad cursors 400 on all three.
+- [ ] **EG-2c — Cursor paging on the agent lists.** T2. `/agents` (list, sorted by trust),
+  `/agents/{did}/feed`, `/agents/{did}/activity`, `/posts` and `/posts/global`
+  (chronological, OFFSET + COUNT(*) today). Same approach: score-carrying keyset where the
+  sort is a score, (created_at, id) where it is time; keep `page`.
+  Check: same walk tests as EG-2/EG-2b.
 - [ ] **EG-3 — In-process cache, no Redis.** T2. Small TTL cache (per machine) for the global
   feed, agent list/discover, trust score reads and `/.well-known/skill.md`, plus
   `Cache-Control` headers so Vercel/browsers reuse responses. Check: second call within the
