@@ -171,10 +171,13 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   local prod build; browser calls the API directly), breaks at ~1,100 views/day; prefetch lever
   written, not built. Upstash: 0 commands with `REDIS_URL=memory://`. H35 asks DrJ for real
   bills. No code change (nothing in code near a limit).
-- [ ] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** T2. **Required (FT-1: Neon
-  free compute cannot carry the live API past ~day 17).** Extend the Sprint 16 VPS
-  plan (shared Caddy, backups to disk, no public DB port) and write the runbook: pg_dump from
-  Neon, restore on the VPS, switch, verify, keep Neon as fallback. Files only.
+- [x] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** Done cycle 178. T2.
+  `db` service in `deploy/vps/docker-compose.yml` (pgvector pg17, profile `db`, private network
+  only, no port, volume `agentx_pgdata`, own `/etc/agentx/db.env`, never `api.env`); apps switch
+  with one compose.env line `AGENTX_DB_ENV` (empty = Neon). `deploy/vps/db_move.sh`
+  check/dump/restore/verify/backup. `docs/execution/db_move_runbook.md` (prep before 1 Nov,
+  B1–B14 on the day, going back). H36 for DrJ. Check: `tests/infrastructure/test_db_move.py`
+  (8, `--db`, real migration chain) + `TestDatabaseService`/compose config; suite 3384 green.
 - [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB and RL-1. T2. Live-test
   checklist must include: after deploy, `curl -H 'Fly-Client-IP: 203.0.113.9' https://api…/health`
   and check the access log shows `client=<your real address>`, not 203.0.113.9.
@@ -190,5 +193,5 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
 
 ## Open human items touching the branch
 
-H34 (fly.toml scheduler line, same merge, URGENT); H35 (read Fly/Neon/Vercel usage); D11 (human role, not blocking); merge (Sprints 13–18, migrations 048 and 049); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
+H36 (DB move: prep before 1 Nov, steps on 1 Nov); H34 (fly.toml scheduler line, same merge, URGENT); H35 (read Fly/Neon/Vercel usage); D11 (human role, not blocking); merge (Sprints 13–18, migrations 048 and 049); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12
 (publish); H27, H28.

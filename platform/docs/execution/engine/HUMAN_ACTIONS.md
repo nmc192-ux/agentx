@@ -4,6 +4,25 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H36 — Move the database from Neon to the VPS (prep any evening before 1 Nov, about 20
+  minutes; the move itself on 1 Nov, about 30 minutes).** Added cycle 178 (DB-1). Neon's free
+  compute runs out around day 17 of each month once the API is live (H35, FT-1), so the database
+  moves to the VPS beside the API. **Everything is in `platform/docs/execution/db_move_runbook.md`,
+  written for copy-paste.** In short:
+  - **Before 1 Nov (§3 A1–A6):** make `/etc/agentx/db.env` with a random password, copy three
+    files to `/opt/agentx`, add two lines to `compose.env`, start the `db` container, add the
+    nightly backup line to cron, and **scale Fly to zero** (production is down anyway, and
+    otherwise Fly starts writing to Neon the moment Neon wakes on 1 Nov). Needs H30 steps 1–8
+    first. Nothing live changes.
+  - **On 1 Nov (§4 B1–B14):** `bash db_move.sh check`, `dump`, `restore <file>`, `verify`, then one
+    line in `compose.env` switches the API to the VPS database, then the first deploy (H30 step 9),
+    smoke test, scheduler on, first backup. Each row says what you must see and what to do if
+    you do not.
+  - **Leave Neon alone for 30 days** afterwards. It is the frozen 1 Nov fallback and uses no
+    hours while nothing connects.
+  Tell the engine: `H36 prep done`, then `H36 done` plus the `verify` summary line.
+  Unblocks: AgentX can stay live past mid-November at $0 for the database.
+
 - [ ] **H35 — Read four numbers off your dashboards (about five minutes; changes nothing).**
   Added cycle 177 (FT-1, `free_tier_audit.md`). The audit found that **Neon's free compute
   (100 CU-hours a month) runs out around day 17 if the live API uses it**, because the database

@@ -1,5 +1,44 @@
 # Engine log
 
+## 2026-10-14 · cycle 178 · Opus (T2) · DB-1: Postgres on the VPS + move runbook
+
+- `deploy/vps/docker-compose.yml`: new `db` service, `pgvector/pgvector:pg17` (pgvector is
+  needed for `posts.embedding`). It sits behind profile `db`, on the private `agentx_private`
+  network only (Caddy's network is shared with Pink Popcorn), publishes no port, stores data in
+  volume `agentx_pgdata`, has a 1 GB limit and a `pg_isready` check, and reads only
+  `/etc/agentx/db.env` (no JWT secret in the database container). API, scheduler and migrate
+  load `${AGENTX_DB_ENV:-/dev/null}` last: empty means Neon as today; `/etc/agentx/db.env` means
+  the VPS database, whose POSTGRES_* values win.
+- `deploy/vps/db_move.sh`: `check` (server versions, Neon extensions present on the VPS, target
+  empty, disk), `dump` (Neon's direct endpoint, not the PgBouncer pooler; password on stdin
+  only), `restore` (empty target only, one transaction, so failure keeps nothing), `verify`
+  (exact row count of every table plus alembic version, both sides), `backup` (keeps the newest
+  14 and never deletes `neon-*.dump`). `deploy-vps.yml` now copies it to the VPS.
+- `docs/execution/db_move_runbook.md`: prep before 1 Nov (A1–A6), the 1 Nov table B1–B14 (each
+  with what you must see and what to do if not), going back, starting afresh. H36 added for
+  DrJ. The migration plan now points to it.
+- **Decisions I made:** (1) The move happens on 1 Nov before the first VPS deploy, while
+  nothing writes to Neon (production is down), so there is no write-freeze window.
+  Migrations 048/049 then run only on the VPS database, and Neon stays a frozen pre-merge
+  fallback. (2) This needs **Fly at zero before Neon wakes**, otherwise the old API writes to
+  Neon after the copy. That is in prep step A6 and is DrJ's action. (3) After the move Fly is
+  no longer a warm standby: it cannot reach the VPS database, and Neon goes stale. This
+  supersedes that part of `vps_migration_plan.md` and is recorded there. (4) The reverse copy
+  (VPS → new Neon database) is described, not scripted, because it writes to production. All
+  four are reversible before B8.
+- Check: `pytest tests/infrastructure/test_db_move.py --db` passed 8 of 8, rehearsed natively on
+  local Postgres 17 + pgvector with a scratch "Neon" built by the real migration chain. Covered:
+  round trip with identical counts and the `vector(1536)` column, one-row difference reported,
+  second restore refused, half dump leaves the target empty, missing extension fails `check`,
+  rotation, password never in argv. `test_vps_deploy_files.py`: 7 new `TestDatabaseService`
+  tests and 3 compose-config tests (Neon by default, switch moves all four apps, deploy works
+  before `db.env` exists). shellcheck clean. Full `pytest`: 3384 passed, 657 skipped, 2 xfailed.
+  **Not checked:** the containers themselves (no Docker daemon on this Mac, as in Sprint 16)
+  and a real Neon dump (suspended; no credentials). Step B4 `check` catches Neon surprises
+  before anything changes.
+- Commit `9abb526`.
+- **Next:** BR-1, refresh the Phase B merge briefing for EG/FT/DB and RL-1 (T2).
+
 ## 2026-10-14 · cycle 177 · Opus (T2) · FT-1: free-tier audit
 
 - New `docs/execution/engine/free_tier_audit.md`: Neon, Fly, Vercel, Upstash checked against
