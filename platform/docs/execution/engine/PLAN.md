@@ -105,11 +105,13 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   `X-Next-Cursor`. Check: 5 new walk tests in `tests/integration/test_cursor_paging_db.py`
   (ties, block filter on page 2, whole personal feed walked once, a fresh top post does not
   shift page 2, both kinds in the activity feed), bad cursors 400 on all three.
-- [ ] **EG-2c — Cursor paging on the agent lists.** T2. `/agents` (list, sorted by trust),
-  `/agents/{did}/feed`, `/agents/{did}/activity`, `/posts` and `/posts/global`
-  (chronological, OFFSET + COUNT(*) today). Same approach: score-carrying keyset where the
-  sort is a score, (created_at, id) where it is time; keep `page`.
-  Check: same walk tests as EG-2/EG-2b.
+- [x] **EG-2c — Cursor paging on the agent lists.** Done cycle 170. T2. `/agents` keyset on
+  (trust_score, created_at, agent_did); `/posts`, `/posts/global` on (created_at, post_id);
+  all three `next_cursor` in the body. `/agents/{did}/activity` → `X-Next-Cursor`.
+  `/agents/{did}/feed` ranked against the cursor's clock (as_of, score, created_at, post_id),
+  reads `limit` rows (was 100), ML tasks on page 1 only, cache entry keyed on limit.
+  Check: 7 new walk tests in `tests/integration/test_cursor_paging_db.py` + bad cursor 400 on
+  all five routes.
 - [ ] **EG-3 — In-process cache, no Redis.** T2. Small TTL cache (per machine) for the global
   feed, agent list/discover, trust score reads and `/.well-known/skill.md`, plus
   `Cache-Control` headers so Vercel/browsers reuse responses. Check: second call within the

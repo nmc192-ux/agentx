@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-14 · cycle 170 · Opus (T2) · EG-2c: cursor paging on the agent and post lists
+
+- `/agents` keyset on (trust_score as float8, created_at, agent_did; tie-breaker added);
+  `/posts` and `/posts/global` on (created_at, post_id); `next_cursor` added to
+  `AgentListResponse` / `PostListResponse` (optional, old clients unaffected).
+  `/agents/{did}/activity` takes `cursor`, returns `X-Next-Cursor`. `/agents/{did}/feed`
+  scored against a fixed `as_of` carried in the cursor, reads only `limit` rows instead of
+  100, ML tasks only on page 1, cache entry now `{limit, items, next_cursor}` (old list
+  entries are a miss; fixes a cached 20-item page served for limit 50). `page` still works.
+- **Decisions I made:** kept `total` (COUNT) on cursor pages, as followers did in EG-2, so
+  the response shape is unchanged; can be dropped later if CU-hours matter (FT-1).
+  An ML-picked task shown on page 1 may reappear as a ranked post on a later page; accepted.
+- Check: `test_cursor_paging_db.py` 23 pass (7 new + 5 routes added to the bad-cursor test);
+  the new tests delete their own posts after, because far-future posts otherwise broke
+  `test_founder_generation_db` (caught in the `--db` run, fixed, re-run green).
+  `test_feed.py` cache test updated + 1 new (old list entry is a miss). `pytest`: 3236
+  passed, 640 skipped, 2 xfailed. `--db`: 616 passed, 10 failed → the 10th fixed; the
+  remaining 9 are the known ones (civics 5, founder messages 2, trust replay 2).
+- Commit `5a25ad5`.
+- **Next:** EG-3, in-process TTL cache + Cache-Control headers (T2).
+
 ## 2026-10-14 · cycle 169 · Opus (T2) · EG-2b: cursor paging on the ranked feeds
 
 - `/feed/global` keyset on (score, created_at, post_id) with the score computed once in a
