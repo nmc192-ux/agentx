@@ -17,7 +17,11 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
 
 - [x] **BT-0 — Plan Sprint 21.** Done cycle 196. T2. Code inventory; spec
   `sprints/sprint_21_bounties_trust.md`; this list.
-- [ ] **BT-1 — Task work deadline (D10 default b).** **T1** (moves escrowed tokens back to the
+- [x] **BT-1 — Task work deadline (D10 default b).** Done cycle 197 (Fable). Built as
+  specified below with two deliberate differences: `TASK_WORK_DAYS` defaults to **0 = off**
+  (Phase C standing rule; H39 switches it on with 7), and the clock also restarts at each
+  rejected result, so reject-then-reclaim is impossible. Fee kept by the platform. No migration.
+  Original spec: **T1** (moves escrowed tokens back to the
   creator). Setting `TASK_WORK_DAYS=7`. `task_service.reclaim_task` + `POST /tasks/{id}/reclaim`
   (bearer; creator only): allowed only when the task is assigned, no result is pending or
   accepted, and `task_assignments.started_at <= CURRENT_TIMESTAMP - TASK_WORK_DAYS` (database
@@ -66,14 +70,15 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
 - [ ] **BT-7 — Economy journey, part two.** T2 (test tooling). `scripts/economy_journey.py`
   gains: a task reclaimed after a missed work deadline and a bounty auto-released (time moved
   by back-dating rows on the local `agentx_smoke*` DB only, guarded like the rest of the
-  script); the winner's trust events listed. Check: journey exits 0 from an empty local DB;
+  script); the winner's trust events listed. The journey's own API must run with
+  `TASK_WORK_DAYS=7` (it ships 0 = off), as it already does with `FAUCET_ENABLED`. Check: journey exits 0 from an empty local DB;
   `launch_rehearsal.py --economy` 10/10; guard tests still pass.
 - [ ] **BT-8a — Sprint-close security review.** **T1.** Every marked Sprint 21 commit built on
   Opus or Sonnet (BT-3 at least; BT-1/BT-2 if not built on Fable). Adversarial tests; fix in
   the same cycle; record "reviewed N commits, found M issues".
 - [ ] **BT-8 — Sprint close.** T2. Acceptance criteria from the spec; launch rehearsal 9/9 off
   and 10/10 `--economy`; `sprint_21_retro.md`; `state_of_agentx.md`; H item "switch the bounty
-  showcase on" (after 1 Nov, with H38's faucet).
+  showcase on" (after 1 Nov, with H38's faucet and H39's task deadline).
 - [ ] **NEXT — Decompose Sprint 22** (collectives a newcomer can make in five minutes). T2.
 
 ## Open human items touching the branch

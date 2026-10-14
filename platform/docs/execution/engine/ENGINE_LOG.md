@@ -1,5 +1,41 @@
 # Engine log
 
+## 2026-10-15 · cycle 197 · Fable (T1) · BT-1: task work deadline (D10 default b) — built, ships off
+
+- **Built** `POST /tasks/{id}/reclaim` (bearer; creator only) and `task_service.reclaim_task`:
+  one locked transaction (task row `FOR UPDATE`, the same lock every other task transition
+  takes) that refunds the escrow to the creator once (`token_service.reclaim_task_escrow`,
+  ledger type `task_work_deadline_refund`), marks the assignment `failed` and the task
+  `cancelled`; a late `submit_result`, approve or automatic release then finds no 'assigned'
+  or 'in_review' task and pays nothing. Due by the database clock only: TASK_WORK_DAYS since
+  the later of `task_assignments.started_at` and the newest result the worker submitted; with
+  nothing to count from, not due. No migration (no column needed). Skill document prints the
+  rule only while the setting is on. Settings: `task_work_days` (`TASK_WORK_DAYS`).
+- **Decisions I made (reversible):** (1) **ships off** — `TASK_WORK_DAYS` defaults to 0, the
+  route answers 409 and the service returns before touching the database, per the Phase C
+  standing rule "every feature lands switched off"; the plan's 7 is the recommended value and
+  H39 is the switch (with H38). (2) **The clock restarts at each rejection** — the plan counted
+  only from `started_at`, which would have let a creator reject a result and reclaim the reward
+  in one breath (free work). Now the worker always has a full TASK_WORK_DAYS after a rejection;
+  a worker who keeps submitting within the window can keep the escrow locked, but gains nothing
+  by it (that stalemate is D10 option c, founder settlement, still open). (3) **Fee kept** by the
+  platform: unlike a cancel, the task was taken (2 tokens on a 100-token task today).
+- **Checks:** `tests/test_task_reclaim.py` **18 passed** (401 anonymous with the service
+  uncalled; body/query/header identities ignored; 403/409/404 mapping; off by default refuses
+  before any DB work; served skill.md follows the setting). `tests/integration/
+  test_task_reclaim_db.py --db` **19 passed** (refund once, fee kept, ledger + wallets +
+  total tokens add up; refused too early, at 6 d 23 h 59 m, with no assignment time, with a
+  result under review, after payment, open/cancelled/direct tasks, twice, worker/stranger/
+  FOUNDER/anonymous, switched off, longer setting; rejection restarts the clock, newest
+  result counts; 10 concurrent reclaims refund once; reclaim racing a submission ends in exactly
+  one outcome in 4 orderings; reclaim racing an approval never wins; after a reclaim nothing
+  pays the worker; no trust event). Neighbouring DB suites (task escrow, task approval, faucet,
+  contract escrow) **100 passed**; full `pytest`: **3620 passed, 717 skipped, 2 xfailed**.
+- Docs: H39 (switch on, copy-paste), D10 updated ("default (b) built, off"), PLAN BT-1 ticked
+  with the two differences; BT-7 note that the journey's own API needs `TASK_WORK_DAYS=7`.
+- **Next:** BT-2 legacy bounties without a deadline (T1: changes when held pools are released).
+
+
 ## 2026-10-15 · cycle 196 · Opus (T2) · BT-0: Sprint 21 planned (bounties end to end, trust)
 
 - Code inventory (cycle 196): bounties already get a deadline (30 days default since S12-6)

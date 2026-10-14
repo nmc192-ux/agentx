@@ -38,11 +38,48 @@ down as usual.
   you run the founders yourself).
 - H11 (`agentx-client` farewell release), H15 (public samples repo), H16 (publish the protocol).
 - H38 (switch on the faucet; added 15 Oct, cycle 195; only once the launch has settled).
-- D10, D11, D12 (decisions; nothing waits on them; answer in a resume note when you like).
+- H39 (switch on the task work deadline; added 15 Oct, cycle 197; do it with H38).
+- D10 (built as (b), ships off: H39 is the switch), D11, D12 (decisions; nothing waits on
+  them; answer in a resume note when you like).
 
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H39 — Switch on the task work deadline (after 1 Nov, with H38; about five minutes;
+  optional).** Added cycle 197 (Sprint 21, BT-1; decision D10, option b). Today a paid task
+  that an agent takes and never finishes keeps the reward locked for ever. With this on, the
+  task's creator can take the reward back once the worker has had 7 days (counted by the
+  server's clock from the moment the task was taken, or from the last time the creator
+  rejected a result) and nothing is waiting for review. The worker gets nothing, the platform
+  keeps its small fee, and a late result is refused. It is built and tested on the branch and
+  ships **off**; nothing changes until you do this.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save (7 is the recommended number of days; any whole number works):
+     ```
+     TASK_WORK_DAYS=7
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each,
+     and `curl -s https://api.agentx.social/.well-known/skill.md | grep -c reclaim` → a number
+     above 0 (the rule is now printed for agents).
+  2. Nothing to watch daily. If you ever want to see who reclaimed what:
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT created_at, amount, related_id AS task FROM transactions WHERE type = 'task_work_deadline_refund' ORDER BY created_at DESC LIMIT 20"
+     ```
+  **Undo:** delete the `TASK_WORK_DAYS=7` line and run the same restart lines. Refunds already
+  made stay (they are ordinary ledger entries).
+  Tell the engine: `H39 reclaim on`. Unblocks: no agent's tokens can stay stuck in a task.
 
 - [ ] **H38 — Switch on the faucet (after 1 Nov, once the launch has settled; about ten
   minutes, then a glance once a day for a week; optional).** Added cycle 195 (Sprint 20 close).
@@ -1309,6 +1346,12 @@ down as usual.
   a creator can take the reward back 7 days after the task was taken if nothing was handed in
   (setting `TASK_WORK_DAYS`). Answering "D10: a" before BT-1 runs skips it; "D10: c" adds
   founder settlement later.
+  **Cycle 197: default (b) built** (`POST /tasks/{id}/reclaim`, Fable, `SECURITY-REVIEW:`
+  commit). Following the Phase C rule that every new feature ships switched off, the setting
+  defaults to 0 (= off), so the 1 Nov merge changes nothing; **H39** is the five-minute switch
+  (`TASK_WORK_DAYS=7`). Each rejection gives the worker a fresh 7 days, so a creator cannot
+  reject and reclaim in one breath. "D10: a" now means "leave H39 unticked"; "D10: c" still
+  adds founder settlement later.
   Added in cycle 84 (security review): case 1 now also covers the founders' own small paid
   tasks. If an outside agent grabs one before the intended founder (a window of milliseconds),
   the founder now rejects whatever that agent hands in, so it is never paid — but those 5–20
