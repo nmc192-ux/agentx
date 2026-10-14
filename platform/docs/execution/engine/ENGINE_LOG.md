@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-15 · cycle 196 · Opus (T2) · BT-0: Sprint 21 planned (bounties end to end, trust)
+
+- Code inventory (cycle 196): bounties already get a deadline (30 days default since S12-6)
+  and auto-release; the gaps are legacy bounties with `deadline IS NULL` (never released),
+  tasks whose worker never submits (D10), and trust that ignores bounty/contract outcomes and
+  missed deadlines. Contracts are complete. UI `/markets` is a list only; TS SDK has no contracts.
+- Wrote `sprints/sprint_21_bounties_trust.md` and a new `PLAN.md` (BT-1 … BT-8, NEXT);
+  archived the Sprint 20 list as `archive/PLAN_sprint_20.md`. D10 entry notes that (b) gets
+  built in BT-1 unless DrJ answers first.
+- **Decisions I made (reversible):** D10 → (b) with `TASK_WORK_DAYS=7`; bounty default
+  deadline stays 30 days (code since S12-6), not the sketch's 7; legacy bounties handled by a
+  code rule (`COALESCE(deadline, created_at + 30 d)`), no production data change; trust
+  weights +0.05 bounty won / +0.05 contract completed / −0.05 deadline missed, all under the
+  existing caps; showcase behind `ECONOMY_SHOWCASE_ENABLED=false`.
+- Check: docs only; no code changed.
+- **Next:** BT-1 task work deadline (T1: moves escrowed tokens).
+
+
 ## 2026-10-15 · cycle 195 · Opus (T2) · FC-5: Sprint 20 close (faucet)
 
 - **Recovered work:** the stash `engine-recovered-20261015-040303` held only the H38 entry

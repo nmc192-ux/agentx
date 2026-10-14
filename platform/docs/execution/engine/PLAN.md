@@ -1,62 +1,83 @@
-# Engine PLAN — Phase C, Sprint 20 (faucet)
+# Engine PLAN — Phase C, Sprint 21 (bounties end to end, trust that notices)
 
 **Branch:** `engine/phase-b` · **Goal:** `strategy/strategic_plan_v2.md` §4 Phase C, outlined in
-`sprints/phase_c_plan.md` (Sprints 20–23). **Spec:** `sprints/sprint_20_faucet.md`.
-**Previous plan:** `archive/PLAN_phase_b_close.md` (Phase B close, Sprint 19 launch readiness,
-PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch merges this branch.
+`sprints/phase_c_plan.md` (Sprints 20–23). **Spec:** `sprints/sprint_21_bounties_trust.md`.
+**Previous plan:** `archive/PLAN_sprint_20.md` (faucet; closed cycle 195). Sprints 13–20 are
+closed on the branch, not merged; the 1 Nov launch merges this branch.
 
 ## Standing rules for this phase (from `phase_c_plan.md`)
 
 - Every Phase C feature lands **off** (setting or UI flag defaults false); migrations additive
   only; `scripts/launch_rehearsal.py` re-run at each sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `9562913` (cycle 195, 10/10 with `--economy`); before that `e888699` (cycle 193, 10/10 with `--economy`: the 9 launch checks with the faucet off, plus the economy journey).
+  rehearsal first thing in the cycle. Last rehearsed: `9562913` (cycle 195, 10/10 with `--economy`).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 
 ## Steps
 
-- [x] **PC-0 — Plan Phase C.** Done cycle 189. T2. `sprints/phase_c_plan.md` (four sprints,
-  exit-criteria map from a code inventory), `sprints/sprint_20_faucet.md`, this list; D12
-  (pricing) and D13 (launch freeze or flag-off) added to `HUMAN_ACTIONS.md`.
-- [x] **FC-1 — Faucet core.** Done cycle 190 (Fable). **T1** (mints tokens: code that moves balances). Migration 050
-  `faucet_claims` (agent_id, claim_day UTC, amount, created_at; UNIQUE(agent_id, claim_day)).
-  `src/services/faucet_service.py` + `POST /wallets/faucet` (bearer token; DID from the token
-  only). One transaction: global-budget lock, refusals (flag off → 404; already claimed today;
-  balance ≥ `FAUCET_BALANCE_CEILING`; younger than `FAUCET_MIN_AGE_MINUTES`; status SUSPENDED;
-  `FAUCET_DAILY_BUDGET` spent), wallet created if missing, ledger `tx_type='faucet'`,
-  `token_supply.total_minted` += amount. Defaults 25 / 100 / 60 / 2000, off. Commit
-  `SECURITY-REVIEW:`. Reversible (flag; table is new).
-  Check: `tests/test_faucet.py` (refusals, auth, body DID ignored, flag off = 404) and
-  `tests/integration/test_faucet_db.py --db` (credit once; second claim refused, no ledger row;
-  10 concurrent claims by one agent credit once; concurrent claims by 100 agents never pass the
-  budget; total_minted matches); alembic upgrade/downgrade 050 on a scratch DB; full suite green.
-- [x] **FC-2 — Point onboarding at the faucet.** Done cycle 191. T2 (text and hints; calls FC-1 unchanged).
-  `/onboard` response and `/heartbeat` hint name `POST /wallets/faucet` when the faucet is on
-  and the wallet is empty; `skill.md`, `/join` page, `docs/` quickstarts: how to claim, "no
-  outside value". The old `token_balances` welcome bonus stays (no data change); onboarding
-  stops calling it spendable. Check: onboarding/heartbeat tests for flag on and off; skill and
-  join-page tests; `skill_live_check.py` locally.
-- [x] **FC-3 — SDKs and MCP.** Done cycle 192. T2 (client code). Python `claim_faucet()`; TS `claimFaucet()` plus
-  wallet parity (transfer, transactions, stake, release); `agentx-mcp` tool `claim_faucet`.
-  Versions not bumped (launch runbook pins 0.4.0 / 0.1.0 / 0.1.0; see log), not published. Check: `sdk/` pytest, `sdk/ts` tests and build, MCP tests.
-- [x] **FC-4 — Economy journey, locally.** Done cycle 193. T2 (test tooling, calls existing services).
-  `scripts/economy_journey.py`: two fresh agents claim, A posts a bounty with a deadline, B
-  submits, A evaluates and distributes; then a paid task; balances and ledger add up; second
-  same-day claim refused. `launch_rehearsal.py --economy` runs it. Check: exits 0 from an
-  empty local DB; `tests/test_economy_journey.py` for its guards (localhost only).
-- [x] **FC-5a — Sprint-close security review.** Done cycle 194 (Fable). T1. Reviewed all four
-  Sprint 20 commits (FC-1 Fable, FC-2/3/4 Opus); found 1 issue, fixed: `POST /wallets/faucet`
-  had no rate limit while every call takes the faucet's global lock. Now 6/minute, 30/hour per
-  DID (`LIMIT_FAUCET*`), plus 10 adversarial tests. Commit marked `SECURITY-REVIEW:`.
-- [x] **FC-5 — Sprint close.** Done cycle 195. T2. Faucet tests 129 passed (`--db`);
-  `launch_rehearsal.py --economy` 10/10 (9 launch checks with the faucet off + the journey);
-  SDK 506, TS 155, MCP 79 passed; `sprint_20_retro.md`; `state_of_agentx.md`; H38 "switch
-  the faucet on" (after 1 Nov, with the first-come-first-served watch note).
-- [ ] **NEXT — Decompose Sprint 21** (bounties end to end, trust that notices;
-  `phase_c_plan.md`): draft `sprints/sprint_21_*.md`, replace this list. T2.
+- [x] **BT-0 — Plan Sprint 21.** Done cycle 196. T2. Code inventory; spec
+  `sprints/sprint_21_bounties_trust.md`; this list.
+- [ ] **BT-1 — Task work deadline (D10 default b).** **T1** (moves escrowed tokens back to the
+  creator). Setting `TASK_WORK_DAYS=7`. `task_service.reclaim_task` + `POST /tasks/{id}/reclaim`
+  (bearer; creator only): allowed only when the task is assigned, no result is pending or
+  accepted, and `task_assignments.started_at <= CURRENT_TIMESTAMP - TASK_WORK_DAYS` (database
+  clock). Row-locked; refunds the escrow once (`tx_type='task_work_deadline_refund'`); task
+  → CANCELLED, assignment closed; a late `submit_result` is then refused. Additive migration
+  only if a column is truly needed (prefer none). Update D10 in `HUMAN_ACTIONS.md` ("default
+  (b) built"). Commit `SECURITY-REVIEW:`.
+  Check: `tests/test_task_reclaim.py` (refusals: too early, result pending, not creator,
+  anonymous 401, wrong status, twice) and `tests/integration/test_task_reclaim_db.py --db`
+  (refund once; 10 concurrent reclaims refund once; reclaim racing a result submission: exactly
+  one wins; wallet and ledger add up); full suite green.
+- [ ] **BT-2 — Bounties created without a deadline.** **T1** (changes when held pools are
+  released). `release_overdue_bounty` and the `_DUE_BOUNTIES` query in `jobs/auto_release.py`
+  use `COALESCE(deadline, created_at + DEFAULT_BOUNTY_DAYS)`; submissions to such a bounty
+  close at the same effective deadline. `DEFAULT_BOUNTY_DAYS` becomes a setting (default 30).
+  No data change: no row's `deadline` is written. Commit `SECURITY-REVIEW:`.
+  Check: `--db` tests: a NULL-deadline bounty older than 30 + 7 days is released (paid to the
+  top score, or refunded); one younger is not; its `deadline` column stays NULL; existing
+  auto-release tests unchanged and green.
+- [ ] **BT-3 — Trust from paid work.** T2 (calls the reviewed `record_event` without changing
+  its rules; adds event types and weights, so marked `SECURITY-REVIEW:` for BT-8a). New
+  reporters in `reputation.py`: `record_bounty_won` (creator → winner, manual and automatic
+  payout; not on refund), `record_contract_completed` (creator → worker, approval or
+  auto-release; not on reclaim or dispute loss), `record_deadline_missed` (worker; task reclaim
+  from BT-1 and contract reclaim). Weights +0.05 / +0.05 / −0.05. Called after commit, like
+  `_after_payment`, so a trust failure cannot undo a payment. Dedupe keys per occurrence.
+  Check: unit tests per reporter; `--db`: manual and automatic payout racing write one event;
+  self-dealing and a < 24 h counterparty write none; daily cap holds; `recalculate_agent_trust`
+  applies the new types.
+- [ ] **BT-4 — Showcase API.** T2. `GET /markets/bounties/showcase`: open bounties (title,
+  pool, deadline, submission count), recently paid (last 30 days: amount, winner DID, paid
+  when, manual or automatic), top earners (bounty + contract payouts, last 30 days, top 10).
+  Public read, Redis-cached 60 s, IP rate-limited; 404 unless `ECONOMY_SHOWCASE_ENABLED`
+  (default false). No submission content, no wallet ids.
+  Check: `tests/test_bounty_showcase.py` (flag off 404; shapes; no private fields; numbers
+  match the ledger in a `--db` test).
+- [ ] **BT-5 — Showcase page.** T3 (small UI over BT-4). `ui/app/markets/bounties/page.tsx`
+  behind `NEXT_PUBLIC_FEATURE_ECONOMY`: three sections, empty states, no client-side secrets;
+  link from `/markets` and `/stats`. Check: `npm run build` and the UI test suite; page
+  renders against a local API with seeded data.
+- [ ] **BT-6 — Client parity.** T2 (client code). TS `contracts.ts` (create, list, get, bid,
+  assign, submit, approve, reclaim, dispute) exported from the client; `tasks.reclaim` in
+  Python and TS; MCP tools `create_bounty`, `submit_bounty_solution`, `reclaim_task` (check
+  which exist first). Versions not bumped, not published.
+  Check: `sdk/` pytest, `sdk/ts` build + tests, MCP tests.
+- [ ] **BT-7 — Economy journey, part two.** T2 (test tooling). `scripts/economy_journey.py`
+  gains: a task reclaimed after a missed work deadline and a bounty auto-released (time moved
+  by back-dating rows on the local `agentx_smoke*` DB only, guarded like the rest of the
+  script); the winner's trust events listed. Check: journey exits 0 from an empty local DB;
+  `launch_rehearsal.py --economy` 10/10; guard tests still pass.
+- [ ] **BT-8a — Sprint-close security review.** **T1.** Every marked Sprint 21 commit built on
+  Opus or Sonnet (BT-3 at least; BT-1/BT-2 if not built on Fable). Adversarial tests; fix in
+  the same cycle; record "reviewed N commits, found M issues".
+- [ ] **BT-8 — Sprint close.** T2. Acceptance criteria from the spec; launch rehearsal 9/9 off
+  and 10/10 `--economy`; `sprint_21_retro.md`; `state_of_agentx.md`; H item "switch the bounty
+  showcase on" (after 1 Nov, with H38's faucet).
+- [ ] **NEXT — Decompose Sprint 22** (collectives a newcomer can make in five minutes). T2.
 
 ## Open human items touching the branch
 
-1 Nov launch per `launch_day_runbook.md` (H29–H37, H12, H26, H31–H33, H13, H27, H28).
-Decisions, none blocking: D10 (task deadlines; lands in Sprint 21 as default (b) unless
-answered), D11 (human role), D12 (pricing), D13 (launch freeze vs. Phase C work flag-off).
+1 Nov launch per `launch_day_runbook.md` (H29–H37, H12, H26, H31–H33, H13, H27, H28); H38
+(faucet switch-on). Decisions, none blocking: D10 (lands here as default (b) unless answered),
+D11 (human role), D12 (pricing), D13 (launch freeze vs. Phase C work flag-off).
