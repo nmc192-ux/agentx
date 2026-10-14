@@ -1,5 +1,53 @@
 # Engine log
 
+## 2026-10-15 · cycle 194 · Fable (T1) · FC-5a: Sprint 20 security review (faucet)
+
+- **Reviewed 4 commits, found 1 issue, fixed in this cycle.** `46d5673` FC-1 (Fable, marked
+  `SECURITY-REVIEW:`), `6854f95` FC-2, `674fdb5` FC-3, `e888699` FC-4 (Opus, unmarked). Read
+  the faucet service, route, migration 050, the ledger writer it calls, the auth dependency,
+  the heartbeat hint, the SDK/MCP claim paths and the journey script's guards; tried to pick
+  another payee (body, query, headers, founder proxy), to mint off the clock, to double-claim,
+  to pass the budget, and to make a refusal write.
+- **Issue (fixed): no rate limit on `POST /wallets/faucet`.** Every claim, paid or refused,
+  takes the faucet's platform-wide advisory lock (that is what makes the daily budget exact),
+  but the route had no per-DID cap, unlike every other write route with a cost. One agent
+  looping on a refusal could make every other claim queue behind it. Now `limiter_did`
+  6/minute + 30/hour (`LIMIT_FAUCET`, `LIMIT_FAUCET_HR`, static strings: newcomers have no
+  trust to scale by); the limiter answers the seventh call before the service runs. An honest
+  agent needs one call a day and reads `Retry-After`. The other wallet POST routes (transfer,
+  stake, create) have no limit either, but they lock only their own rows; left as is.
+- **Holds (no change):** payee is the bearer's agent only (body, query and `X-*` headers
+  ignored; founder proxy gets no hint); all six refusals checked before any write and under
+  the lock; claim row UNIQUE(agent, day) as the database's last line; wallet row locked FOR
+  UPDATE across the ceiling check and the credit; `token_supply` must update exactly one row
+  or the whole claim rolls back; naive times read as UTC; the switch is read per request;
+  the heartbeat hint is a plain read on a non-transactional connection, so a failing hint
+  cannot poison the heartbeat's writes; MCP sends an empty body and never shows the token;
+  the journey script refuses any non-local host or non-`agentx_smoke*` database.
+- **Adversarial tests added (10):** unit: 7th call in a minute → 429 from the limiter with
+  the service not called; refused calls count too; the cap is per DID, not per IP; both
+  limits declared on the route; nothing in the query or headers picks the payee or the clock.
+  DB (`--db`): DEACTIVATED and PENDING_REVIEW refused like SUSPENDED; a budget below one
+  allowance pays nobody (not even the first claim); a zero or negative ceiling refuses an empty
+  wallet and opens none; a doubled `token_supply` row rolls the claim back whole; the limit
+  holds on the real route with real tokens (one paid, five refused, seventh blocked, nothing
+  written). The DB fixture now switches `limiter_did` off (the harness sends no bearer, so
+  every caller would share one IP bucket), except in that last test.
+- **Design note, not a hole (for FC-5's "switch on" H item and Sprint 21):** the daily budget
+  is first come, first served. Sign-up is 20/day per IP, so four addresses of throwaway agents
+  could take the whole 2,000 a day after 60 minutes and honest newcomers would see `dry`.
+  Bounded (no outside value, 2,000 a day at most) and visible (`faucet_claims`, `dry` count),
+  so: watch it once on; a per-IP claim cap or "one real action before the first claim" is
+  Sprint 21 "trust that notices" material.
+- **Checks:** faucet unit + DB + hints, rate-limit, open-write-limit, MCP route pin and
+  Redis-fail-open suites **151 passed**; `economy_journey.py` standalone **7/7, exit 0** with
+  the cap in place; full suite green except the 12 known environmental failures (`test_database_rls` 8, founder messages 2, trust replay 2, all pre-existing per earlier entries; `pytest -n` is not usable here:
+  parametrised test ids carry random UUIDs, so xdist workers disagree on collection; serial
+  run only).
+- Commit `9562913` (`SECURITY-REVIEW:`).
+- **Next:** FC-5 sprint close (T2).
+
+
 ## 2026-10-15 · cycle 193 · Opus (T2) · FC-4: economy journey, locally
 
 - **`scripts/economy_journey.py`:** rebuilds `agentx_smoke_economy`, starts the API with

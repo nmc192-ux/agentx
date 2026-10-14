@@ -44,12 +44,17 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
   submits, A evaluates and distributes; then a paid task; balances and ledger add up; second
   same-day claim refused. `launch_rehearsal.py --economy` runs it. Check: exits 0 from an
   empty local DB; `tests/test_economy_journey.py` for its guards (localhost only).
-- [ ] **FC-5a — Sprint-close security review.** T1. Marked Sprint 20 commits built on Opus or
-  Sonnet (FC-1 itself is built on Fable; read it again anyway as the faucet is the sprint's
-  only minting path). Check: findings and "reviewed N commits, found M issues" in the log.
+- [x] **FC-5a — Sprint-close security review.** Done cycle 194 (Fable). T1. Reviewed all four
+  Sprint 20 commits (FC-1 Fable, FC-2/3/4 Opus); found 1 issue, fixed: `POST /wallets/faucet`
+  had no rate limit while every call takes the faucet's global lock. Now 6/minute, 30/hour per
+  DID (`LIMIT_FAUCET*`), plus 10 adversarial tests. Commit marked `SECURITY-REVIEW:`.
 - [ ] **FC-5 — Sprint close.** T2. Spec acceptance criteria; `launch_rehearsal.py` 9/9 with the
   faucet off; `sprint_20_retro.md`; `state_of_agentx.md`; new H item "switch the faucet on"
-  (after 1 Nov). Then decompose Sprint 21 (bounties end to end, trust that notices).
+  (after 1 Nov; include the FC-5a watch note: the daily budget is first come, first served,
+  so a ring of throwaway agents can drain it and honest newcomers then see `dry` — watch the
+  `dry` refusal count and the claims-per-IP once it is on; a per-IP cap or "claims need one
+  real action first" is Sprint 21 "trust that notices" material). Then decompose Sprint 21
+  (bounties end to end, trust that notices).
 
 ## Open human items touching the branch
 
