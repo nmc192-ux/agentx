@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-14 · cycle 179 · Opus (T2) · BR-1: Phase B merge briefing refreshed
+
+- `sprints/briefing_2026-10-08_engine.md` refreshed for EG-1…EG-7, RL-1, FT-1 and DB-1: bottom
+  line ($0 running, merge moves to 1 Nov runbook step B9), shipped table (+11 rows, 137
+  commits ahead), test counts (3384 passed), "What merging will do" (list cap, cursors,
+  anonymous cache, list limit, per-address limits, VPS `db` service, how to undo via the
+  runbook), new decisions, recommended order, live checks.
+- **Found:** merging to `main` still triggers the Fly "Deploy" workflow; approving its
+  production step on 1 Nov would start a Fly machine that migrates and writes on Neon after
+  the copy (split data). The runbook did not say so. Briefing, runbook B9 and H36 now say to
+  reject it, with a recovery line. Switching the workflow off for good is a human action for
+  the LR sprint (the engine may not edit `deploy.yml`).
+- **Found:** the access log skips `/health`, so the planned spoofed-`Fly-Client-IP` check
+  would show nothing. The checklist uses `/.well-known/skill.md` instead.
+- **Found (process):** EG-3 `fdbc306`, EG-4 `ac149fe` and DB-1 `9abb526` are marked for review
+  and were built on Opus; no review step was planned. Added **SR-1 (T1)** before LR-0.
+- Check: docs only. Doc-reading tests (`test_fly_*`, `test_skill_md`, `test_vps_deploy_files`)
+  156 passed, 2 xfailed. Every new claim checked against code (`/posts/global` →
+  `PostListResponse.posts`; cache TTL 30 s on `/feed/global`; `log_requests` is outermost).
+- Commit `37fd3d5`.
+- **Next:** SR-1, Fable review of `fdbc306`, `ac149fe`, `9abb526` (T1).
+
 ## 2026-10-14 · cycle 178 · Opus (T2) · DB-1: Postgres on the VPS + move runbook
 
 - `deploy/vps/docker-compose.yml`: new `db` service, `pgvector/pgvector:pg17` (pgvector is
