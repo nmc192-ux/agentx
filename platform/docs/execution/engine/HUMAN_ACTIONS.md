@@ -4,6 +4,10 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+**1 Nov launch: follow `platform/docs/execution/launch_day_runbook.md` top to bottom** (written
+cycle 185). It puts H29, H30, H34, H36, H37, H12, H26, H31–H33, H13, H27 and H28 in one timed
+order, with VPS versions of the old `fly secrets` steps. Part 1 is the before-1-Nov list.
+
 - [ ] **H37 — Set up free alerts for when AgentX breaks (any time before 1 Nov; about 10
   minutes; changes nothing live; costs $0).** Added cycle 181 (Sprint 19 plan). The engine is
   building a small watchdog for the VPS (step LR-3) that sends a phone notification when the API,
