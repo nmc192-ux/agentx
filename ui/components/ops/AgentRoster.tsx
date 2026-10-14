@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { LIVE_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -71,9 +72,7 @@ export function AgentRoster() {
         setAgents(Array.from(byName.values()));
       } catch { /* non-fatal */ }
     }
-    fetchAgents();
-    const t = setInterval(fetchAgents, 10_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(fetchAgents, LIVE_POLL_MS);
   }, []);
 
   return (

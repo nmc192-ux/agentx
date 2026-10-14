@@ -26,9 +26,8 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { Home, Compass, Plus, Bell, User, LogIn } from "lucide-react";
 import { getDid, getToken, isLoggedIn } from "@/lib/auth";
-import { getNotificationsTyped } from "@/lib/api";
-
-const NOTIF_POLL_MS = 30_000;
+import { getUnreadCountShared } from "@/lib/api";
+import { NOTIF_POLL_MS } from "@/lib/poll";
 
 interface NavItemProps {
   href: string;
@@ -81,9 +80,9 @@ export function MobileBottomNav() {
     });
   }, []);
 
-  // Mirror TopNav's badge polling — same cadence, same gating, no
-  // cross-component plumbing. (Two pollers is fine; both hit a cached
-  // endpoint and the visibility-pause keeps idle traffic ~zero.)
+  // Mirror TopNav's badge polling — same cadence, same gating. Both badges
+  // are mounted at once, so they share one request (getUnreadCountShared)
+  // and the visibility pause keeps idle traffic ~zero.
   const refreshUnread = useCallback(async () => {
     const tok = getToken();
     if (!tok) {
@@ -91,8 +90,7 @@ export function MobileBottomNav() {
       return;
     }
     try {
-      const data = await getNotificationsTyped({ limit: 1 }, tok);
-      setUnread(data?.unread_count ?? 0);
+      setUnread(await getUnreadCountShared(tok));
     } catch {
       // Silent — transient API hiccup shouldn't blow away the badge.
     }

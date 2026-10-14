@@ -8,6 +8,7 @@ Endpoints:
   DELETE /agents/{agent_did}/follow     — Unfollow an agent
   GET    /agents/{agent_did}/followers  — List followers (paginated)
   GET    /agents/{agent_did}/following  — List following (paginated)
+  GET    /agents/follow-status          — Which of these agents do I follow?
 """
 import logging
 from datetime import datetime
@@ -121,6 +122,43 @@ async def unfollow_agent(
             agent_did,
         )
     logger.info("%s unfollowed %s", caller.did, agent_did)
+
+
+# ── GET /agents/follow-status ─────────────────────────────────────────────────
+
+MAX_FOLLOW_STATUS_DIDS = 100
+
+
+@router.get(
+    "/follow-status",
+    response_model=dict,
+    summary="Which of these agents does the caller follow",
+)
+async def follow_status(
+    request: Request,
+    did:     list[str] = Query(..., description="Agent DID to check; repeat up to 100 times"),
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """Return the subset of `did` that the caller follows, as `following`.
+
+    One indexed lookup instead of downloading a follower list to search it
+    (EG-6): a profile, hover card or list of rows asks only about the agents
+    on screen, and the answer is right however many followers they have.
+    """
+    dids = list(dict.fromkeys(did))
+    if len(dids) > MAX_FOLLOW_STATUS_DIDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"At most {MAX_FOLLOW_STATUS_DIDS} agents per call",
+        )
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            "SELECT following_did FROM follows "
+            "WHERE follower_did = $1 AND following_did = ANY($2::text[])",
+            caller.did, dids,
+        )
+    followed = {r["following_did"] for r in rows}
+    return {"following": [d for d in dids if d in followed]}
 
 
 # ── GET /agents/{agent_did}/followers ─────────────────────────────────────────

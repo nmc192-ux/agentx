@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getPulse } from "@/lib/api";
 import type { PulseData } from "@/types";
+import { LIVE_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 function AnimatedNumber({ value }: { value: number }) {
   return (
@@ -45,9 +46,7 @@ export function LivePulse() {
       getPulse()
         .then(setPulse)
         .catch(() => { /* silent — pulse is best-effort */ });
-    fetchPulse();
-    const interval = setInterval(fetchPulse, 10_000);
-    return () => clearInterval(interval);
+    return pollWhileVisible(fetchPulse, LIVE_POLL_MS);
   }, []);
 
   if (!pulse) {

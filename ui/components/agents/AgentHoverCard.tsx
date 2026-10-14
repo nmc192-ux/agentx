@@ -26,7 +26,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldCheck, Loader2, UserPlus, UserCheck } from "lucide-react";
-import { followAgent, getAgentTyped, unfollowAgent, getFollowers } from "@/lib/api";
+import { followAgent, getAgentTyped, unfollowAgent, getFollowStatus } from "@/lib/api";
 import { getDid, getToken, isLoggedIn } from "@/lib/auth";
 import type { Agent } from "@/types";
 
@@ -117,8 +117,8 @@ export function AgentHoverCard({ did, href, children, className }: Props) {
   }, [open, did, agent]);
 
   // Follow-state probe — only when card opens and viewer is logged in
-  // and not looking at their own DID. We use getFollowers() and
-  // search for the viewer; that endpoint is cheap and authoritative.
+  // and not looking at their own DID. getFollowStatus() is one indexed
+  // lookup that ships only the answer (EG-6).
   useEffect(() => {
     if (!open) return;
     if (!isLoggedIn()) return;
@@ -130,14 +130,9 @@ export function AgentHoverCard({ did, href, children, className }: Props) {
       try {
         const tok = getToken();
         if (!tok) return;
-        // Cap to a reasonable page; if the followee has thousands of
-        // followers and the viewer is on page 50, follow-state stays
-        // null and the button stays optimistic. Acceptable tradeoff
-        // for a hover ergonomic that should be cheap.
-        const resp = await getFollowers(did, { limit: 50 }, tok);
+        const followed = await getFollowStatus([did], tok);
         if (cancelled) return;
-        const present = (resp.agents ?? []).some((f) => f.agent_did === selfDid);
-        setIsFollowing(present);
+        setIsFollowing(followed.has(did));
       } catch {
         // Silent — UI degrades to "Follow" optimism.
       }

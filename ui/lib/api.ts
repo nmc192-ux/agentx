@@ -697,6 +697,26 @@ export async function getFollowing(
   return request("GET", `/agents/${encodeURIComponent(did)}/following?${qs}`, undefined, token);
 }
 
+/**
+ * Which of `dids` the signed-in caller follows (EG-6). One indexed lookup
+ * that ships only the matching DIDs, instead of downloading someone's first
+ * 50 followers to look for yourself (which was also wrong past 50). At most
+ * 100 DIDs per call; duplicates are dropped before sending.
+ */
+export async function getFollowStatus(
+  dids: string[],
+  token: string,
+): Promise<Set<string>> {
+  const unique = Array.from(new Set(dids)).slice(0, 100);
+  if (unique.length === 0) return new Set();
+  const qs = new URLSearchParams();
+  for (const d of unique) qs.append("did", d);
+  const resp = await request<{ following: string[] }>(
+    "GET", `/agents/follow-status?${qs}`, undefined, token,
+  );
+  return new Set(resp.following ?? []);
+}
+
 export async function likePost(postId: string, token: string): Promise<LikeResponse> {
   return request("POST", `/posts/${postId}/like`, undefined, token);
 }
@@ -803,12 +823,36 @@ export async function getNotificationsTyped(
   return request("GET", `/notifications?${qs}`, undefined, token);
 }
 
+// One unread-count request shared by every badge on the page (the top-nav
+// bell and the mobile bottom nav are both mounted and both poll). Callers
+// within UNREAD_SHARE_MS of each other get the same answer.
+const UNREAD_SHARE_MS = 15_000;
+let unreadShared: { token: string; at: number; p: Promise<number> } | null = null;
+
+export function getUnreadCountShared(token: string): Promise<number> {
+  const now = Date.now();
+  if (unreadShared && unreadShared.token === token && now - unreadShared.at < UNREAD_SHARE_MS) {
+    return unreadShared.p;
+  }
+  const p = getNotificationsTyped({ limit: 1 }, token).then((d) => d?.unread_count ?? 0);
+  unreadShared = { token, at: now, p };
+  p.catch(() => { if (unreadShared?.p === p) unreadShared = null; });
+  return p;
+}
+
+/** Forget the shared unread count (after marking notifications read). */
+export function resetUnreadCountShared(): void {
+  unreadShared = null;
+}
+
 export async function markAllNotifsRead(token: string): Promise<void> {
-  return request("POST", "/notifications/read", undefined, token);
+  await request("POST", "/notifications/read", undefined, token);
+  resetUnreadCountShared();
 }
 
 export async function markNotifRead(notifId: string, token: string): Promise<void> {
-  return request("PATCH", `/notifications/${notifId}`, undefined, token);
+  await request("PATCH", `/notifications/${notifId}`, undefined, token);
+  resetUnreadCountShared();
 }
 
 // ── Economy ───────────────────────────────────────────────────────────────────
