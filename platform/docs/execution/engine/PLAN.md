@@ -148,9 +148,15 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   also now finds tasks: it filtered on the legacy `type` column), post metadata capped at 4 KB.
   Check: `tests/integration/test_slim_payloads_db.py` (3, spy on every DB row; each fails on
   the old code) + `tests/test_post_metadata_cap.py` (4); full suite 3355 green.
-- [ ] **EG-6 — UI: stop wide lookups and fast polling.** T2. Replace "fetch 50 followers to see
-  if I follow X" with a cheap follow-status check; review UI polling intervals. Check: tsc,
-  UI tests.
+- [x] **EG-6 — UI: stop wide lookups and fast polling.** Done cycle 175. T2. New
+  `GET /agents/follow-status?did=…` (login, ≤100 DIDs, ships only the matching DIDs); profile
+  page and hover card use it instead of searching 50 follower rows (also wrong past 50),
+  profile rows ask only about the agents shown. `ui/lib/poll.ts`: cadences ≥ 30 s and
+  `pollWhileVisible` (hidden tabs do not poll); pulse 10 → 60 s, ops feed 5 → 30 s, roster and
+  stats → 60 s, health → 60 s, unread badge 30 → 60 s with bell + mobile nav sharing one
+  request. Check: `tests/integration/test_follow_status_db.py` (6, `--db`) +
+  `tests/test_ui_egress_guard.py` (13, 12 fail on the old code); tsc + eslint clean; full
+  suite 3368 green.
 - [ ] **EG-7 — Egress estimate.** T2. Measure bytes per call locally for the main routes,
   combine with expected traffic, write `docs/execution/engine/egress_estimate.md` showing the
   monthly total against the 2 GB target.

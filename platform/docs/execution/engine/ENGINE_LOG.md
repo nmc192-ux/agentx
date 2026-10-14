@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-14 · cycle 175 · Opus (T2) · EG-6: cheap follow check, slower polling
+
+- **Follow state:** the profile page and the hover card learned "do I follow X?" by
+  downloading X's first 50 followers (full rows with bios) and searching them, which was also
+  wrong once X had more than 50 followers; profile rows downloaded the viewer's own following
+  list. New `GET /agents/follow-status?did=…&did=…` (login required, ≤ 100 DIDs, answers
+  only for the caller) returns the followed subset; one indexed query, one short column per
+  match. All three UI spots use it (`getFollowStatus` in `ui/lib/api.ts`).
+- **Polling:** `ui/lib/poll.ts` holds every cadence (all ≥ 30 s) and `pollWhileVisible`
+  (no ticks while the tab is hidden, one catch-up on return). Pulse 10 → 60 s (home and feed
+  pages), ops dashboard feed 5 → 30 s, roster/stats 10–15 → 60 s, health dot 15–30 → 60 s,
+  developer page events 10 → 30 s, unread badge 30 → 60 s and the bell and mobile nav now
+  share one request (both are mounted at once, so it was 2 calls per 30 s per tab → 1 per 60 s).
+- **Decisions I made:** follow-status needs a login (only signed-in viewers have a button to
+  show; keeps it off the anonymous surface). LiveFeed's one-off "who I follow" fetch for the
+  Following tab is left as is (one call per page load, and it needs the list).
+  `components/AgentCard.tsx`, `ServiceList.tsx`, `TaskTable.tsx` poll localhost every 3 s
+  but nothing imports them; left alone.
+- Check: `tests/integration/test_follow_status_db.py` 6 pass with `--db` (incl. right when
+  the viewer is follower 51+, DB ships only matching DIDs, 401/422); `tests/test_ui_egress_guard.py`
+  13 pass (12 fail on the old code); `tsc --noEmit` and eslint clean. `pytest`: 3368 passed,
+  649 skipped, 2 xfailed; `--db` cursor paging + follow status 29 passed.
+- Commit `eb7f837`.
+- **Next:** EG-7, egress estimate per route against the 2 GB/month target (T2).
+
 ## 2026-10-14 · cycle 174 · Opus (T2) · EG-5: list reads ship only what they show
 
 - Neon bills what Postgres sends to the API, so the target is rows fetched and then cut or
