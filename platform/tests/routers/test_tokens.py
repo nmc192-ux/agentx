@@ -589,13 +589,23 @@ class TestBounds:
         stake.assert_not_awaited()
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("limit", [0, -1, 201, 10**9])
+    @pytest.mark.parametrize("limit", [0, -1])
     async def test_transaction_page_size_is_bounded(self, client, limit):
         listing = AsyncMock(return_value=[])
         with patch("src.routers.tokens.token_service.get_transactions", new=listing):
             resp = await client.get(f"/wallets/{uuid4()}/transactions?limit={limit}")
         assert resp.status_code == 422
         listing.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("limit", [201, 10**9])
+    async def test_transaction_page_size_over_cap_is_clamped(self, client, limit):
+        # EG-1: over-cap limits are clamped to 50, not rejected.
+        listing = AsyncMock(return_value=[])
+        with patch("src.routers.tokens.token_service.get_transactions", new=listing):
+            resp = await client.get(f"/wallets/{uuid4()}/transactions?limit={limit}")
+        assert resp.status_code == 200
+        assert listing.await_args.kwargs["limit"] == 50
 
 
 # ── GET /stakes/{agent_id} ────────────────────────────────────────────────────

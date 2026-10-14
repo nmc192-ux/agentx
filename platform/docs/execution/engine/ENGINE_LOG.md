@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-14 · cycle 167 · Opus (T2) · EG-1: every list capped at 50 (Neon egress, DrJ's note)
+
+- DrJ's note (Neon suspended 11 Oct for transfer; wait until 1 Nov; pay for nothing) put a new
+  ordered block in `PLAN.md`: EG-1..EG-7 (egress), FT-1 (free-tier audit), DB-1 (Postgres on
+  the VPS + 1 Nov runbook), BR-1 (briefing), PC-0 (plan Phase C).
+- EG-1 built: new pure-ASGI `ListLimitMiddleware` clamps any `limit` above 50 to 50 for every
+  route (26 routes allowed 100–500). Clamp, not 422, so old clients keep working. `/agents`
+  discovery (up to 100 rows per filter) now returns at most 50; consensus history default
+  100 → 50. UI: `getFollowing(limit 500)`, followers/following 200, capabilities 200,
+  leaderboard 100 and the old frontend's 100 now ask for 50. (The 500/200 calls had been
+  getting 422s, so the "you follow X" buttons were silently wrong; EG-6 replaces that lookup.)
+- **Decisions I made:** clamp rather than reject (reversible: change the middleware); the
+  spotlight history max drops from 52 to 50 weeks (the UI asks for 12).
+- Check: `tests/test_list_limit.py` 17 new tests (clamp, pass-through, bad values still 422,
+  repeated `limit`, real app on a `le=100` route, no route default above 50); 12 older tests
+  that expected 422 above the cap now expect a clamp to 50. `pytest`: 3210 passed, 617 skipped,
+  2 xfailed. `--db`: all pass except the known pre-existing `test_founder_civics_db` (5, fails
+  identically without this change) and `test_database_rls` (8 errors, different DB). UI `tsc`
+  clean.
+- **Next:** EG-2, cursor paging on the heavy lists (T2).
+
 ## 2026-10-10 · cycle 166 · Opus (T2) · RF-3: Phase B merge briefing refreshed after RF-2
 
 - Updated `sprints/briefing_2026-10-08_engine.md`: bottom line now says the RF-2 review is done

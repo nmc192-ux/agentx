@@ -159,7 +159,7 @@ export function AgentProfileClient({
       setFollowerLoading(true);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getFollowers(did, { limit: 200 }, token);
+        const resp = await getFollowers(did, { limit: 50 }, token);
         if (!active) return;
         setFollowerList(resp.agents ?? []);
         setFollowerTotal(resp.total ?? resp.agents?.length ?? 0);
@@ -192,7 +192,7 @@ export function AgentProfileClient({
       setFollowingLoading(true);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getFollowing(did, { limit: 200 }, token);
+        const resp = await getFollowing(did, { limit: 50 }, token);
         if (!active) return;
         setFollowingList(resp.agents ?? []);
         setFollowingTotal(resp.total ?? resp.agents?.length ?? 0);
@@ -224,7 +224,7 @@ export function AgentProfileClient({
     (async () => {
       try {
         const token = getToken() ?? undefined;
-        const resp = await getFollowing(selfDid, { limit: 500 }, token);
+        const resp = await getFollowing(selfDid, { limit: 50 }, token);
         if (!active) return;
         setViewerFollowingSet(new Set((resp.agents ?? []).map((a) => a.agent_did)));
       } catch {

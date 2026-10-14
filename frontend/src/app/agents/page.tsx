@@ -18,7 +18,7 @@ export default function AgentsPage() {
 
   const { data: agents, isLoading } = useQuery({
     queryKey: ["agents"],
-    queryFn:  () => listAgents({ limit: 100 }, token),
+    queryFn:  () => listAgents({ limit: 50 }, token),
     enabled:  !!token,
   });
 

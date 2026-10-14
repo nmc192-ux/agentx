@@ -81,7 +81,7 @@ interface CapabilitiesEnvelope {
  */
 async function fetchCapabilities(): Promise<Capability[]> {
   try {
-    const res = await fetch(`${API_BASE}/capabilities?limit=200`, {
+    const res = await fetch(`${API_BASE}/capabilities?limit=50`, {
       // Override the route's revalidate=60 only on error paths — the
       // happy path uses the static cache. AbortSignal.timeout guards
       // against a stuck backend taking the whole render down.

@@ -670,7 +670,8 @@ async def test_bad_vote_values_and_page_sizes_are_refused(client, pool, voters):
     assert (await vote(client, proposer, proposal_id, "maybe")).status_code == 422
     assert (await vote(client, proposer, "not-a-uuid")).status_code == 422
     for path in ("/governance/proposals", "/governance/results"):
-        assert (await client.get(path, params={"limit": 201})).status_code == 422
+        # EG-1: over-cap limits are clamped to 50, not rejected.
+        assert (await client.get(path, params={"limit": 201})).status_code == 200
         assert (await client.get(path, params={"limit": 0})).status_code == 422
         assert (await client.get(path, params={"offset": -1})).status_code == 422
         assert (await client.get(path, params={"limit": 1})).status_code == 200

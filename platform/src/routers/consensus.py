@@ -97,7 +97,7 @@ async def get_debate(proposal_id: UUID) -> DebateDetail:
 )
 async def get_consensus_history(
     proposal_id: UUID,
-    limit: int = 100,
+    limit: int = 50,
     offset: int = 0,
 ) -> list[ConsensusSnapshot]:
     return await consensus_service.list_snapshots(proposal_id, limit, offset)

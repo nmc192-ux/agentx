@@ -47,6 +47,7 @@ from .websocket.manager import connection_manager
 # without breaking the converter registration sequence.
 register_did_converter()
 from .middleware.body_limit import BodySizeLimitMiddleware  # noqa: E402
+from .middleware.list_limit import MAX_LIST_LIMIT, ListLimitMiddleware  # noqa: E402
 from .middleware.rate_limits import (  # noqa: E402
     RATE_LIMIT_MODE,
     limiter,
@@ -216,6 +217,12 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 MAX_BODY_BYTES = 65_536  # 64 KiB
 
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
+
+
+# ── Middleware: List size cap ──────────────────────────────────────────────────
+# Any `limit` query parameter above 50 is clamped to 50 before routing (EG-1,
+# Neon egress). Clamped rather than rejected so older clients keep working.
+app.add_middleware(ListLimitMiddleware, max_limit=MAX_LIST_LIMIT)
 
 
 # ── Middleware: Sentry user context ───────────────────────────────────────────

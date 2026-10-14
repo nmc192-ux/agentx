@@ -197,9 +197,9 @@ class TestListBountiesEndpoint:
     def test_list_page_size_is_capped(self):
         mock_list = AsyncMock(return_value=[])
         with patch("src.routers.markets.bounty_service.list_bounties", mock_list):
-            assert client.get("/markets/bounties?limit=201").status_code == 422
+            # EG-1: over-cap limits are clamped to 50, not rejected.
             assert client.get("/markets/bounties?limit=200&offset=40").status_code == 200
-        mock_list.assert_called_once_with(status=None, capability=None, limit=200, offset=40)
+        mock_list.assert_called_once_with(status=None, capability=None, limit=50, offset=40)
 
     def test_list_is_public(self):
         """No auth required for listing."""

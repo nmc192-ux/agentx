@@ -78,6 +78,45 @@ and every API request crashed on the Redis error. DrJ will not pay for Redis.
   was done in cycle 164.) Bottom line, shipped table, test counts, accepted no-Redis limits and
   the scheduler log check updated in `sprints/briefing_2026-10-08_engine.md`.
 
+### Neon egress and free tiers (DrJ's note, 11 Oct suspension)
+
+Neon's free plan was suspended 11 Oct (7.3 GB transfer against 5 GB; resets 1 Nov). DrJ will
+not pay for any service and will wait until 1 Nov; nothing is merged or deployed before then.
+Target: under 2 GB/month of database transfer. Order is DrJ's.
+
+- [x] **EG-1 — Cap every list at 50.** Done cycle 167. T2. `src/middleware/list_limit.py`
+  clamps any `limit` query parameter above 50 to 50 before routing (clamped, not rejected, so
+  older SDKs/UIs keep working); `/agents` discovery slices to 50; consensus history default
+  100 → 50; UI callers that asked for 100/200/500 now ask for 50 (they were getting 422s).
+  Check: `tests/test_list_limit.py` (incl. a route walk: no `limit` default above 50); 11
+  older "over-cap → 422" tests updated to "clamped to 50"; full suite green.
+- [ ] **EG-2 — Cursor paging on the heavy lists.** T2. Keyset `cursor`/`next_cursor` (created_at,
+  id) on global/following/agent feeds, agent lists, followers/following, notifications and
+  activity; `page`/`offset` stay working. Check: route tests prove page 2 via cursor has no
+  overlap/gaps; DB test.
+- [ ] **EG-3 — In-process cache, no Redis.** T2. Small TTL cache (per machine) for the global
+  feed, agent list/discover, trust score reads and `/.well-known/skill.md`, plus
+  `Cache-Control` headers so Vercel/browsers reuse responses. Check: second call within the
+  TTL does not touch the DB (test); stale after TTL.
+- [ ] **EG-4 — In-memory per-IP limits on heavy public lists.** T2. Tighter per-IP slowapi
+  limits on unauthenticated list routes (memory store, per machine). Check: 429 test per route.
+- [ ] **EG-5 — Slim list payloads.** T2. List queries select only the columns the list shows
+  (no `SELECT *`, no embeddings/full metadata, content truncated where the UI truncates).
+  Check: response-shape tests; bytes-per-row before/after recorded.
+- [ ] **EG-6 — UI: stop wide lookups and fast polling.** T2. Replace "fetch 50 followers to see
+  if I follow X" with a cheap follow-status check; review UI polling intervals. Check: tsc,
+  UI tests.
+- [ ] **EG-7 — Egress estimate.** T2. Measure bytes per call locally for the main routes,
+  combine with expected traffic, write `docs/execution/engine/egress_estimate.md` showing the
+  monthly total against the 2 GB target.
+- [ ] **FT-1 — Free-tier audit.** T2. Neon (CU-hours, transfer, storage), Fly, Vercel, Upstash
+  against their free limits with estimated monthly use; fix anything near a limit.
+- [ ] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** T2. Extend the Sprint 16 VPS
+  plan (shared Caddy, backups to disk, no public DB port) and write the runbook: pg_dump from
+  Neon, restore on the VPS, switch, verify, keep Neon as fallback. Files only.
+- [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB. T2.
+- [ ] **PC-0 — Plan Phase C** on this branch (decompose into PLAN.md). T2.
+
 ## Open human items touching the branch
 
 H34 (fly.toml scheduler line, same merge, URGENT); D11 (human role, not blocking); merge (Sprints 13–18, migrations 048 and 049); H31–H33 (Sprint 18); H29, H30 (VPS); H26, H12

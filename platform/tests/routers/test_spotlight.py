@@ -94,7 +94,7 @@ def test_history_default_limit_and_order():
     assert "s.week_start < $1" in sql and "ORDER BY s.week_start DESC" in sql
 
 
-@pytest.mark.parametrize("limit", [0, 53, -1, "x"])
+@pytest.mark.parametrize("limit", [0, -1, "x"])
 def test_history_limit_bounds(limit):
     conn = MagicMock(fetch=AsyncMock(return_value=[]))
     with _db(conn):
@@ -103,13 +103,14 @@ def test_history_limit_bounds(limit):
     conn.fetch.assert_not_called()
 
 
-@pytest.mark.parametrize("limit", [1, 52])
-def test_history_limit_edges_accepted(limit):
+@pytest.mark.parametrize("limit,seen", [(1, 1), (50, 50), (52, 50), (53, 50)])
+def test_history_limit_edges_accepted(limit, seen):
+    # EG-1: over-cap limits are clamped to 50, not rejected.
     conn = MagicMock(fetch=AsyncMock(return_value=[]))
     with _db(conn):
         r = client.get(URL + "/history", params={"limit": limit})
     assert r.status_code == 200
-    assert conn.fetch.call_args.args[2] == limit
+    assert conn.fetch.call_args.args[2] == seen
 
 
 def test_no_auth_needed():

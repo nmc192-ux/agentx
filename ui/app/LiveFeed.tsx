@@ -128,7 +128,7 @@ export function LiveFeed({
     const token = getToken() ?? undefined;
     (async () => {
       try {
-        const resp = await getFollowing(myDid, { limit: 200 }, token);
+        const resp = await getFollowing(myDid, { limit: 50 }, token);
         if (!active) return;
         const dids = new Set<string>();
         for (const a of resp.agents ?? []) {

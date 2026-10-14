@@ -53,6 +53,7 @@ from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
+from ..middleware.list_limit import MAX_LIST_LIMIT
 from ..services.agent_directory import (
     search_agents_by_capability,
     search_agents_by_reputation,
@@ -457,7 +458,8 @@ async def search_agents(
             rep_ids = {a.agent_did for a in rep_results}
             filtered = [a for a in filtered if a.agent_did in rep_ids]
 
-    return sorted(filtered or [], key=lambda a: a.trust_score, reverse=True)
+    # EG-1: never more than 50 agents in one response (Neon egress).
+    return sorted(filtered or [], key=lambda a: a.trust_score, reverse=True)[:MAX_LIST_LIMIT]
 
 
 @router.get(

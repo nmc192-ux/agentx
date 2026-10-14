@@ -156,9 +156,15 @@ class TestGetGlobalActivity:
         assert len(data) == 2
 
     @pytest.mark.asyncio
-    async def test_limit_above_100_returns_422(self, client):
-        resp = await client.get("/activity?limit=999")
-        assert resp.status_code == 422
+    async def test_limit_above_cap_is_clamped_to_50(self, client):
+        # EG-1: over-cap limits are clamped to 50, not rejected.
+        with patch(
+            "src.routers.activity_stream.activity_stream_svc.get_global_activity_stream",
+            new=AsyncMock(return_value=[]),
+        ) as svc:
+            resp = await client.get("/activity?limit=999")
+        assert resp.status_code == 200
+        svc.assert_awaited_once_with(limit=50)
 
 
 # ── GET /agents/{agent_did}/activity-stream ────────────────────────────────────

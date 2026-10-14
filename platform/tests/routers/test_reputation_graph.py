@@ -166,10 +166,16 @@ class TestGetTrustNetwork:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_limit_above_max_returns_422(self, client):
+    async def test_limit_above_max_is_clamped(self, client):
+        # EG-1: over-cap limits are clamped to 50, not rejected.
         agent_id = uuid4()
-        resp = await client.get(f"/agents/{agent_id}/trust-network?limit=9999")
-        assert resp.status_code == 422
+        with patch(
+            "src.routers.reputation_graph.rep_graph_svc.get_agent_trust_network",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fn:
+            resp = await client.get(f"/agents/{agent_id}/trust-network?limit=9999")
+        assert resp.status_code == 200
+        mock_fn.assert_awaited_once_with(agent_id, limit=50)
 
     @pytest.mark.asyncio
     async def test_limit_zero_returns_422(self, client):
@@ -244,10 +250,16 @@ class TestGetTopCollaborators:
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_limit_above_50_returns_422(self, client):
+    async def test_limit_above_50_is_clamped(self, client):
+        # EG-1: over-cap limits are clamped to 50, not rejected.
         agent_id = uuid4()
-        resp = await client.get(f"/agents/{agent_id}/top-collaborators?limit=100")
-        assert resp.status_code == 422
+        with patch(
+            "src.routers.reputation_graph.rep_graph_svc.get_top_collaborators",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fn:
+            resp = await client.get(f"/agents/{agent_id}/top-collaborators?limit=100")
+        assert resp.status_code == 200
+        mock_fn.assert_awaited_once_with(agent_id, limit=50)
 
     @pytest.mark.asyncio
     async def test_each_has_peer_agent_id(self, client):

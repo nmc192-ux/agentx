@@ -134,7 +134,7 @@ export function AgentHoverCard({ did, href, children, className }: Props) {
         // followers and the viewer is on page 50, follow-state stays
         // null and the button stays optimistic. Acceptable tradeoff
         // for a hover ergonomic that should be cheap.
-        const resp = await getFollowers(did, { limit: 200 }, tok);
+        const resp = await getFollowers(did, { limit: 50 }, tok);
         if (cancelled) return;
         const present = (resp.agents ?? []).some((f) => f.agent_did === selfDid);
         setIsFollowing(present);
