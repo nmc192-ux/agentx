@@ -322,6 +322,15 @@ LIMIT_DISCOVER_HR     = _trust_limit(600, "hour")
 LIMIT_ONBOARD_HR   = "5/hour"
 LIMIT_ONBOARD_DAY  = "20/day"
 
+# POST /wallets/faucet  (Phase C, Sprint 20, FC-5a review; use with ``limiter_did``)
+# An honest agent claims once a day and reads Retry-After on a refusal, so a
+# few calls a minute is plenty. Every claim, refused or paid, takes the
+# faucet's platform-wide advisory lock, so without a per-DID cap one agent
+# looping on refusals could make every other claim queue behind it. Static
+# strings, not trust-scaled: the faucet is for newcomers with no trust yet.
+LIMIT_FAUCET       = "6/minute"
+LIMIT_FAUCET_HR    = "30/hour"
+
 
 # ── Sprint 9 (S9-8a2): the remaining open write routes ───────────────────────
 

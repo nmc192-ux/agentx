@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import AgentRecord, get_current_agent
 from ..config import get_settings
@@ -41,6 +41,7 @@ from ..models.token import (
     WalletResponse,
 )
 from ..database import get_db
+from ..middleware.rate_limits import LIMIT_FAUCET, LIMIT_FAUCET_HR, limiter_did
 from ..services import faucet_service, token_service
 from ..services.faucet_service import FaucetRefused
 
@@ -180,7 +181,10 @@ async def transfer_tokens(
     status_code=status.HTTP_200_OK,
     summary="Claim today's faucet allowance (testnet tokens, no outside value)",
 )
+@limiter_did.limit(LIMIT_FAUCET_HR)
+@limiter_did.limit(LIMIT_FAUCET)
 async def claim_faucet(
+    request: Request,
     agent: AgentRecord = Depends(get_current_agent),
 ) -> FaucetClaimResponse:
     """
@@ -193,6 +197,10 @@ async def claim_faucet(
     answer with ``detail = {reason, message, next_claim_at}``: 429
     ``already_claimed`` / ``dry`` / ``too_young`` (with Retry-After), 409
     ``balance_ceiling`` (spend some first), 403 ``not_active``.
+
+    Per-DID rate limit (FC-5a): LIMIT_FAUCET / LIMIT_FAUCET_HR calls, paid or
+    refused, before the limiter answers 429 ``Rate limit exceeded`` without
+    reaching the service (every claim takes the faucet's global lock).
     """
     settings = get_settings()
     if not faucet_service.faucet_enabled(settings):

@@ -54,7 +54,15 @@ async def treasury(pool):
 
 @pytest.fixture
 def faucet(monkeypatch):
-    """The faucet ON with the sprint's defaults (restored after each test)."""
+    """The faucet ON with the sprint's defaults (restored after each test).
+
+    The per-DID rate limit on the route (FC-5a) is off here: the harness sends
+    no Bearer token, so every caller would share one per-IP bucket and the
+    hundred-agent test could not run. `test_the_rate_limit_holds_on_the_real_route`
+    switches it back on with real tokens.
+    """
+    from src.middleware.rate_limits import limiter_did
+    monkeypatch.setattr(limiter_did, "enabled", False)
     settings = get_settings()
     monkeypatch.setattr(settings, "faucet_enabled", "true")
     monkeypatch.setattr(settings, "faucet_amount", AMOUNT)
@@ -381,3 +389,96 @@ async def test_heartbeat_no_hint_for_a_full_wallet_or_while_off(client, agents, 
     assert await heartbeat_hint(client, poor)
     monkeypatch.setattr(faucet, "faucet_enabled", "false")
     assert await heartbeat_hint(client, poor) is None
+
+
+# ── FC-5a review: more ways the faucet must fail closed ──────────────────────
+
+@pytest.mark.parametrize("status", ["DEACTIVATED", "PENDING_REVIEW"])
+async def test_every_non_active_status_is_refused(client, agents, pool, faucet, status):
+    """Not only SUSPENDED: anything but ACTIVE is refused, nothing written."""
+    a = await agents(f"gone-{status.lower().replace('_', '-')}", age_days=1)
+    await pool.execute(
+        "UPDATE agents SET status = $1::agent_status WHERE agent_id = $2", status, a.agent_id,
+    )
+    before = await _snapshot(pool, a)
+    r = await claim(client, a)
+    assert r.status_code == 403 and r.json()["detail"]["reason"] == "not_active"
+    await _unchanged(pool, a, before)
+
+
+async def test_a_budget_below_the_amount_pays_nobody(client, agents, pool, faucet):
+    """The budget is checked before the FIRST claim of the day too: a budget
+    that cannot cover one allowance pays nobody, ever."""
+    a = await agents("first-in-line", age_days=1)
+    before = await _snapshot(pool, a)
+    faucet.faucet_daily_budget = AMOUNT - 1
+    r = await claim(client, a)
+    assert r.status_code == 429 and r.json()["detail"]["reason"] == "dry"
+    await _unchanged(pool, a, before)
+    assert await claims(pool) == []
+
+
+async def test_a_zero_or_negative_ceiling_refuses_even_an_empty_wallet(client, agents, pool, faucet):
+    """A misconfigured ceiling means "nobody", never "everybody"; and a refusal
+    does not even open a wallet."""
+    a = await agents("no-ceiling", age_days=1)
+    before = await _snapshot(pool, a)
+    for ceiling in (0, -5):
+        faucet.faucet_balance_ceiling = ceiling
+        r = await claim(client, a)
+        assert r.status_code == 409 and r.json()["detail"]["reason"] == "balance_ceiling"
+        await _unchanged(pool, a, before)
+    assert await balance(pool, a) is None
+
+
+async def test_a_doubled_supply_record_means_no_token(client, agents, pool, faucet):
+    """token_supply is a singleton. Should it ever hold two rows, the claim
+    cannot say which one it minted into, so it rolls back as a whole: no
+    wallet, no claim row, no ledger row, no change to either supply row."""
+    from httpx import ASGITransport, AsyncClient
+    from src.main import app
+    a = await agents("double-supply", age_days=1)
+    before = await _snapshot(pool, a)
+    extra = await pool.fetchval(
+        "INSERT INTO token_supply (total_minted, total_burned) VALUES (0, 0) RETURNING supply_id",
+    )
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+        ) as quiet:
+            r = await quiet.post("/wallets/faucet", headers=a.headers)
+        assert r.status_code == 500
+        assert await balance(pool, a) is None
+        assert len(await claims(pool, a)) == 0
+        assert len(await faucet_ledger(pool, a)) == 0
+        assert await pool.fetchval("SELECT SUM(total_minted) FROM token_supply") == before[1]
+    finally:
+        await pool.execute("DELETE FROM token_supply WHERE supply_id = $1", extra)
+    await _unchanged(pool, a, before)
+
+
+async def test_the_rate_limit_holds_on_the_real_route(client, agents, pool, faucet, monkeypatch):
+    """With real bearer tokens the seventh call in a minute is answered by the
+    limiter before the service: the lock is not taken and nothing is written
+    (six paid-or-refused calls, then "Rate limit exceeded")."""
+    from unittest.mock import AsyncMock, patch
+    from src.auth.jwt import create_access_token
+    from src.middleware.rate_limits import limiter_did
+    monkeypatch.setattr(limiter_did, "enabled", True)
+    limiter_did.reset()
+    a = await agents("hammer", age_days=1)
+    headers = {**a.headers, "Authorization": f"Bearer {create_access_token(agent_did=a.did)}"}
+    first = await client.post("/wallets/faucet", headers=headers)
+    assert first.status_code == 200, first.text
+    for _ in range(5):
+        r = await client.post("/wallets/faucet", headers=headers)
+        assert r.status_code == 429 and r.json()["detail"]["reason"] == "already_claimed"
+    after_six = await _snapshot(pool, a)
+    with patch.object(faucet_service, "claim", new=AsyncMock()) as service:
+        seventh = await client.post("/wallets/faucet", headers=headers)
+    assert seventh.status_code == 429
+    assert seventh.json()["detail"] == "Rate limit exceeded"
+    service.assert_not_called()
+    assert await _snapshot(pool, a) == after_six
+    assert len(await claims(pool, a)) == 1

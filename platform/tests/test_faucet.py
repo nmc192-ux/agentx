@@ -250,3 +250,87 @@ async def test_service_refuses_while_off_without_touching_the_database(monkeypat
             await faucet_service.claim(CALLER_ID)
     assert exc.value.reason == "disabled"
     txn.assert_not_called()
+
+
+# ── FC-5a review: the per-DID rate limit and other ways to pick the payee ────
+
+def _bearer(did: str) -> dict:
+    from src.auth.jwt import create_access_token
+    return {"Authorization": f"Bearer {create_access_token(agent_did=did, trust_score=0.0)}"}
+
+
+def test_the_faucet_limits_are_a_few_calls_a_minute():
+    """Static strings (no trust scaling): the faucet is for agents with no
+    trust yet, and an honest one claims once a day."""
+    from src.middleware.rate_limits import LIMIT_FAUCET, LIMIT_FAUCET_HR
+    assert LIMIT_FAUCET == "6/minute" and LIMIT_FAUCET_HR == "30/hour"
+
+
+async def test_the_seventh_call_in_a_minute_never_reaches_the_service(client, authed, faucet_on, caller_resolves):
+    """Every claim, paid or refused, takes the faucet's platform-wide lock, so
+    the route is capped per DID: the limiter answers the seventh call itself."""
+    with patch.object(faucet_service, "claim", new=AsyncMock(return_value=_response())) as claim:
+        codes = [
+            (await client.post("/wallets/faucet", headers=_bearer(CALLER_DID))).status_code
+            for _ in range(6)
+        ]
+        seventh = await client.post("/wallets/faucet", headers=_bearer(CALLER_DID))
+    assert codes == [200] * 6
+    assert seventh.status_code == 429, seventh.text
+    assert seventh.json()["detail"] == "Rate limit exceeded"
+    assert seventh.json()["limit"] == "6 per 1 minute"
+    assert int(seventh.headers["Retry-After"]) >= 1
+    assert claim.await_count == 6
+
+
+async def test_refused_claims_count_against_the_same_cap(client, authed, faucet_on, caller_resolves):
+    """Looping on a refusal is exactly the case the cap is for."""
+    refusal = FaucetRefused(
+        "already_claimed", "later", next_claim_at=next_utc_day(datetime.now(timezone.utc)),
+    )
+    with patch.object(faucet_service, "claim", new=AsyncMock(side_effect=refusal)) as claim:
+        for _ in range(6):
+            r = await client.post("/wallets/faucet", headers=_bearer(CALLER_DID))
+            assert r.status_code == 429 and r.json()["detail"]["reason"] == "already_claimed"
+        seventh = await client.post("/wallets/faucet", headers=_bearer(CALLER_DID))
+    assert seventh.status_code == 429
+    assert seventh.json()["detail"] == "Rate limit exceeded"
+    assert claim.await_count == 6
+
+
+async def test_the_cap_is_per_agent_not_per_address(client, authed, faucet_on, caller_resolves):
+    """One agent at its cap does not stop another agent from the same IP."""
+    with patch.object(faucet_service, "claim", new=AsyncMock(return_value=_response())) as claim:
+        for _ in range(6):
+            await client.post("/wallets/faucet", headers=_bearer(CALLER_DID))
+        blocked = await client.post("/wallets/faucet", headers=_bearer(CALLER_DID))
+        other = await client.post("/wallets/faucet", headers=_bearer("did:agentx:neighbour-002"))
+    assert blocked.status_code == 429 and other.status_code == 200
+    assert claim.await_count == 7
+
+
+async def test_the_route_declares_both_faucet_limits():
+    """The limits live on the route itself, so a refactor that drops the
+    decorators fails here rather than in production."""
+    from src.middleware.rate_limits import limiter_did
+    key = next(k for k in limiter_did._route_limits if k.endswith("claim_faucet"))
+    assert sorted(str(limit.limit) for limit in limiter_did._route_limits[key]) == [
+        "30 per 1 hour", "6 per 1 minute",
+    ]
+
+
+async def test_nothing_in_the_headers_or_query_can_choose_who_is_paid(client, authed, faucet_on, caller_resolves):
+    """The route reads no agent identity from anywhere but the bearer token."""
+    with patch.object(faucet_service, "claim", new=AsyncMock(return_value=_response())) as claim:
+        r = await client.post(
+            "/wallets/faucet",
+            params={"agent_id": str(VICTIM_ID), "agent_did": "did:agentx:victim-001", "amount": 10_000},
+            headers={
+                "X-Agent-DID": "did:agentx:victim-001", "X-Agent-Id": str(VICTIM_ID),
+                "X-On-Behalf-Of": "did:agentx:victim-001", "X-Forwarded-User": "did:agentx:victim-001",
+            },
+        )
+    assert r.status_code == 200, r.text
+    assert claim.await_args.args == (CALLER_ID,)
+    assert claim.await_args.kwargs.get("now") is None      # the clock is the server's
+    assert r.json()["amount"] == 25
