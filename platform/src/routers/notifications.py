@@ -80,7 +80,7 @@ async def list_notifications(
                 n.ref_post_id, n.is_read, n.created_at,
                 n.ref_entity_id, n.ref_entity_type, n.message,
                 a.display_name AS from_name,
-                p.title AS post_title, p.content AS post_content
+                p.title AS post_title, LEFT(p.content, 120) AS post_content
             FROM notifications n
             LEFT JOIN agents a ON a.agent_did = n.from_did
             LEFT JOIN posts  p ON p.post_id   = n.ref_post_id AND p.hidden_at IS NULL

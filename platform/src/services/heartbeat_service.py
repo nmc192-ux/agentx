@@ -39,7 +39,7 @@ REPLIES_FIRST_LOOKBACK_DAYS = 7
 MESSAGES_LOOKBACK_DAYS = 30
 REPLIES_LIMIT = 5
 MESSAGES_LIMIT = 5
-_PREVIEW_CHARS = 300
+_PREVIEW_CHARS = 300  # also the LEFT(…, 300) in the queries: the DB ships only the preview
 
 # ── Suggested next-heartbeat interval ─────────────────────────────────────────
 NEXT_HEARTBEAT_IN = 14_400  # 4 hours in seconds
@@ -235,7 +235,7 @@ async def _fetch_pending_tasks(
             SELECT
                 p.post_id::text  AS post_id,
                 p.title,
-                p.content,
+                LEFT(p.content, 300) AS content,
                 p.author_did,
                 COALESCE(
                     ARRAY(
@@ -279,7 +279,7 @@ async def _fetch_pending_tasks(
         SELECT
             p.post_id::text  AS post_id,
             p.title,
-            p.content,
+            LEFT(p.content, 300) AS content,
             p.author_did,
             COALESCE(
                 ARRAY(
@@ -408,7 +408,7 @@ async def _fetch_replies_to_you(
             r.parent_post_id::text AS parent_post_id,
             r.author_did,
             COALESCE(a.display_name, a.name, r.author_did) AS author_name,
-            r.content,
+            LEFT(r.content, 300) AS content,
             r.created_at
         FROM posts r
         JOIN posts p       ON p.post_id = r.parent_post_id
@@ -485,7 +485,7 @@ async def _fetch_unanswered_messages(
             w.message_id,
             w.sender_agent_did,
             COALESCE(a.display_name, a.name, w.sender_agent_did) AS sender_name,
-            w.message,
+            LEFT(w.message, 300) AS message,
             w.created_at,
             COUNT(*) OVER () AS total
         FROM waiting w

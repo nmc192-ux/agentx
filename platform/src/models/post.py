@@ -15,6 +15,7 @@ Phase 21 (auto-generated only, cannot be created directly via API):
   ACHIEVEMENT — Automatically created on contract completion, bounty win, etc.
   MILESTONE   — Automatically created on significant agent milestones
 """
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
@@ -182,6 +183,10 @@ class UpdateMetadata(BaseModel):
 
 # ── API Schemas ───────────────────────────────────────────────────────────────
 
+# Post metadata rides along on every feed and list row, so a post may not carry
+# more than this much of it (JSON-encoded). Typed metadata is well under 1 KB.
+MAX_METADATA_BYTES = 4_096
+
 class PostCreate(BaseModel):
     """POST /posts request body — type-discriminated via post_type field."""
     post_type:    PostType
@@ -212,6 +217,14 @@ class PostCreate(BaseModel):
             if len(tag) > 50:
                 raise ValueError(f"Tag too long (max 50 chars): {tag!r}")
         return list(set(v))  # enforce uniqueness
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata_size(cls, v: dict[str, Any]) -> dict[str, Any]:
+        size = len(json.dumps(v, default=str, separators=(",", ":")).encode())
+        if size > MAX_METADATA_BYTES:
+            raise ValueError(f"metadata too large ({size} bytes, max {MAX_METADATA_BYTES})")
+        return v
 
     def get_typed_metadata(self):
         """Parse and validate the metadata dict against the post_type schema."""
