@@ -10,6 +10,8 @@ Endpoints:
   GET    /agents/{agent_did}/following  — List following (paginated)
 """
 import logging
+from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -21,6 +23,7 @@ from ..middleware.rate_limits import (
     LIMIT_FOLLOW_HR,
     LIMIT_FOLLOW_DAY,
 )
+from ..pagination import decode_cursor, next_cursor
 from ..services import blocks_service
 
 logger = logging.getLogger(__name__)
@@ -132,44 +135,14 @@ async def list_followers(
     request:   Request,
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
-    """Return paginated list of agents who follow `agent_did`."""
-    offset = (page - 1) * limit
+    """Return paginated list of agents who follow `agent_did`.
 
-    async with get_db() as conn:
-        # Verify agent exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM agents WHERE agent_did = $1", agent_did
-        )
-        if not exists:
-            raise HTTPException(status_code=404, detail=f"Agent not found: {agent_did}")
-
-        total = await conn.fetchval(
-            "SELECT COUNT(*) FROM follows WHERE following_did = $1", agent_did
-        )
-        rows = await conn.fetch(
-            """
-            SELECT
-                a.agent_did, a.display_name, a.trust_score, a.tier,
-                a.bio, a.followers_count, a.following_count,
-                f.created_at AS followed_at
-            FROM follows f
-            JOIN agents a ON a.agent_did = f.follower_did
-            WHERE f.following_did = $1
-              AND a.status != 'DEACTIVATED'
-            ORDER BY f.created_at DESC
-            LIMIT $2 OFFSET $3
-            """,
-            agent_did, limit, offset,
-        )
-
-    return {
-        "agents":   [_agent_mini(r) for r in rows],
-        "total":    total,
-        "page":     page,
-        "limit":    limit,
-        "has_more": (page * limit) < total,
-    }
+    Pass the previous response's `next_cursor` as `cursor` for the next page
+    (`page` is ignored then); `page` keeps working for older clients.
+    """
+    return await _list_edges(agent_did, page, limit, cursor, followers=True)
 
 
 # ── GET /agents/{agent_did}/following ─────────────────────────────────────────
@@ -184,11 +157,28 @@ async def list_following(
     request:   Request,
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=20, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
-    """Return paginated list of agents that `agent_did` follows."""
-    offset = (page - 1) * limit
+    """Return paginated list of agents that `agent_did` follows.
+
+    Pass the previous response's `next_cursor` as `cursor` for the next page
+    (`page` is ignored then); `page` keeps working for older clients.
+    """
+    return await _list_edges(agent_did, page, limit, cursor, followers=False)
+
+
+async def _list_edges(
+    agent_did: str, page: int, limit: int, cursor: Optional[str], *, followers: bool,
+) -> dict:
+    # followers: rows where agent_did is followed; list the follower side.
+    match_col, other_col = (
+        ("following_did", "follower_did") if followers else ("follower_did", "following_did")
+    )
+    after = decode_cursor(cursor, (datetime, str)) if cursor else None
+    offset = 0 if after else (page - 1) * limit
 
     async with get_db() as conn:
+        # Verify agent exists
         exists = await conn.fetchval(
             "SELECT 1 FROM agents WHERE agent_did = $1", agent_did
         )
@@ -196,30 +186,33 @@ async def list_following(
             raise HTTPException(status_code=404, detail=f"Agent not found: {agent_did}")
 
         total = await conn.fetchval(
-            "SELECT COUNT(*) FROM follows WHERE follower_did = $1", agent_did
+            f"SELECT COUNT(*) FROM follows WHERE {match_col} = $1", agent_did
         )
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
                 a.agent_did, a.display_name, a.trust_score, a.tier,
                 a.bio, a.followers_count, a.following_count,
                 f.created_at AS followed_at
             FROM follows f
-            JOIN agents a ON a.agent_did = f.following_did
-            WHERE f.follower_did = $1
+            JOIN agents a ON a.agent_did = f.{other_col}
+            WHERE f.{match_col} = $1
               AND a.status != 'DEACTIVATED'
-            ORDER BY f.created_at DESC
+              AND ($4::timestamptz IS NULL OR (f.created_at, a.agent_did) < ($4, $5::text))
+            ORDER BY f.created_at DESC, a.agent_did DESC
             LIMIT $2 OFFSET $3
             """,
             agent_did, limit, offset,
+            after[0] if after else None, after[1] if after else None,
         )
 
     return {
-        "agents":   [_agent_mini(r) for r in rows],
-        "total":    total,
-        "page":     page,
-        "limit":    limit,
-        "has_more": (page * limit) < total,
+        "agents":      [_agent_mini(r) for r in rows],
+        "total":       total,
+        "page":        page,
+        "limit":       limit,
+        "has_more":    (page * limit) < total if not after else len(rows) == limit,
+        "next_cursor": next_cursor(rows, limit, "followed_at", "agent_did"),
     }
 
 

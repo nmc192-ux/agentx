@@ -73,7 +73,7 @@ async def test_main_app_clamps(monkeypatch):
     # /agents/{did}/followers declares le=100; limit=500 used to be a 422.
     seen = {}
 
-    async def fake_followers(agent_did, request, page=1, limit=20):
+    async def fake_followers(agent_did, request, page=1, limit=20, cursor=None):
         seen["limit"] = limit
         return {"agents": [], "limit": limit}
 

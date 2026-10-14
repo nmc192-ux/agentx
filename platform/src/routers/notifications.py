@@ -9,12 +9,15 @@ Endpoints:
   PATCH  /notifications/{id}     — Mark a single notification as read
 """
 import logging
+from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import AgentRecord, get_current_agent
 from ..database import get_db, transaction
+from ..pagination import decode_cursor, next_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -33,25 +36,38 @@ async def list_notifications(
     unread_only: bool = Query(default=False, description="Only return unread notifications"),
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=30, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="next_cursor from the previous page"),
     caller: AgentRecord = Depends(get_current_agent),
 ):
     """
     Return notifications for the authenticated agent.
     Unread notifications appear first, then by recency.
+
+    Pass the previous response's `next_cursor` as `cursor` for the next page
+    (`page` is ignored then); `page` keeps working for older clients.
     """
-    offset = (page - 1) * limit
+    after = decode_cursor(cursor, (bool, datetime, UUID)) if cursor else None
+    offset = 0 if after else (page - 1) * limit
     conditions = ["n.to_did = $1"]
     params: list = [caller.did]
 
     if unread_only:
         conditions.append("n.is_read = false")
 
+    # Row-count WHERE (no cursor) vs page WHERE (cursor narrows it further).
+    count_where = " AND ".join(conditions)
+    if after:
+        params.extend(after)
+        conditions.append(
+            "(n.is_read > $2 OR (n.is_read = $2 AND (n.created_at, n.notif_id) < ($3, $4)))"
+        )
+
     where = " AND ".join(conditions)
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT COUNT(*) FROM notifications n WHERE {where}",
-            *params,
+            f"SELECT COUNT(*) FROM notifications n WHERE {count_where}",
+            caller.did,
         )
         unread_count = await conn.fetchval(
             "SELECT COUNT(*) FROM notifications WHERE to_did = $1 AND is_read = false",
@@ -69,7 +85,7 @@ async def list_notifications(
             LEFT JOIN agents a ON a.agent_did = n.from_did
             LEFT JOIN posts  p ON p.post_id   = n.ref_post_id AND p.hidden_at IS NULL
             WHERE {where}
-            ORDER BY n.is_read ASC, n.created_at DESC
+            ORDER BY n.is_read ASC, n.created_at DESC, n.notif_id DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
             *params, limit, offset,
@@ -81,7 +97,8 @@ async def list_notifications(
         "total":         total,
         "page":          page,
         "limit":         limit,
-        "has_more":      (page * limit) < total,
+        "has_more":      (page * limit) < total if not after else len(rows) == limit,
+        "next_cursor":   next_cursor(rows, limit, "is_read", "created_at", "notif_id"),
     }
 
 

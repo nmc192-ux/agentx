@@ -116,11 +116,13 @@ async def get_agent_activity_stream(
     agent_did: str,
     limit: int = 50,
     public_only: bool = True,
+    after: tuple | None = None,
 ) -> list[ActivityEvent]:
     """Return the activity stream for a single agent, newest first.
 
     ``public_only`` (the default, so a new caller fails closed) keeps only
     PUBLIC entries; pass False only when the reader is the agent itself.
+    ``after`` is a decoded (created_at, stream_id) cursor: rows older than it.
     """
     async with get_db() as conn:
         rows = await conn.fetch(
@@ -133,16 +135,23 @@ async def get_agent_activity_stream(
             FROM activity_stream
             WHERE agent_did = $1
               AND (NOT $3 OR visibility = 'PUBLIC')
-            ORDER BY created_at DESC
+              AND ($4::timestamptz IS NULL OR (created_at, stream_id) < ($4, $5::uuid))
+            ORDER BY created_at DESC, stream_id DESC
             LIMIT $2
             """,
-            agent_did, limit, public_only,
+            agent_did, limit, public_only, *(after or (None, None)),
         )
     return [_event_from_row(dict(r)) for r in rows]
 
 
-async def get_global_activity_stream(limit: int = 50) -> list[ActivityEvent]:
-    """Return all PUBLIC activity events, newest first."""
+async def get_global_activity_stream(
+    limit: int = 50,
+    after: tuple | None = None,
+) -> list[ActivityEvent]:
+    """Return all PUBLIC activity events, newest first.
+
+    ``after`` is a decoded (created_at, stream_id) cursor: rows older than it.
+    """
     async with get_db() as conn:
         rows = await conn.fetch(
             """
@@ -153,10 +162,11 @@ async def get_global_activity_stream(limit: int = 50) -> list[ActivityEvent]:
                 content, visibility, metadata, created_at
             FROM activity_stream
             WHERE visibility = 'PUBLIC'
-            ORDER BY created_at DESC
+              AND ($2::timestamptz IS NULL OR (created_at, stream_id) < ($2, $3::uuid))
+            ORDER BY created_at DESC, stream_id DESC
             LIMIT $1
             """,
-            limit,
+            limit, *(after or (None, None)),
         )
     return [_event_from_row(dict(r)) for r in rows]
 

@@ -10,11 +10,15 @@ Endpoints:
   POST /activity                          — Manually record activity        [auth required]
 """
 import logging
+from datetime import datetime
+from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..models.activity_stream import ActivityEvent, RecordActivityRequest
+from ..pagination import NEXT_CURSOR_HEADER, decode_cursor, next_cursor
 from ..services import activity_stream as activity_stream_svc
 
 logger = logging.getLogger(__name__)
@@ -30,14 +34,20 @@ router = APIRouter(tags=["Activity Stream"])
     summary="Global public activity stream",
 )
 async def get_global_activity(
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="X-Next-Cursor from the previous page"),
     request: Request = None,
 ):
     """
     Return the most recent PUBLIC activity events across all agents.
-    No authentication required.
+    No authentication required.  The next page's cursor (if any) is in the
+    X-Next-Cursor response header.
     """
-    return await activity_stream_svc.get_global_activity_stream(limit=limit)
+    after = tuple(decode_cursor(cursor, (datetime, UUID))) if cursor else None
+    events = await activity_stream_svc.get_global_activity_stream(limit=limit, after=after)
+    _set_next_cursor(response, events, limit)
+    return events
 
 
 # ── GET /agents/{agent_did}/activity-stream ────────────────────────────────────
@@ -49,7 +59,9 @@ async def get_global_activity(
 )
 async def get_agent_activity_stream(
     agent_did: str,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="X-Next-Cursor from the previous page"),
     request: Request = None,
     caller: AgentRecord | None = Depends(get_current_agent_optional),
 ):
@@ -62,11 +74,21 @@ async def get_agent_activity_stream(
     FOLLOWERS / COLLECTIVE are not widened to followers or members here:
     nothing checks those relationships yet, so they stay owner-only.
     """
-    return await activity_stream_svc.get_agent_activity_stream(
+    after = tuple(decode_cursor(cursor, (datetime, UUID))) if cursor else None
+    events = await activity_stream_svc.get_agent_activity_stream(
         agent_did=agent_did,
         limit=limit,
         public_only=caller is None or caller.did != agent_did,
+        after=after,
     )
+    _set_next_cursor(response, events, limit)
+    return events
+
+
+def _set_next_cursor(response: Response, events: list[ActivityEvent], limit: int) -> None:
+    cur = next_cursor(events, limit, "created_at", "stream_id")
+    if cur:
+        response.headers[NEXT_CURSOR_HEADER] = cur
 
 
 # ── POST /activity ─────────────────────────────────────────────────────────────
