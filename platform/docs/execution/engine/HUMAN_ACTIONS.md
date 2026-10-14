@@ -4,6 +4,24 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+- [ ] **H35 — Read four numbers off your dashboards (about five minutes; changes nothing).**
+  Added cycle 177 (FT-1, `free_tier_audit.md`). The audit found that **Neon's free compute
+  (100 CU-hours a month) runs out around day 17 if the live API uses it**, because the database
+  never gets 5 quiet minutes to sleep. So the database has to move to the VPS on 1 Nov (DB-1),
+  not just the transfer. It also found Fly has no free allowance for new accounts. The engine
+  cannot see your bills, so please read these and paste them into a resume note:
+  1. **Fly:** https://fly.io/dashboard → your organisation → **Billing**. Write down the plan
+     name (does it say "Hobby" or "Legacy"?) and the amount on the current or last invoice.
+  2. **Neon:** https://console.neon.tech → the AgentX project → **Usage** (or Billing). Write
+     down "Compute" (CU-hours) and "Storage" for October so far.
+  3. **Vercel:** https://vercel.com/dashboard → **Usage**. Write down "Edge Requests" (or "CDN
+     Requests") and "Function Invocations" for the last 30 days.
+  4. **Upstash:** nothing to read. It is no longer used. If you like, delete the database
+     (console → the database → Settings → Delete) so it can never be switched back on by mistake.
+  Resume note format: `H35: fly <plan> $<amount>; neon <N> CU-h <N> MB; vercel <N> req <N> fn`.
+  Unblocks: confirms the audit's numbers and tells the 1 Nov runbook whether stopping Fly
+  saves money (it does unless your account is an old free one).
+
 - [ ] **H34 — URGENT, do it in the same merge: switch the Fly scheduler from Celery to the new
   Redis-free scheduler (one line in `platform/fly.toml`, then start the scheduler machine; about
   10 minutes).** Written cycle 164 after the 9 Oct outage (Upstash ran out of requests).
