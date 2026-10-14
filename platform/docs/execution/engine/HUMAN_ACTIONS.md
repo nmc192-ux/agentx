@@ -9,7 +9,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   compute runs out around day 17 of each month once the API is live (H35, FT-1), so the database
   moves to the VPS beside the API. **Everything is in `platform/docs/execution/db_move_runbook.md`,
   written for copy-paste.** In short:
-  - **Before 1 Nov (§3 A1–A6):** make `/etc/agentx/db.env` with a random password, copy three
+  - **Before 1 Nov (§3 A1–A6, plus A4b: confirm `/etc/ssl/certs/ca-certificates.crt` exists on the VPS):** make `/etc/agentx/db.env` with a random password, copy three
     files to `/opt/agentx`, add two lines to `compose.env`, start the `db` container, add the
     nightly backup line to cron, and **scale Fly to zero** (production is down anyway, and
     otherwise Fly starts writing to Neon the moment Neon wakes on 1 Nov). Needs H30 steps 1–8

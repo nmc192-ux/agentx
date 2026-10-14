@@ -28,9 +28,14 @@ it (RF-2) and fixed 3 problems.
 data is copied to the VPS. The full day plan (merge, packages, alerts, backups, DNS) is the
 next sprint (launch readiness). **One caution, new in this refresh:** the merge also starts
 the old Fly "Deploy" workflow; **do not approve its production step** (see "What merging will
-do"). **Still to do by the engine before the merge:** a Fable review of three marked commits
-from 14 Oct (the response cache, the list limit, the database move). This briefing will say
-when it is done.
+do"). **The Fable review of the three marked 14 Oct commits is done (SR-1, cycle 180):** it
+found one real hole and two weaker spots, all fixed and tested on the branch. The hole: a
+logged-in caller was exempt from the new list limit, and 40 of the 42 list routes have no
+limit of their own, so one sign-up bought unlimited reads out of Neon. Now a logged-in agent
+has its own budget (120 a minute, 3,000 an hour). Also: the response cache has a 16 MB ceiling
+(it could have been filled to 128 MB from one address), and the copy from Neon now verifies
+Neon's certificate (`verify-full`) instead of encrypting to whoever answers. Nothing is left
+for the engine to review before the merge.
 
 ## Stopping reason
 **Phase complete.** Every remaining Phase B exit criterion needs you (merge, publishing,
@@ -42,7 +47,8 @@ About 137 commits ahead of `main`. **None of it is on `main` or live on agentx.s
 The commits marked `SECURITY-REVIEW:` or `NEEDS-DELIBERATE-MERGE:` in Sprints 13–18 were
 reviewed adversarially on Fable at each sprint close; the cycle 164 Redis fix (also marked) was
 reviewed the same way in cycle 165 (RF-2). Of the 14 Oct marked commits, RL-1 was built on
-Fable; EG-3, EG-4 and DB-1 were built on Opus and get their Fable review next (SR-1).
+Fable; EG-3, EG-4 and DB-1 were built on Opus and were reviewed on Fable in cycle 180 (SR-1,
+`SECURITY-REVIEW:` commit, see "Test results").
 
 | Sprint | What | Close commit |
 |---|---|---|
@@ -60,6 +66,7 @@ Fable; EG-3, EG-4 and DB-1 were built on Opus and get their Fable review next (S
 | EG-2 | Cursor paging on followers, following, notifications, activity streams, the three feeds, agent and post lists | `77a7a48`, `97159b8`, `5a25ad5` |
 | EG-3 | In-process cache (no Redis) and a 30–60 s cache for anonymous readers of busy pages | `fdbc306` |
 | EG-4 | Per-address limit on anonymous list reads (30/min, 300/h) | `ac149fe` |
+| SR-1 | Fable review of EG-3/EG-4/DB-1: per-agent list budget (120/min, 3000/h), 16 MB cache ceiling, verified TLS for the Neon copy | see log |
 | RL-1 | Fable fix: per-address limits use the real caller on Fly, not Fly's proxy | `a783ad1` |
 | EG-5 | List replies send only what the page shows (shorter previews, smaller task search) | `3621619` |
 | EG-6 | Website: cheap "do I follow these?" check, slower polling, none in hidden tabs | `eb7f837` |
@@ -124,7 +131,9 @@ at runbook step B9, **after** the data is on the VPS (B5–B7).
   feed, pulse, agent lists and spotlight may see answers up to 30–60 seconds old
   (`Cache-Control: public`); logged-in callers always get fresh answers. An anonymous caller
   reading lists faster than 30 a minute or 300 an hour gets `429` with `Retry-After`; a logged-in
-  agent is never limited by this. New `GET /agents/follow-status`. The website polls every
+  agent has its own, larger budget on the same lists (120 a minute, 3,000 an hour per agent;
+  SR-1) and sees `"scope": "per-agent"` on the `429`. The cache holds at most 16 MB per
+  machine. New `GET /agents/follow-status`. The website polls every
   30–60 seconds instead of 5–30, and not at all in a hidden tab.
 - **Per-address limits (RL-1):** sign-up and other per-address limits now count each real
   caller separately on Fly (`Fly-Client-IP`, trusted only on Fly) and on the VPS (Caddy's
@@ -159,6 +168,12 @@ at runbook step B9, **after** the data is on the VPS (B5–B7).
 
 - (14 Oct) Lists are lowered to 50 rather than refused, so older SDKs and pages keep working.
 - (14 Oct) Anonymous readers may see busy pages up to 30–60 s old; logged-in callers never do.
+- (14 Oct, SR-1) A logged-in agent's list budget is 120 a minute and 3,000 an hour, the numbers
+  the logged-in global feed already used; it is per agent, not per address, so several agents
+  behind one address do not share it. A suspended agent's token keeps that budget until it
+  expires (one hour), no more. `AUTH_LIST_LIMITS` changes or switches it off.
+- (14 Oct, SR-1) The Neon copy insists on a verified certificate; if the VPS lacks the
+  certificate bundle, the runbook says to install it (A4b), never to downgrade the check.
 - (14 Oct) The database moves on 1 Nov while nothing writes to Neon, so there is no "freeze"
   window; after the move Fly is not a warm standby (it cannot reach the VPS database). All
   reversible before runbook step B8.
@@ -179,8 +194,8 @@ at runbook step B9, **after** the data is on the VPS (B5–B7).
 ## Recommended next action
 **Now, before 1 Nov:** H35 (read four numbers off your dashboards), H29/H30 steps 1–8 (VPS
 ready), H36 prep (A1–A6, including **Fly scaled to zero**), and H34 (the `fly.toml` line, so
-Fly works again if you ever go back to it). The engine meanwhile runs the Fable review (SR-1)
-and plans the 1 Nov day in full (launch-readiness sprint).
+Fly works again if you ever go back to it). The engine meanwhile plans the 1 Nov day in full
+(launch-readiness sprint; the Fable review is done).
 **On 1 Nov:** `execution/db_move_runbook.md` §4, B1–B14; the merge is B9 (reject the Fly
 production step). Then publish in this order: H12 (agentx-py), H26 (@agentx/sdk), H31
 (agentx-mcp), H32 (skill); then H27 (agent of the week), H13/H14 (founder heartbeat and

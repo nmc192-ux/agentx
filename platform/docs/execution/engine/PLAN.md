@@ -183,12 +183,19 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   access log skips `/health`). Found: the merge also starts the Fly "Deploy" workflow, whose
   production step would bring Fly back on Neon after the 1 Nov copy; briefing and runbook B9
   now say to reject it.
-- [ ] **SR-1 — Fable review of the 14 Oct marked commits built on Opus.** T1 (protocol 5a:
-  response cache must never hand a logged-in answer to another caller; token check deciding
-  who is exempt from the list limit; DB move script handling production data and passwords).
-  `fdbc306` (EG-3), `ac149fe` (EG-4), `9abb526` (DB-1). Try to break them, add adversarial
-  tests, fix in the same cycle, log "reviewed N commits, found M issues", then update the
-  briefing's bottom line. Check: findings in the log; new tests green; full suite green.
+- [x] **SR-1 — Fable review of the 14 Oct marked commits built on Opus.** Done cycle 180. T1.
+  Reviewed `fdbc306` (EG-3), `ac149fe` (EG-4), `9abb526` (DB-1): 3 commits, 3 issues, all
+  fixed in the same cycle. (1) **Hole:** a valid access token was exempt from the list limit and
+  40 of 42 list routes have no per-agent limit, so one sign-up bought unlimited Neon reads →
+  per-agent budget `AUTH_LIST_LIMITS` 120/min, 3000/h keyed on the token's DID. (2) Response
+  cache had an entry cap only (500 × 256 KB = 128 MB, fillable from one address) → 16 MB byte
+  budget with expired-first sweep. (3) `db_move.sh` dumped Neon with `sslmode=require` (no
+  server verification; the postgres image has no CA bundle) → Neon side runs in a throwaway
+  container with the VPS CA bundle, `verify-full`, never sees `db.env`; empty source host
+  refused. Not broken: cache never serves a logged-in answer (Bearer-only auth, header check,
+  key = path + sorted query, ListLimit clamps before the key, CORS outside), junk tokens
+  count as anonymous, restore/backup fail closed. Check: 18 new adversarial tests; full suite
+  3438 passed; `test_db_move.py --db` 11 passed; briefing bottom line updated.
 - [ ] **LR-0 — Decompose the LAUNCH-READINESS sprint** (DrJ's note, 14 Oct: AgentX live and
   accepting new agents on 1 Nov). T2. Five parts: (1) local rehearsal of the VPS stack
   (Postgres + API + scheduler) from an empty DB: migrations, founders seeded, an outside agent

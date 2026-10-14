@@ -1,5 +1,56 @@
 # Engine log
 
+## 2026-10-14 · cycle 180 · Fable (T1) · SR-1: review of EG-3, EG-4, DB-1
+
+- **Reviewed 3 commits, found 3 issues, fixed 3** (`fdbc306` EG-3 response cache, `ac149fe`
+  EG-4 list limit, `9abb526` DB-1 database move). Commit `SECURITY-REVIEW: SR-1 …`.
+- **1 — Hole (EG-4).** A valid access token was exempt from the per-IP list limit "because
+  per-agent limits apply". Measured on the app: **40 of the 42 anonymous list routes carry no
+  per-route rate limit at all** (only `/feed/global` and `/agents/discover` do). So one sign-up
+  (5/hour/address) bought an access token and unlimited `/posts/global?limit=50&cursor=…`
+  walks out of Neon: the 11 Oct leak, reopened for anyone who registers. Fix: a token is a
+  budget, not an exemption. `PublicListLimitMiddleware` keys valid tokens on their DID with
+  `AUTH_LIST_LIMITS` (default `120/minute;3000/hour`, the numbers the logged-in global feed
+  already used); the `429` says `"scope": "per-agent"`. No agent lookup (a suspended agent's
+  token keeps its own bucket for ≤ 1 h; it cannot fall into the anonymous one or out of all).
+  Junk/expired/refresh tokens stay anonymous. Founders do not use HTTP (in-process), the UI
+  polls ≥ 30 s, so legit callers are far below it.
+- **2 — Memory (EG-3).** The response cache capped entries (500) but not bytes: 500 × 256 KB
+  = 128 MB on a 512 MB machine, and expired entries lingered until evicted. An anonymous
+  caller varying a junk query parameter (`?limit=50&x=N`, each a new key, ~150 KB a page) could
+  fill it inside its own 30/min budget. Fix: `TTLCache(max_bytes, size_of)`; the response cache
+  holds ≤ 16 MB (`MAX_CACHE_BYTES`), sweeps expired entries before evicting live ones, and
+  refuses a single value over budget. `src.cache`'s store is unchanged (small JSON values).
+- **3 — Transport (DB-1).** `db_move.sh` read Neon with `sslmode=require`: encrypted, but no
+  server verification, and with SCRAM an interceptor can relay the login and read the whole
+  dump. The postgres image ships no CA bundle (checked the official Dockerfile: it purges
+  `ca-certificates`), so `verify-full` inside the `db` container would just fail. Fix: the Neon
+  side runs in a throwaway `docker run` of the same image with the VPS's
+  `/etc/ssl/certs/ca-certificates.crt` mounted, `PGSSLMODE=verify-full`,
+  `PGSSLROOTCERT` set; the running `db` container (and `db.env`) never sees the Neon password
+  any more. Missing bundle → stop with a message (runbook A4b), never a downgrade. Empty
+  `POSTGRES_HOST` → refused (it would have pointed the "Neon" tools at the local socket and
+  `verify` would have compared the VPS with itself).
+- **Tried and not broken:** cache serving a logged-in answer to another caller (auth is
+  Bearer-only, no cookie or query token; any `Authorization` header bypasses the cache and gets
+  `private, no-store`; only `content-type`, cursor, cache headers are replayed; CORS sits
+  outside so cached replies get per-request CORS headers); key poisoning via query order or
+  duplicate params (sorted pairs; a duplicate-`limit` key never equals a normal key;
+  `ListLimitMiddleware` clamps before the key); redirects/errors not stored; `alg=none` and
+  refresh tokens rejected by `decode_token`; restore into a non-empty target refused; backup
+  rotation never touches `neon-*.dump`; password only on stdin.
+- **Residual, accepted:** per-agent abuse is attributable and suspendable; 20 sign-ups a day
+  per address × 3000/h is still a lot of reads if someone farms accounts (LR sprint: watch
+  the access log for `scope=per-agent` 429s). Cross-machine staleness ≤ 30–60 s as before.
+- Check: 18 new adversarial tests (`test_public_list_limit.py` +7 incl. a 39-route walk on
+  the agent budget, `test_local_cache.py` +5, `test_vps_deploy_files.py` +1,
+  `test_db_move.py` +3 natively on local Postgres 17). Full suite **3438 passed**, 660
+  skipped, 2 xfailed. `test_db_move.py --db` 11 passed. shellcheck `-S warning` clean.
+  **Not checked:** the `docker run` line against a real container (no Docker daemon here).
+- Docs: briefing bottom line, shipped table, merge notes and decisions; runbook A4b, B4,
+  §7; H36 one line.
+- **Next:** LR-0, decompose the launch-readiness sprint (T2).
+
 ## 2026-10-14 · cycle 179 · Opus (T2) · BR-1: Phase B merge briefing refreshed
 
 - `sprints/briefing_2026-10-08_engine.md` refreshed for EG-1…EG-7, RL-1, FT-1 and DB-1: bottom
