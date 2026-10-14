@@ -239,8 +239,23 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   (ntfy app + topic, UptimeRobot monitor), H38 disable the Fly Deploy workflow (if LR-4
   does not fold it into H36). Check: every open `- [ ]` item appears in exactly one bucket
   (grep listed in the log).
-- [ ] **LR-6a — Sprint-close security review** of LR commits marked `SECURITY-REVIEW:` /
-  `NEEDS-DELIBERATE-MERGE:` (expected: LR-2). T1. Skip, with a log line, if none.
+- [x] **LR-6a — Sprint-close security review.** Done cycle 187 (Fable, T1). One marked commit
+  in the sprint (`bf4caea`, LR-2 restore-test); LR-1 and LR-3 read as well (they create
+  databases and read the alerts file). Reviewed 1 commit, found 4 issues, fixed all in the same
+  cycle: (1) the throwaway restore shares the live cluster's disk and nothing checked the room,
+  so a tight disk would have put the live database into ENOSPC → `RESTORE_DISK_FACTOR` guard
+  (10 × the dump's size free on the server's data disk, measured inside the container; stands
+  aside with a note if it cannot measure); (2) a half-written `restore-test.status` could be read
+  by the watchdog as a failure → written whole and renamed; (3) pg_restore's own error was
+  thrown away (`> /dev/null 2>&1`), so the phone alert said only "an error" → first
+  `pg_restore: error:` line kept, 160 chars; (4) a dump that died mid-write left
+  `agentx-*.dump.part` behind forever (retention never counted it) → swept after 24 h. Not
+  broken: live DB only read; target name regex + "never the live name"; `.part` and `neon-*`
+  never taken as the newest backup; crafted dumps need the `deploy` user (same trust as the
+  script); LR-1 builds its database on the smoke module's localhost constant regardless of
+  `--pg-host`; LR-3 never sources `alerts.env`, never prints a URL, header text is printable
+  only. Check: 5 new tests in `test_db_move.py` (3 fail on the old script), `--db` 25 passed;
+  shellcheck info-only; full suite green.
 - [ ] **LR-6 — Sprint close.** T2. Acceptance criteria from the spec run locally,
   `sprints/sprint_19_retro.md`, `state_of_agentx.md`, Phase B briefing refreshed with the
   launch-day pointer.

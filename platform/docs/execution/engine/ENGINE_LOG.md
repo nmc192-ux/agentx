@@ -1,5 +1,47 @@
 # Engine log
 
+## 2026-10-15 · cycle 187 · Fable (T1) · LR-6a: sprint-close security review of Sprint 19
+
+- Sprint 19 has one marked commit: `bf4caea` (LR-2, `db_move.sh restore-test`, Opus). Read its
+  diff and the two unmarked scripts that touch the same ground: LR-1 `launch_rehearsal.py`
+  (creates and drops databases) and LR-3 `watchdog.sh` (reads `alerts.env`, sends to ntfy/Slack).
+  **Reviewed 1 commit, found 4 issues, fixed all** (commit `6804eec`, marked `SECURITY-REVIEW:`).
+  1. **Self-inflicted outage:** the throwaway restore is made on the same disk as the live
+     cluster and nothing checked the room. A tight disk (large dump, old `.part` debris, logs)
+     would have driven the live Postgres into ENOSPC at 03:47, which a nightly *safety* check
+     must never do → `data_disk_short`: free space of the server's data directory (asked of
+     Postgres, measured inside the container) must be ≥ `RESTORE_DISK_FACTOR` (10) × the dump;
+     otherwise one ALERT and no database is created. If the free space cannot be read it says so
+     and goes on (the watchdog's disk check still applies).
+  2. **Half-written status:** `restore-test.status` was written in place; the watchdog could
+     read it mid-write as a failure (then "recovered" 5 min later) → written to `.tmp`, renamed.
+  3. **Blind alert:** pg_restore's stderr went to `/dev/null`, so the phone said only "stopped
+     with an error" → the first `pg_restore: error:` line (≤ 160 chars) is in the ALERT and in
+     the status file.
+  4. **Debris:** a dump that died mid-write left `agentx-*.dump.part` for good (the retention
+     loop only matches `*.dump`) → `sweep_parts` deletes `.part` files older than 24 h before
+     every `backup` / `dump`.
+- Tried and not broken: the live database is only read (`printenv`, `CREATE/DROP DATABASE` on
+  the regex-checked throwaway name, `SELECT count(*)`); target name must match
+  `^agentx_restore_test[a-z0-9_]*$` and differ from the live name; `.part` files and `neon-*`
+  dumps are never taken as "newest backup" however new; a crafted dump could run SQL as the
+  container superuser, but writing to `/var/backups/agentx` needs the `deploy` user, who already
+  runs `docker compose exec` (no new boundary); two overlapping `restore-test` runs can only
+  produce one spurious ALERT (no lock; noted, not fixed: `flock` is not on macOS for the tests).
+  LR-1: the database build always uses the smoke module's localhost constant, so `--pg-host` is
+  belt and braces; names must start `agentx_smoke`. LR-3: `alerts.env` is read with sed, never
+  sourced; URLs never printed; every text that reaches a header or JSON body is one printable
+  line ≤ 200 chars; a check that cannot be measured is "bad", not silent.
+- Runbook A5 explains the disk margin and `RESTORE_DISK_FACTOR=5` for a small VPS disk.
+- Check: 5 new tests in `tests/infrastructure/test_db_move.py` (disk guard refuses with a huge
+  factor and stands aside with a fake failing `df`; a dump with damaged data blocks passes
+  `--list` and the ALERT names pg_restore's error; status file lands whole on ok and fail;
+  `.part`/`neon-*` ignored; stale `.part` swept, fresh kept) — 3 fail on the old script, 2 pin
+  behaviour that was already right. `test_db_move.py --db` **25 passed**. shellcheck: info notes
+  only (same kinds as before); `watchdog.sh` clean. Full suite **3496 passed**, 675 skipped, 2 xfailed.
+- **Next:** LR-6 (T2), sprint close: acceptance criteria from the spec, `sprint_19_retro.md`,
+  `state_of_agentx.md`, briefing refreshed with the launch-day pointer.
+
 ## 2026-10-15 · cycle 186 · Sonnet (T3) · LR-5: human-action triage
 
 - Top of `HUMAN_ACTIONS.md`: "Launch triage" sorts all 25 open items (27 ids with H31–H33) into
