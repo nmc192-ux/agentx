@@ -39,12 +39,61 @@ down as usual.
 - H11 (`agentx-client` farewell release), H15 (public samples repo), H16 (publish the protocol).
 - H38 (switch on the faucet; added 15 Oct, cycle 195; only once the launch has settled).
 - H39 (switch on the task work deadline; added 15 Oct, cycle 197; do it with H38).
+- H40 (switch on the legacy-bounty deadline; added 15 Oct, cycle 198; do it with H38 and H39,
+  after reading the one count it asks you to check).
 - D10 (built as (b), ships off: H39 is the switch), D11, D12 (decisions; nothing waits on
   them; answer in a resume note when you like).
 
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H40 — Give old bounties a deadline (after 1 Nov, with H38 and H39; about five
+  minutes; optional).** Added cycle 198 (Sprint 21, BT-2). Every bounty posted since Sprint 12
+  gets a deadline (30 days unless the poster names one); when it passes and the poster stays
+  silent for 7 more days, the pool goes to the best-scored entry, or back to the poster if
+  nothing was scored. Bounties posted **before** that rule have no deadline at all, so their
+  pools can stay locked for ever. With this switch on, such a bounty is treated as if its
+  deadline were 30 days after it was posted: it takes no more entries after that, and 7 days
+  later its pool is paid out or refunded by the same rule as every other bounty. No stored row
+  is changed; the rule is read from the setting each time. It is built and tested on the branch
+  and ships **off**; nothing changes until you do this.
+  1. First see how many bounties it would touch (read-only):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT bounty_id, title, reward_pool, status, created_at::date AS posted FROM capability_bounties WHERE deadline IS NULL AND status IN ('open', 'evaluating') ORDER BY created_at"
+     ```
+     Each row older than 37 days will be paid out or refunded on the first scheduler run after
+     step 2 (within 15 minutes). If a row surprises you, stop here and tell the engine
+     `H40 question: <what you saw>`.
+  2. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save (30 is the recommended number of days; any whole number works):
+     ```
+     LEGACY_BOUNTY_DAYS=30
+     ```
+     then restart the two API containers one at a time, and the scheduler (it runs the payout
+     job and reads the same file):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     docker compose --env-file compose.env --profile scheduler up -d --no-deps --force-recreate scheduler
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each
+     API restart, and `docker ps --filter name=scheduler` → exactly one container.
+  3. Within 15 minutes, see what moved:
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT created_at, type, amount, related_id AS bounty FROM transactions WHERE type IN ('bounty_auto_release', 'bounty_deadline_refund') ORDER BY created_at DESC LIMIT 20"
+     ```
+  **Undo:** delete the `LEGACY_BOUNTY_DAYS=30` line and run the same restart lines. Payouts
+  already made stay (they are ordinary ledger entries).
+  Tell the engine: `H40 legacy bounties on`. Unblocks: no pool from before Sprint 12 can stay
+  locked for ever; the bounty showcase (Sprint 21) shows no bounty that can never close.
 
 - [ ] **H39 — Switch on the task work deadline (after 1 Nov, with H38; about five minutes;
   optional).** Added cycle 197 (Sprint 21, BT-1; decision D10, option b). Today a paid task

@@ -33,7 +33,12 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   anonymous 401, wrong status, twice) and `tests/integration/test_task_reclaim_db.py --db`
   (refund once; 10 concurrent reclaims refund once; reclaim racing a result submission: exactly
   one wins; wallet and ledger add up); full suite green.
-- [ ] **BT-2 — Bounties created without a deadline.** **T1** (changes when held pools are
+- [x] **BT-2 — Bounties created without a deadline.** Done cycle 198 (Fable). Built as
+  specified below with one deliberate difference: the legacy rule is behind its own setting
+  `LEGACY_BOUNTY_DAYS`, **0 = off** by default (Phase C standing rule; H40 switches it on with
+  30), so the 1 Nov merge moves no held pool. `DEFAULT_BOUNTY_DAYS` is a setting (30; under 1
+  falls back to 30). Get/list report the effective deadline while the rule is on. No row
+  written, no migration. Original spec: **T1** (changes when held pools are
   released). `release_overdue_bounty` and the `_DUE_BOUNTIES` query in `jobs/auto_release.py`
   use `COALESCE(deadline, created_at + DEFAULT_BOUNTY_DAYS)`; submissions to such a bounty
   close at the same effective deadline. `DEFAULT_BOUNTY_DAYS` becomes a setting (default 30).
@@ -74,7 +79,7 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   `TASK_WORK_DAYS=7` (it ships 0 = off), as it already does with `FAUCET_ENABLED`. Check: journey exits 0 from an empty local DB;
   `launch_rehearsal.py --economy` 10/10; guard tests still pass.
 - [ ] **BT-8a — Sprint-close security review.** **T1.** Every marked Sprint 21 commit built on
-  Opus or Sonnet (BT-3 at least; BT-1/BT-2 if not built on Fable). Adversarial tests; fix in
+  Opus or Sonnet (BT-3 at least; BT-1 and BT-2 were built on Fable). Adversarial tests; fix in
   the same cycle; record "reviewed N commits, found M issues".
 - [ ] **BT-8 — Sprint close.** T2. Acceptance criteria from the spec; launch rehearsal 9/9 off
   and 10/10 `--economy`; `sprint_21_retro.md`; `state_of_agentx.md`; H item "switch the bounty

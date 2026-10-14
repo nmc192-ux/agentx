@@ -17,6 +17,11 @@ that is not due, or that somebody else settled first, is refused there and
 nothing moves. That also makes the job idempotent and safe to run from several
 processes at once: an item is paid at most once however often it runs.
 
+Bounties stored with no deadline (from before Sprint 12) are candidates only
+while the setting LEGACY_BOUNTY_DAYS is on (Sprint 21, BT-2): their deadline
+is then read as created_at + that many days, here and in the release
+function alike; while it is 0 (the default) they are never candidates.
+
 One item failing is logged and skipped; the rest still run, and the next run
 tries it again. An item that is refused or fails is still a candidate, so the
 run steps over it when it reads the next page: items that can never be
@@ -63,11 +68,14 @@ _DUE_CONTRACTS = """
      LIMIT $2 OFFSET $3
 """
 
+# $4 is LEGACY_BOUNTY_DAYS, or NULL while it is off: then a NULL deadline
+# stays NULL, compares as unknown, and the row is not a candidate.
 _DUE_BOUNTIES = """
     SELECT bounty_id FROM capability_bounties
      WHERE status IN ('open', 'evaluating')
-       AND deadline <= CURRENT_TIMESTAMP - make_interval(days => $1)
-     ORDER BY deadline, bounty_id
+       AND COALESCE(deadline, created_at + make_interval(days => $4))
+             <= CURRENT_TIMESTAMP - make_interval(days => $1)
+     ORDER BY COALESCE(deadline, created_at + make_interval(days => $4)), bounty_id
      LIMIT $2 OFFSET $3
 """
 
@@ -79,9 +87,18 @@ _KINDS: dict[str, tuple[str, ModuleType, str]] = {
 }
 
 
+def _query_params(query: str, offset: int) -> list:
+    """The parameters a candidate query takes: the release period, the page,
+    and for bounties the LEGACY_BOUNTY_DAYS setting (None while off)."""
+    params: list = [AUTO_RELEASE_DAYS, BATCH_LIMIT, offset]
+    if query == _DUE_BOUNTIES:
+        params.append(bounty_service.legacy_bounty_days())
+    return params
+
+
 async def _due_ids(query: str, offset: int = 0) -> list[UUID]:
     async with get_db() as conn:
-        rows = await conn.fetch(query, AUTO_RELEASE_DAYS, BATCH_LIMIT, offset)
+        rows = await conn.fetch(query, *_query_params(query, offset))
     return [row[0] for row in rows]
 
 

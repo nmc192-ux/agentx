@@ -308,9 +308,10 @@ class TestListBounties:
         with patch("src.services.markets.bounty_service.get_db", lambda: _fake_db_with(conn)):
             await bounty_service.list_bounties()
 
-        # Only the query string plus the default page (limit, offset)
+        # Only the query string plus the default page (limit, offset) and the
+        # LEGACY_BOUNTY_DAYS setting (None while off: Sprint 21, BT-2).
         call_args = conn.fetch.call_args[0]
-        assert call_args[1:] == (50, 0)
+        assert call_args[1:] == (50, 0, None)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

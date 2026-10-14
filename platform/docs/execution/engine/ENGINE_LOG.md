@@ -1,5 +1,58 @@
 # Engine log
 
+## 2026-10-15 · cycle 198 · Fable (T1) · BT-2: bounties stored with no deadline — built, ships off
+
+- **Built** the legacy-bounty rule: every bounty rule (`_lock_bounty`, so submissions close;
+  `release_overdue_bounty`; the job's `_DUE_BOUNTIES` query; get/list) now reads a bounty's
+  deadline as `COALESCE(deadline, created_at + LEGACY_BOUNTY_DAYS)`. The parameter is NULL while
+  the setting is off, so a NULL deadline stays NULL and every comparison on it is FALSE: nothing
+  changes for such bounties until the setting is on. The release function refuses a bounty with
+  no effective deadline after its one locked read and before any winner lookup or payout. No
+  row's `deadline` is written; no migration. `DEFAULT_BOUNTY_DAYS` (creation default) is a
+  setting too. The job's `_due_ids` passes the setting to the bounty query only
+  (`_query_params`), the existing fakes in `tests/jobs/test_auto_release.py` untouched.
+- **Decisions I made (reversible):** (1) **ships off** behind its own setting
+  `LEGACY_BOUNTY_DAYS=0` (the plan's code rule would have released every production pool older
+  than 37 days on the first scheduler run after the 1 Nov merge; the Phase C standing rule says
+  every feature lands off). H40 is the switch (recommended 30) and asks DrJ to read the count of
+  affected bounties first. (2) Both settings **fail closed**: a value under 1 (or unreadable)
+  means "off" for the legacy rule and the built-in 30 for the creation default (a 0 there would
+  make every new bounty closed from the start). (3) **Get/list report the effective deadline**
+  while the rule is on, so a submitter is never refused at a time the API never showed; a stored
+  deadline is reported as stored. Rows from UPDATE…RETURNING (distribute, cancel) keep the stored
+  value — the bounty is closed by then.
+- **Checks:** `tests/test_legacy_bounty_deadline.py` **28 passed** (shipped defaults 30 / 0;
+  both settings fail closed on 0, −1, None, "x"; job parameters: 3 for tasks and contracts, 4
+  for bounties with None while off; `_due_ids` sends exactly those; with the rule off the
+  release refuses a NULL-deadline row after one read and nothing else is awaited; response
+  deadline rules). `tests/integration/test_legacy_bounty_db.py --db` **17 passed** (37 d + 1 min
+  old legacy bounty paid to the top score once, column still NULL and `created_at` untouched,
+  tokens conserved; nothing scored → refunded once, entries closed; held at 37 d − 1 min, at
+  30 d + 1 min, at 1 d, at 0; entries refused at 30 d + 1 min and taken at 30 d − 1 min, the
+  creator still scores and pays after; get/list null while off, `created_at` + 30 d while on,
+  stored deadline unchanged by the setting; off and −5 keep today's behaviour on a 5-year-old
+  bounty and the job releases 0; setting 10 honoured either side of 17 d; the job releases the
+  two due legacy bounties, leaves the young one, releases 0 on a second run; 12 concurrent
+  releases pay once, scored and unscored; new bounties get `DEFAULT_BOUNTY_DAYS` 12, and 30 on
+  0 / −3). Existing bounty, deadline, escrow, job and founder-task DB suites **78 passed**
+  unchanged (`test_a_bounty_with_no_deadline_is_never_released` still holds: the rule is off by
+  default). Full unit suite **3648 passed, 734 skipped, 2 xfailed** (one existing
+  `list_bounties` parameter assertion updated for the new parameter). All `--db` integration
+  suites: **683 passed, 11 failed**; my one failure was a test that assumed its bounty would be
+  on the first page of the shared test database (fixed: lists by its own capability; 17/17
+  after). **The other 10 are pre-existing**: `test_founder_civics_db.py` (5),
+  `test_founder_messages_db.py` (3), `test_founder_trust_replay_db.py` (2) fail identically
+  with this cycle's changes stashed, with the heartbeat choosing to *post* where the tests
+  expect a bounty or a message. They were green in the engine's own run at 04:26 Karachi; this
+  run crossed 00:00 UTC, so a time-of-day assumption in those tests is the likely cause. Not
+  security-relevant and not bounty code. **Follow-up (T3):** re-run those three files at a
+  different hour; if they pass, pin the clock in them; if not, debug.
+- Docs: H40 (switch on, copy-paste, with the read-only count first and the scheduler restart);
+  PLAN BT-2 ticked with the difference; BT-8a note that BT-1 and BT-2 were built on Fable.
+- **Next:** BT-3 trust from paid work (T2: calls the reviewed `record_event`; marked
+  `SECURITY-REVIEW:` for BT-8a).
+
+
 ## 2026-10-15 · cycle 197 · Fable (T1) · BT-1: task work deadline (D10 default b) — built, ships off
 
 - **Built** `POST /tasks/{id}/reclaim` (bearer; creator only) and `task_service.reclaim_task`:

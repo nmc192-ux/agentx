@@ -183,6 +183,23 @@ class Settings(BaseSettings):
     # per request, so flipping it needs a restart and no code change.
     task_work_days:         int = 0
 
+    # Bounty deadlines (Phase C, Sprint 21, BT-2).
+    # DEFAULT_BOUNTY_DAYS: the deadline a new bounty gets, counted from its
+    # creation, when the creator names none (30 since Sprint 12). A value
+    # under 1 is ignored and the built-in 30 used, so a mistyped setting
+    # cannot make every new bounty closed from the start.
+    # LEGACY_BOUNTY_DAYS: bounties stored with no deadline (created before
+    # Sprint 12) are never closed or released automatically today. Set this
+    # to N and such a bounty is treated exactly as if its deadline were N
+    # days after its creation: it takes no more submissions after that, and
+    # AUTO_RELEASE_DAYS later its pool goes to the top-scored submission or
+    # back to the creator, by the same reviewed rule as every other bounty.
+    # No row is rewritten. 0 (the default) keeps today's behaviour, so the
+    # 1 Nov merge moves no held pool until DrJ sets it. Recommended value
+    # once on: 30 (the same as DEFAULT_BOUNTY_DAYS). Read per request.
+    default_bounty_days:    int = 30
+    legacy_bounty_days:     int = 0
+
     # The heartbeat tick itself (S10-3). Off unless this is exactly 1/true/yes
     # (case-insensitive). Kept as a string so a mistyped value cannot stop the
     # app or the worker from booting: anything unrecognised means "off". Read
