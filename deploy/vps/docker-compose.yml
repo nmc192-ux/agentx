@@ -7,12 +7,20 @@
 #   docker compose --env-file compose.env --profile migrate run --rm migrate   # alembic upgrade head
 #   docker compose --env-file compose.env up -d api-1 api-2                    # the two API workers
 #   docker compose --env-file compose.env --profile scheduler up -d scheduler  # ONLY when Fly's is stopped
+#   docker compose --env-file compose.env --profile db up -d db                # own Postgres (DB-1)
+#
+# Database (DB-1, platform/docs/execution/db_move_runbook.md): the API, scheduler and migrate use
+# Neon (settings.env + api.env) until compose.env says AGENTX_DB_ENV=/etc/agentx/db.env. That file
+# is loaded last, so its POSTGRES_HOST=db / user / password win. The same file creates the `db`
+# container's superuser. Going back to Neon = empty AGENTX_DB_ENV again and recreate api-1/api-2.
 #
 # Rules pinned by platform/tests/infrastructure/test_vps_deploy_files.py:
 #   - nothing is published on the host: only the shared Caddy (on ${PROXY_NETWORK}) can reach the API;
 #   - forwarded headers are trusted from ${PROXY_SUBNET} only, never "*";
 #   - scheduler and migrate never start on a plain `up` (profiles), so there is never a
-#     second scheduler by accident (plan §5).
+#     second scheduler by accident (plan §5);
+#   - db is on the private network only (not Caddy's, which Pink Popcorn shares), publishes no
+#     port, and never sees api.env (no JWT secret in the database container).
 
 name: agentx
 
@@ -27,6 +35,8 @@ x-app: &app
   env_file:
     - path: ./settings.env
     - path: "${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}"
+    # Which database: /dev/null (empty) = Neon; /etc/agentx/db.env = the VPS `db` container.
+    - path: "${AGENTX_DB_ENV:-/dev/null}"
   restart: unless-stopped
   mem_limit: 512m
   logging: *logging
@@ -78,6 +88,37 @@ services:
     command: ["alembic", "upgrade", "head"]
     healthcheck:
       disable: true
+
+  db:
+    image: "pgvector/pgvector:pg17"
+    profiles: ["db"]
+    env_file:
+      - path: "${AGENTX_DB_SECRETS_FILE:-/etc/agentx/db.env}"
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_connections=100
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 256m
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    restart: unless-stopped
+    mem_limit: 1g
+    logging: *logging
+    networks:
+      - agentx
+
+volumes:
+  pgdata:
+    name: agentx_pgdata
 
 networks:
   agentx:

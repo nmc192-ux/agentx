@@ -4,6 +4,10 @@
 cutover**, and for at least 7 days after it.
 **Written:** engine cycle 88, 2026-10-04 (PLAN step P-7). **Before this:** H19 (the address
 `api.agentx.social`, pointing at Fly) and the merge of `engine/phase-a`.
+**Update cycle 178 (DB-1):** the database now moves too. Neon's free compute cannot carry the live
+API (`engine/free_tier_audit.md`), so a `db` container joins the VPS stack and Neon becomes a
+frozen fallback. Where this plan says "Neon does not move" or keeps Fly as a warm standby on the
+shared database, `db_move_runbook.md` takes precedence.
 
 ## 1. The idea in one paragraph
 

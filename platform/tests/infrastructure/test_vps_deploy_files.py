@@ -30,6 +30,10 @@ S16-6 (sprint-close security review) adds:
      log both show token=REDACTED.
  11. The workflow never fetches main anonymously (fails on a private repository); it fails
      closed if origin/main is missing.
+DB-1 adds:
+ 12. A `db` Postgres container (pgvector, pg17) behind its own profile, on the private network
+     only (never Caddy's shared one), no port, its own settings file (never api.env), a named
+     volume. The apps use Neon until AGENTX_DB_ENV names that file; then POSTGRES_* point at it.
 """
 import json
 import os
@@ -56,6 +60,12 @@ SECRET_NAMES = {
     "ANTHROPIC_API_KEY", "FOUNDER_DIDS",
 }
 API_SERVICES = ("api-1", "api-2")
+APP_SERVICES = ("api-1", "api-2", "scheduler", "migrate")
+APP_ENV_FILES = [
+    "./settings.env",
+    "${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}",
+    "${AGENTX_DB_ENV:-/dev/null}",
+]
 
 
 def _compose() -> dict:
@@ -115,16 +125,62 @@ class TestComposeShape:
 
     def test_limits_logs_restart(self):
         for name, svc in _compose()["services"].items():
-            assert svc["mem_limit"] == "512m", name
+            assert svc["mem_limit"] == ("1g" if name == "db" else "512m"), name
             assert svc["logging"]["driver"] == "json-file", name
             assert svc["logging"]["options"] == {"max-size": "20m", "max-file": "5"}, name
             expected = "no" if name == "migrate" else "unless-stopped"
             assert svc["restart"] == expected, name
 
     def test_secrets_come_from_root_file(self):
-        for name, svc in _compose()["services"].items():
-            paths = [entry["path"] for entry in svc["env_file"]]
-            assert paths == ["./settings.env", "${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}"], name
+        services = _compose()["services"]
+        assert set(services) == {*APP_SERVICES, "db"}
+        for name in APP_SERVICES:
+            paths = [entry["path"] for entry in services[name]["env_file"]]
+            # The database choice is loaded last so its POSTGRES_* win over Neon's.
+            assert paths == APP_ENV_FILES, name
+
+
+class TestDatabaseService:
+    def _db(self) -> dict:
+        return _compose()["services"]["db"]
+
+    def test_profile_gated_and_pinned_image(self):
+        db = self._db()
+        assert db["profiles"] == ["db"]
+        assert db["image"] == "pgvector/pgvector:pg17"  # posts.embedding is vector(1536)
+
+    def test_private_network_only(self):
+        # Caddy's network is shared with Pink Popcorn; the database must not be on it.
+        assert self._db()["networks"] == ["agentx"]
+
+    def test_never_sees_api_secrets(self):
+        assert [e["path"] for e in self._db()["env_file"]] == ["${AGENTX_DB_SECRETS_FILE:-/etc/agentx/db.env}"]
+
+    def test_data_on_named_volume_and_healthcheck(self):
+        db = self._db()
+        assert db["volumes"] == ["pgdata:/var/lib/postgresql/data"]
+        assert _compose()["volumes"]["pgdata"]["name"] == "agentx_pgdata"
+        assert "pg_isready" in db["healthcheck"]["test"][1]
+
+    def test_example_points_apps_at_db_without_tls_or_values(self):
+        values = _env_file(VPS / "db.env.example")
+        assert values == {
+            "POSTGRES_HOST": "db", "POSTGRES_PORT": "5432", "POSTGRES_USER": "agentx",
+            "POSTGRES_DB": "agentx", "POSTGRES_SSL_MODE": "disable", "POSTGRES_PASSWORD": "",
+        }
+
+    def test_neon_is_the_default(self):
+        values = _env_file(VPS / "compose.env.example")
+        assert values["AGENTX_DB_ENV"] == ""
+        assert values["AGENTX_DB_SECRETS_FILE"] == "/etc/agentx/db.env"
+
+    def test_db_move_copied_by_workflow_and_shellcheck_clean(self):
+        assert "deploy/vps/db_move.sh" in WORKFLOW.read_text()
+        script = VPS / "db_move.sh"
+        assert os.access(script, os.X_OK)
+        if shutil.which("shellcheck"):
+            result = subprocess.run(["shellcheck", "-S", "warning", str(script)], capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout
 
 
 class TestForwardedGuard:
@@ -176,12 +232,35 @@ class TestSettingsMatchFly:
     reason="docker compose not installed",
 )
 class TestComposeConfig:
-    def _config(self, **extra_env):
-        env = {**os.environ, "AGENTX_SECRETS_FILE": "./secrets.env.example", **extra_env}
+    def _config(self, *profiles, **extra_env):
+        env = {
+            **os.environ, "AGENTX_SECRETS_FILE": "./secrets.env.example",
+            "AGENTX_DB_SECRETS_FILE": "./db.env.example", **extra_env,
+        }
+        flags = [arg for p in profiles for arg in ("--profile", p)]
         return subprocess.run(
-            ["docker", "compose", "--env-file", "compose.env.example", "config", "--format", "json"],
+            ["docker", "compose", "--env-file", "compose.env.example", *flags, "config", "--format", "json"],
             cwd=VPS, env=env, capture_output=True, text=True, timeout=60,
         )
+
+    def _postgres_hosts(self, result) -> dict[str, str]:
+        assert result.returncode == 0, result.stderr
+        services = json.loads(result.stdout)["services"]
+        return {name: svc["environment"]["POSTGRES_HOST"] for name, svc in services.items()}
+
+    def test_apps_use_neon_by_default(self):
+        hosts = self._postgres_hosts(self._config("scheduler", "migrate"))
+        assert set(hosts) == set(APP_SERVICES)
+        assert all(h.endswith(".neon.tech") for h in hosts.values()), hosts
+
+    def test_switch_points_every_app_at_db(self):
+        hosts = self._postgres_hosts(self._config("scheduler", "migrate", "db", AGENTX_DB_ENV="./db.env.example"))
+        assert hosts == {name: "db" for name in (*APP_SERVICES, "db")}
+
+    def test_deploy_works_before_db_settings_exist(self):
+        # H30 deploys before /etc/agentx/db.env exists: only the db profile may need it.
+        assert self._config(AGENTX_DB_SECRETS_FILE="./missing.env").returncode == 0
+        assert self._config("db", AGENTX_DB_SECRETS_FILE="./missing.env").returncode != 0
 
     def test_config_succeeds_with_example_env(self):
         result = self._config()

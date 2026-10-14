@@ -115,7 +115,7 @@ jobs:
       - name: Copy compose files to the VPS
         run: |
           scp -F "$RUNNER_TEMP/ssh/config" \
-            deploy/vps/docker-compose.yml deploy/vps/settings.env deploy/vps/deploy.sh \
+            deploy/vps/docker-compose.yml deploy/vps/settings.env deploy/vps/deploy.sh deploy/vps/db_move.sh \
             vps:/opt/agentx/
 
       - name: Migrate, then roll api-1 and api-2

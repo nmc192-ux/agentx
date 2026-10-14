@@ -1,0 +1,213 @@
+"""
+Tests: deploy/vps/db_move.sh (DB-1) — moving the database from Neon to the VPS Postgres.
+
+Rehearsed natively against local Postgres (PG_RUN=native): a scratch "Neon" database built with
+the real migration chain and some rows (incl. a pgvector column and sequences), an empty scratch
+"VPS" database. Pins what the runbook relies on:
+  1. dump + restore gives a copy whose every table has the same row count and the same alembic
+     version (verify says OK), with the pgvector column and the rows intact;
+  2. verify fails when one row differs;
+  3. restore refuses a database that already has tables, and a broken dump leaves nothing behind;
+  4. backup keeps only the newest KEEP files and never deletes neon-*.dump;
+  5. the Neon password never appears on a command line (it goes in on stdin).
+"""
+import getpass
+import importlib.util
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[3]
+PLATFORM = REPO / "platform"
+SCRIPT = REPO / "deploy" / "vps" / "db_move.sh"
+SRC_DB = "agentx_smoke_dbmove_src"
+DST_DB = "agentx_smoke_dbmove_dst"
+PG_USER = getpass.getuser()
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(shutil.which("pg_dump") is None, reason="Postgres client tools not installed"),
+]
+
+
+def _pg(*args: str, db: str = "postgres") -> str:
+    out = subprocess.run(
+        ["psql", "-X", "-At", "-h", "localhost", "-U", PG_USER, "-d", db, "-v", "ON_ERROR_STOP=1", *args],
+        capture_output=True, text=True, check=True,
+    )
+    return out.stdout.strip()
+
+
+def _fresh(db: str) -> None:
+    _pg("-c", f"DROP DATABASE IF EXISTS {db} WITH (FORCE)")
+    _pg("-c", f"CREATE DATABASE {db}")
+
+
+@pytest.fixture(scope="module")
+def source_db():
+    """Scratch 'Neon': the real migration chain plus a few rows."""
+    spec = importlib.util.spec_from_file_location("smoke_routers", PLATFORM / "scripts" / "smoke_routers.py")
+    smoke = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(smoke)
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("POSTGRES_")},
+        "APP_ENV": "development", "POSTGRES_HOST": "localhost", "POSTGRES_PORT": "5432",
+        "POSTGRES_USER": PG_USER, "POSTGRES_DB": SRC_DB, "POSTGRES_PASSWORD": "local-trust",
+        "POSTGRES_SSL_MODE": "disable", "REDIS_URL": "memory://", "JWT_SECRET": "x" * 40,
+    }
+    smoke.build_database(SRC_DB, env)
+    _pg("-c", """
+        INSERT INTO agents (agent_did, display_name)
+        SELECT 'did:agentx:dbmove-' || lpad(g::text, 3, '0'), 'mover ' || g FROM generate_series(1, 25) g
+    """, db=SRC_DB)
+    yield SRC_DB
+    _pg("-c", f"DROP DATABASE IF EXISTS {SRC_DB} WITH (FORCE)")
+
+
+@pytest.fixture
+def workdir(tmp_path):
+    (tmp_path / "settings.env").write_text(
+        "POSTGRES_HOST=ep-example-pooler.c-6.us-east-1.aws.neon.tech\nPOSTGRES_PORT=5432\n"
+        "POSTGRES_USER=neondb_owner\nPOSTGRES_DB=neondb\n"
+    )
+    secrets = tmp_path / "api.env"
+    secrets.write_text("JWT_SECRET=unused\nPOSTGRES_PASSWORD=neon-pw-sentinel-123\n")
+    _fresh(DST_DB)
+    yield tmp_path
+    _pg("-c", f"DROP DATABASE IF EXISTS {DST_DB} WITH (FORCE)")
+
+
+def run(workdir: Path, *args: str, **extra) -> subprocess.CompletedProcess:
+    env = {
+        **os.environ,
+        "AGENTX_DIR": str(workdir),
+        "BACKUP_DIR": str(workdir / "backups"),
+        "AGENTX_SECRETS_FILE": str(workdir / "api.env"),
+        "PG_RUN": "native",
+        "SRC_HOST": "localhost", "SRC_USER": PG_USER, "SRC_DB": SRC_DB, "SRC_SSLMODE": "disable",
+        # The VPS side, as the db container's environment would give it.
+        "PGHOST": "localhost", "POSTGRES_USER": PG_USER, "POSTGRES_DB": DST_DB,
+        **extra,
+    }
+    return subprocess.run(["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=300)
+
+
+def _dump(workdir: Path) -> Path:
+    result = run(workdir, "dump")
+    assert result.returncode == 0, result.stderr
+    dumps = sorted((workdir / "backups").glob("neon-*.dump"))
+    assert len(dumps) == 1 and not list((workdir / "backups").glob("*.part"))
+    assert oct(dumps[0].stat().st_mode & 0o777) == "0o600"
+    return dumps[0]
+
+
+def test_check_reports_versions_and_empty_target(source_db, workdir):
+    result = run(workdir, "check")
+    assert result.returncode == 0, result.stderr
+    assert "must be 0 before restore" in result.stdout and "tables: 0" in result.stdout
+    assert "extensions: all available" in result.stdout
+    assert result.stdout.strip().endswith("OK")
+
+
+def test_check_fails_on_extension_missing_on_vps(source_db, workdir, tmp_path):
+    """A Neon-only extension would break the restore halfway; check must say so first."""
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    real = shutil.which("psql")
+    # The VPS side answers "not available" for every extension.
+    (shim / "psql").write_text(
+        f'#!/bin/sh\ncase "$*" in *pg_available_extensions*) echo 0;; *) exec {real} "$@";; esac\n'
+    )
+    (shim / "psql").chmod(0o755)
+    result = run(workdir, "check", PATH=f"{shim}{os.pathsep}{os.environ['PATH']}")
+    assert result.returncode == 1
+    assert "extensions the VPS server does not have" in result.stderr and "vector" in result.stderr
+
+
+def test_dump_restore_verify_round_trip(source_db, workdir):
+    dump = _dump(workdir)
+    restored = run(workdir, "restore", str(dump))
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    verified = run(workdir, "verify")
+    assert verified.returncode == 0, verified.stderr
+    assert "OK:" in verified.stdout and "agents" in verified.stdout
+    # Same migration head, same rows, sequences carried over, pgvector column present.
+    assert _pg("-c", "SELECT version_num FROM alembic_version", db=DST_DB) == \
+        _pg("-c", "SELECT version_num FROM alembic_version", db=SRC_DB)
+    assert _pg("-c", "SELECT count(*) FROM agents WHERE agent_did LIKE 'did:agentx:dbmove-%'", db=DST_DB) == "25"
+    assert _pg("-c", "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                     "WHERE attrelid = 'posts'::regclass AND attname = 'embedding'", db=DST_DB) == "vector(1536)"
+    # Restoring again into the now-full database is refused, and changes nothing.
+    again = run(workdir, "restore", str(dump))
+    assert again.returncode == 1 and "refusing" in again.stderr
+    assert run(workdir, "verify").returncode == 0
+
+
+def test_verify_fails_on_one_row_difference(source_db, workdir):
+    assert run(workdir, "restore", str(_dump(workdir))).returncode == 0
+    _pg("-c", "DELETE FROM agents WHERE agent_did = 'did:agentx:dbmove-007'", db=DST_DB)
+    result = run(workdir, "verify")
+    assert result.returncode == 1
+    assert "DIFFERENT" in result.stderr and "agents|" in result.stderr
+
+
+def test_broken_dump_leaves_target_empty(source_db, workdir):
+    dump = _dump(workdir)
+    data = dump.read_bytes()
+    broken = workdir / "broken.dump"
+    broken.write_bytes(data[: len(data) // 2])
+    result = run(workdir, "restore", str(broken))
+    assert result.returncode == 1
+    assert _pg("-c", "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'", db=DST_DB) == "0"
+
+
+def test_backup_rotates_and_keeps_neon_dumps(source_db, workdir):
+    assert run(workdir, "restore", str(_dump(workdir))).returncode == 0
+    backups = workdir / "backups"
+    for i in range(4):  # older nightly files
+        old = backups / f"agentx-2026010{i}-000000.dump"
+        old.write_bytes(b"old")
+        os.utime(old, (1_700_000_000 + i, 1_700_000_000 + i))
+    result = run(workdir, "backup", KEEP="3")
+    assert result.returncode == 0, result.stderr
+    kept = sorted(p.name for p in backups.glob("agentx-*.dump"))
+    assert len(kept) == 3
+    assert "agentx-20260103-000000.dump" in kept and "agentx-20260102-000000.dump" in kept
+    assert len(list(backups.glob("neon-*.dump"))) == 1
+    newest = max(backups.glob("agentx-*.dump"), key=lambda p: p.stat().st_mtime)
+    listing = subprocess.run(["pg_restore", "--list", str(newest)], capture_output=True, text=True)
+    assert listing.returncode == 0 and "TABLE DATA public agents" in listing.stdout
+
+
+def test_neon_password_only_on_stdin(source_db, workdir, tmp_path):
+    """Wrap psql/pg_dump: record their argv and environment; the password must not be in argv."""
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    log = tmp_path / "argv.log"
+    for tool in ("psql", "pg_dump", "pg_restore"):
+        real = shutil.which(tool)
+        (shim / tool).write_text(
+            f'#!/bin/sh\necho "$0 $*" >> {log}\necho "pw=${{PGPASSWORD:-}}" >> {log}\nexec {real} "$@"\n'
+        )
+        (shim / tool).chmod(0o755)
+    path = f"{shim}{os.pathsep}{os.environ['PATH']}"
+    assert run(workdir, "check", PATH=path).returncode == 0
+    assert run(workdir, "dump", PATH=path).returncode == 0
+    text = log.read_text()
+    argv_lines = [line for line in text.splitlines() if not line.startswith("pw=")]
+    assert argv_lines and not any("neon-pw-sentinel-123" in line for line in argv_lines)
+    # ...but it did reach the tools that talk to the "Neon" side.
+    assert "pw=neon-pw-sentinel-123" in text
+
+
+def test_usage_and_missing_file(workdir):
+    assert run(workdir).returncode == 2
+    assert run(workdir, "restore", str(workdir / "nope.dump")).returncode == 2
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "--db", "-v"]))
