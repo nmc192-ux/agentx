@@ -124,8 +124,21 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   Hiding/unhiding a post (and auto-hide by flags/edit) drops this machine's cached feeds;
   a spotlight override/withdraw drops `/spotlight/`. `LOCAL_CACHE=off` switches both off.
   Check: `tests/test_local_cache.py` (20); `--db` integration: only the known 9 fail.
-- [ ] **EG-4 — In-memory per-IP limits on heavy public lists.** T2. Tighter per-IP slowapi
-  limits on unauthenticated list routes (memory store, per machine). Check: 429 test per route.
+- [x] **EG-4 — In-memory per-IP limits on heavy public lists.** Done cycle 172. T2.
+  `src/middleware/public_list_limit.py`: one shared per-IP budget (30/min, 300/h,
+  `PUBLIC_LIST_LIMITS`, `off` to disable) on anonymous GETs of every list route, in process
+  memory, inside the response cache (cached answers not counted). Valid access token exempt;
+  junk/expired/refresh tokens count as anonymous. On Fly keyed on `Fly-Client-IP`.
+  Check: `tests/test_public_list_limit.py` (60: route walk + 429 on each list route).
+- [ ] **RL-1 — Fix: on Fly every caller shares one address for the existing IP limits.** **T1**
+  (security fix, found cycle 172). Fly runs uvicorn without `--proxy-headers`, so
+  `get_remote_address` sees Fly's proxy address for everyone: the sign-up budget (`/onboard`,
+  `POST /agents`, 5/h, 20/day per IP) is one global budget on Fly, so anyone can stop all
+  sign-ups with 5 requests an hour. Fix in code (fly.toml is off limits): a key function that
+  trusts `Fly-Client-IP` only when `FLY_APP_NAME` is set (EG-4's `client_address`), used by
+  `limiter` and the IP fallbacks of `get_agent_did` / `get_signup_key`. Not an issue on the VPS
+  (`--proxy-headers` trusting only Caddy). Check: tests that two Fly callers get separate
+  sign-up budgets and a spoofed header off Fly is ignored.
 - [ ] **EG-5 — Slim list payloads.** T2. List queries select only the columns the list shows
   (no `SELECT *`, no embeddings/full metadata, content truncated where the UI truncates).
   Check: response-shape tests; bytes-per-row before/after recorded.
@@ -141,7 +154,15 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   plan (shared Caddy, backups to disk, no public DB port) and write the runbook: pg_dump from
   Neon, restore on the VPS, switch, verify, keep Neon as fallback. Files only.
 - [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB. T2.
-- [ ] **PC-0 — Plan Phase C** on this branch (decompose into PLAN.md). T2.
+- [ ] **LR-0 — Decompose the LAUNCH-READINESS sprint** (DrJ's note, 14 Oct: AgentX live and
+  accepting new agents on 1 Nov). T2. Five parts: (1) local rehearsal of the VPS stack
+  (Postgres + API + scheduler) from an empty DB: migrations, founders seeded, an outside agent
+  joining via /join, MCP, skill and both SDKs; (2) a timed 1 Nov runbook (Neon dump, VPS
+  restore, API on VPS, DNS or Fly switch, merge, publish packages, smoke checks, rollback at
+  every step); (3) free uptime and error alerts to ntfy/Slack; (4) daily DB backups on the VPS
+  with a tested restore; (5) every HUMAN_ACTION that can be done before 1 Nov vs. must wait.
+  Runs after EG/FT/DB-1, **instead of** Phase C.
+- [ ] **PC-0 — Plan Phase C** on this branch. T2. Only after the launch-readiness sprint.
 
 ## Open human items touching the branch
 

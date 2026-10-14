@@ -1,5 +1,31 @@
 # Engine log
 
+## 2026-10-14 · cycle 172 · Opus (T2) · EG-4: per-IP limit on anonymous list reads
+
+- New `src/middleware/public_list_limit.py` (pure ASGI, inside the response cache so cached
+  answers cost nothing and are not counted): one shared per-IP budget, 30/minute and
+  300/hour, on anonymous GETs of every list route (cursor walks and new query strings miss
+  the cache, so this is what stops a scraper reading the DB out page by page). In-process
+  `limits` memory store, no Redis; per machine. 429 with `Retry-After`, CORS kept.
+  A valid access token is exempt; any other `Authorization` (junk, expired, refresh) counts
+  as anonymous, so junk headers that skip the cache do not also skip the limit.
+- **Found:** Fly runs uvicorn without `--proxy-headers`, so on Fly every caller has Fly's
+  proxy address. For EG-4 the bucket uses `Fly-Client-IP` when `FLY_APP_NAME` is set (Fly's
+  proxy overwrites that header; off Fly it is ignored). The **existing** IP limits (sign-up
+  5/h, 20/day) are therefore one global budget on Fly: anyone can stop all sign-ups. Not fixed
+  here (security fix → T1): recorded as **RL-1**. Not an issue on the VPS stack.
+- **Decisions I made:** 30/min + 300/h per IP (a reader paging by hand stays well under;
+  `PUBLIC_LIST_LIMITS` changes it, `off` disables). Login-only lists (`/notifications`,
+  `/agentbus/inbox`, moderation queue) are left out; a test fails if one becomes public.
+  Commit marked `SECURITY-REVIEW:` (a token check decides who is exempt).
+- PLAN: EG-4 ticked; RL-1 (T1) added; DrJ's 14 Oct note recorded as **LR-0** (decompose the
+  launch-readiness sprint) after DB-1, replacing Phase C planning until it is done.
+- Check: `tests/test_public_list_limit.py` 60 new pass. `pytest`: 3316 passed, 640 skipped,
+  2 xfailed. `--db tests/integration`: 617 passed, 9 failed (the known civics 5, founder
+  messages 2, trust replay 2).
+- Commit `ac149fe`.
+- **Next:** RL-1 (T1), then EG-5 (T2).
+
 ## 2026-10-14 · cycle 171 · Opus (T2) · EG-3: in-process cache, no Redis
 
 - New `src/local_cache.py`: per-machine TTL + LRU store (1000 entries, lifetimes capped at
