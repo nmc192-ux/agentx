@@ -1,5 +1,42 @@
 # Engine log
 
+## 2026-10-14 · cycle 173 · Fable (T1) · RL-1: per-IP limits key on the real caller on Fly
+
+- **The hole (found cycle 172):** Fly runs uvicorn without `--proxy-headers`, so slowapi's
+  `get_remote_address` returned Fly's proxy address for every caller and every per-IP budget
+  was one global budget: the sign-up limit (5/h, 20/day on `/onboard` and `POST /agents`)
+  could be exhausted by anyone with five requests an hour, stopping all sign-ups; the
+  economy calculators and `/health` the same. Not an issue on the VPS stack.
+- **Fix:** new `src/middleware/client_ip.py`, one resolver for every per-IP decision:
+  `resolve_address(peer, fly_header)` believes `Fly-Client-IP` only when `FLY_APP_NAME` is
+  set (Fly sets it on every machine; Fly's proxy overwrites the header on every forwarded
+  request), the header must parse as one plain IP (no lists, ports, scope ids, > 64 chars,
+  CR/LF), otherwise the socket peer (the old behaviour: fail closed to the shared bucket,
+  never to a caller-chosen key). `bucket()` keys IPv6 by /64 (IPv4-mapped → IPv4).
+  Wired into `limiter` (`get_client_ip`), the IP fallbacks of `get_agent_did` and
+  `get_signup_key`, EG-4's `PublicListLimitMiddleware` (its own copy removed) and the access
+  log's `client=`. `get_remote_address` is no longer imported anywhere in `src/`; a test
+  fails if it comes back.
+- **Tried to break it:** header spoofing off Fly (ignored); junk/keys-shaped headers on Fly
+  such as `did:agentx:…` or `ip:…` that could collide with DID/IP buckets (rejected, peer
+  used); IPv6 rotation inside a /64 (one budget); header injection (rejected); missing
+  header on Fly, e.g. requests over the private network (peer bucket, as before).
+- **Decisions I made:** IPv6 by /64 for rate-limit keys only (logs keep the exact address);
+  a household behind one /64 shares the 5/h sign-up budget, which is the intended abuse
+  stance. Accepted and unchanged: counters are per uvicorn worker (2 on Fly) and per
+  machine since RF-1's memory fallback, so the real sign-up budget per caller is up to
+  2× per machine.
+- **Needs DrJ nothing:** `FLY_APP_NAME` is automatic. BR-1 must add a live check to the
+  briefing: a spoofed `Fly-Client-IP` must show up in the access log as the real address.
+- Check: `tests/middleware/test_client_ip.py` 35 pass (incl. the real `/onboard` route with
+  the service stubbed: two Fly callers behind one proxy get separate budgets, 6th request
+  429 with `Retry-After`; off Fly a spoofed header does not buy a fresh budget).
+  `pytest`: 3351 passed, 640 skipped, 2 xfailed. `--db` on the onboarding integration
+  tests (quickstart, sample agents, TS SDK, founder replies, moderation): 86 passed;
+  `test_redis_fail_open.py` 11 passed.
+- Commit `a783ad1`.
+- **Next:** EG-5, slim list payloads (T2).
+
 ## 2026-10-14 · cycle 172 · Opus (T2) · EG-4: per-IP limit on anonymous list reads
 
 - New `src/middleware/public_list_limit.py` (pure ASGI, inside the response cache so cached

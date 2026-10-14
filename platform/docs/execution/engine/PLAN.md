@@ -130,15 +130,16 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   memory, inside the response cache (cached answers not counted). Valid access token exempt;
   junk/expired/refresh tokens count as anonymous. On Fly keyed on `Fly-Client-IP`.
   Check: `tests/test_public_list_limit.py` (60: route walk + 429 on each list route).
-- [ ] **RL-1 — Fix: on Fly every caller shares one address for the existing IP limits.** **T1**
-  (security fix, found cycle 172). Fly runs uvicorn without `--proxy-headers`, so
-  `get_remote_address` sees Fly's proxy address for everyone: the sign-up budget (`/onboard`,
-  `POST /agents`, 5/h, 20/day per IP) is one global budget on Fly, so anyone can stop all
-  sign-ups with 5 requests an hour. Fix in code (fly.toml is off limits): a key function that
-  trusts `Fly-Client-IP` only when `FLY_APP_NAME` is set (EG-4's `client_address`), used by
-  `limiter` and the IP fallbacks of `get_agent_did` / `get_signup_key`. Not an issue on the VPS
-  (`--proxy-headers` trusting only Caddy). Check: tests that two Fly callers get separate
-  sign-up budgets and a spoofed header off Fly is ignored.
+- [x] **RL-1 — Fix: on Fly every caller shares one address for the existing IP limits.** Done
+  cycle 173 (Fable, T1). New `src/middleware/client_ip.py`: one answer to "who is calling",
+  used by `limiter` (`get_client_ip`), the IP fallbacks of `get_agent_did` / `get_signup_key`,
+  EG-4's list limit and the access log. `Fly-Client-IP` believed only when `FLY_APP_NAME` is
+  set (Fly sets it; Fly's proxy overwrites the header), must be one plain IP, else the peer;
+  IPv6 bucketed by /64 so a caller cannot rotate through its block. Off Fly unchanged (peer
+  = real caller via `--proxy-headers` on the VPS). Check: `tests/middleware/test_client_ip.py`
+  (35: two Fly callers behind one proxy get separate sign-up budgets on the real `/onboard`;
+  a spoofed header off Fly buys nothing; junk headers fall back to the peer; /64 rotation
+  shares a budget; no `get_remote_address` left in `src/`); full suite 3351 green.
 - [ ] **EG-5 — Slim list payloads.** T2. List queries select only the columns the list shows
   (no `SELECT *`, no embeddings/full metadata, content truncated where the UI truncates).
   Check: response-shape tests; bytes-per-row before/after recorded.
@@ -153,7 +154,9 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
 - [ ] **DB-1 — Postgres on the Pink Popcorn VPS + 1 Nov runbook.** T2. Extend the Sprint 16 VPS
   plan (shared Caddy, backups to disk, no public DB port) and write the runbook: pg_dump from
   Neon, restore on the VPS, switch, verify, keep Neon as fallback. Files only.
-- [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB. T2.
+- [ ] **BR-1 — Refresh the Phase B merge briefing** for EG/FT/DB and RL-1. T2. Live-test
+  checklist must include: after deploy, `curl -H 'Fly-Client-IP: 203.0.113.9' https://api…/health`
+  and check the access log shows `client=<your real address>`, not 203.0.113.9.
 - [ ] **LR-0 — Decompose the LAUNCH-READINESS sprint** (DrJ's note, 14 Oct: AgentX live and
   accepting new agents on 1 Nov). T2. Five parts: (1) local rehearsal of the VPS stack
   (Postgres + API + scheduler) from an empty DB: migrations, founders seeded, an outside agent
