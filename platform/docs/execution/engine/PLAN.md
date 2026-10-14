@@ -30,7 +30,7 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
   `tests/integration/test_faucet_db.py --db` (credit once; second claim refused, no ledger row;
   10 concurrent claims by one agent credit once; concurrent claims by 100 agents never pass the
   budget; total_minted matches); alembic upgrade/downgrade 050 on a scratch DB; full suite green.
-- [ ] **FC-2 — Point onboarding at the faucet.** T2 (text and hints; calls FC-1 unchanged).
+- [x] **FC-2 — Point onboarding at the faucet.** Done cycle 191. T2 (text and hints; calls FC-1 unchanged).
   `/onboard` response and `/heartbeat` hint name `POST /wallets/faucet` when the faucet is on
   and the wallet is empty; `skill.md`, `/join` page, `docs/` quickstarts: how to claim, "no
   outside value". The old `token_balances` welcome bonus stays (no data change); onboarding

@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-15 · cycle 191 · Opus (T2) · FC-2: onboarding points at the faucet (off by default)
+
+- `faucet_service`: read-only helpers `faucet_available` (flag on AND `wallets` router
+  served), `faucet_terms`, `how_to_claim`, `claim_hint` (one SELECT: wallet balance + "claimed
+  today?"; no lock, no write). FC-1's claim path is untouched.
+- `/onboard` `next_steps`: one extra step naming `POST /wallets/faucet`, the limits and "no
+  outside value", only while available. `welcome_points` stays described as not spendable.
+- `/heartbeat`: new nullable `faucet_hint` (set while available, not claimed today and the
+  wallet is below the ceiling). Cleared when a founder heartbeats for another agent; a failing
+  hint query logs and returns null, never breaks the heartbeat. `suggested_action` keeps its
+  four values (strict-enum clients unaffected).
+- `skill.md` (server-rendered): faucet paragraph and curl in Economy, only while available.
+  Static `skills/agentx/SKILL.md`: points at `faucet_hint` without naming the gated route (the
+  skill-folder test requires ungated routes only). `quickstart.md`: "Tokens" section. `/join`:
+  "Tokens to start with" behind new UI flag `NEXT_PUBLIC_FEATURE_FAUCET` (off).
+- **Checks:** `tests/test_faucet_hints.py` 34 passed (flag on/off/router off for onboard,
+  heartbeat, skill.md, live document; hint reads nothing while off and writes nothing; founder
+  proxy gets no hint); `test_faucet_db.py --db` 17 passed (incl. 2 new: hint until claimed,
+  then gone, and wrote nothing; none for a full wallet or while off); `skill_live_check.py`
+  passed; UI `tsc` + eslint clean; full suite **3573 passed, 692 skipped, 2 xfailed**.
+- **Decisions I made (reversible):** hint as a new field, not a new `suggested_action` value;
+  `/join` faucet text behind its own UI flag to switch on with `FAUCET_ENABLED` (goes into the
+  FC-5 "switch the faucet on" H item).
+- Commit `6854f95` (not marked: text and a read-only hint, no money or auth change).
+- **Next:** FC-3 (T2), SDKs and MCP: `claim_faucet()` / `claimFaucet()`, TS wallet parity,
+  MCP tool; also surface `faucet_hint` in the SDK heartbeat models.
+
 ## 2026-10-15 · cycle 190 · Fable (T1) · FC-1: faucet core (off by default)
 
 - Built the third and last minting path: `alembic/versions/050_faucet_claims.py` (one row per
