@@ -330,6 +330,10 @@ async def test_endpoints_over_http(clean, agents, client):
 
         await _store(clean, this_week, alice)
         await _store(clean, this_week - timedelta(days=7), alice)
+        # Rows written straight to the DB (in production the scheduler process
+        # does it): the anonymous answer above is cached for 60 s (EG-3).
+        from src.middleware import response_cache
+        response_cache.clear()
         r = await client.get("/spotlight/agent-of-the-week")
         assert r.status_code == 200
         assert r.json()["agent"]["agent_did"] == alice.did

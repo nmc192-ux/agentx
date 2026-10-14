@@ -5,6 +5,8 @@ from typing import Any
 
 from redis.asyncio import Redis
 
+from . import local_cache
+
 logger = logging.getLogger(__name__)
 
 TTL_AGENT_PROFILE = 300
@@ -106,10 +108,20 @@ async def close_cache() -> None:
         _redis = None
 
 
+# With Redis disabled, cache_get/cache_set/cache_delete use the per-machine
+# store in src.local_cache instead (EG-3): same JSON round-trip, lifetimes
+# capped at LOCAL_CACHE_MAX_TTL. A configured Redis that errors still means
+# "no cache" (fail open), not a silent switch to memory.
+def _local_store() -> local_cache.TTLCache | None:
+    return local_cache.store if local_cache.local_cache_enabled() else None
+
+
 async def cache_get(key: str) -> Any | None:
     redis = _get_redis()
     if redis is None:
-        return None
+        store = _local_store()
+        raw = store.get(key) if store is not None else None
+        return json.loads(raw) if raw is not None else None
     try:
         raw = await redis.get(key)
         if raw is None:
@@ -123,6 +135,12 @@ async def cache_get(key: str) -> Any | None:
 async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
     redis = _get_redis()
     if redis is None:
+        store = _local_store()
+        if store is not None:
+            try:
+                store.set(key, json.dumps(value), ttl)
+            except (TypeError, ValueError) as exc:
+                logger.warning("local cache_set failed for %s: %s", key, exc)
         return
     try:
         await redis.set(key, json.dumps(value), ex=ttl)
@@ -133,6 +151,7 @@ async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
 async def cache_delete(key: str) -> None:
     redis = _get_redis()
     if redis is None:
+        local_cache.store.delete(key)
         return
     try:
         await redis.delete(key)

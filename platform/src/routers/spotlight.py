@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from ..auth.middleware import AgentRecord, require_role
 from ..database import get_db
 from ..founders.roster import RosterConfigError
+from ..middleware import response_cache
 from ..services import spotlight_service
 
 spotlight_router = APIRouter(prefix="/spotlight", tags=["Spotlight"])
@@ -89,6 +90,8 @@ async def _apply(action, *args, **kwargs) -> dict:
         # The founder roster is unreadable: refuse rather than risk naming a house agent.
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "Founder roster is misconfigured")
+    # A withdrawn pick must not linger in this machine's anonymous cache.
+    response_cache.invalidate("/spotlight/")
     return {
         "week_start": row["week_start"].isoformat(),
         "agent_did": row["agent_did"],

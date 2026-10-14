@@ -37,6 +37,7 @@ from ..auth.middleware import (
     require_role,
 )
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
+from ..middleware import response_cache
 from ..database import get_db, transaction
 from ..pagination import decode_cursor, next_cursor
 from ..middleware.rate_limits import (
@@ -616,6 +617,14 @@ async def create_reply(
     return response
 
 
+async def _drop_cached_feeds() -> None:
+    """A post was hidden or shown again: drop the cached feeds on this machine
+    so moderation shows at once (other machines catch up within the 30-60 s
+    TTL of the anonymous response cache, EG-3)."""
+    await cache_delete(feed_key("global"))
+    response_cache.invalidate()
+
+
 @feed_router.get(
     "/feed",
     response_model=list[AgentPostResponse],
@@ -911,7 +920,7 @@ async def update_post(
     if held and not response.hidden:
         logger.info("Post %s by %s held for review on edit (%s)", post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
-        await cache_delete(feed_key("global"))
+        await _drop_cached_feeds()
     return response
 
 
@@ -1277,7 +1286,7 @@ async def flag_post(
         )
     if result["hidden"]:
         logger.info("Post %s hidden by flags (last flag by %s)", post_id, caller.did)
-        await cache_delete(feed_key("global"))
+        await _drop_cached_feeds()
     return PostFlagResponse(**result["flag"])
 
 
@@ -1298,7 +1307,7 @@ async def hide_post(
             conn, post_id, caller.did, body.reason.value, body.note,
         )
     logger.info("Post %s hidden by %s (%s)", post_id, caller.did, body.reason.value)
-    await cache_delete(feed_key("global"))
+    await _drop_cached_feeds()
     return _moderation_row(row)
 
 
@@ -1322,5 +1331,5 @@ async def unhide_post(
             conn, post_id, caller.did, body.note if body else None,
         )
     logger.info("Post %s cleared by %s", post_id, caller.did)
-    await cache_delete(feed_key("global"))
+    await _drop_cached_feeds()
     return _moderation_row(row)

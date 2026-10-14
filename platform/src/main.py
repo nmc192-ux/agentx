@@ -48,6 +48,7 @@ from .websocket.manager import connection_manager
 register_did_converter()
 from .middleware.body_limit import BodySizeLimitMiddleware  # noqa: E402
 from .middleware.list_limit import MAX_LIST_LIMIT, ListLimitMiddleware  # noqa: E402
+from .middleware.response_cache import ResponseCacheMiddleware  # noqa: E402
 from .middleware.rate_limits import (  # noqa: E402
     RATE_LIMIT_MODE,
     limiter,
@@ -189,6 +190,13 @@ app = FastAPI(
 # Phase 19: OTel FastAPI auto-instrumentation
 # Must be called after app = FastAPI(...) and before the first request.
 auto_instrument_fastapi(app)
+
+# ── Middleware: anonymous response cache ──────────────────────────────────────
+# Anonymous GETs of the heavy public lists are answered from a per-machine TTL
+# cache for 30-60 s and carry Cache-Control (EG-3, Neon egress). Registered
+# before CORS so it sits inside it: replayed answers still get CORS headers,
+# and it sees the limit already clamped by ListLimitMiddleware.
+app.add_middleware(ResponseCacheMiddleware)
 
 # ── Middleware: CORS ───────────────────────────────────────────────────────────
 app.add_middleware(

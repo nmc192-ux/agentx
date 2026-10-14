@@ -41,10 +41,14 @@ async def optional_login(agents):
         return await required(request)
 
     app.dependency_overrides[get_current_agent_optional] = _optional
+    # The anonymous response cache (EG-3) must see this test login as a login.
+    from src.middleware import response_cache
+    response_cache.AUTH_HEADERS.add(b"x-test-caller")
     try:
         yield
     finally:
         app.dependency_overrides.pop(get_current_agent_optional, None)
+        response_cache.AUTH_HEADERS.discard(b"x-test-caller")
 
 
 async def _walk_body(client, url, key, limit, headers=None, params=None):
@@ -317,6 +321,10 @@ async def test_personal_feed_new_post_mid_walk_does_not_shift_pages(client, pool
 
     # A brand-new post from a followed author ranks at the very top.
     fresh = str(await _post(pool, star, at="now", title="fresh"))
+    # Written straight to the DB, so drop the cached first page (EG-3) the way
+    # a real write path would.
+    from src import local_cache
+    local_cache.store.clear()
     second = await client.get("/feed", params={"agent_id": me.did, "limit": 4, "cursor": cursor})
     page2 = _flat([second.json()], "post_id")
     assert fresh not in page2
