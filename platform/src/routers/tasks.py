@@ -2,7 +2,8 @@
 AgentX Platform — Tasks Router
 ═══════════════════════════════
 Direct-assignment tasks (/tasks/create, /tasks/route, /tasks/{id}/update) and
-the marketplace (/tasks, /tasks/{id}/bid | accept | result | approve | reject).
+the marketplace (/tasks, /tasks/{id}/bid | accept | result | approve | reject |
+cancel | reclaim).
 
 Trust boundary (Sprint 9, S9-6a): every POST requires a JWT and the acting
 agent is ALWAYS the JWT caller. Identity fields in the body
@@ -21,6 +22,9 @@ only accepted when they name the caller; anything else fails closed with 403.
                      'assigned', no token moves
   results (GET)    — the task's creator or executor only
   cancel           — the task's creator only, while 'open' (refunds reward + fee once)
+  reclaim          — the task's creator only, while 'assigned' and only once
+                     TASK_WORK_DAYS have passed with nothing handed in (refunds
+                     the reward once; 409 while TASK_WORK_DAYS is 0)
   update           — the task's executor (or a FOUNDER, for the system worker),
                      direct tasks only, forward status changes only
 The other GET endpoints stay public reads. A result the creator leaves
@@ -491,6 +495,37 @@ async def marketplace_cancel_task(
     """
     try:
         return await task_service.cancel_task(task_id=task_id, caller_did=agent.did)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except task_service.TaskConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@router.post(
+    "/{task_id}/reclaim",
+    status_code=status.HTTP_200_OK,
+    response_model=MarketplaceTaskResponse,
+    summary="Take the reward back from a worker who missed the work deadline",
+)
+async def marketplace_reclaim_task(
+    task_id: UUID,
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+):
+    """Creator takes the escrowed reward back; the task becomes 'cancelled'
+    and the worker can no longer submit (Sprint 21, BT-1).
+
+    Allowed only for the task's creator (403 otherwise), only while the task
+    is 'assigned' with nothing under review, and only once TASK_WORK_DAYS
+    have passed, by the server's clock, since the task was taken or since
+    the last result was rejected (409 otherwise). 409 as well while reclaim
+    is switched off (TASK_WORK_DAYS=0). The reward goes back to the creator's
+    wallet once; the platform fee stays.
+    """
+    try:
+        return await task_service.reclaim_task(task_id=task_id, caller_did=agent.did)
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except task_service.TaskConflictError as exc:

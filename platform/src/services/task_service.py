@@ -15,6 +15,8 @@ Business logic for the open marketplace:
   release_overdue_result()  — pays a result the creator left unanswered
   list_results()            — the task's results, for its creator and executor
   cancel_task()             — creator withdraws a task nobody took (refund)
+  reclaim_task()            — creator takes the reward back after the worker
+                              missed the work deadline (refund; Sprint 21)
   suggest_agents_for_task() — rank agents by capability fit (Phase 5)
 
 All DB access uses asyncpg via get_db() / transaction() context managers.
@@ -32,6 +34,10 @@ caller, resolved by the router from the JWT, never from the request body:
                     (no route calls it); the database clock decides.
   list_results()  — the task's creator or executor only.
   cancel_task()   — the task's creator only, 'open' tasks only, refunded once.
+  reclaim_task()  — the task's creator only, 'assigned' tasks only, and only
+                    once TASK_WORK_DAYS have passed (database clock) since the
+                    task was taken or since the last result was rejected;
+                    refunded once. Off (409) while TASK_WORK_DAYS is 0.
 Errors: PermissionError → 403, TaskConflictError → 409, InsufficientFundsError
 → 400, other ValueError → 404 / 422 (see routers/tasks.py).
 
@@ -61,6 +67,7 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 from ..cache import enqueue_task  # noqa: E402
+from ..config import get_settings  # noqa: E402
 from ..database import get_db, transaction  # noqa: E402
 from ..events.publisher import publish_event  # noqa: E402
 from ..events.types import EventType  # noqa: E402
@@ -902,6 +909,136 @@ async def cancel_task(task_id: UUID, caller_did: str) -> TaskResponse:
     logger.info(
         "task_service: task %s cancelled by %s (refunded %d + fee %d)",
         task_id, caller_did, refunded, fee_refunded,
+    )
+    return _row_to_task(dict(updated))
+
+
+async def reclaim_task(task_id: UUID, caller_did: str) -> TaskResponse:
+    """
+    Creator takes the escrowed reward back from a worker who missed the work
+    deadline (Sprint 21, BT-1; decision D10 default b).
+
+    In ONE transaction, with the task row locked: marks the task 'cancelled',
+    closes the assignment ('failed') and refunds the escrowed reward to the
+    creator (ledger type 'task_work_deadline_refund'). The platform fee is
+    not refunded: unlike a cancel, the task was taken. Because the checks,
+    the status change and the refund share one locked transaction, a task is
+    refunded once however many reclaims race, and a result submission racing
+    the reclaim either lands first (the task is 'in_review' and the reclaim
+    is refused) or finds the task cancelled (409 for the worker).
+
+    Refused (nothing changes) unless every one of these holds:
+      • ``TASK_WORK_DAYS`` is set above 0 (0, the default, means reclaim is
+        off for the whole platform);
+      • the caller is the task's creator (a direct task has no marketplace
+        creator, so nobody can reclaim it here);
+      • the task is 'assigned': a worker holds it and no result is under
+        review. Once a result is in, the creator approves or rejects it; a
+        completed or cancelled task has no escrow to reclaim;
+      • by the DATABASE clock, TASK_WORK_DAYS have passed since the later of
+        the assignment's ``started_at`` and the newest result the worker
+        submitted (every rejection gives the worker a fresh TASK_WORK_DAYS,
+        so a creator cannot reject and reclaim in one breath). No time is
+        taken from the caller.
+
+    Nothing is written to the worker's trust here (Sprint 21, BT-3 adds the
+    deadline-missed event after this transaction commits, like
+    ``_after_payment``).
+
+    Raises:
+        ValueError: task not found.
+        PermissionError: *caller_did* is not the task's creator.
+        TaskConflictError: reclaim is off, the task is not 'assigned', or
+            the work deadline has not passed.
+    """
+    work_days = int(get_settings().task_work_days or 0)
+    if work_days <= 0:
+        raise TaskConflictError("Task reclaim is switched off on this platform")
+
+    async with transaction() as conn:
+        task_row = await conn.fetchrow(
+            """
+            SELECT task_id, status, creator_agent_id, executor_agent_id, executor_agent_did
+            FROM tasks WHERE task_id = $1
+            FOR UPDATE
+            """,
+            task_id,
+        )
+        if task_row is None:
+            raise ValueError(f"Task not found: {task_id}")
+
+        caller_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            caller_did,
+        )
+        if caller_id is None or caller_id != task_row["creator_agent_id"]:
+            raise PermissionError("Only the task creator can reclaim it")
+        if task_row["status"] != "assigned":
+            raise TaskConflictError(
+                "Only an assigned task with nothing under review can be reclaimed "
+                f"(status={task_row['status']})"
+            )
+
+        # Due by the database clock. GREATEST ignores NULLs; with neither an
+        # assignment time nor a result there is nothing to count from, and
+        # COALESCE(..., FALSE) refuses (fails closed).
+        due = await conn.fetchval(
+            """
+            SELECT COALESCE(
+                GREATEST(
+                    (SELECT MAX(started_at) FROM task_assignments
+                      WHERE task_id = $1 AND agent_id = $2 AND status = 'assigned'),
+                    (SELECT MAX(created_at) FROM task_results
+                      WHERE task_id = $1 AND agent_id = $2)
+                ) <= CURRENT_TIMESTAMP - make_interval(days => $3),
+                FALSE
+            )
+            """,
+            task_id,
+            task_row["executor_agent_id"],
+            work_days,
+        )
+        if due is not True:
+            raise TaskConflictError(
+                f"The worker still has time ({work_days} days from taking the task "
+                "or from the last rejection)"
+            )
+
+        from .token_service import reclaim_task_escrow
+        refunded = await reclaim_task_escrow(conn, task_id, caller_id)
+
+        await conn.execute(
+            """
+            UPDATE task_assignments
+               SET status       = 'failed',
+                   completed_at = CURRENT_TIMESTAMP
+             WHERE task_id = $1 AND agent_id = $2 AND status = 'assigned'
+            """,
+            task_id,
+            task_row["executor_agent_id"],
+        )
+
+        updated = await conn.fetchrow(
+            """
+            UPDATE tasks
+               SET status     = 'cancelled',
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE task_id = $1
+               AND status  = 'assigned'
+            RETURNING
+                task_id, creator_agent_id, task_type, payload,
+                reward, status, created_at, executor_agent_id
+            """,
+            task_id,
+        )
+        if updated is None:
+            # Cannot happen under the row lock; refuse rather than refund twice.
+            raise TaskConflictError("Task is no longer assigned")
+
+    logger.info(
+        "task_service: task %s reclaimed by %s after %d days (refunded %d; worker %s "
+        "did not deliver)",
+        task_id, caller_did, work_days, refunded, task_row["executor_agent_did"],
     )
     return _row_to_task(dict(updated))
 

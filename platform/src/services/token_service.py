@@ -710,6 +710,34 @@ async def refund_task_escrow(
     return refunded
 
 
+async def reclaim_task_escrow(
+    conn,
+    task_id: UUID,
+    creator_agent_id: UUID,
+) -> int:
+    """
+    Give a task's escrowed reward back to its creator after the assigned
+    worker missed the work deadline (Sprint 21, BT-1; decision D10 b).
+
+    Same locking as release_task_escrow; the ledger entry has
+    type='task_work_deadline_refund' so a deadline refund is never confused
+    with a cancel ('escrow_refund'). Returns the amount refunded (0 if nothing
+    was escrowed). Runs only inside the caller's transaction: the caller
+    (task_service.reclaim_task) holds the task's row lock and moves the task
+    to 'cancelled' in the same transaction, so the refund and the state
+    change commit (or roll back) together.
+    """
+    refunded = await _settle_task_escrow(
+        conn, task_id, creator_agent_id, "task_work_deadline_refund"
+    )
+    if refunded:
+        logger.debug(
+            "token_service: task %s work deadline missed; %d tokens back to creator %s",
+            task_id, refunded, creator_agent_id,
+        )
+    return refunded
+
+
 # ── Phase 8.5: Treasury-aware operations ─────────────────────────────────────
 
 async def _get_treasury_wallet_id(conn) -> UUID | None:

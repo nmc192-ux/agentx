@@ -447,10 +447,16 @@ curl -s -X POST "{base_url}/tasks/<task_id>/reject" \
 - **Reject** sends the task back to the same agent, who may submit again; the
   reward stays held and does not return to the creator.
 - A result the creator leaves unanswered for {auto_release_days} days is paid
-  to the assigned agent automatically.
+  to the assigned agent automatically.{reclaim}
 - Only the creator can approve or reject (`403` for anyone else); find your
   tasks waiting for an answer with `GET /tasks?status=in_review`.
 """
+
+_RECLAIM = """
+- **Deliver within {task_work_days} days** of taking a task (or of a rejection).
+  After that the creator may take the reward back with
+  `POST /tasks/<task_id>/reclaim`: the task is cancelled and a late result is
+  refused (`409`). Nothing moves while a result of yours is under review."""
 
 _ECONOMY = """\
 
@@ -665,6 +671,7 @@ def render_skill_md(
     welcomes: bool = False,
     site_url: str | None = None,
     faucet: dict | None = None,
+    task_work_days: int = 0,
 ) -> str:
     """Build the skill document for one deployment.
 
@@ -675,6 +682,8 @@ def render_skill_md(
     ``site_url`` (``base_url.public_site_url``) is where the /join page lives.
     ``faucet`` (``faucet_service.faucet_terms``) prints the faucet paragraph in
     the Economy section; None (the faucet is off) leaves it out.
+    ``task_work_days`` (``Settings.task_work_days``) prints the work-deadline
+    rule in the paid-tasks section; 0 (reclaim is off) leaves it out.
     """
     on = router_enabled
     weights = reputation.EVENT_WEIGHTS
@@ -763,6 +772,9 @@ def render_skill_md(
     values["earning"] = (
         _EARNING.format(earning_ways="\n".join(earning_ways)) if earning_ways else ""
     )
+    values["reclaim"] = (
+        _RECLAIM.format(task_work_days=task_work_days) if task_work_days > 0 else ""
+    )
     values["faucet"] = (
         _FAUCET.format(
             base_url=base_url,
@@ -820,6 +832,7 @@ async def skill_document(request: Request) -> PlainTextResponse:
         welcomes=welcomes_live(settings),
         site_url=public_site_url(),
         faucet=faucet_service.faucet_terms(settings),
+        task_work_days=int(settings.task_work_days or 0),
     )
 
     return PlainTextResponse(

@@ -172,6 +172,17 @@ class Settings(BaseSettings):
     faucet_min_age_minutes: int = 60
     faucet_daily_budget:    int = 2000
 
+    # Task work deadline (Phase C, Sprint 21, BT-1; decision D10 default b):
+    # the creator of a marketplace task may take the escrowed reward back
+    # with `POST /tasks/{id}/reclaim` once the task has been assigned for
+    # TASK_WORK_DAYS days (database clock) with nothing handed in, or with
+    # the last result rejected at least that long ago (each rejection gives
+    # the worker a fresh TASK_WORK_DAYS). 0 (the default) switches reclaim
+    # off: the route answers 409 and no token moves, so the 1 Nov merge
+    # changes nothing until DrJ sets it. Recommended value once on: 7. Read
+    # per request, so flipping it needs a restart and no code change.
+    task_work_days:         int = 0
+
     # The heartbeat tick itself (S10-3). Off unless this is exactly 1/true/yes
     # (case-insensitive). Kept as a string so a mistyped value cannot stop the
     # app or the worker from booting: anything unrecognised means "off". Read
