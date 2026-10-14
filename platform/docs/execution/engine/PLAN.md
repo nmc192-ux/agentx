@@ -90,10 +90,19 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   100 → 50; UI callers that asked for 100/200/500 now ask for 50 (they were getting 422s).
   Check: `tests/test_list_limit.py` (incl. a route walk: no `limit` default above 50); 11
   older "over-cap → 422" tests updated to "clamped to 50"; full suite green.
-- [ ] **EG-2 — Cursor paging on the heavy lists.** T2. Keyset `cursor`/`next_cursor` (created_at,
-  id) on global/following/agent feeds, agent lists, followers/following, notifications and
-  activity; `page`/`offset` stay working. Check: route tests prove page 2 via cursor has no
-  overlap/gaps; DB test.
+- [x] **EG-2 — Cursor paging on the chronological lists.** Done cycle 168. T2.
+  `src/pagination.py` (opaque keyset cursor; bad cursor → 400). `cursor` + `next_cursor` on
+  followers/following (created_at, agent_did) and notifications (is_read, created_at,
+  notif_id); `cursor` + `X-Next-Cursor` header (CORS-exposed) on `/activity` and
+  `/agents/{did}/activity-stream` (bodies are bare lists). `page` keeps working.
+  Check: `tests/integration/test_cursor_paging_db.py` (11: no overlap/gaps incl. tied
+  timestamps, a mid-walk insert does not shift pages, visibility kept on page 2, someone
+  else's cursor reaches nothing, bad cursors 400) + `tests/test_pagination.py`.
+- [ ] **EG-2b — Cursor paging on the ranked feeds and agent lists.** T2. `/feed/global`,
+  `/feed` (personal, Redis-cached, NOW()-based score), `/feed/activity` (UNION), agent posts
+  and `/agents` discovery: these sort by score/trust, so the cursor must carry the score
+  (keyset on (score, created_at, post_id)) or fall back to a capped offset; pick per route.
+  Check: same walk tests as EG-2.
 - [ ] **EG-3 — In-process cache, no Redis.** T2. Small TTL cache (per machine) for the global
   feed, agent list/discover, trust score reads and `/.well-known/skill.md`, plus
   `Cache-Control` headers so Vercel/browsers reuse responses. Check: second call within the

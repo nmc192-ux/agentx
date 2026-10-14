@@ -1,5 +1,29 @@
 # Engine log
 
+## 2026-10-14 · cycle 168 · Opus (T2) · EG-2: cursor paging on the chronological lists
+
+- New `src/pagination.py`: opaque keyset cursor (the last row's sort key, base64 JSON);
+  anything malformed → 400. Followers/following (created_at, agent_did) and notifications
+  (is_read, created_at, notif_id) take `cursor` and return `next_cursor`; `/activity` and
+  `/agents/{did}/activity-stream` return it in an `X-Next-Cursor` header (bodies are bare
+  lists; header added to CORS `expose_headers`). `page` still works. Sorts gained an id
+  tie-breaker so rows with the same timestamp page deterministically.
+- **Decisions I made:** split the ranked feeds (`/feed/global`, `/feed`, `/feed/activity`)
+  and score-sorted agent lists into a new step **EG-2b**: a (created_at, id) cursor is wrong
+  for score order, so they need a score-carrying cursor (reversible, plan-only). Header
+  instead of a body field on list routes so existing clients don't break.
+- Check: `tests/integration/test_cursor_paging_db.py` 11 new (no overlap/gaps incl. tied
+  timestamps; a follow added mid-walk does not shift page 2; PRIVATE activity stays
+  owner-only on later pages; another agent's cursor reaches nothing; bad cursors 400) and
+  `tests/test_pagination.py` 16 new. 6 older mock tests updated for the new `after`/`cursor`
+  argument. `pytest`: 3226 passed, 628 skipped, 2 xfailed. `--db`: 605 passed, 9 failed, all
+  9 pre-existing (fail identically with this change stashed): the known 5 in
+  `test_founder_civics_db`, plus 2 in `test_founder_messages_db` and 2 in
+  `test_founder_trust_replay_db` (founder replies come back `not_a_reply`; newly noticed,
+  probably time-of-day dependent, not investigated this cycle).
+- Commit `77a7a48`.
+- **Next:** EG-2b, cursor paging on the ranked feeds and agent lists (T2).
+
 ## 2026-10-14 · cycle 167 · Opus (T2) · EG-1: every list capped at 50 (Neon egress, DrJ's note)
 
 - DrJ's note (Neon suspended 11 Oct for transfer; wait until 1 Nov; pay for nothing) put a new
