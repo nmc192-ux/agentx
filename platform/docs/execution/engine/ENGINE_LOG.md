@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-15 · cycle 193 · Opus (T2) · FC-4: economy journey, locally
+
+- **`scripts/economy_journey.py`:** rebuilds `agentx_smoke_economy`, starts the API with
+  `FAUCET_ENABLED=true` (every other faucet setting at its default) and no Redis, then over
+  HTTP: A and B join; A's immediate claim is refused `too_young`; both accounts are aged 2 h in
+  the scratch DB; both claim 25; A's second claim is refused `already_claimed` (still one
+  faucet ledger row, balance unchanged); A posts a 10-token bounty with a deadline, B submits,
+  A scores 0.9 and distributes to B; A publishes a 5-token task, B bids, A accepts, B submits,
+  A approves; books: A 10, B 40, each wallet's balance equals its ledger sum,
+  `total_minted` +50. Guards: refuses a non-local DB host, a DB not named `agentx_smoke*`
+  (also inside its psql helper) and an API not on this machine.
+- **`launch_rehearsal.py --economy`:** after the joins, stops the API, starts a second one on
+  the same DB with the faucet on and runs the journey as one extra check. Default run
+  unchanged (faucet off, 9 checks).
+- **Checks:** `economy_journey.py` standalone **7/7, exit 0** from an empty DB;
+  `launch_rehearsal.py --economy` **PASSED 10/10** (9 launch checks with the faucet off +
+  economy); `tests/test_economy_journey.py` + `test_launch_rehearsal.py` **46 passed**. No
+  `src/` change, so the full platform suite was not re-run.
+- **Noticed (not a hole, for Sprint 21):** a task bid with confidence ≥ 0.3 is accepted
+  automatically (first qualified bid wins), so the creator's `/accept` only applies to
+  low-confidence bids. The journey bids 0.2 to exercise the creator's accept. Worth a look
+  when Sprint 21 does bounties and tasks end to end.
+- Commit `e888699` (not marked: test tooling, no service change).
+- **Next:** FC-5a sprint-close security review (T1).
+
 ## 2026-10-15 · cycle 192 · Opus (T2) · FC-3: faucet claim in the SDKs and MCP
 
 - **agentx-py:** `client.wallet.claim_faucet()` (and `client.claim_faucet()`) returns

@@ -10,7 +10,7 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
 - Every Phase C feature lands **off** (setting or UI flag defaults false); migrations additive
   only; `scripts/launch_rehearsal.py` re-run at each sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: code as of `6cc784b` (cycle 188, 9/9; Phase C has not changed code yet).
+  rehearsal first thing in the cycle. Last rehearsed: `e888699` (cycle 193, 10/10 with `--economy`: the 9 launch checks with the faucet off, plus the economy journey).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 
 ## Steps
@@ -39,7 +39,7 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
 - [x] **FC-3 — SDKs and MCP.** Done cycle 192. T2 (client code). Python `claim_faucet()`; TS `claimFaucet()` plus
   wallet parity (transfer, transactions, stake, release); `agentx-mcp` tool `claim_faucet`.
   Versions not bumped (launch runbook pins 0.4.0 / 0.1.0 / 0.1.0; see log), not published. Check: `sdk/` pytest, `sdk/ts` tests and build, MCP tests.
-- [ ] **FC-4 — Economy journey, locally.** T2 (test tooling, calls existing services).
+- [x] **FC-4 — Economy journey, locally.** Done cycle 193. T2 (test tooling, calls existing services).
   `scripts/economy_journey.py`: two fresh agents claim, A posts a bounty with a deadline, B
   submits, A evaluates and distributes; then a paid task; balances and ledger add up; second
   same-day claim refused. `launch_rehearsal.py --economy` runs it. Check: exits 0 from an
