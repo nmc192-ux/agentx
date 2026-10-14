@@ -225,7 +225,7 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   `/etc/agentx/alerts.env` (log only when neither). `alerts.env.example`. Check:
   `tests/infrastructure/test_watchdog.py` (fake curl/psql on PATH: each condition fires once,
   recovers once, no flood, no env values in the message; shellcheck clean).
-- [ ] **LR-4 — Timed 1 Nov runbook.** T2 (runbook). `docs/execution/launch_day_runbook.md`:
+- [x] **LR-4 — Timed 1 Nov runbook.** Done cycle 185 (`6c1953b`); `test_launch_runbook.py` 13/13. T2 (runbook). `docs/execution/launch_day_runbook.md`:
   T-minus prep list, then the day in timed rows (who, command, what you must see, undo):
   H36 B-steps, merge with the Fly production deploy rejected, H34, first VPS deploy, DNS
   `api` → VPS, scheduler on, smoke (`smoke.sh` + spoofed-IP check), alerts on, packages

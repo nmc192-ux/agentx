@@ -1,5 +1,34 @@
 # Engine log
 
+## 2026-10-15 · cycle 185 · Opus (T2) · LR-4: timed 1 Nov launch-day runbook
+
+- `platform/docs/execution/launch_day_runbook.md` (commit `6c1953b`): Part 1, 12 prep steps
+  (P01–P12: H29, H30 1–8, H36 A1–A5, scp of the files the deploy does not copy, alert apps,
+  npm name, PyPI token, tools, H35, Fly to zero, Fly "Deploy" workflow off, branch green);
+  Part 2, 36 timed steps 10:00–16:30 PKT (L01–L36: Neon copy B1–B8, H34 line, merge, Vercel,
+  first VPS deploy, checks on `api-vps`, DNS `api` → `A 2.25.235.174`, certificate, smoke +
+  spoofed-address check on the real name, founders/Agent of the week via `api.env`, scheduler,
+  backup + restore-test, watchdog + UptimeRobot, `/join` by hand, H12/H26/H31/H32, H33, Fly
+  staging to zero, H28 last, resume note); Part 3, first-week watch; a "went wrong" table.
+  Every step: where, command, must see, if not, undo. HUMAN_ACTIONS gets a pointer line on top.
+- Gaps found and covered in the runbook: (1) the VPS `api.env` (H30 step 3) had no
+  `CORS_ORIGINS`, and `settings.env` lists only the Vercel preview domain, so the website and
+  `/join` form would be blocked by the browser → P02 adds the line; (2) `deploy-vps.yml` copies
+  4 files, not `watchdog.sh`, `alerts.env.example`, `smoke.sh` → P04 copies them; (3) the
+  `fly secrets` steps of H13/H27 have no meaning on the VPS → L22 gives the `api.env` lines
+  and a one-at-a-time restart.
+- Check: `tests/test_launch_runbook.py` **13 passed** (repo paths and `bash` scripts exist,
+  `db_move.sh` subcommands exist, every step has must-see/if-not/undo, times in order, merge
+  after the DB switch and the workflow switch-off, scheduler after the merge, H28 last, no
+  secret-looking strings). Four deliberate breakages each caught. Full suite 3496 passed,
+  670 skipped, 2 xfailed.
+- **Decisions I made (reversible):** (1) the Fly "Deploy" workflow is **disabled before the
+  merge** (GitHub setting, `deploy.yml` untouched) instead of rejecting its production step
+  after; this also stops the automatic Fly staging deploy. (2) The VPS may use a **new
+  `JWT_SECRET`** instead of Fly's: all Fly tokens expired long ago (15 min / 7 days, down since
+  9 Oct), and copying needs a running Fly machine. (3) Start 10:00 PKT (Neon resets 05:00 PKT).
+- **Next:** LR-5 (T3), human-action triage into before / on / after 1 Nov / retired.
+
 ## 2026-10-15 · cycle 184 · Opus (T2) · LR-3: watchdog with free alerts
 
 - `deploy/vps/watchdog.sh` + `alerts.env.example` (commit `291671c`). Cron every 5 min as
