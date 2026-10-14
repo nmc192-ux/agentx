@@ -237,3 +237,66 @@ def test_cached_paths_have_no_auth_dependency():
                 and "GET" in route.methods:
             names = {getattr(c, "__name__", "") for c in deps(route.dependant)}
             assert not names & {"get_current_agent", "_check"}, (route.path, names)
+
+
+# ── SR-1 (Fable review, 14 Oct 2026): byte budget on the response cache ──────
+# 500 entries × 256 KB was 128 MB; one anonymous caller varying a junk query
+# parameter could fill that inside its own per-IP budget on a 512 MB machine.
+
+def _sized(max_bytes=100, clock=None, **kw):
+    return local_cache.TTLCache(max_entries=50, max_ttl=60, clock=clock or Clock(),
+                                max_bytes=max_bytes, size_of=len, **kw)
+
+
+def test_ttl_cache_byte_budget_evicts_oldest_live_entry():
+    c = _sized(max_bytes=100)
+    c.set("a", b"x" * 40); c.set("b", b"y" * 40)
+    assert c.bytes_used == 80
+    c.get("a")                           # a is now the most recently used
+    c.set("c", b"z" * 40)                # 120 > 100: b (least recently used) goes
+    assert c.get("b") is None and c.get("a") is not None and c.get("c") is not None
+    assert c.bytes_used == 80 and len(c) == 2
+
+
+def test_ttl_cache_sweeps_expired_before_evicting_live_ones():
+    clock = Clock()
+    c = _sized(max_bytes=100, clock=clock)
+    c.set("old", b"x" * 60, ttl=5)
+    clock.now += 10                      # old is expired but still in memory
+    c.set("new", b"y" * 60)              # 120 > 100: the expired one goes, not a live one
+    assert c.get("new") is not None and len(c) == 1 and c.bytes_used == 60
+
+
+def test_ttl_cache_value_over_budget_is_not_stored_and_overwrite_accounts():
+    c = _sized(max_bytes=100)
+    c.set("big", b"x" * 101)
+    assert c.get("big") is None and c.bytes_used == 0
+    c.set("k", b"x" * 30); c.set("k", b"x" * 50)
+    assert c.bytes_used == 50
+    c.delete("k"); assert c.bytes_used == 0
+    c.set("k", b"x" * 50); c.clear(); assert c.bytes_used == 0 and len(c) == 0
+
+
+def test_ttl_cache_without_budget_unchanged():
+    c = local_cache.TTLCache(max_entries=2, clock=Clock())
+    c.set("a", "v1"); c.set("b", "v2"); c.set("c", "v3")
+    assert c.get("a") is None and c.bytes_used == 0 and len(c) == 2
+
+
+async def test_junk_query_variants_cannot_exceed_the_byte_budget(monkeypatch):
+    body = b'[{"content": "' + b"x" * 1200 + b'"}]'           # ~1.2 KB a page
+
+    async def big_list(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200,
+                    "headers": [(b"content-type", b"application/json")]})
+        await send({"type": "http.response.body", "body": body})
+
+    monkeypatch.setattr(response_cache._cache, "max_bytes", 4000)
+    transport = ASGITransport(app=response_cache.ResponseCacheMiddleware(big_list))
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        for n in range(20):
+            r = await c.get(f"/feed/global?limit=5&junk={n}")
+            assert r.status_code == 200 and r.content == body
+    assert 0 < response_cache._cache.bytes_used <= 4000
+    assert len(response_cache._cache) <= 3
+    assert response_cache.MAX_CACHE_BYTES <= 32 * 1024 * 1024

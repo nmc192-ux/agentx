@@ -174,6 +174,26 @@ class TestDatabaseService:
         assert values["AGENTX_DB_ENV"] == ""
         assert values["AGENTX_DB_SECRETS_FILE"] == "/etc/agentx/db.env"
 
+    def test_db_move_neon_side_verifies_tls_from_a_throwaway_container(self):
+        """SR-1: the dump crosses the public internet. `sslmode=require` alone
+        encrypts to whoever answers (an interceptor relays the login and reads
+        the dump), and the postgres image has no CA bundle, so the Neon-side
+        tools run in a throwaway container of the same image with the VPS's
+        CA bundle mounted and verify-full. The running db container (and its
+        db.env) never sees the Neon password."""
+        script = (VPS / "db_move.sh").read_text()
+        assert 'SRC_SSLMODE="${SRC_SSLMODE:-verify-full}"' in script
+        assert 'SRC_SSLROOTCERT="${SRC_SSLROOTCERT:-/etc/ssl/certs/ca-certificates.crt}"' in script
+        assert 'docker run --rm -i -v "$SRC_SSLROOTCERT:/etc/agentx-ca.crt:ro" "$DB_IMAGE"' in script
+        assert 'rootcert=(PGSSLROOTCERT=/etc/agentx-ca.crt)' in script
+        assert '[[ -f "$SRC_SSLROOTCERT" ]] ||' in script          # no bundle: stop, do not downgrade
+        assert 'DB_IMAGE="${DB_IMAGE:-%s}"' % self._db()["image"] in script
+        # Neon-side helpers go through pg_src; VPS-side ones through the running container.
+        assert "src_password | pg_src env" in script
+        assert "docker compose --env-file compose.env --profile db exec -T db" in script
+        assert "src_password | pg env" not in script
+        assert 'sslmode=require' not in script.lower().replace("sslmode=verify", "")
+
     def test_db_move_copied_by_workflow_and_shellcheck_clean(self):
         assert "deploy/vps/db_move.sh" in WORKFLOW.read_text()
         script = VPS / "db_move.sh"

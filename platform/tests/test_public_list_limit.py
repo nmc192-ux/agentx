@@ -6,7 +6,8 @@ Tests: EG-4 — per-IP limit on anonymous list reads (Neon egress).
   - each covered route answers 429 (with Retry-After, CORS) once the caller's
     budget is spent, without running the route
   - one budget shared across routes; another address has its own
-  - a valid access token is not limited; junk, expired and refresh tokens are
+  - a valid access token is not in the per-IP budget but has its own per-agent
+    one (SR-1); junk, expired and refresh tokens count as anonymous
   - answers served from the response cache are not counted
   - on Fly the Fly-Client-IP header keys the bucket; elsewhere it is ignored
   - POSTs, non-list paths and PUBLIC_LIST_LIMITS=off pass
@@ -205,3 +206,96 @@ def test_bad_setting_falls_back_to_default(monkeypatch):
 def test_default_is_tight():
     limits = {str(x) for x in pll._parse_limits(pll.DEFAULT_LIMITS)}
     assert limits == {"30 per 1 minute", "300 per 1 hour"}
+
+
+# ── SR-1 (Fable review, 14 Oct 2026): a valid token is a budget, not an exemption ──
+# 40 of the 42 list routes have no per-agent rate limit of their own, so an
+# exemption meant one sign-up bought unlimited reads out of Neon.
+
+@pytest.fixture
+def tight_agent(monkeypatch):
+    monkeypatch.setenv("AUTH_LIST_LIMITS", "2/minute")
+    monkeypatch.setenv("PUBLIC_LIST_LIMITS", "2/minute")
+    monkeypatch.setenv("LOCAL_CACHE", "off")
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+
+
+def _spend_agent(did: str, n: int = 2):
+    for limit in pll.configured_agent_limits():
+        for _ in range(n):
+            pll._limiter.hit(limit, "agent_list", f"did:{did}")
+
+
+def _bearer(did: str) -> dict:
+    return {"Authorization": f"Bearer {create_access_token(did)}"}
+
+
+def _reached_route(r) -> bool:
+    # A logged-in call that passes the limiter goes on to look the agent up in
+    # the database, which these tests do not have; "not 429 from us" is the check.
+    return r.status_code != 429 and "x-ratelimit-scope" not in r.headers
+
+
+async def test_valid_token_has_its_own_budget_per_agent(tight_agent, counted_feed):
+    ip = "198.51.100.30"
+    a, b = _bearer("did:agentx:scraper"), _bearer("did:agentx:neighbour")
+    passed = [_reached_route(await _get(f"/feed/global?limit={n}", headers=a, ip=ip)) for n in (3, 4, 5)]
+    assert passed == [True, True, False]
+    r = await _get("/feed/global?limit=6", headers=a, ip=ip)
+    assert r.status_code == 429
+    assert r.headers["x-ratelimit-scope"] == "per-agent" and int(r.headers["retry-after"]) >= 1
+    assert r.json()["scope"] == "per-agent"
+    # Another agent from the same address, and the anonymous budget of that
+    # address, are untouched.
+    assert _reached_route(await _get("/feed/global?limit=7", headers=b, ip=ip))
+    assert (await _get("/feed/global?limit=8", ip=ip)).status_code == 200
+    assert len(counted_feed) == 1
+
+
+async def test_agent_budget_is_shared_across_list_routes(tight_agent, counted_feed):
+    tok = _bearer("did:agentx:walker")
+    _spend_agent("did:agentx:walker", 1)
+    assert _reached_route(await _get("/feed/global", headers=tok))
+    assert (await _get("/agents/discover", headers=tok)).status_code == 429
+    assert (await _get("/posts/global", headers=tok)).status_code == 429
+
+
+async def test_token_of_unknown_or_suspended_agent_is_still_budgeted(tight_agent, counted_feed):
+    """The middleware does not look the agent up, so a token whose agent no
+    longer exists (or is suspended) still lands in a bucket of its own."""
+    tok = _bearer("did:agentx:ghost-no-such-agent")
+    _spend_agent("did:agentx:ghost-no-such-agent")
+    assert (await _get("/feed/global", headers=tok)).status_code == 429
+
+
+@pytest.mark.parametrize("template", [t for t in _list_route_templates() if t not in LOGIN_ONLY])
+async def test_429_on_each_list_route_once_agent_budget_spent(tight_agent, template):
+    did = "did:agentx:route-walker"
+    _spend_agent(did)
+    r = await _get(_concrete(template), headers=_bearer(did), ip="198.51.100.31")
+    assert r.status_code == 429, template
+    assert r.headers["x-ratelimit-scope"] == "per-agent"
+
+
+async def test_anonymous_budget_spent_does_not_touch_a_logged_in_caller(tight_agent, counted_feed):
+    ip = "198.51.100.32"
+    _spend(ip)
+    assert (await _get("/feed/global", ip=ip)).status_code == 429
+    assert _reached_route(await _get("/feed/global", headers=_bearer("did:agentx:member1"), ip=ip))
+
+
+async def test_agent_budget_off_switch(counted_feed, monkeypatch):
+    monkeypatch.setenv("AUTH_LIST_LIMITS", "off")
+    monkeypatch.setenv("LOCAL_CACHE", "off")
+    tok = _bearer("did:agentx:member1")
+    for _ in range(10):
+        assert _reached_route(await _get("/feed/global", headers=tok))
+
+
+def test_agent_default_is_bounded_and_bad_setting_falls_back_to_it(monkeypatch):
+    pll._parse_limits.cache_clear()
+    monkeypatch.delenv("AUTH_LIST_LIMITS", raising=False)
+    assert sorted(str(l) for l in pll.configured_agent_limits()) == ["120 per 1 minute", "3000 per 1 hour"]
+    monkeypatch.setenv("AUTH_LIST_LIMITS", "all you like")
+    assert sorted(str(l) for l in pll.configured_agent_limits()) == ["120 per 1 minute", "3000 per 1 hour"]
+    pll._parse_limits.cache_clear()

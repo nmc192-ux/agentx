@@ -8,10 +8,14 @@
 #   cd /opt/agentx && bash db_move.sh verify           # exact row counts, Neon vs VPS, every table
 #   cd /opt/agentx && bash db_move.sh backup           # VPS -> /var/backups/agentx/agentx-<time>.dump
 #
-# Every Postgres tool runs inside the `db` container (pg17 tools, so they can read a Neon server of
+# Every Postgres tool runs from the `db` image (pg17 tools, so they can read a Neon server of
 # version 17 or older). Neon is only ever read: pg_dump and SELECT count(*). The Neon password is
 # read from api.env and handed to the tool on stdin, never on a command line or the screen. The
-# VPS database is reached over the container's local socket (trusted by the postgres image).
+# VPS database is reached over the running container's local socket (trusted by the postgres
+# image). Tools that talk to Neon run in a throwaway container of the same image instead
+# (SR-1): it never sees db.env, and the VPS's CA bundle is mounted into it so the connection is
+# `sslmode=verify-full` (the postgres image ships no CA certificates; `require` alone would
+# encrypt to whoever answered, and an interceptor could relay the login and read the whole dump).
 #
 # Local rehearsal (tests/infrastructure/test_db_move.py): PG_RUN=native runs the same commands on
 # this machine instead of in the container; SRC_* point the "Neon" side at a scratch database.
@@ -35,15 +39,28 @@ SRC_HOST="${SRC_HOST:-$(env_value settings.env POSTGRES_HOST | sed 's/-pooler\./
 SRC_PORT="${SRC_PORT:-$(env_value settings.env POSTGRES_PORT)}"
 SRC_USER="${SRC_USER:-$(env_value settings.env POSTGRES_USER)}"
 SRC_DB="${SRC_DB:-$(env_value settings.env POSTGRES_DB)}"
-SRC_SSLMODE="${SRC_SSLMODE:-require}"
+SRC_SSLMODE="${SRC_SSLMODE:-verify-full}"
+SRC_SSLROOTCERT="${SRC_SSLROOTCERT:-/etc/ssl/certs/ca-certificates.crt}"   # the VPS's CA bundle
+DB_IMAGE="${DB_IMAGE:-pgvector/pgvector:pg17}"   # must equal the db service image in docker-compose.yml
+[[ -n "$SRC_HOST" ]] || { echo "no POSTGRES_HOST in settings.env (and no SRC_HOST)" >&2; exit 1; }
 
-pg() {  # run a command where the Postgres tools are
+pg() {  # run a command inside the running db container (VPS side)
   if [[ "${PG_RUN:-container}" == native ]]; then
     "$@"
   else
     docker compose --env-file compose.env --profile db exec -T db "$@"
   fi
 }
+
+pg_src() {  # run a command that talks to Neon: a throwaway container with the CA bundle, no db.env
+  if [[ "${PG_RUN:-container}" == native ]]; then
+    "$@"
+  else
+    [[ -f "$SRC_SSLROOTCERT" ]] || { echo "no CA bundle at $SRC_SSLROOTCERT (apt install ca-certificates)" >&2; return 1; }
+    docker run --rm -i -v "$SRC_SSLROOTCERT:/etc/agentx-ca.crt:ro" "$DB_IMAGE" "$@"
+  fi
+}
+
 
 src_password() {
   local p
@@ -54,8 +71,14 @@ src_password() {
 
 # src TOOL ARGS... : run a libpq tool against Neon; password on stdin, stdout passed through.
 src() {
-  src_password | pg env PGHOST="$SRC_HOST" PGPORT="$SRC_PORT" PGUSER="$SRC_USER" \
-    PGDATABASE="$SRC_DB" PGSSLMODE="$SRC_SSLMODE" PGCONNECT_TIMEOUT=20 \
+  # The root cert is named only when the mode verifies it (verify-ca / verify-full).
+  local rootcert=()
+  if [[ "$SRC_SSLMODE" == verify-* ]]; then
+    if [[ "${PG_RUN:-container}" == native ]]; then rootcert=(PGSSLROOTCERT="$SRC_SSLROOTCERT")
+    else rootcert=(PGSSLROOTCERT=/etc/agentx-ca.crt); fi
+  fi
+  src_password | pg_src env PGHOST="$SRC_HOST" PGPORT="$SRC_PORT" PGUSER="$SRC_USER" \
+    PGDATABASE="$SRC_DB" PGSSLMODE="$SRC_SSLMODE" ${rootcert[@]+"${rootcert[@]}"} PGCONNECT_TIMEOUT=20 \
     sh -c 'IFS= read -r PGPASSWORD; export PGPASSWORD; exec "$@" </dev/null' sh "$@"
 }
 
@@ -85,7 +108,7 @@ cmd_check() {
   local sv dv
   sv="$(src psql -X -At -v ON_ERROR_STOP=1 -c 'SHOW server_version' | major)"
   dv="$(dst psql -X -At -v ON_ERROR_STOP=1 -c 'SHOW server_version' | major)"
-  echo "neon postgres: $sv   vps postgres: $dv   (host $SRC_HOST, db $SRC_DB)"
+  echo "neon postgres: $sv   vps postgres: $dv   (host $SRC_HOST, db $SRC_DB, sslmode $SRC_SSLMODE)"
   if (( sv > dv )); then
     echo "FAIL: Neon is newer than the VPS server; change the db image to pgvector/pgvector:pg$sv" >&2
     return 1

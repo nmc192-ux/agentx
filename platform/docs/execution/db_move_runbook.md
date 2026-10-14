@@ -100,6 +100,16 @@ sleep 30; sudo -u deploy docker compose --env-file compose.env --profile db ps d
 The last line must say `healthy`. The image is downloaded once (about 150 MB). The database
 uses up to 1 GB of memory; the VPS has 6.6 GB free (H21).
 
+**A4b. Check the VPS has its certificate bundle** (on the VPS; it is there on any normal
+Ubuntu or Debian, this only confirms it):
+```
+ls -l /etc/ssl/certs/ca-certificates.crt
+```
+You must see a file. If you see "No such file", run `sudo apt-get install -y ca-certificates`
+and look again. Why: the copy from Neon crosses the public internet, and the script checks
+Neon's certificate against this bundle (`sslmode=verify-full`) so nobody between the VPS and
+Neon can pose as Neon and read the copy (SR-1, Fable review, 14 Oct).
+
 **A5. Nightly backup** (as `deploy`: `sudo -u deploy crontab -e`, add one line):
 ```
 17 3 * * * cd /opt/agentx && bash db_move.sh backup >> /var/backups/agentx/backup.log 2>&1
@@ -127,7 +137,7 @@ All commands run on the VPS in `/opt/agentx` as `deploy` (`sudo -u deploy -i`, t
 | B1 | Fly is still at zero | Mac: `fly status -a agentx-platform` | no running machines | `fly scale count app=0 -a agentx-platform`, then continue |
 | B2 | Neon is awake again | browser: console.neon.tech → project | no "suspended" banner; usage reset | wait; the reset can be hours into 1 Nov (UTC) |
 | B3 | Insurance copy inside Neon | Neon console → Branches → `main` → **Create branch** named `before-vps-2026-11-01` | branch listed | continue anyway; the dump in B5 is the main copy |
-| B4 | Pre-flight | `bash db_move.sh check` | `neon postgres: N vps postgres: 17`, `extensions: all available`, `tables: 0`, `OK` | `FAIL … newer` or `FAIL … extensions`: stop, send the line to the engine (resume note); the API stays on Neon (§5 row 1) |
+| B4 | Pre-flight | `bash db_move.sh check` | `neon postgres: N vps postgres: 17 (… sslmode verify-full)`, `extensions: all available`, `tables: 0`, `OK` | `FAIL … newer` or `FAIL … extensions`: stop, send the line to the engine (resume note); the API stays on Neon (§5 row 1). `no CA bundle` or `certificate verify failed`: do A4b, then run `check` again; never set `SRC_SSLMODE=require` to get past it (that is the interception the check exists for) |
 | B5 | Copy Neon | `bash db_move.sh dump` | `dump: /var/backups/agentx/neon-<time>.dump (<size>)` | send the error to the engine; nothing changed anywhere |
 | B6 | Load it on the VPS | `bash db_move.sh restore /var/backups/agentx/neon-<time>.dump` (copy the name from B5) | `restored … N tables` | prints `restore failed: nothing was kept`: send the error; API stays on Neon |
 | B7 | Compare | `bash db_move.sh verify` | every table listed, then `OK: … identical` | `DIFFERENT`: something wrote to Neon after B5 (is Fly really at zero?). Start again from §6 |
@@ -177,6 +187,12 @@ Then continue from B4.
   row → `DIFFERENT`, a second restore refused, a half dump → target stays empty, a missing
   extension → `check` fails, backup keeps the newest N and never touches `neon-*.dump`, and the
   password is in no tool's argv (`tests/infrastructure/test_db_move.py`, `--db`, 8 tests).
+- **SR-1 (Fable review, cycle 180):** the Neon side now runs in a throwaway container of the
+  same image with the VPS's CA bundle mounted and `sslmode=verify-full`; the running `db`
+  container (and `db.env`) never sees the Neon password. Checked natively: with no mode given
+  the tools get `verify-full` plus the root cert, an unverifiable server stops `check` before
+  anything is read, the VPS-side tools get no SSL settings, and an empty `POSTGRES_HOST` is
+  refused (3 more tests, 11 in all). The `docker run` line itself is file-checked only.
 - **Not checked here:** the containers themselves. This Mac has a Docker CLI but no Docker
   daemon, the same gap as Sprint 16, and its rehearsal script `scripts/vps_rehearsal.py` runs
   natively too. A real Neon dump also could not be checked, because Neon is suspended and the

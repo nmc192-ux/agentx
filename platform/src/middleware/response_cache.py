@@ -40,6 +40,10 @@ CACHED_PATHS: dict[str, int] = {
 }
 
 MAX_BODY_BYTES = 256 * 1024
+# Whole-cache byte budget (SR-1). Without it, 500 entries of up to 256 KB is
+# 128 MB: an anonymous caller varying a junk query parameter could fill that
+# from one address inside its own per-IP budget, on a 512 MB machine.
+MAX_CACHE_BYTES = 16 * 1024 * 1024
 _REPLAY_HEADERS = {b"content-type", NEXT_CURSOR_HEADER.lower().encode("latin-1")}
 
 # Request headers that mean "a caller is logged in": such requests always reach
@@ -47,7 +51,8 @@ _REPLAY_HEADERS = {b"content-type", NEXT_CURSOR_HEADER.lower().encode("latin-1")
 # tests that log in with their own header add it here.
 AUTH_HEADERS: set[bytes] = {b"authorization"}
 
-_cache = TTLCache(max_entries=500, max_ttl=max(CACHED_PATHS.values()))
+_cache = TTLCache(max_entries=500, max_ttl=max(CACHED_PATHS.values()),
+                  max_bytes=MAX_CACHE_BYTES, size_of=lambda entry: len(entry[2]))
 
 
 def invalidate(prefix: str = "") -> None:

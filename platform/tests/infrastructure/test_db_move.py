@@ -204,6 +204,51 @@ def test_neon_password_only_on_stdin(source_db, workdir, tmp_path):
     assert "pw=neon-pw-sentinel-123" in text
 
 
+def test_verify_full_is_the_default_and_fails_closed_without_a_verified_server(source_db, workdir, tmp_path):
+    """SR-1: with no SRC_SSLMODE given, the Neon-side tools get verify-full and a
+    root cert; a server that cannot be verified (local Postgres, no TLS) makes
+    `check` stop before anything is read. The VPS-side tools get no SSL settings."""
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    log = tmp_path / "env.log"
+    real = shutil.which("psql")
+    (shim / "psql").write_text(
+        f'#!/bin/sh\necho "host=${{PGHOST:-}} ssl=${{PGSSLMODE:-}} root=${{PGSSLROOTCERT:-}}" >> {log}\nexec {real} "$@"\n'
+    )
+    (shim / "psql").chmod(0o755)
+    env = {k: v for k, v in os.environ.items()}
+    result = run(workdir, "check", PATH=f"{shim}{os.pathsep}{env['PATH']}",
+                 SRC_SSLMODE="", SRC_SSLROOTCERT=str(tmp_path / "ca.crt"))
+    assert result.returncode != 0
+    assert "SSL" in result.stderr or "ssl" in result.stderr or "root certificate" in result.stderr
+    lines = log.read_text().splitlines()
+    assert lines and lines[0] == f"host=localhost ssl=verify-full root={tmp_path / 'ca.crt'}"
+    assert not any("ssl=verify-full" in line and "host=" + "localhost ssl=verify" not in line for line in lines[1:])
+    assert not (workdir / "backups").exists() or not list((workdir / "backups").glob("*.dump"))
+
+
+def test_root_cert_only_named_when_the_mode_verifies(source_db, workdir, tmp_path):
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    log = tmp_path / "env.log"
+    real = shutil.which("psql")
+    (shim / "psql").write_text(
+        f'#!/bin/sh\necho "ssl=${{PGSSLMODE:-}} root=${{PGSSLROOTCERT:-unset}}" >> {log}\nexec {real} "$@"\n'
+    )
+    (shim / "psql").chmod(0o755)
+    result = run(workdir, "check", PATH=f"{shim}{os.pathsep}{os.environ['PATH']}")   # SRC_SSLMODE=disable
+    assert result.returncode == 0, result.stderr
+    assert "sslmode disable" in result.stdout
+    assert "root=unset" in log.read_text() and "ssl=verify" not in log.read_text()
+
+
+def test_refuses_to_run_without_a_source_host(workdir):
+    (workdir / "settings.env").write_text("POSTGRES_PORT=5432\nPOSTGRES_USER=u\nPOSTGRES_DB=d\n")
+    result = run(workdir, "check", SRC_HOST="")
+    assert result.returncode == 1
+    assert "no POSTGRES_HOST" in result.stderr
+
+
 def test_usage_and_missing_file(workdir):
     assert run(workdir).returncode == 2
     assert run(workdir, "restore", str(workdir / "nope.dump")).returncode == 2

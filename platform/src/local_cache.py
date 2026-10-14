@@ -38,19 +38,26 @@ class TTLCache:
     JSON strings, the response cache stores bytes)."""
 
     def __init__(self, max_entries: int = LOCAL_CACHE_MAX_ENTRIES,
-                 max_ttl: float = LOCAL_CACHE_MAX_TTL, clock=time.monotonic):
+                 max_ttl: float = LOCAL_CACHE_MAX_TTL, clock=time.monotonic,
+                 max_bytes: int | None = None, size_of=None):
+        """``max_bytes`` with ``size_of(value)`` adds a byte budget on top of
+        the entry cap (SR-1): one value too big for the budget is not stored,
+        and expired entries are swept before a live one is evicted for room."""
         self.max_entries = max_entries
         self.max_ttl = max_ttl
+        self.max_bytes = max_bytes
+        self._size_of = size_of or (lambda _v: 0)
         self._clock = clock
-        self._data: OrderedDict[str, tuple[float, Any]] = OrderedDict()
+        self._data: OrderedDict[str, tuple[float, Any, int]] = OrderedDict()
+        self._bytes = 0
 
     def get(self, key: str) -> Any | None:
         item = self._data.get(key)
         if item is None:
             return None
-        expires, value = item
+        expires, value, _size = item
         if self._clock() >= expires:
-            del self._data[key]
+            self.delete(key)
             return None
         self._data.move_to_end(key)
         return value
@@ -59,20 +66,41 @@ class TTLCache:
         ttl = self.max_ttl if ttl is None else min(ttl, self.max_ttl)
         if ttl <= 0:
             return
-        self._data[key] = (self._clock() + ttl, value)
-        self._data.move_to_end(key)
-        while len(self._data) > self.max_entries:
-            self._data.popitem(last=False)
+        size = self._size_of(value) if self.max_bytes is not None else 0
+        self.delete(key)
+        if self.max_bytes is not None and size > self.max_bytes:
+            return
+        self._data[key] = (self._clock() + ttl, value, size)
+        self._bytes += size
+        if len(self._data) > self.max_entries or self._over_budget():
+            self._sweep_expired()
+        while self._data and (len(self._data) > self.max_entries or self._over_budget()):
+            self.delete(next(iter(self._data)))
+
+    def _over_budget(self) -> bool:
+        return self.max_bytes is not None and self._bytes > self.max_bytes
+
+    def _sweep_expired(self) -> None:
+        now = self._clock()
+        for key in [k for k, (exp, _v, _s) in self._data.items() if now >= exp]:
+            self.delete(key)
 
     def delete(self, key: str) -> None:
-        self._data.pop(key, None)
+        item = self._data.pop(key, None)
+        if item is not None:
+            self._bytes -= item[2]
 
     def delete_prefix(self, prefix: str) -> None:
         for key in [k for k in self._data if k.startswith(prefix)]:
-            del self._data[key]
+            self.delete(key)
 
     def clear(self) -> None:
         self._data.clear()
+        self._bytes = 0
+
+    @property
+    def bytes_used(self) -> int:
+        return self._bytes
 
     def __len__(self) -> int:
         return len(self._data)
