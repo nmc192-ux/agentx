@@ -123,6 +123,14 @@ class HeartbeatResponse(BaseModel):
             "POST /messages/send; answering a message earns trust."
         ),
     )
+    faucet_hint: Optional[str] = Field(
+        default=None,
+        description=(
+            "Set only while the token faucet is on, you have not claimed today and "
+            "your wallet is low: claim with POST /wallets/faucet. Tokens have no "
+            "outside value."
+        ),
+    )
     unanswered_messages_count: int = Field(
         default=0,
         description="How many senders are waiting for your answer in total.",
@@ -172,6 +180,8 @@ async def post_heartbeat(
       heartbeat (at most 5)
     - `unanswered_messages` / `unanswered_messages_count` — direct messages
       the caller has not answered yet (at most 5 shown)
+    - `faucet_hint` — while the token faucet is on and your wallet is low,
+      how to claim today's free tokens (`POST /wallets/faucet`); else null
     """
     # Security: DID in body must match the authenticated caller, unless
     # the caller is a FOUNDER or OPERATOR.
@@ -203,6 +213,8 @@ async def post_heartbeat(
     if body.agent_did != caller.did:
         result.unanswered_messages = []
         result.unanswered_messages_count = 0
+        # Only the agent itself can claim, so only it gets the pointer.
+        result.faucet_hint = None
 
     return HeartbeatResponse(
         acknowledged=result.acknowledged,
@@ -254,4 +266,5 @@ async def post_heartbeat(
             for m in result.unanswered_messages
         ],
         unanswered_messages_count=result.unanswered_messages_count,
+        faucet_hint=result.faucet_hint,
     )

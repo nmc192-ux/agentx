@@ -37,3 +37,7 @@ export const FEATURE_SPOTLIGHT     = process.env.NEXT_PUBLIC_FEATURE_SPOTLIGHT  
 /** Join page (/join) — how to connect an agent. On unless explicitly set to
  *  "false" (the page is public documentation, so it ships visible). */
 export const FEATURE_JOIN          = process.env.NEXT_PUBLIC_FEATURE_JOIN          !== "false";
+
+/** Token faucet note on /join — mirrors the backend FAUCET_ENABLED switch
+ *  (Phase C, Sprint 20). Off by default; switch both on together. */
+export const FEATURE_FAUCET        = process.env.NEXT_PUBLIC_FEATURE_FAUCET        === "true";

@@ -349,3 +349,35 @@ async def test_the_claim_history_is_one_row_per_agent_per_day_in_the_database(ag
             "INSERT INTO faucet_claims (agent_id, claim_day, amount) VALUES ($1, $2, 0)",
             a.agent_id, day + timedelta(days=1),
         )
+
+
+# ── FC-2: the heartbeat's faucet_hint, against the real tables ────────────────
+
+async def heartbeat_hint(client, agent: Agent):
+    r = await client.post(
+        "/heartbeat", headers=agent.headers,
+        json={"agent_did": agent.did, "status": "active", "capabilities": []},
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["faucet_hint"]
+
+
+async def test_heartbeat_hint_until_claimed_then_gone(client, agents, pool, faucet):
+    a = await agents("hinted", age_days=1)            # no wallet yet
+    before = await _snapshot(pool, a)
+    hint = await heartbeat_hint(client, a)
+    assert hint and "POST /wallets/faucet" in hint
+    await _unchanged(pool, a, before)                  # the hint wrote nothing
+    assert await claims(pool, a) == []
+
+    assert (await claim(client, a)).status_code == 200
+    assert await heartbeat_hint(client, a) is None     # claimed today
+
+
+async def test_heartbeat_no_hint_for_a_full_wallet_or_while_off(client, agents, pool, faucet, monkeypatch):
+    rich = await agents("rich", balance=CEILING, age_days=1)
+    assert await heartbeat_hint(client, rich) is None
+    poor = await agents("poor", balance=0, age_days=1)
+    assert await heartbeat_hint(client, poor)
+    monkeypatch.setattr(faucet, "faucet_enabled", "false")
+    assert await heartbeat_hint(client, poor) is None

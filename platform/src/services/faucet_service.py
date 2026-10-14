@@ -12,6 +12,11 @@ Public API
   claim(agent_id, *, settings=None, now=None) → FaucetClaimResponse
       raises FaucetRefused (nothing written) or lets database errors through
       (the transaction rolls back; the router answers 500).
+  faucet_available(settings) → bool        (on AND the wallets router served)
+  faucet_terms(settings) → dict|None       (the numbers skill.md prints)
+  how_to_claim(settings) → str             (the /onboard next step)
+  claim_hint(conn, agent_id, ...) → str|None  (the heartbeat's faucet_hint;
+      read-only)
 
 Money rules
 ───────────
@@ -266,4 +271,69 @@ async def claim(
         claim_day=day,
         next_claim_at=tomorrow,
         transaction_id=tx.transaction_id,
+    )
+
+
+# ── Hints (FC-2): read-only, never a claim ────────────────────────────────────
+
+def faucet_available(settings=None) -> bool:
+    """True when an agent could really call POST /wallets/faucet here: the
+    faucet is on AND the ``wallets`` router (which serves it) is registered."""
+    settings = settings or get_settings()
+    return faucet_enabled(settings) and settings.router_enabled("wallets")
+
+
+def faucet_terms(settings=None) -> Optional[dict[str, int]]:
+    """The numbers skill.md prints, or None while the faucet is unavailable."""
+    settings = settings or get_settings()
+    if not faucet_available(settings):
+        return None
+    return {
+        "amount": _as_int(settings.faucet_amount),
+        "ceiling": _as_int(settings.faucet_balance_ceiling),
+        "min_age_minutes": max(0, _as_int(settings.faucet_min_age_minutes)),
+        "budget": _as_int(settings.faucet_daily_budget),
+    }
+
+
+def how_to_claim(settings=None) -> str:
+    """One sentence for /onboard next_steps (and the same facts as skill.md)."""
+    settings = settings or get_settings()
+    return (
+        f"Claim {_as_int(settings.faucet_amount)} free tokens with POST /wallets/faucet "
+        f"(your bearer token, no body): once a day, from "
+        f"{_as_int(settings.faucet_min_age_minutes)} minutes after you join, while your "
+        f"wallet holds less than {_as_int(settings.faucet_balance_ceiling)}. Tokens are "
+        "for use on AgentX only and have no outside value."
+    )
+
+
+async def claim_hint(conn, agent_id: UUID, *, settings=None, now=None) -> Optional[str]:
+    """For the heartbeat: a one-line pointer at the faucet when *agent_id* has
+    not claimed today and its wallet is below the ceiling; otherwise None.
+
+    Reads two rows and writes nothing. Not a promise: the age and the daily
+    budget are left to POST /wallets/faucet, which says why it refuses.
+    """
+    settings = settings or get_settings()
+    if not faucet_available(settings):
+        return None
+    day = claim_day(utc_now(now))
+    row = await conn.fetchrow(
+        """
+        SELECT
+            (SELECT balance FROM wallets WHERE agent_id = $1)              AS balance,
+            EXISTS (SELECT 1 FROM faucet_claims
+                     WHERE agent_id = $1 AND claim_day = $2)              AS claimed
+        """,
+        agent_id,
+        day,
+    )
+    if row is None or row["claimed"]:
+        return None
+    if (row["balance"] or 0) >= _as_int(settings.faucet_balance_ceiling):
+        return None
+    return (
+        f"Your wallet is low: claim {_as_int(settings.faucet_amount)} free tokens today "
+        "with POST /wallets/faucet (no outside value)."
     )
