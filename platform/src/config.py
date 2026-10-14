@@ -156,6 +156,22 @@ class Settings(BaseSettings):
     founder_llm_daily_calls:     int = 200
     founder_llm_timeout_seconds: float = 20.0
 
+    # The token faucet (Phase C, Sprint 20, FC-1): `POST /wallets/faucet`
+    # mints FAUCET_AMOUNT into the caller's own wallet, at most once per agent
+    # per UTC day, only while the wallet holds less than
+    # FAUCET_BALANCE_CEILING, only once the agent is FAUCET_MIN_AGE_MINUTES
+    # old, and only while today's platform-wide FAUCET_DAILY_BUDGET lasts.
+    # Off unless FAUCET_ENABLED is exactly 1/true/yes (a string, like the
+    # heartbeat flag, so a mistyped value means "off", never a boot failure);
+    # an amount or budget of 0 also means off. Read per request, so flipping
+    # it needs a restart and no code change. The tokens are AgentX's own
+    # ledger entries with no outside value.
+    faucet_enabled:         str = "false"
+    faucet_amount:          int = 25
+    faucet_balance_ceiling: int = 100
+    faucet_min_age_minutes: int = 60
+    faucet_daily_budget:    int = 2000
+
     # The heartbeat tick itself (S10-3). Off unless this is exactly 1/true/yes
     # (case-insensitive). Kept as a string so a mistyped value cannot stop the
     # app or the worker from booting: anything unrecognised means "off". Read

@@ -1,5 +1,40 @@
 # Engine log
 
+## 2026-10-15 · cycle 190 · Fable (T1) · FC-1: faucet core (off by default)
+
+- Built the third and last minting path: `alembic/versions/050_faucet_claims.py` (one row per
+  agent per UTC day, UNIQUE, amount > 0; additive, idempotent, downgrade drops it),
+  `services/faucet_service.py`, `POST /wallets/faucet` in `routers/tokens.py`, five settings in
+  `config.py` (`FAUCET_ENABLED` is a string like the heartbeat flag; "false" by default; amount
+  25, ceiling 100, min age 60 min, budget 2,000), `FaucetClaimResponse` in `models/token.py`.
+- How a claim works: one transaction; global advisory lock first (claims run one after
+  another across every process, so today's spend is exact); then, writing nothing, refuse in
+  order: flag off → agent not ACTIVE → younger than the minimum age → already claimed today →
+  wallet at/above the ceiling (wallet row locked `FOR UPDATE`) → budget spent. Only then: claim
+  row, wallet upsert, `token_supply.total_minted`, ledger row `type='faucet'` with
+  `related_id` = claim. No `token_supply` row → RuntimeError → rollback (no token without a
+  supply record). The caller is the bearer token's agent; the route declares no body, so a body
+  cannot name anyone. Refusals: 404 off, 403 `not_active`, 409 `balance_ceiling`, 429
+  `too_young` / `already_claimed` / `dry` with `Retry-After` and `next_claim_at`; `detail` is
+  `{reason, message, next_claim_at}` for the SDKs (FC-3).
+- **Checks:** `tests/test_faucet.py` 43 passed (switch spellings, UTC day arithmetic, refusal
+  → HTTP, 404 while off, 401 without or with a bad token, body ignored, no body field);
+  `tests/integration/test_faucet_db.py --db` 15 passed (one credit with ledger + supply +
+  conservation, second claim refused with no row, next UTC day pays, 10 at once by one agent
+  → 1 credit, 100 agents at once against a 30-claim budget → exactly 30 paid and the rest
+  `dry`, ceiling / too young / suspended / off / anonymous change nothing, body cannot pick
+  the payee, missing supply row → 500 and full rollback, DB constraints hold); alembic
+  downgrade 050→049 and upgrade back on the scratch DB; `test_money_db.py --db` plus the
+  write-route guard, protocol spec and router-config tests 123 passed; full suite **3539
+  passed, 40 skipped, 2 xfailed**.
+- **Decisions I made (reversible):** HTTP codes above; founders may claim like anyone; the
+  flag is a string ("1/true/yes") so a typo means off, never a boot failure; a zero amount or
+  budget also means off. Nothing in `HUMAN_ACTIONS.md` yet — the "switch it on after 1 Nov"
+  item is FC-5's.
+- Commit marked `SECURITY-REVIEW:` (mints tokens). Built on Fable; FC-5a re-reads it anyway.
+- **Next:** FC-2 (T2), point `/onboard`, `/heartbeat`, `skill.md`, `/join` and the quickstarts
+  at the faucet, with the flag off.
+
 ## 2026-10-15 · cycle 189 · Opus (T2) · PC-0: Phase C planned; Sprint 20 (faucet) decomposed
 
 - Code inventory against plan §4 Phase C: no faucet (new wallets start at 0; the `/onboard`

@@ -18,7 +18,7 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
 - [x] **PC-0 — Plan Phase C.** Done cycle 189. T2. `sprints/phase_c_plan.md` (four sprints,
   exit-criteria map from a code inventory), `sprints/sprint_20_faucet.md`, this list; D12
   (pricing) and D13 (launch freeze or flag-off) added to `HUMAN_ACTIONS.md`.
-- [ ] **FC-1 — Faucet core.** **T1** (mints tokens: code that moves balances). Migration 050
+- [x] **FC-1 — Faucet core.** Done cycle 190 (Fable). **T1** (mints tokens: code that moves balances). Migration 050
   `faucet_claims` (agent_id, claim_day UTC, amount, created_at; UNIQUE(agent_id, claim_day)).
   `src/services/faucet_service.py` + `POST /wallets/faucet` (bearer token; DID from the token
   only). One transaction: global-budget lock, refusals (flag off → 404; already claimed today;
