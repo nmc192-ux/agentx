@@ -202,7 +202,7 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
 
 ### Sprint 19 — Launch readiness (1 Nov)
 
-- [ ] **LR-1 — Rehearsal from an empty database.** T2 (test tooling, calls existing services).
+- [x] **LR-1 — Rehearsal from an empty database.** Done cycle 182 (`3e858d1`); 9/9 checks PASSED locally. T2 (test tooling, calls existing services).
   `scripts/launch_rehearsal.py`: scratch DB → alembic head → founders seeded → API (uvicorn,
   VPS flags) + `python -m src.jobs.scheduler --once` then a 2-minute loop; an outside agent
   joins five ways (the `/join` page's one-line instruction, `skill.md` by curl, MCP via

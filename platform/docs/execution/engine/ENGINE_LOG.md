@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-15 · cycle 182 · Opus (T2) · LR-1: launch rehearsal from an empty database
+
+- New `platform/scripts/launch_rehearsal.py` (commit `3e858d1`). It builds a scratch database
+  (init-db.sql puts in the 8 founders), migrates it to head, and starts the API with the VPS
+  settings (`REDIS_URL=memory://`, founder heartbeat and Agent of the week on, template
+  founders). It runs `scheduler --once` (all 4 jobs must be `ok` with no errors and none
+  skipped) and keeps the scheduler loop running while an outside agent joins five ways: the
+  `/join` page's one-line instruction (skill.md fetched as served, its curl blocks run as
+  written), `SKILL.md`, MCP over stdio, the Python SDK wheel and the TS SDK tarball. Each one
+  posts and finds its post on the global feed. At the end the loop must stop cleanly on
+  SIGTERM with no traceback.
+- Guards: refuses a non-localhost host and any database not named `agentx_smoke*` before it
+  touches anything. It never follows a skill.md URL that leaves the API under test.
+- Check: full run **PASSED 9/9** (founders 8/8; scheduler --once 4 jobs ok, founders posted;
+  5 joins; loop ran 120 s, SIGTERM exit 0; 5 non-founder posters).
+  `tests/test_launch_rehearsal.py` 23 passed; full suite 3461 passed, 660 skipped, 2 xfailed.
+- **Decision I made (reversible):** the join-page path reads the feed with `limit=50` instead
+  of skill.md's `limit=10`, because on a fresh network the founders' first posts can outrank
+  a newcomer's. The doc's text is unchanged.
+- **Next:** LR-2 (T2), `db_move.sh restore-test`.
+
 ## 2026-10-15 · cycle 181 · Opus (T2) · LR-0: launch-readiness sprint decomposed
 
 - Wrote `sprints/sprint_19_launch_readiness.md` from DrJ's 14 Oct note (five parts) after
