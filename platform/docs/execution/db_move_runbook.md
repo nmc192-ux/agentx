@@ -125,6 +125,12 @@ watchdog reads that file and pings your phone). Run it by hand any time:
 `bash db_move.sh restore-test`; you must see `OK: restore-test agentx-<time>.dump: …`.
 Until the switch it backs up and restores an empty database, which is harmless.
 
+**A5b. Alerts** (`deploy/vps/watchdog.sh`, LR-3): set up with H37 but switched on **on 1 Nov**,
+once the API answers on the VPS (before that it would alert that the API is down). It checks the
+API through Caddy, `/health/ready`, the scheduler's last good run, backup age, the restore-test
+result and disk use every 5 minutes, and pings your phone once when something goes wrong and
+once when it recovers.
+
 **A6. Fly to zero** (Mac Terminal). Production is down anyway, and this stops Fly from billing
 and from writing to Neon the moment Neon wakes on 1 Nov:
 ```

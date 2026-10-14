@@ -14,7 +14,31 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   2. Make a free account at https://uptimerobot.com (email only, no card). Do not add a monitor
      yet: it should watch `https://api.agentx.social/health` only once the API is live on
      1 Nov (the launch-day runbook, LR-4, has that step).
-  Tell the engine: `H37 apps ready`. Unblocks: someone hears about it when AgentX is down.
+  3. **On 1 Nov, after the API answers on the VPS** (the watchdog is built: LR-3, cycle 184). In
+     a terminal on the VPS:
+     ```
+     echo "agentx-$(openssl rand -hex 12)"
+     ```
+     In the ntfy app tap **+**, paste that name as the topic, Subscribe. Then (replace
+     `<topic>` with the name you just made):
+     ```
+     sudo cp /opt/agentx/alerts.env.example /etc/agentx/alerts.env
+     sudo sed -i 's|^NTFY_URL=.*|NTFY_URL=https://ntfy.sh/<topic>|' /etc/agentx/alerts.env
+     sudo chown deploy /etc/agentx/alerts.env && sudo chmod 600 /etc/agentx/alerts.env
+     sudo -u deploy crontab -e
+     ```
+     and add this line at the bottom, save, close:
+     ```
+     */5 * * * * cd /opt/agentx && bash watchdog.sh >> /var/backups/agentx/watchdog.log 2>&1
+     ```
+     Check: `sudo -u deploy bash -c 'cd /opt/agentx && bash watchdog.sh'` prints six lines ending
+     `ok`. To test the phone, run it once with `API_URL=https://example.invalid` in front: your
+     phone gets two alerts (api, ready); the next normal run sends two "recovered". (Copy
+     `watchdog.sh` and `alerts.env.example` from `deploy/vps/` to `/opt/agentx` with the other
+     files; the topic name is a password: do not share it.)
+     In UptimeRobot add a monitor: HTTP(s), `https://api.agentx.social/health`, every 5 minutes.
+  Tell the engine: `H37 apps ready` (steps 1–2) and `H37 alerts on` (step 3). Unblocks: someone
+  hears about it when AgentX is down.
 
 - [ ] **H36 — Move the database from Neon to the VPS (prep any evening before 1 Nov, about 20
   minutes; the move itself on 1 Nov, about 30 minutes).** Added cycle 178 (DB-1). Neon's free
