@@ -21,6 +21,7 @@ down as usual.
 - H29 (Caddy facts for the VPS files; five minutes, read-only).
 - H35 (read four numbers off your dashboards; read-only).
 - H24 (engine commit address, one minute; only matters for Vercel previews).
+- D13 (added 15 Oct, cycle 189): launch the 15 Oct state, or let Phase C work ride along switched off? One line; default applies if you say nothing.
 
 **B. On 1 Nov (follow `launch_day_runbook.md` Part 2 in order)**
 - H34 (the one `fly.toml` line, in the same merge).
@@ -36,7 +37,7 @@ down as usual.
 - H8 (review held adverts, now and then), H17 (only when a contract is disputed), H6 (only when
   you run the founders yourself).
 - H11 (`agentx-client` farewell release), H15 (public samples repo), H16 (publish the protocol).
-- D10, D11 (decisions; nothing waits on them; answer in a resume note when you like).
+- D10, D11, D12 (decisions; nothing waits on them; answer in a resume note when you like).
 
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
@@ -1206,6 +1207,33 @@ down as usual.
   one-off 40-token stake per founder before its first governance vote (the stake stays
   locked). The 10,000 target covers all of it many times over.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
+
+- [ ] **D13 — On 1 Nov, launch exactly what was rehearsed on 15 Oct, or let Phase C work ride along switched off? (one line; a default applies)**
+  Added cycle 189 (Phase C planning). The runbook's step L12 merges the whole branch
+  `engine/phase-b`. The engine is now starting Phase C (`platform/docs/sprints/phase_c_plan.md`)
+  on the same branch, so anything it builds before 1 Nov is in that merge.
+  Options: (a) **freeze**: the engine keeps building but you merge only up to the 15 Oct launch
+  state (the engine would then add a short runbook step to do that, and Phase C waits for a
+  second merge after launch); (b) **ride along, switched off**: every Phase C feature lands
+  turned off (faucet etc. off until you switch it on), database changes only add new tables,
+  and the engine re-runs the full launch rehearsal at each sprint close and again in every
+  cycle from 30 Oct if anything changed; (c) the engine pauses all code work until after 1 Nov.
+  **Engine default and recommendation: (b)**, already in force. It keeps one merge on the day
+  and the rehearsal proves the switched-off features change nothing.
+  Reply via a resume note: "D13: a" / "D13: b" / "D13: c".
+  Unblocks: nothing; it only changes what the 1 Nov merge contains.
+
+- [ ] **D12 — Pricing: does AgentX take any cut in Phase C? (not blocking)**
+  Added cycle 189. The strategic plan (§11.4) says pricing "resolves at the start of Phase C";
+  the magna carta (Article 16) names platform fees, advertising and later an enterprise tier as
+  the ways AgentX earns. In Phase C the tokens are AgentX's own and have no outside value, so a
+  fee on them earns nothing real.
+  Options: (a) no fees in Phase C; decide real pricing with the Phase D enterprise tier;
+  (b) a small fee on bounty and task payouts into the treasury (e.g. 2%), to rehearse the
+  mechanism; (c) something else you describe.
+  **Engine recommendation: (a)**. The engine builds nothing that charges a fee until you answer.
+  Reply via a resume note: "D12: a" / "D12: b" / "D12: c ...".
+  Unblocks: nothing now; the answer goes into the next plan amendment.
 
 - [ ] **D11 — Are humans on AgentX "operators" or "co-participants"? (not blocking)**
   Added cycle 160 (Phase B close). The magna carta (Article 21) leaves this open and the

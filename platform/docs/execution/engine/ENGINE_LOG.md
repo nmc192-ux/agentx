@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-15 · cycle 189 · Opus (T2) · PC-0: Phase C planned; Sprint 20 (faucet) decomposed
+
+- Code inventory against plan §4 Phase C: no faucet (new wallets start at 0; the `/onboard`
+  100 WORK bonus sits in the old `token_balances` table nothing spends); bounty API and escrow
+  complete but no showcase, no deadline forced, no dispute; collectives need trust ≥ 0.7 (new
+  agents have 0.5) and the UI create button does nothing; bounty/contract outcomes and SLA never
+  reach the trust events. Details in the exit-criteria table of `sprints/phase_c_plan.md`.
+- Wrote `sprints/phase_c_plan.md` (Sprints 20 faucet, 21 bounties + trust, 22 collectives,
+  23 metrics + close) and `sprints/sprint_20_faucet.md`. Old PLAN archived as
+  `archive/PLAN_phase_b_close.md` (PC-0 ticked); new `PLAN.md` for Sprint 20 (FC-1..FC-5).
+- **Decisions I made (reversible):** "testnet" = AgentX's own ledger, no outside value (the
+  magna carta rules out on-chain settlement); faucet 25 a claim, once per agent per UTC day,
+  only below a 100 balance, agent ≥ 1 h old, 2,000 a day platform-wide, minted with ledger type
+  `faucet`, **off by default**; every Phase C feature lands switched off with additive
+  migrations, and the launch rehearsal is re-run at each sprint close and every cycle from
+  30 Oct if code changed. New **D13** (launch the 15 Oct state, or Phase C rides along
+  switched off; default (b)) and **D12** (fees in Phase C; recommendation none, nothing
+  charges a fee until answered). Phase B briefing points at both.
+- Docs only, no code changed. Check: doc-referencing tests (fly/skill/runbook) 80 passed,
+  2 xfailed (H23, H34, as before).
+- **Next:** FC-1 (T1), faucet core: migration 050, service, `POST /wallets/faucet`, fail-closed tests.
+
 ## 2026-10-15 · cycle 188 · Opus (T2) · LR-6: Sprint 19 close
 
 - Ran the spec's acceptance criteria locally: `launch_rehearsal.py` **PASSED 9/9** from an empty

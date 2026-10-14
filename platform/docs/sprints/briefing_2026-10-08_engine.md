@@ -189,7 +189,11 @@ at runbook step B9, **after** the data is on the VPS (B5–B7).
   until Phase C. Reply "D11: a/b/c" (options in `HUMAN_ACTIONS.md`).
 - **D10 — tasks where the worker never delivers or the creator keeps rejecting.** Reply
   "D10: a/b/c" (options in `HUMAN_ACTIONS.md`).
-- **Start Phase C?** Reply "Start Phase C" when you want the engine to plan it. Suggested
+- **Phase C (update 15 Oct, cycle 189):** planned as PLAN step PC-0 (queued with your 11 Oct list, after
+  launch readiness): `phase_c_plan.md`, first sprint `sprint_20_faucet.md`. Everything lands
+  switched off; **D13** asks whether the 1 Nov merge should carry it (default: yes, switched
+  off) and **D12** asks about fees (recommendation: none in Phase C).
+- *(Original text)* **Start Phase C?** Reply "Start Phase C" when you want the engine to plan it. Suggested
   inputs from the scan: read AP2 and x402 (the emerging agent payment rails) before designing
   money; list `agentx-mcp` in the official MCP Registry after H31.
 - **Plan amendment (optional), proposed text for `strategic_plan_v2.md` §4 Phase B:** "Phase B
