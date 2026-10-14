@@ -24,6 +24,7 @@ SOURCE: agentx_api_v1.yaml /posts paths — ATLAS Phase 1
 """
 import json
 import logging
+from datetime import datetime
 from typing import Optional, Union
 from uuid import UUID
 
@@ -37,6 +38,7 @@ from ..auth.middleware import (
 )
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
+from ..pagination import decode_cursor, next_cursor
 from ..middleware.rate_limits import (
     limiter_did,
     LIMIT_POST_CREATE,
@@ -150,12 +152,15 @@ async def global_feed(
     tag:        Optional[str] = Query(default=None),
     page:       int = Query(default=1, ge=1),
     limit:      int = Query(default=30, ge=1, le=100),
+    cursor:     Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
     """
     Public explore feed — all PUBLIC ACTIVE posts, newest first.
     No authentication required. Used for the Explore page and anonymous browsing.
+    Pass the previous response's `next_cursor` as `cursor` for the next page.
     """
-    offset = (page - 1) * limit
+    after = decode_cursor(cursor, POST_CURSOR_KINDS) if cursor else None
+    offset = 0 if after else (page - 1) * limit
     conditions = ["p.visibility = 'PUBLIC'", "p.status = 'ACTIVE'", "p.parent_post_id IS NULL"]
     params: list = []
 
@@ -166,11 +171,12 @@ async def global_feed(
         params.append(tag)
         conditions.append(f"${len(params)} = ANY(p.tags)")
 
-    where = " AND ".join(conditions)
+    count_where, count_params = " AND ".join(conditions), list(params)
+    where = count_where + _post_keyset(params, after)
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT COUNT(*) FROM posts p WHERE p.hidden_at IS NULL AND {where}", *params
+            f"SELECT COUNT(*) FROM posts p WHERE p.hidden_at IS NULL AND {count_where}", *count_params
         )
         rows = await conn.fetch(
             f"""
@@ -186,7 +192,7 @@ async def global_feed(
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
             WHERE p.hidden_at IS NULL AND {where}
-            ORDER BY p.created_at DESC
+            ORDER BY p.created_at DESC, p.post_id DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
             *params, limit, offset,
@@ -194,7 +200,21 @@ async def global_feed(
 
     posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
-                            has_more=(page * limit) < total)
+                            has_more=(page * limit) < total if not after else len(rows) == limit,
+                            next_cursor=next_cursor(rows, limit, "created_at", "post_id"))
+
+
+# EG-2c: /posts and /posts/global page newest first on (created_at, post_id).
+POST_CURSOR_KINDS = (datetime, UUID)
+
+
+def _post_keyset(params: list, after: Optional[list]) -> str:
+    """Extra WHERE for rows older than the cursor; appends its params."""
+    if not after:
+        return ""
+    params.extend(after)
+    n = len(params)
+    return f" AND (p.created_at, p.post_id) < (${n-1}::timestamptz, ${n}::uuid)"
 
 
 # ── Helper: row → PostResponse ────────────────────────────────────────────────
@@ -639,12 +659,15 @@ async def list_posts(
     tag:       Optional[str] = Query(default=None, description="Filter by single tag"),
     page:      int = Query(default=1, ge=1),
     limit:     int = Query(default=20, ge=1, le=100),
+    cursor:    Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
     """
     List posts with optional filters. Public posts visible to all;
     COLLECTIVE posts require authentication (enforced via RLS in production).
+    Pass the previous response's `next_cursor` as `cursor` for the next page.
     """
-    offset = (page - 1) * limit
+    after = decode_cursor(cursor, POST_CURSOR_KINDS) if cursor else None
+    offset = 0 if after else (page - 1) * limit
 
     conditions = ["p.visibility IN ('PUBLIC', 'SYSTEM')"]
     params: list = []
@@ -665,12 +688,13 @@ async def list_posts(
         params.append(tag)
         conditions.append(f"${len(params)} = ANY(p.tags)")
 
-    where = " AND ".join(conditions)
+    count_where, count_params = " AND ".join(conditions), list(params)
+    where = count_where + _post_keyset(params, after)
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT count(*) FROM posts p WHERE p.hidden_at IS NULL AND {where}",
-            *params,
+            f"SELECT count(*) FROM posts p WHERE p.hidden_at IS NULL AND {count_where}",
+            *count_params,
         )
         rows = await conn.fetch(
             f"""
@@ -687,7 +711,7 @@ async def list_posts(
             FROM posts p
             LEFT JOIN agents a ON a.agent_did = p.author_did
             WHERE p.hidden_at IS NULL AND {where}
-            ORDER BY p.created_at DESC
+            ORDER BY p.created_at DESC, p.post_id DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
             *params, limit, offset,
@@ -699,7 +723,8 @@ async def list_posts(
         total=total,
         page=page,
         limit=limit,
-        has_more=(page * limit) < total,
+        has_more=(page * limit) < total if not after else len(rows) == limit,
+        next_cursor=next_cursor(rows, limit, "created_at", "post_id"),
     )
 
 

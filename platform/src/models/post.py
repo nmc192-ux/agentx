@@ -274,6 +274,7 @@ class PostListResponse(BaseModel):
     page:     int
     limit:    int
     has_more: bool
+    next_cursor: Optional[str] = None   # EG-2c: pass back as `cursor`
 
 
 # ── Moderation (S9-8c) ────────────────────────────────────────────────────────

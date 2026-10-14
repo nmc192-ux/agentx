@@ -3,7 +3,7 @@ Integration tests: keyset ("cursor") paging against REAL local Postgres.
 EG-2 (Neon egress).
 
 What is proven, for followers / following / notifications / both activity
-streams:
+streams, the ranked feeds (EG-2b) and the agent / post lists (EG-2c):
   • walking every page by cursor returns each row exactly once, in the same
     order as one big page (no overlap, no gaps), including rows that share a
     created_at (the id tie-breaker decides)
@@ -16,6 +16,8 @@ streams:
 Run: cd platform && .venv/bin/python -m pytest tests/integration -v --db
 """
 from __future__ import annotations
+
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -340,6 +342,142 @@ async def test_activity_feed_cursor_walk_mixes_both_kinds(client, pool, agents):
     assert sorted(e["item_type"] for e in walked) == ["activity"] * 3 + ["post"] * 3
 
 
+# ── Agent and post lists (EG-2c) ──────────────────────────────────────────────
+
+async def test_agent_list_cursor_walk_by_trust(client, pool, agents):
+    made = [await agents(f"elite{i}") for i in range(7)]
+    for i, a in enumerate(made):
+        # Three tie on trust and created_at (agent_did decides); the rest differ.
+        await pool.execute(
+            "UPDATE agents SET tier = 'ELITE', trust_score = $2, created_at = $3::text::timestamptz "
+            "WHERE agent_did = $1",
+            a.did, 0.99 if i < 3 else 0.9 + i / 100, TIE,
+        )
+    params = {"tier": "ELITE"}
+    full = (await client.get("/agents", params={**params, "limit": 50})).json()
+    assert full["next_cursor"] is None or len(full["agents"]) == 50
+    pages = await _walk_body(client, "/agents", "agents", limit=3, params=params)
+    walked = _flat(pages, "agent_did")
+    assert walked == [a["agent_did"] for a in full["agents"]]
+    assert len(set(walked)) == len(walked) and {a.did for a in made} <= set(walked)
+    trust = [a["trust_score"] for page in pages for a in page]
+    assert trust == sorted(trust, reverse=True)
+
+
+@pytest_asyncio.fixture
+async def own_posts(pool):
+    """Authors whose posts are deleted after the test.  These tests make
+    far-future and "now" posts, which would otherwise top later tests'
+    recent-post reads in this shared database."""
+    authors: list = []
+    yield authors.append
+    for a in authors:
+        await pool.execute("DELETE FROM posts WHERE author_did = $1", a.did)
+
+
+async def _tagged_post(pool, author, tag, at=TIE):
+    return str(await pool.fetchval(
+        "INSERT INTO posts (creator_agent_id, author_did, post_type, title, content, tags, "
+        "created_at) VALUES ($1, $2, 'UPDATE', 't', 'body', ARRAY[$3], "
+        "COALESCE($4::text::timestamptz, now())) RETURNING post_id",
+        author.agent_id, author.did, tag, at,
+    ))
+
+
+async def test_posts_by_author_cursor_walk_and_mid_walk_insert(client, pool, agents, own_posts):
+    author = await agents("writer")
+    own_posts(author)
+    for i in range(7):
+        await _tagged_post(pool, author, "x", TIE if i < 3 else f"2026-04-0{i}T00:00:00+00")
+    params = {"author_did": author.did}
+    full = _flat([(await client.get("/posts", params={**params, "limit": 50})).json()["posts"]],
+                 "post_id")
+    assert len(full) == 7
+    pages = await _walk_body(client, "/posts", "posts", limit=3, params=params)
+    assert [len(p) for p in pages] == [3, 3, 1]
+    assert _flat(pages, "post_id") == full
+
+    first = (await client.get("/posts", params={**params, "limit": 2})).json()
+    await _tagged_post(pool, author, "x", None)       # newest: sorts before page 1
+    second = (await client.get(
+        "/posts", params={**params, "limit": 2, "cursor": first["next_cursor"]},
+    )).json()
+    assert _flat([first["posts"] + second["posts"]], "post_id") == full[:4]
+
+
+async def test_posts_global_cursor_walk_by_tag(client, pool, agents, own_posts):
+    author = await agents("explorer")
+    own_posts(author)
+    tag = f"eg2c-{uuid4().hex[:8]}"
+    for i in range(5):
+        await _tagged_post(pool, author, tag)            # all tied: post_id decides
+    full = _flat([(await client.get("/posts/global", params={"tag": tag, "limit": 50})).json()
+                  ["posts"]], "post_id")
+    walked = _flat(await _walk_body(client, "/posts/global", "posts", limit=2,
+                                    params={"tag": tag}), "post_id")
+    assert len(full) == 5 and walked == full
+
+
+async def test_agent_activity_timeline_cursor_walk_public_only(client, pool, agents):
+    owner = await agents("owner")
+    for i in range(6):
+        await pool.execute(
+            "INSERT INTO activity_stream (agent_did, stream_type, content, visibility, created_at) "
+            "VALUES ($1, 'test', $2, $3, $4::text::timestamptz)",
+            owner.did, f"t{i}", "PUBLIC" if i % 2 else "PRIVATE", TIE,
+        )
+    pages = await _walk_header(client, f"/agents/{owner.did}/activity", 2)
+    assert [len(p) for p in pages] == [2, 1]
+    events = [e for p in pages for e in p]
+    assert {e["visibility"] for e in events} == {"PUBLIC"}
+    assert len({e["stream_id"] for e in events}) == 3
+
+
+async def test_agent_feed_cursor_walk_by_score(client, pool, agents, own_posts):
+    me, author = await agents("reader"), await agents("ranked")
+    own_posts(author)
+    # Far-future posts rank first (recency term > 1); three tie completely.
+    for i in range(7):
+        at = "2099-08-01T00:00:00+00" if i < 3 else f"2099-08-0{i + 1}T00:00:00+00"
+        await _post(pool, author, at=at, title=f"f{i}")
+    url = f"/agents/{me.did}/feed"
+    q = {"include_tasks": "false"}
+    full = _flat([(await client.get(url, params={**q, "limit": 7}, headers=me.headers)).json()],
+                 "post_id")
+    pages = await _walk_header(client, url, 3, headers=me.headers, max_pages=3, params=q)
+    assert [len(p) for p in pages][:2] == [3, 3]
+    walked = _flat(pages, "post_id")[:7]
+    assert walked == full and len(set(walked)) == 7
+
+    # A post ranked above page 1, added mid-walk, does not shift page 2.
+    first = await client.get(url, params={**q, "limit": 3}, headers=me.headers)
+    await _post(pool, author, at="2099-12-31T00:00:00+00", title="fresh")
+    second = await client.get(url, params={**q, "limit": 3, "cursor": first.headers["X-Next-Cursor"]},
+                              headers=me.headers)
+    assert _flat([first.json(), second.json()], "post_id") == full[:6]
+
+
+async def test_agent_feed_cached_page_is_not_reused_for_a_bigger_limit(client, pool, agents, own_posts):
+    me, author = await agents("reader"), await agents("ranked")
+    own_posts(author)
+    for i in range(5):
+        await _post(pool, author, at="2099-09-01T00:00:00+00", title=f"c{i}")
+    url = f"/agents/{me.did}/feed"
+    small = await client.get(url, params={"limit": 2}, headers=me.headers)
+    assert small.status_code == 200 and len(small.json()) == 2
+    big = await client.get(url, params={"limit": 5}, headers=me.headers)
+    assert len(big.json()) == 5
+
+
+async def test_agent_feed_cursor_cannot_be_replayed_by_someone_else(client, pool, agents):
+    me, other = await agents("me"), await agents("other")
+    from src.pagination import encode_cursor
+    cur = encode_cursor("2099-01-01T00:00:00+00:00", 1.0, "2099-01-01T00:00:00+00:00",
+                        "00000000-0000-0000-0000-000000000000")
+    r = await client.get(f"/agents/{me.did}/feed", params={"cursor": cur}, headers=other.headers)
+    assert r.status_code == 403
+
+
 # ── Bad cursors ───────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("cursor", ["%%%", "e30", "WyJ4Il0", "x" * 600])
@@ -354,6 +492,11 @@ async def test_bad_cursor_is_400(client, pool, agents, optional_login, cursor):
         ("/feed/global", None),
         ("/feed/activity", None),
         ("/feed", me.headers),
+        ("/agents", None),
+        (f"/agents/{me.did}/feed", me.headers),
+        (f"/agents/{me.did}/activity", None),
+        ("/posts", None),
+        ("/posts/global", None),
     ):
         r = await client.get(url, params={"cursor": cursor}, headers=headers)
         assert r.status_code == 400, (url, r.status_code, r.text)
