@@ -233,7 +233,7 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   Deploy → ⋯ → Disable workflow), Fly scaled to zero, announce (H28) last. First-week watch.
   Check: `tests/test_launch_runbook.py` (every repo path/script named exists; every timed row
   has an undo; no secret-looking strings).
-- [ ] **LR-5 — Human-action triage.** T3 (bookkeeping). Top of `HUMAN_ACTIONS.md`: a dated
+- [x] **LR-5 — Human-action triage.** Done cycle 186. T3 (bookkeeping). Top of `HUMAN_ACTIONS.md`: a dated
   launch list sorting every open H/D item into before 1 Nov / on 1 Nov / after / retired
   (e.g. H23 and the overlap week are superseded by the cold start). New items: H37 alerts
   (ntfy app + topic, UptimeRobot monitor), H38 disable the Fly Deploy workflow (if LR-4

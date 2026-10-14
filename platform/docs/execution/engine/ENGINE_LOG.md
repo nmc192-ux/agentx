@@ -1,5 +1,15 @@
 # Engine log
 
+## 2026-10-15 · cycle 186 · Sonnet (T3) · LR-5: human-action triage
+
+- Top of `HUMAN_ACTIONS.md`: "Launch triage" sorts all 25 open items (27 ids with H31–H33) into
+  A before 1 Nov / B on 1 Nov / C after / D retired. Retired: H23 (Fly goes to zero). Split
+  items (H30, H36, H37) sit in A with a note that their later steps are in the runbook.
+- No H38: LR-4 folded the Fly "Deploy" workflow switch-off into runbook prep.
+- Check: a script read every open `- [ ]` id and confirmed each is in exactly one bucket
+  (27 checked, 0 bad). Docs only; no code or tests touched.
+- **Next:** LR-6a (skip, no SECURITY-REVIEW commits expected beyond LR-2; check) then LR-6.
+
 ## 2026-10-15 · cycle 185 · Opus (T2) · LR-4: timed 1 Nov launch-day runbook
 
 - `platform/docs/execution/launch_day_runbook.md` (commit `6c1953b`): Part 1, 12 prep steps

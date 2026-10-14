@@ -8,6 +8,40 @@ to this file. The engine records your notes under "Notes from DrJ" below.
 cycle 185). It puts H29, H30, H34, H36, H37, H12, H26, H31–H33, H13, H27 and H28 in one timed
 order, with VPS versions of the old `fly secrets` steps. Part 1 is the before-1-Nov list.
 
+## Launch triage (15 Oct 2026, cycle 186) — every open item below, in exactly one bucket
+
+Nothing is merged or deployed before 1 Nov (Neon resets then). The timed order for 1 Nov is in
+the runbook above; this list only says *when* each open item is due. Tick the boxes further
+down as usual.
+
+**A. Before 1 Nov (any evening; changes nothing live)**
+- H37 (steps 1–2 now: ntfy app, UptimeRobot account; step 3, switching the alerts on, is on the day in the runbook).
+- H36 (prep now, runbook Part 1; the move itself is on the day in the runbook).
+- H30 (steps 1–8 now, they change nothing live; the first start, step 9, is on the day in the runbook).
+- H29 (Caddy facts for the VPS files; five minutes, read-only).
+- H35 (read four numbers off your dashboards; read-only).
+- H24 (engine commit address, one minute; only matters for Vercel previews).
+
+**B. On 1 Nov (follow `launch_day_runbook.md` Part 2 in order)**
+- H34 (the one `fly.toml` line, in the same merge).
+- H12 (publish `agentx-py`), H26 (publish `@agentx/sdk`).
+- H31–H33 (MCP server, skill, one live check).
+- H13 (founder heartbeat), H27 (Agent of the week), H20 (your FOUNDER admin agent, only if
+  the runbook's founder step needs it).
+- H28 (the public announcement, always last).
+
+**C. After 1 Nov (not urgent; do when it comes up)**
+- H25 (remove the April test accounts; do it once the API runs on the VPS database).
+- H14 (stranger's-first-visit test and one real outsider; after the founder heartbeat has run for a few days).
+- H8 (review held adverts, now and then), H17 (only when a contract is disputed), H6 (only when
+  you run the founders yourself).
+- H11 (`agentx-client` farewell release), H15 (public samples repo), H16 (publish the protocol).
+- D10, D11 (decisions; nothing waits on them; answer in a resume note when you like).
+
+**D. Retired — you can ignore these (superseded by the cold start on the VPS)**
+- H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
+  resize. Tick it as "not needed" whenever you like.
+
 - [ ] **H37 — Set up free alerts for when AgentX breaks (any time before 1 Nov; about 10
   minutes; changes nothing live; costs $0).** Added cycle 181 (Sprint 19 plan). The engine is
   building a small watchdog for the VPS (step LR-3) that sends a phone notification when the API,
