@@ -24,7 +24,7 @@ AGENTX_DB_ENV=                       # Neon (as today)
 ```
 
 While that line is empty, everything uses Neon exactly as before. `deploy/vps/db_move.sh` does
-the copying: `check`, `dump`, `restore`, `verify`, `backup`. Its tests are in
+the copying: `check`, `dump`, `restore`, `verify`, `backup`, `restore-test`. Its tests are in
 `platform/tests/infrastructure/test_db_move.py`, rehearsed on local Postgres. They cover the real
 migration chain, a round trip with identical row counts, a refused second restore, a half-broken
 dump that leaves nothing behind, backup rotation, and the Neon password never appearing on a
@@ -110,13 +110,20 @@ and look again. Why: the copy from Neon crosses the public internet, and the scr
 Neon's certificate against this bundle (`sslmode=verify-full`) so nobody between the VPS and
 Neon can pose as Neon and read the copy (SR-1, Fable review, 14 Oct).
 
-**A5. Nightly backup** (as `deploy`: `sudo -u deploy crontab -e`, add one line):
+**A5. Nightly backup and restore test** (as `deploy`: `sudo -u deploy crontab -e`, add two lines):
 ```
 17 3 * * * cd /opt/agentx && bash db_move.sh backup >> /var/backups/agentx/backup.log 2>&1
+47 3 * * * cd /opt/agentx && bash db_move.sh restore-test >> /var/backups/agentx/backup.log 2>&1
 ```
-That is 03:17 every night (VPS clock). It keeps the newest 14. Until the switch it backs up an
-empty database, which is harmless. Copying backups off the VPS and a tested restore come in
-LR-0 part 4.
+That is 03:17 every night (VPS clock) for the backup; it keeps the newest 14. At 03:47
+`restore-test` loads the newest backup into a throwaway database (`agentx_restore_test`),
+compares its tables, migration version and row counts with the live database, and drops it
+again. It only reads the live database. If the backup is missing, empty, unreadable, older than
+26 hours, from another migration version, or holds under half the live rows, it writes a line
+starting `ALERT:` to the log and `fail …` to `/var/backups/agentx/restore-test.status` (the
+watchdog reads that file and pings your phone). Run it by hand any time:
+`bash db_move.sh restore-test`; you must see `OK: restore-test agentx-<time>.dump: …`.
+Until the switch it backs up and restores an empty database, which is harmless.
 
 **A6. Fly to zero** (Mac Terminal). Production is down anyway, and this stops Fly from billing
 and from writing to Neon the moment Neon wakes on 1 Nov:

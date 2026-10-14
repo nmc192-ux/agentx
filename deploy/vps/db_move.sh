@@ -7,6 +7,7 @@
 #   cd /opt/agentx && bash db_move.sh restore <file>   # into the EMPTY VPS database, all or nothing
 #   cd /opt/agentx && bash db_move.sh verify           # exact row counts, Neon vs VPS, every table
 #   cd /opt/agentx && bash db_move.sh backup           # VPS -> /var/backups/agentx/agentx-<time>.dump
+#   cd /opt/agentx && bash db_move.sh restore-test     # newest backup -> throwaway database, compare, drop
 #
 # Every Postgres tool runs from the `db` image (pg17 tools, so they can read a Neon server of
 # version 17 or older). Neon is only ever read: pg_dump and SELECT count(*). The Neon password is
@@ -42,7 +43,13 @@ SRC_DB="${SRC_DB:-$(env_value settings.env POSTGRES_DB)}"
 SRC_SSLMODE="${SRC_SSLMODE:-verify-full}"
 SRC_SSLROOTCERT="${SRC_SSLROOTCERT:-/etc/ssl/certs/ca-certificates.crt}"   # the VPS's CA bundle
 DB_IMAGE="${DB_IMAGE:-pgvector/pgvector:pg17}"   # must equal the db service image in docker-compose.yml
-[[ -n "$SRC_HOST" ]] || { echo "no POSTGRES_HOST in settings.env (and no SRC_HOST)" >&2; exit 1; }
+# Only the commands that read Neon need it (backup and restore-test never touch Neon).
+need_src() { [[ -n "$SRC_HOST" ]] || { echo "no POSTGRES_HOST in settings.env (and no SRC_HOST)" >&2; exit 1; }; }
+
+# restore-test (LR-2): the throwaway database, and how old the newest backup may be.
+RESTORE_TEST_DB="${RESTORE_TEST_DB:-agentx_restore_test}"
+MAX_BACKUP_AGE_H="${MAX_BACKUP_AGE_H:-26}"
+RESTORE_MIN_SHARE="${RESTORE_MIN_SHARE:-50}"   # backup must hold >= this % of the live rows
 
 pg() {  # run a command inside the running db container (VPS side)
   if [[ "${PG_RUN:-container}" == native ]]; then
@@ -97,6 +104,11 @@ counts() {  # counts src|dst -> "table|rows" lines, sorted, then alembic version
   echo "alembic_version|$("$side" psql -X -At -c 'SELECT string_agg(version_num, $$,$$) FROM alembic_version' 2>/dev/null || echo none)"
 }
 
+# tst TOOL ARGS... : the same, but against the throwaway restore-test database.
+tst() {
+  pg sh -c 'export PGUSER="$POSTGRES_USER" PGDATABASE="$1"; shift; exec "$@"' sh "$RESTORE_TEST_DB" "$@"
+}
+
 dst_tables() {
   dst psql -X -At -v ON_ERROR_STOP=1 -c \
     "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'"
@@ -105,6 +117,7 @@ dst_tables() {
 major() { sed -n 's/^\([0-9]*\).*/\1/p'; }
 
 cmd_check() {
+  need_src
   local sv dv
   sv="$(src psql -X -At -v ON_ERROR_STOP=1 -c 'SHOW server_version' | major)"
   dv="$(dst psql -X -At -v ON_ERROR_STOP=1 -c 'SHOW server_version' | major)"
@@ -132,6 +145,7 @@ cmd_check() {
 }
 
 cmd_dump() {
+  need_src
   local stamp file
   stamp="$(date -u +%Y%m%d-%H%M%S)"
   mkdir -p "$BACKUP_DIR"
@@ -161,6 +175,7 @@ cmd_restore() {
 }
 
 cmd_verify() {
+  need_src
   local a b
   a="$(counts src)"
   b="$(counts dst)"
@@ -190,11 +205,102 @@ cmd_backup() {
   echo "backup: $file ($(du -h "$file" | cut -f1)); kept $(ls -1 "$BACKUP_DIR"/agentx-*.dump | wc -l | tr -d ' ')"
 }
 
+# restore-test: prove last night's backup can be loaded. Newest agentx-*.dump -> a throwaway
+# database on the same server -> table list, alembic version and row counts compared with the
+# live database -> throwaway dropped (also on failure). The live database is only read.
+# Any failure prints one "ALERT: ..." line on stderr and exits 1; the result is also written to
+# $BACKUP_DIR/restore-test.status ("ok|fail <utc time> <detail>") for the watchdog (LR-3).
+restore_status() {  # restore_status ok|fail DETAIL
+  mkdir -p "$BACKUP_DIR"
+  printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$BACKUP_DIR/restore-test.status"
+}
+
+RT_REPORTED=""
+restore_fail() {
+  RT_REPORTED=1
+  echo "ALERT: backup restore-test failed: $1" >&2
+  restore_status fail "$1"
+  return 1
+}
+
+restore_test_exit() {  # EXIT trap: always drop the throwaway database; never fail silently
+  local rc=$?
+  drop_test_db > /dev/null 2>&1 || true
+  if (( rc != 0 )) && [[ -z "$RT_REPORTED" ]]; then
+    restore_fail "stopped unexpectedly (exit $rc); see the lines above" || true
+  fi
+  exit "$rc"
+}
+
+drop_test_db() {
+  dst psql -X -q -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $RESTORE_TEST_DB WITH (FORCE)" > /dev/null
+}
+
+total_rows() { awk -F'|' '$1 != "alembic_version" {s += $2} END {print s + 0}'; }
+
+cmd_restore_test() {
+  local file live a b
+  # The name goes into SQL unquoted, and must never be the live database.
+  if [[ ! "$RESTORE_TEST_DB" =~ ^agentx_restore_test[a-z0-9_]*$ ]]; then
+    restore_fail "refusing target database '$RESTORE_TEST_DB' (must start with agentx_restore_test)"
+    return 1
+  fi
+  live="$(dst printenv PGDATABASE)"
+  if [[ -z "$live" || "$live" == "$RESTORE_TEST_DB" ]]; then
+    restore_fail "refusing: target '$RESTORE_TEST_DB' is the live database"
+    return 1
+  fi
+
+  [[ -d "$BACKUP_DIR" ]] || { restore_fail "no backup folder $BACKUP_DIR"; return 1; }
+  file="$(ls -1t "$BACKUP_DIR"/agentx-*.dump 2>/dev/null | head -n 1 || true)"
+  [[ -n "$file" ]] || { restore_fail "no agentx-*.dump in $BACKUP_DIR"; return 1; }
+  [[ -s "$file" ]] || { restore_fail "newest backup $file is empty"; return 1; }
+  if [[ -n "$(find "$file" -mmin +"$(( MAX_BACKUP_AGE_H * 60 ))")" ]]; then
+    restore_fail "newest backup $file is older than $MAX_BACKUP_AGE_H h (is the nightly backup running?)"
+    return 1
+  fi
+  pg pg_restore --list < "$file" > /dev/null 2>&1 \
+    || { restore_fail "newest backup $file is not a readable dump (corrupt or cut short)"; return 1; }
+
+  trap restore_test_exit EXIT
+  drop_test_db
+  dst psql -X -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE $RESTORE_TEST_DB" > /dev/null
+  tst sh -c 'exec pg_restore --no-owner --no-privileges --single-transaction --exit-on-error \
+      -d "$PGDATABASE"' < "$file" > /dev/null 2>&1 \
+    || { restore_fail "pg_restore of $file stopped with an error"; return 1; }
+
+  a="$(counts tst)"
+  b="$(counts dst)"
+  echo "  table                                    backup     live"
+  awk -F'|' 'NR == FNR {live[$1] = $2; next}
+    {printf "  %-40s %6s %8s\n", $1, $2, ($1 in live ? live[$1] : "-"); delete live[$1]}
+    END {for (t in live) printf "  %-40s %6s %8s\n", t, "-", live[t]}' <(echo "$b") <(echo "$a")
+  if [[ "$(echo "$a" | cut -d'|' -f1)" != "$(echo "$b" | cut -d'|' -f1)" ]]; then
+    restore_fail "the backup's tables differ from the live database's (see the list above)"
+    return 1
+  fi
+  if [[ "$(echo "$a" | grep '^alembic_version|')" != "$(echo "$b" | grep '^alembic_version|')" ]]; then
+    restore_fail "the backup is from another migration version than the live database"
+    return 1
+  fi
+  local na nb
+  na="$(echo "$a" | total_rows)"
+  nb="$(echo "$b" | total_rows)"
+  if (( nb > 0 && na * 100 < nb * RESTORE_MIN_SHARE )); then
+    restore_fail "the backup holds $na rows, the live database $nb (under $RESTORE_MIN_SHARE %)"
+    return 1
+  fi
+  restore_status ok "$(basename "$file") $(echo "$a" | grep -vc '^alembic_version|') tables $na rows"
+  echo "OK: restore-test $(basename "$file"): $(echo "$a" | grep -vc '^alembic_version|') tables," \
+    "$na rows (live $nb); throwaway database dropped"
+}
+
 case "${1:-}" in
   check) cmd_check ;;
   dump) cmd_dump ;;
   restore) shift; cmd_restore "$@" ;;
   verify) cmd_verify ;;
   backup) cmd_backup ;;
-  *) echo "usage: db_move.sh check|dump|restore <file>|verify|backup" >&2; exit 2 ;;
+  restore-test) cmd_restore_test ;;
+  *) echo "usage: db_move.sh check|dump|restore <file>|verify|backup|restore-test" >&2; exit 2 ;;
 esac

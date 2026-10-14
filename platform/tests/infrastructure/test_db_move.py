@@ -9,7 +9,10 @@ the real migration chain and some rows (incl. a pgvector column and sequences), 
   2. verify fails when one row differs;
   3. restore refuses a database that already has tables, and a broken dump leaves nothing behind;
   4. backup keeps only the newest KEEP files and never deletes neon-*.dump;
-  5. the Neon password never appears on a command line (it goes in on stdin).
+  5. the Neon password never appears on a command line (it goes in on stdin);
+  6. restore-test (LR-2) loads the newest nightly backup into a throwaway database, compares it
+     with the live one and drops it; a missing, empty, corrupt or stale backup, a backup that
+     lost most of its rows, and a target named like the live database all fail with an ALERT.
 """
 import getpass
 import importlib.util
@@ -252,6 +255,115 @@ def test_refuses_to_run_without_a_source_host(workdir):
 def test_usage_and_missing_file(workdir):
     assert run(workdir).returncode == 2
     assert run(workdir, "restore", str(workdir / "nope.dump")).returncode == 2
+
+
+# ── restore-test (LR-2) ─────────────────────────────────────────────────────────────
+
+RT_DB = "agentx_restore_test"
+
+
+def _db_exists(name: str) -> bool:
+    return _pg("-c", f"SELECT count(*) FROM pg_database WHERE datname = '{name}'") == "1"
+
+
+@pytest.fixture
+def live_with_backup(source_db, workdir):
+    """The 'VPS' database filled from the source, plus one fresh nightly backup of it."""
+    assert run(workdir, "restore", str(_dump(workdir))).returncode == 0
+    result = run(workdir, "backup")
+    assert result.returncode == 0, result.stderr
+    yield workdir
+    _pg("-c", f"DROP DATABASE IF EXISTS {RT_DB} WITH (FORCE)")
+
+
+def _newest_backup(workdir: Path) -> Path:
+    return max((workdir / "backups").glob("agentx-*.dump"), key=lambda p: p.stat().st_mtime)
+
+
+def _status(workdir: Path) -> str:
+    return (workdir / "backups" / "restore-test.status").read_text()
+
+
+def _assert_alert(result: subprocess.CompletedProcess, words: str) -> None:
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "ALERT: backup restore-test failed" in result.stderr and words in result.stderr, result.stderr
+    assert not _db_exists(RT_DB)
+
+
+def test_restore_test_passes_and_drops_the_throwaway(live_with_backup):
+    workdir = live_with_backup
+    live_before = _pg("-c", "SELECT count(*) FROM agents", db=DST_DB)
+    result = run(workdir, "restore-test", SRC_HOST="")   # needs no Neon settings
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK: restore-test agentx-" in result.stdout and "throwaway database dropped" in result.stdout
+    assert "agents" in result.stdout
+    assert not _db_exists(RT_DB)
+    assert _status(workdir).startswith("ok ")
+    # The live database was only read.
+    assert _pg("-c", "SELECT count(*) FROM agents", db=DST_DB) == live_before
+
+
+def test_restore_test_tolerates_a_day_of_new_rows(live_with_backup):
+    _pg("-c", "INSERT INTO agents (agent_did, display_name) VALUES ('did:agentx:after-backup-001', 'late')", db=DST_DB)
+    result = run(live_with_backup, "restore-test")
+    assert result.returncode == 0, result.stderr
+
+
+def test_restore_test_fails_on_a_backup_that_lost_most_rows(live_with_backup):
+    _pg("-c", """
+        INSERT INTO agents (agent_did, display_name)
+        SELECT 'did:agentx:bulk' || g || '-001', 'bulk ' || g FROM generate_series(1, 2000) g
+    """, db=DST_DB)
+    _assert_alert(run(live_with_backup, "restore-test"), "rows")
+    assert _status(live_with_backup).startswith("fail ")
+
+
+def test_restore_test_fails_on_a_truncated_backup(live_with_backup):
+    newest = _newest_backup(live_with_backup)
+    data = newest.read_bytes()
+    newest.write_bytes(data[: len(data) // 2])
+    _assert_alert(run(live_with_backup, "restore-test"), "")
+    assert _status(live_with_backup).startswith("fail ")
+
+
+def test_restore_test_fails_on_garbage_and_empty_files(live_with_backup):
+    newest = _newest_backup(live_with_backup)
+    newest.write_bytes(b"not a dump at all")
+    _assert_alert(run(live_with_backup, "restore-test"), "not a readable dump")
+    newest.write_bytes(b"")
+    _assert_alert(run(live_with_backup, "restore-test"), "is empty")
+
+
+def test_restore_test_fails_on_a_stale_backup(live_with_backup):
+    newest = _newest_backup(live_with_backup)
+    old = newest.stat().st_mtime - 27 * 3600
+    os.utime(newest, (old, old))
+    _assert_alert(run(live_with_backup, "restore-test"), "older than 26 h")
+    assert run(live_with_backup, "restore-test", MAX_BACKUP_AGE_H="30").returncode == 0
+
+
+def test_restore_test_fails_without_backups(workdir):
+    _assert_alert(run(workdir, "restore-test"), "no backup folder")
+    (workdir / "backups").mkdir(exist_ok=True)
+    (workdir / "backups" / "neon-20261101-000000.dump").write_bytes(b"x")   # not a nightly
+    _assert_alert(run(workdir, "restore-test"), "no agentx-*.dump")
+
+
+def test_restore_test_never_targets_the_live_database(live_with_backup):
+    workdir = live_with_backup
+    live_tables = _pg("-c", "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'", db=DST_DB)
+    for target in (DST_DB, "postgres", "agentx_restore_test; DROP DATABASE x", "Agentx_Restore_Test"):
+        result = run(workdir, "restore-test", RESTORE_TEST_DB=target)
+        assert result.returncode == 1 and "refusing" in result.stderr, (target, result.stderr)
+    # The live database's name itself, even when it looks like a restore-test name.
+    result = run(workdir, "restore-test", RESTORE_TEST_DB="agentx_restore_test_live", POSTGRES_DB="agentx_restore_test_live")
+    assert result.returncode == 1 and "is the live database" in result.stderr
+    assert _pg("-c", "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'", db=DST_DB) == live_tables
+
+
+def test_restore_test_fails_on_another_migration_version(live_with_backup):
+    _pg("-c", "UPDATE alembic_version SET version_num = 'zzz_newer'", db=DST_DB)
+    _assert_alert(run(live_with_backup, "restore-test"), "migration version")
 
 
 if __name__ == "__main__":
