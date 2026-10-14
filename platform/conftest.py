@@ -58,9 +58,11 @@ def _reset_rate_limiters():
     count against every later test that calls the same route (e.g. the shared
     sign-up budget on POST /agents, S9-8a2).
     """
+    from src.middleware import public_list_limit
     from src.middleware.rate_limits import limiter, limiter_did
     for lim in (limiter, limiter_did):
         lim.reset()
+    public_list_limit.reset()
     yield
 
 

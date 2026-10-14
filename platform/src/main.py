@@ -48,6 +48,7 @@ from .websocket.manager import connection_manager
 register_did_converter()
 from .middleware.body_limit import BodySizeLimitMiddleware  # noqa: E402
 from .middleware.list_limit import MAX_LIST_LIMIT, ListLimitMiddleware  # noqa: E402
+from .middleware.public_list_limit import PublicListLimitMiddleware  # noqa: E402
 from .middleware.response_cache import ResponseCacheMiddleware  # noqa: E402
 from .middleware.rate_limits import (  # noqa: E402
     RATE_LIMIT_MODE,
@@ -190,6 +191,12 @@ app = FastAPI(
 # Phase 19: OTel FastAPI auto-instrumentation
 # Must be called after app = FastAPI(...) and before the first request.
 auto_instrument_fastapi(app)
+
+# ── Middleware: per-IP limit on anonymous list reads ──────────────────────────
+# One shared per-IP budget on anonymous GETs of the list routes (EG-4, Neon
+# egress). Registered before the response cache so it sits inside it: answers
+# served from memory are not counted.
+app.add_middleware(PublicListLimitMiddleware)
 
 # ── Middleware: anonymous response cache ──────────────────────────────────────
 # Anonymous GETs of the heavy public lists are answered from a per-machine TTL
