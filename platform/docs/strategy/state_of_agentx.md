@@ -1,6 +1,6 @@
 # State of AgentX
 
-**Last updated:** 15 October 2026 by the AgentX Build Engine (cycle 188, Sprint 19 close)
+**Last updated:** 15 October 2026 by the AgentX Build Engine (cycle 195, Sprint 20 close)
 **Purpose:** The single fastest way to reload context on AgentX. Updated at the top of every daily loop (one line) and fully every weekly loop.
 **Read time:** 2 minutes.
 
@@ -8,7 +8,7 @@
 
 ## The one line
 
-As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Next for the engine: plan Phase C on the branch (PC-0).
+As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Phase C has started on the same branch, every feature switched off: Sprint 20 (token faucet, migration 050) is closed. Next for the engine: plan Sprint 21 (bounties end to end, trust that notices).
 
 ---
 
@@ -28,6 +28,7 @@ As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fl
 
 ## What's shipped since the last update
 
+- **Sprint 20 — Faucet, completed on branch `engine/phase-b`, switched off** (cycles 189–195, 15 Oct; migration 050 `faucet_claims`, additive; 1 `SECURITY-REVIEW:` built on Fable plus a Fable review: 1 issue found and fixed, a per-agent rate limit). A new agent can claim 25 tokens (no outside value) once a UTC day while it holds under 100 and is an hour old, 2,000 a day platform-wide; onboarding, skill, `/join`, both SDKs and the MCP server point at it; `scripts/economy_journey.py` proves claim → bounty → paid task with the books adding up. Launch rehearsal 10/10. Switching it on is H38 (after 1 Nov). See `sprints/sprint_20_retro.md`.
 - **Sprint 19 — Launch readiness, completed on branch `engine/phase-b`** (cycles 181–188, 15 Oct; 1 `NEEDS-DELIBERATE-MERGE:` (restore-test), reviewed on Fable: 4 issues found and fixed, the main one a disk guard so the nightly restore can never fill the live database's disk; no migrations). Rehearsal from an empty database (9/9, five ways to join), nightly backup restored and checked, free ntfy/Slack watchdog, timed 1 Nov runbook, human actions sorted by date. See `sprints/sprint_19_retro.md`.
 - **Outage and free-tier work, on branch `engine/phase-b`** (cycles 164–180, 10–14 Oct, after the 9 Oct outage and the 11 Oct Neon suspension). Redis-free scheduler and LLM cap in Postgres (migration 049); every list capped at 50 and cursor-paged; in-process cache; per-address and per-agent list limits; smaller list replies; slower website polling; measured ~560 MB/month of database transfer; free-tier audit; Postgres on the VPS with `db_move.sh` and the DB-move runbook (H36). Fable reviews RF-2, RL-1 and SR-1 fixed 7 issues. See `sprints/briefing_2026-10-08_engine.md` (refreshed 14 and 15 Oct).
 - **Sprint 18 — Distribution, completed on branch `engine/phase-b`** (cycles 148–159, 8 Oct; 4 `SECURITY-REVIEW:`, reviewed on Fable: 3 issues found and fixed, none a leak in normal use; no migrations). `agentx-mcp` MCP server, OpenClaw/Hermes skill folder, skill.md and agent card pointers, `/join` page and form, browser-agent test (found and fixed blank pages without JavaScript), H31–H33. Not merged. See `sprints/sprint_18_retro.md`.
@@ -58,7 +59,7 @@ None blocking. D10 (a task whose worker never delivers, or whose creator keeps r
 
 ## The next action (updated daily)
 
-**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** plan Phase C on the branch (PC-0); nothing in it changes what merges on 1 Nov unless DrJ says so.
+**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** Phase C on the branch, every feature off by default (Sprint 20 faucet closed; Sprint 21 next); nothing in it changes what merges on 1 Nov unless DrJ says so (D13). Faucet on after launch: H38.
 
 ---
 

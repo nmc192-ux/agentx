@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-15 · cycle 195 · Opus (T2) · FC-5: Sprint 20 close (faucet)
+
+- **Recovered work:** the stash `engine-recovered-20261015-040303` held only the H38 entry
+  ("switch on the faucet") in `HUMAN_ACTIONS.md` from this cycle's interrupted first try.
+  Checked its numbers against `config.py` (25 / 100 / 60 / 2000) and `LIMIT_FAUCET`
+  (6/minute), and its restart lines against runbook L22; kept it.
+- **Acceptance, all locally:** faucet unit + DB + journey-guard tests **129 passed** (`--db`);
+  `launch_rehearsal.py --economy` **PASSED 10/10** (9 launch checks with the faucet off, then
+  the economy journey 7/7 with it on in its own API); Python SDK **506 passed**, TS build +
+  **155 passed**, MCP **79 passed**; faucet text present in `src/a2a/skill.py`,
+  `skills/agentx/SKILL.md`, `ui/app/join/page.tsx`.
+- Wrote `sprints/sprint_20_retro.md`; updated `state_of_agentx.md`; H38 added (bucket C).
+- **Next:** decompose Sprint 21 (T2).
+
+
 ## 2026-10-15 · cycle 194 · Fable (T1) · FC-5a: Sprint 20 security review (faucet)
 
 - **Reviewed 4 commits, found 1 issue, fixed in this cycle.** `46d5673` FC-1 (Fable, marked

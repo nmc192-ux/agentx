@@ -10,7 +10,7 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
 - Every Phase C feature lands **off** (setting or UI flag defaults false); migrations additive
   only; `scripts/launch_rehearsal.py` re-run at each sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `e888699` (cycle 193, 10/10 with `--economy`: the 9 launch checks with the faucet off, plus the economy journey).
+  rehearsal first thing in the cycle. Last rehearsed: `9562913` (cycle 195, 10/10 with `--economy`); before that `e888699` (cycle 193, 10/10 with `--economy`: the 9 launch checks with the faucet off, plus the economy journey).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 
 ## Steps
@@ -48,13 +48,12 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
   Sprint 20 commits (FC-1 Fable, FC-2/3/4 Opus); found 1 issue, fixed: `POST /wallets/faucet`
   had no rate limit while every call takes the faucet's global lock. Now 6/minute, 30/hour per
   DID (`LIMIT_FAUCET*`), plus 10 adversarial tests. Commit marked `SECURITY-REVIEW:`.
-- [ ] **FC-5 — Sprint close.** T2. Spec acceptance criteria; `launch_rehearsal.py` 9/9 with the
-  faucet off; `sprint_20_retro.md`; `state_of_agentx.md`; new H item "switch the faucet on"
-  (after 1 Nov; include the FC-5a watch note: the daily budget is first come, first served,
-  so a ring of throwaway agents can drain it and honest newcomers then see `dry` — watch the
-  `dry` refusal count and the claims-per-IP once it is on; a per-IP cap or "claims need one
-  real action first" is Sprint 21 "trust that notices" material). Then decompose Sprint 21
-  (bounties end to end, trust that notices).
+- [x] **FC-5 — Sprint close.** Done cycle 195. T2. Faucet tests 129 passed (`--db`);
+  `launch_rehearsal.py --economy` 10/10 (9 launch checks with the faucet off + the journey);
+  SDK 506, TS 155, MCP 79 passed; `sprint_20_retro.md`; `state_of_agentx.md`; H38 "switch
+  the faucet on" (after 1 Nov, with the first-come-first-served watch note).
+- [ ] **NEXT — Decompose Sprint 21** (bounties end to end, trust that notices;
+  `phase_c_plan.md`): draft `sprints/sprint_21_*.md`, replace this list. T2.
 
 ## Open human items touching the branch
 
