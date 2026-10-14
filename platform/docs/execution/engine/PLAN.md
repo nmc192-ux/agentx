@@ -256,9 +256,10 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   `--pg-host`; LR-3 never sources `alerts.env`, never prints a URL, header text is printable
   only. Check: 5 new tests in `test_db_move.py` (3 fail on the old script), `--db` 25 passed;
   shellcheck info-only; full suite green.
-- [ ] **LR-6 — Sprint close.** T2. Acceptance criteria from the spec run locally,
-  `sprints/sprint_19_retro.md`, `state_of_agentx.md`, Phase B briefing refreshed with the
-  launch-day pointer.
+- [x] **LR-6 — Sprint close.** Done cycle 188. T2. Acceptance criteria all pass locally
+  (rehearsal 9/9; db_move/watchdog/runbook/rehearsal tests 84 passed with `--db`; triage 27 ids,
+  0 unsorted). `sprints/sprint_19_retro.md`, `state_of_agentx.md` brought up to 15 Oct, Phase B
+  briefing points at `launch_day_runbook.md`.
 - [ ] **PC-0 — Plan Phase C** on this branch. T2. Only after the launch-readiness sprint.
 
 ## Open human items touching the branch

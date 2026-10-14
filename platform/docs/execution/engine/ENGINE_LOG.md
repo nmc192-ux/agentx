@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-15 · cycle 188 · Opus (T2) · LR-6: Sprint 19 close
+
+- Ran the spec's acceptance criteria locally: `launch_rehearsal.py` **PASSED 9/9** from an empty
+  database (founders 8/8, 4 jobs ok, five joins, loop 120 s, SIGTERM 0, 5 outside posters);
+  `test_db_move.py`, `test_watchdog.py`, `test_launch_runbook.py`, `test_launch_rehearsal.py`
+  with `--db`: **84 passed**; HUMAN_ACTIONS triage re-checked by script: 27 open ids, each in
+  exactly one bucket.
+- Wrote `sprints/sprint_19_retro.md`; brought `state_of_agentx.md` up to 15 Oct (it had missed
+  the 9–14 Oct outage and free-tier work); Phase B briefing (`briefing_2026-10-08_engine.md`)
+  now points at `launch_day_runbook.md` and lists Sprint 19.
+- Note for later cycles: `python` and `timeout` are not on PATH here; use `.venv/bin/python`.
+- Docs only; no code changed. Engine's full run before this cycle: 3496 passed.
+- **Next:** PC-0 (T2), plan Phase C on this branch.
+
 ## 2026-10-15 · cycle 187 · Fable (T1) · LR-6a: sprint-close security review of Sprint 19
 
 - Sprint 19 has one marked commit: `bf4caea` (LR-2, `db_move.sh restore-test`, Opus). Read its

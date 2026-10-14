@@ -1,6 +1,6 @@
 # State of AgentX
 
-**Last updated:** 8 October 2026 by the AgentX Build Engine (cycle 159, Sprint 18 close)
+**Last updated:** 15 October 2026 by the AgentX Build Engine (cycle 188, Sprint 19 close)
 **Purpose:** The single fastest way to reload context on AgentX. Updated at the top of every daily loop (one line) and fully every weekly loop.
 **Read time:** 2 minutes.
 
@@ -8,7 +8,7 @@
 
 ## The one line
 
-As of 8 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and staging at migration 047), and Phase B is under way on the branch `engine/phase-b`: Sprints 13 (tidy-up), 14 (TypeScript SDK `@agentx/sdk` 0.1.0), 15 (quickstart and sample agents in Python and TypeScript), 17 ("Agent of the week", with migration 048) 16 (VPS migration prep, files only) and 18 (distribution: `agentx-mcp` MCP server, OpenClaw/Hermes skill, `/join` page, browser-agent join test) are closed there, not merged. Next for the engine: Phase B close (check for any engine-doable work left, then the Phase B briefing). Next for DrJ: merge the branch deliberately (it carries migration 048), then H27, H26 (npm), H12 (PyPI), H31/H32 (publish the MCP server and skill) and H33 (live browser-agent join); H29 then H30 to prepare the VPS; H28 (alpha announcement) after the live checks; H13 (founder heartbeat) is the most valuable live step.
+As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Next for the engine: plan Phase C on the branch (PC-0).
 
 ---
 
@@ -28,6 +28,8 @@ As of 8 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and s
 
 ## What's shipped since the last update
 
+- **Sprint 19 — Launch readiness, completed on branch `engine/phase-b`** (cycles 181–188, 15 Oct; 1 `NEEDS-DELIBERATE-MERGE:` (restore-test), reviewed on Fable: 4 issues found and fixed, the main one a disk guard so the nightly restore can never fill the live database's disk; no migrations). Rehearsal from an empty database (9/9, five ways to join), nightly backup restored and checked, free ntfy/Slack watchdog, timed 1 Nov runbook, human actions sorted by date. See `sprints/sprint_19_retro.md`.
+- **Outage and free-tier work, on branch `engine/phase-b`** (cycles 164–180, 10–14 Oct, after the 9 Oct outage and the 11 Oct Neon suspension). Redis-free scheduler and LLM cap in Postgres (migration 049); every list capped at 50 and cursor-paged; in-process cache; per-address and per-agent list limits; smaller list replies; slower website polling; measured ~560 MB/month of database transfer; free-tier audit; Postgres on the VPS with `db_move.sh` and the DB-move runbook (H36). Fable reviews RF-2, RL-1 and SR-1 fixed 7 issues. See `sprints/briefing_2026-10-08_engine.md` (refreshed 14 and 15 Oct).
 - **Sprint 18 — Distribution, completed on branch `engine/phase-b`** (cycles 148–159, 8 Oct; 4 `SECURITY-REVIEW:`, reviewed on Fable: 3 issues found and fixed, none a leak in normal use; no migrations). `agentx-mcp` MCP server, OpenClaw/Hermes skill folder, skill.md and agent card pointers, `/join` page and form, browser-agent test (found and fixed blank pages without JavaScript), H31–H33. Not merged. See `sprints/sprint_18_retro.md`.
 - **Sprint 16 — VPS migration prep (files only), completed on branch `engine/phase-b`** (cycles 141–147, 7–8 Oct; 3 `SECURITY-REVIEW:` and 1 `NEEDS-DELIBERATE-MERGE:` (deploy workflow), reviewed on Fable: 3 issues found and fixed, incl. login tokens in uvicorn and Caddy logs; no migrations). Compose, Caddy block, smoke and deploy scripts, hand-started workflow, H29/H30. Nothing deployed. See `sprints/sprint_16_retro.md`.
 - **Sprint 17 — Agent of the week, completed on branch `engine/phase-b`** (cycles 129–140, 7 Oct; 1 `NEEDS-DELIBERATE-MERGE:` (migration 048) and 1 `SECURITY-REVIEW:` (override), reviewed on Fable: 3 score-gaming issues found and fixed). Picker, job, read routes, founder override, SDK calls, website, docs, H27/H28 and the announcement draft. Not merged. See `sprints/sprint_17_retro.md`.
@@ -43,7 +45,7 @@ As of 8 October 2026, Phase A is merged and live (PR 11, 5 Oct; production and s
 
 - **Phase A exit criteria** (7 days of live founder activity, a live bounty and proposal, one real outside agent) wait on DrJ: H13, then H14.
 - **Publishing** (`@agentx/sdk` H26, SDK 0.4.0 H12, `agentx-mcp` H31, the skill H32, `agentx-client` H11, sample-agents repo H15, protocol spec H16) is DrJ's.
-- **VPS move** is prepared (Sprint 16); it waits on DrJ: merge, H29, H30, then cutover day (plan §9).
+- **VPS move and launch** are prepared (Sprints 16 and 19, DB-1); they wait on DrJ: runbook prep P01–P12 before 1 Nov, then the day itself (`execution/launch_day_runbook.md`). The API stays down until then.
 - **Synapse synergy thesis** is still waiting on founder context.
 
 ---
@@ -56,7 +58,7 @@ None blocking. D10 (a task whose worker never delivers, or whose creator keeps r
 
 ## The next action (updated daily)
 
-**DrJ:** merge `engine/phase-b` deliberately (`briefing_2026-10-07_sprint17.md`, `briefing_2026-10-08_sprint16.md` and `briefing_2026-10-08_sprint18.md`; migration 048 adds one empty table), then H27, H26, H12, H31 and H32, then H33; H29 (read-only) and H30 for the VPS; H28 after the live checks; H24, H25, H23 when convenient; H13 then H14 for the Phase A exit criteria. **Engine:** Phase B close: confirm what engine-doable work is left (the plan commits a `trust_score_spec.md` draft by the end of Phase B), then write the Phase B briefing.
+**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** plan Phase C on the branch (PC-0); nothing in it changes what merges on 1 Nov unless DrJ says so.
 
 ---
 

@@ -1,4 +1,4 @@
-# Briefing — 8 October 2026, refreshed 14 October after the Neon/free-tier work (AgentX Build Engine, Phase B complete)
+# Briefing — 8 October 2026, refreshed 14 October after the Neon/free-tier work and 15 October after Sprint 19 (AgentX Build Engine, Phase B complete)
 
 ## Bottom line
 Everything in Phase B that the engine can build is built: Sprints 13–18 plus the trust score
@@ -24,9 +24,14 @@ it (RF-2) and fixed 3 problems.
 - *Database move prepared (DB-1):* a private Postgres container on the VPS, a script that
   checks, copies, compares and backs up, and a copy-paste runbook (H36).
 
-**So the merge now belongs to 1 Nov**, as step B9 of `execution/db_move_runbook.md`, after the
-data is copied to the VPS. The full day plan (merge, packages, alerts, backups, DNS) is the
-next sprint (launch readiness). **One caution, new in this refresh:** the merge also starts
+**So the merge now belongs to 1 Nov**, after the data is copied to the VPS.
+**15 Oct: the day is now one timed list, `execution/launch_day_runbook.md`** (Sprint 19, launch
+readiness): prep P01–P12 any evening before 1 Nov, then L01–L36 on the day, 10:00–16:30 PKT,
+each with what you must see and how to undo it; the merge is L11–L12. It folds in the DB-move
+runbook (B1–B14), H29–H37, the packages and the announcement. The whole stack was started from
+an empty database on this Mac and joined five ways (rehearsal 9/9); nightly backups are
+restored and checked by a script; a free watchdog sends ntfy/Slack alerts (Fable reviewed it and
+fixed 4 problems). See `sprint_19_retro.md`. **One caution, new in this refresh:** the merge also starts
 the old Fly "Deploy" workflow; **do not approve its production step** (see "What merging will
 do"). **The Fable review of the three marked 14 Oct commits is done (SR-1, cycle 180):** it
 found one real hole and two weaker spots, all fixed and tested on the branch. The hole: a
@@ -73,6 +78,7 @@ Fable; EG-3, EG-4 and DB-1 were built on Opus and were reviewed on Fable in cycl
 | EG-7 | Egress measured locally: ~560 MB first month vs 2 GB | `0b27a26` |
 | FT-1 | Free-tier audit: Neon compute is the real limit; Fly is not free | `48cd8c1` |
 | DB-1 | Postgres container on the VPS, `db_move.sh`, 1 Nov runbook (H36) | `9abb526` |
+| 19 | Launch readiness: rehearsal from empty, tested restore, free alerts, timed 1 Nov runbook, human-action triage; Fable review fixed 4 | `3e858d1`, `bf4caea`, `291671c`, `6c1953b`, `6804eec` |
 
 Details are in each `sprint_N_retro.md` and per-sprint briefing in this folder.
 
@@ -192,10 +198,10 @@ at runbook step B9, **after** the data is on the VPS (B5–B7).
   not gates."
 
 ## Recommended next action
+**Follow `execution/launch_day_runbook.md` top to bottom; it supersedes the order below where they differ.**
 **Now, before 1 Nov:** H35 (read four numbers off your dashboards), H29/H30 steps 1–8 (VPS
 ready), H36 prep (A1–A6, including **Fly scaled to zero**), and H34 (the `fly.toml` line, so
-Fly works again if you ever go back to it). The engine meanwhile plans the 1 Nov day in full
-(launch-readiness sprint; the Fable review is done).
+Fly works again if you ever go back to it). The 1 Nov day is planned in full (runbook Part 1 is this list).
 **On 1 Nov:** `execution/db_move_runbook.md` §4, B1–B14; the merge is B9 (reject the Fly
 production step). Then publish in this order: H12 (agentx-py), H26 (@agentx/sdk), H31
 (agentx-mcp), H32 (skill); then H27 (agent of the week), H13/H14 (founder heartbeat and
