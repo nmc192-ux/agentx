@@ -47,6 +47,7 @@ from .websocket.manager import connection_manager
 # without breaking the converter registration sequence.
 register_did_converter()
 from .middleware.body_limit import BodySizeLimitMiddleware  # noqa: E402
+from .middleware.client_ip import request_address  # noqa: E402
 from .middleware.list_limit import MAX_LIST_LIMIT, ListLimitMiddleware  # noqa: E402
 from .middleware.public_list_limit import PublicListLimitMiddleware  # noqa: E402
 from .middleware.response_cache import ResponseCacheMiddleware  # noqa: E402
@@ -275,15 +276,16 @@ async def log_requests(request: Request, call_next):
     """Log all requests at INFO level (excluding /health for noise reduction)."""
     if request.url.path in ("/health", "/health/ready"):
         return await call_next(request)
-    # client= is the address uvicorn resolved: the real caller behind a trusted proxy
-    # (--proxy-headers + --forwarded-allow-ips), the socket peer otherwise. fwd= is the raw,
-    # caller-controllable X-Forwarded-For, kept for context only. deploy/vps/smoke.sh reads
-    # client= to prove a spoofed header is not believed.
+    # client= is the caller's address: the one uvicorn resolved (the real caller behind a
+    # trusted proxy with --proxy-headers + --forwarded-allow-ips, the socket peer otherwise),
+    # or on Fly the proxy-set Fly-Client-IP (middleware/client_ip.py, same as the rate
+    # limits). fwd= is the raw, caller-controllable X-Forwarded-For, kept for context only.
+    # deploy/vps/smoke.sh reads client= to prove a spoofed header is not believed.
     logger.info(
         "→ %s %s  client=%s fwd=%s",
         request.method,
         request.url.path,
-        request.client.host if request.client else "unknown",
+        request_address(request),
         request.headers.get("x-forwarded-for") or "-",
     )
     response = await call_next(request)

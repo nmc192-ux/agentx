@@ -17,12 +17,12 @@ caller gets a 429 with ``Retry-After`` and the route does not run.
     response cache does not also skip this limit.
   - Counters live in this process's memory (no Redis), per machine; with two
     machines the real budget is up to twice the figure. Restarts reset them.
-  - Caller address: the one uvicorn resolved (on the VPS that is the real
-    caller, ``--proxy-headers`` trusting only Caddy). On Fly the app does not
-    trust proxy headers, so every caller would share Fly's proxy address and
-    one bucket; when ``FLY_APP_NAME`` is set (Fly sets it on every machine)
-    the ``Fly-Client-IP`` header, which Fly's proxy always overwrites, is used
-    instead.
+  - Caller address: ``middleware.client_ip`` (shared with every per-IP limit
+    since RL-1): the one uvicorn resolved (on the VPS that is the real caller,
+    ``--proxy-headers`` trusting only Caddy); on Fly, where the app does not
+    trust proxy headers and every caller would share Fly's proxy address, the
+    ``Fly-Client-IP`` header that Fly's proxy always overwrites, believed only
+    when ``FLY_APP_NAME`` is set. IPv6 is bucketed by /64.
 
 ``PUBLIC_LIST_LIMITS=off`` switches it off; any other value is a ``limits``
 string such as ``"60/minute;600/hour"``.
@@ -42,6 +42,7 @@ from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
 
 from ..auth.jwt import decode_token
+from .client_ip import client_bucket
 
 logger = logging.getLogger("agentx.ratelimit")
 
@@ -136,15 +137,6 @@ def _has_valid_token(scope) -> bool:
         return False
 
 
-def client_address(scope) -> str:
-    if os.getenv("FLY_APP_NAME"):
-        fly_ip = (_header(scope, b"fly-client-ip") or "").strip()
-        if fly_ip:
-            return fly_ip
-    client = scope.get("client")
-    return client[0] if client else "unknown"
-
-
 class PublicListLimitMiddleware:
     def __init__(self, app):
         self.app = app
@@ -156,7 +148,7 @@ class PublicListLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        ip = client_address(scope)
+        ip = client_bucket(scope)
         for limit in limits:
             if not _limiter.hit(limit, "public_list", ip):
                 await self._reject(scope, send, limit, ip)

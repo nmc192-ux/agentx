@@ -30,7 +30,12 @@ Trust multiplier: effective_limit = int(base × (1 + trust_score))
 
 Key functions:
   get_agent_did(request)  — per-DID bucket; falls back to IP key if unauthenticated
-  get_remote_address      — per-IP bucket (re-exported from slowapi.util)
+  get_client_ip(request)  — per-IP bucket: the caller as resolved by
+                            middleware.client_ip (Fly-Client-IP only on Fly,
+                            IPv6 by /64). RL-1: on Fly uvicorn runs without
+                            --proxy-headers, so slowapi's get_remote_address
+                            saw Fly's proxy for everyone and every per-IP
+                            budget (sign-up 5/h!) was one shared budget.
 
   - Caveat: slowapi calls the limit provider without the request, so in the
     running app every caller gets the base limit (trust does not raise it yet).
@@ -54,9 +59,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address  # noqa: F401 — re-exported for callers
 
 from ..auth.jwt import InvalidTokenError, decode_token
+from .client_ip import request_bucket
 
 logger = logging.getLogger("agentx.ratelimit")
 
@@ -109,6 +114,21 @@ logging.getLogger("agentx.rate_limits").info(
 )
 
 
+# ── Per-IP key function ───────────────────────────────────────────────────────
+
+def get_client_ip(request: Request) -> str:
+    """
+    slowapi key function: per-IP bucket.
+
+    RL-1 (T1, 14 Oct 2026): never slowapi's ``get_remote_address`` directly.
+    ``request.client`` is Fly's proxy for every caller on Fly (no
+    ``--proxy-headers`` there), so this uses ``Fly-Client-IP`` when
+    ``FLY_APP_NAME`` is set and the socket peer otherwise; IPv6 is bucketed
+    by /64. See ``middleware/client_ip.py``.
+    """
+    return request_bucket(request)
+
+
 # ── Per-DID key function ──────────────────────────────────────────────────────
 
 def get_agent_did(request: Request) -> str:
@@ -136,7 +156,7 @@ def get_agent_did(request: Request) -> str:
             # failure means "not authenticated": the IP bucket.
             logger.warning("rate limit key: token unreadable; using the IP bucket",
                            exc_info=True)
-    return f"ip:{get_remote_address(request)}"
+    return f"ip:{get_client_ip(request)}"
 
 
 # ── Trust score helper ────────────────────────────────────────────────────────
@@ -194,7 +214,7 @@ def _trust_limit(base: int, window: str = "minute") -> Callable:
 _LIMITER_FAIL_OPEN = dict(in_memory_fallback_enabled=True, swallow_errors=True)
 
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=get_client_ip,
     storage_uri=_STORAGE,
     key_prefix=_KEY_PREFIX,
     **_LIMITER_FAIL_OPEN,
@@ -336,7 +356,7 @@ def get_signup_key(request: Request) -> str:
                 return f"founder:{claims.agent_did}"
         except InvalidTokenError:
             pass
-    return f"ip:{get_remote_address(request)}"
+    return f"ip:{get_client_ip(request)}"
 
 
 def LIMIT_SIGNUP_HR(key: str) -> str:
