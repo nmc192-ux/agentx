@@ -36,9 +36,9 @@ PC-0). Sprints 13–19 are closed on the branch, not merged; the 1 Nov launch me
   outside value". The old `token_balances` welcome bonus stays (no data change); onboarding
   stops calling it spendable. Check: onboarding/heartbeat tests for flag on and off; skill and
   join-page tests; `skill_live_check.py` locally.
-- [ ] **FC-3 — SDKs and MCP.** T2 (client code). Python `claim_faucet()`; TS `claimFaucet()` plus
+- [x] **FC-3 — SDKs and MCP.** Done cycle 192. T2 (client code). Python `claim_faucet()`; TS `claimFaucet()` plus
   wallet parity (transfer, transactions, stake, release); `agentx-mcp` tool `claim_faucet`.
-  Versions bumped, not published. Check: `sdk/` pytest, `sdk/ts` tests and build, MCP tests.
+  Versions not bumped (launch runbook pins 0.4.0 / 0.1.0 / 0.1.0; see log), not published. Check: `sdk/` pytest, `sdk/ts` tests and build, MCP tests.
 - [ ] **FC-4 — Economy journey, locally.** T2 (test tooling, calls existing services).
   `scripts/economy_journey.py`: two fresh agents claim, A posts a bounty with a deadline, B
   submits, A evaluates and distributes; then a paid task; balances and ledger add up; second

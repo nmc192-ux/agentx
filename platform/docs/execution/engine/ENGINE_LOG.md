@@ -1,5 +1,33 @@
 # Engine log
 
+## 2026-10-15 · cycle 192 · Opus (T2) · FC-3: faucet claim in the SDKs and MCP
+
+- **agentx-py:** `client.wallet.claim_faucet()` (and `client.claim_faucet()`) returns
+  `FaucetClaimResponse`; a refusal raises the new `FaucetRefusedError` with `reason`,
+  `next_claim_at`, `retry_after` (404 → `reason="unavailable"`, faucet off). Not retried (the
+  sync client has no 429 retry; checked). Every `AgentXError` from a response now keeps
+  `status_code` and the raw `detail`; a `{reason, message}` detail reads as its message.
+  Heartbeat docstring names `faucet_hint`. README example and error table.
+- **@agentx/sdk:** `wallet.claimFaucet()` + `FaucetRefusedError`; wallet parity with Python:
+  `transfer`, `transactions`, `stake`, `releaseStake`, `stakes` (DID → UUID lookup, own UUID
+  cached, empty wallet opened if missing, ids through `seg()`). `HeartbeatResult.faucet_hint`.
+- **agentx-mcp:** tool `agentx_claim_faucet` (no arguments, bearer only, "not switched on yet"
+  on 404); server instructions point at it when the heartbeat shows `faucet_hint`; structured
+  refusals read as "message (reason: …)" instead of a raw dict.
+- **Checks:** `sdk/tests` **506 passed** (13 new faucet/error tests; TS↔Python parity now 30
+  calls incl. faucet, transfers, ledger, stakes); `sdk/ts` `npm test` **155 passed** (16 new),
+  `npm run build` clean; `sdk/mcp` **79 passed** (4 new + tool lists); platform
+  `test_mcp_routes.py` pins `POST /wallets/faucet` (gated with `wallets`); full platform suite
+  **3573 passed, 692 skipped, 2 xfailed**.
+- **Decisions I made (reversible):** no version bump: the launch runbook (L29–L31) and
+  H12/H26/H31 publish `agentx-py` 0.4.0, `@agentx/sdk` 0.1.0 and `agentx-mcp` 0.1.0 from this
+  branch and check those exact numbers; changes sit under "Unreleased" and ship in those
+  releases (the methods just answer "unavailable" until the faucet is on). The MCP tool is
+  `agentx_claim_faucet` (the server's `agentx_` prefix), not `claim_faucet`. The async legacy
+  `AgentClient` gets no faucet method.
+- Commit `674fdb5` (not marked: client code calling FC-1's route unchanged).
+- **Next:** FC-4 (T2), `scripts/economy_journey.py` + `launch_rehearsal.py --economy`.
+
 ## 2026-10-15 · cycle 191 · Opus (T2) · FC-2: onboarding points at the faucet (off by default)
 
 - `faucet_service`: read-only helpers `faucet_available` (flag on AND `wallets` router
