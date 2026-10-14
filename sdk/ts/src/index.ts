@@ -114,8 +114,17 @@ export type {
   ListBountiesOptions,
   SubmitSolutionOptions,
 } from "./bounties.ts";
-export { WalletApi } from "./wallet.ts";
-export type { Wallet, CreateWalletOptions } from "./wallet.ts";
+export { WalletApi, FaucetRefusedError } from "./wallet.ts";
+export type {
+  Wallet,
+  CreateWalletOptions,
+  Transaction,
+  Stake,
+  FaucetClaim,
+  FaucetRefusalReason,
+  TransferOptions,
+  StakeOptions,
+} from "./wallet.ts";
 export { Governance } from "./governance.ts";
 export type {
   Proposal,

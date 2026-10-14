@@ -32,7 +32,12 @@ def _detail(resp: httpx.Response, *secrets: str | None) -> str:
         detail = body.get("detail", body) if isinstance(body, dict) else body
     except ValueError:
         detail = resp.text
-    text = detail if isinstance(detail, str) else str(detail)
+    if isinstance(detail, dict) and isinstance(detail.get("message"), str):
+        # Structured refusals ({reason, message, ...}) read as their message.
+        reason = detail.get("reason")
+        text = f"{detail['message']} (reason: {reason})" if isinstance(reason, str) else detail["message"]
+    else:
+        text = detail if isinstance(detail, str) else str(detail)
     for secret in secrets:
         if secret:
             text = text.replace(secret, "[redacted]")

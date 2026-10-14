@@ -40,7 +40,7 @@ ONBOARD_ANSWER = {
 ALL_TOOLS = {
     "agentx_join", "agentx_whoami", "agentx_read_feed", "agentx_create_post", "agentx_reply",
     "agentx_notifications", "agentx_heartbeat", "agentx_discover_agents",
-    "agentx_send_message", "agentx_agent_of_the_week",
+    "agentx_send_message", "agentx_agent_of_the_week", "agentx_claim_faucet",
 }
 
 
@@ -85,12 +85,12 @@ async def _call(server, tool: str, args: dict):
 
 # ── listing ──────────────────────────────────────────────────────────────────
 
-async def test_lists_all_ten_tools_and_write_tools_are_not_read_only(server):
+async def test_lists_all_eleven_tools_and_write_tools_are_not_read_only(server):
     async with Client(server) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
     assert set(tools) == ALL_TOOLS
     for name in ("agentx_join", "agentx_create_post", "agentx_reply", "agentx_send_message",
-                 "agentx_heartbeat"):
+                 "agentx_heartbeat", "agentx_claim_faucet"):
         assert tools[name].annotations.read_only_hint is False
         assert tools[name].description and len(tools[name].description) < 200
     title = tools["agentx_create_post"].input_schema["properties"]["title"]
@@ -207,6 +207,7 @@ async def test_join_name_over_64_chars_rejected_before_request(server):
     ("agentx_reply", {"post_id": POST_ID, "content": "C"}),
     ("agentx_notifications", {}),
     ("agentx_heartbeat", {}),
+    ("agentx_claim_faucet", {}),
     ("agentx_send_message", {"to_agent_did": "did:agentx:gia-001", "message": "hi"}),
 ])
 async def test_write_tools_without_credentials_fail_closed(server, tool, args):
@@ -289,6 +290,54 @@ async def test_heartbeat_sends_own_did(server):
     assert json.loads(route.calls.last.request.content) == {
         "agent_did": DID, "status": "active", "capabilities": ["research"],
     }
+
+
+CLAIM = {
+    "claim_id": POST_ID, "agent_id": POST_ID, "wallet_id": POST_ID, "amount": 25, "balance": 25,
+    "claim_day": "2026-10-15", "next_claim_at": "2026-10-16T00:00:00+00:00",
+    "transaction_id": POST_ID,
+}
+
+
+async def test_claim_faucet_posts_with_bearer_and_no_agent_named(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post("/wallets/faucet").respond(json=CLAIM)
+        result = await _call(server, "agentx_claim_faucet", {})
+    assert _payload(result)["amount"] == 25
+    request = route.calls.last.request
+    assert request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert json.loads(request.content) == {}
+    _no_secrets(result)
+
+
+async def test_claim_faucet_takes_no_arguments(server):
+    async with Client(server) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    assert not tools["agentx_claim_faucet"].input_schema.get("properties")
+
+
+async def test_claim_faucet_refusal_reads_as_its_message(server):
+    _joined()
+    detail = {"reason": "already_claimed", "message": "You already claimed today.",
+              "next_claim_at": "2026-10-16T00:00:00+00:00"}
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post("/wallets/faucet").respond(
+            429, json={"detail": detail}, headers={"Retry-After": "3600"},
+        )
+        result = await _call(server, "agentx_claim_faucet", {})
+    assert result.is_error
+    text = _text(result)
+    assert "429" in text and "You already claimed today." in text and "already_claimed" in text
+    assert route.call_count == 1
+
+
+async def test_claim_faucet_switched_off_says_so(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post("/wallets/faucet").respond(404, json={"detail": "Not Found"})
+        result = await _call(server, "agentx_claim_faucet", {})
+    assert result.is_error and "not switched on" in _text(result)
 
 
 async def test_send_message_uses_own_did_as_sender(server):
@@ -460,6 +509,7 @@ async def test_no_tool_result_contains_a_token(server):
     calls = {
         "agentx_whoami": {}, "agentx_read_feed": {}, "agentx_discover_agents": {},
         "agentx_agent_of_the_week": {}, "agentx_notifications": {}, "agentx_heartbeat": {},
+        "agentx_claim_faucet": {},
         "agentx_create_post": {"title": "T", "content": "C"},
         "agentx_reply": {"post_id": POST_ID, "content": "C"},
         "agentx_send_message": {"to_agent_did": "did:agentx:gia-001", "message": "m"},

@@ -151,7 +151,8 @@ async def test_env_token_never_appears_in_any_error_or_result(server, monkeypatc
         async with Client(server) as client:
             for tool, args in {
                 "agentx_whoami": {}, "agentx_read_feed": {}, "agentx_notifications": {},
-                "agentx_heartbeat": {}, "agentx_create_post": {"title": "T", "content": "C"},
+                "agentx_heartbeat": {}, "agentx_claim_faucet": {},
+                "agentx_create_post": {"title": "T", "content": "C"},
                 "agentx_reply": {"post_id": POST_ID, "content": "C"},
                 "agentx_send_message": {"to_agent_did": "did:agentx:gia-001", "message": "m"},
                 "agentx_join": {"name": "Writer"},

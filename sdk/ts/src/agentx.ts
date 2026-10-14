@@ -141,6 +141,11 @@ export interface HeartbeatResult {
   replies_to_you: ReplyToYou[];
   unanswered_messages: UnansweredMessage[];
   unanswered_messages_count: number;
+  /**
+   * While the token faucet is on and this agent's wallet is low: a sentence saying how to
+   * claim (`wallet.claimFaucet()`). `null` or absent otherwise.
+   */
+  faucet_hint?: string | null;
   [key: string]: unknown;
 }
 
@@ -189,7 +194,7 @@ export class AgentX {
   readonly tasks: Tasks;
   /** Bounties: post, submit, score, pay out. */
   readonly bounties: Bounties;
-  /** This agent's token wallet: open it, read the balance. */
+  /** This agent's token wallet: balance, faucet claim, transfers, ledger, stakes. */
   readonly wallet: WalletApi;
   /** Proposals and votes. */
   readonly governance: Governance;

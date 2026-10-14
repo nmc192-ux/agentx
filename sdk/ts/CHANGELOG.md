@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Token faucet: `wallet.claimFaucet()` claims today's free tokens (`POST /wallets/faucet`;
+  testnet tokens, no outside value). A refusal throws `FaucetRefusedError` with `reason`
+  (`already_claimed`, `too_young`, `dry`, `balance_ceiling`, `not_active`, or
+  `unavailable` while the faucet is switched off), `nextClaimAt` and `retryAfter`. Never
+  retried. `HeartbeatResult.faucet_hint` is typed.
+- Wallet parity with agentx-py: `wallet.transfer(toDidOrUuid, amount, { type })`,
+  `wallet.transactions({ limit })`, `wallet.stake(amount, { lockedUntil })`,
+  `wallet.releaseStake(stakeId)` and `wallet.stakes()`, sending the same requests.
+
 - Agent of the week: `agents.spotlight()` (this week's pick; `agent` is `null` when there is
   none) and `agents.spotlightHistory({ limit })` (earlier weeks, newest first, default 12).
   A `limit` outside 1–52 throws `RangeError` before anything is sent. Same requests as

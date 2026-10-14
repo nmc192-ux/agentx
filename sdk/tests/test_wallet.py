@@ -19,6 +19,10 @@ from agentx_sdk import (
     WalletResponse,
     TransactionResponse,
     StakeResponse,
+    FaucetClaimResponse,
+    FaucetRefusedError,
+    RateLimitError,
+    ServerError,
 )
 
 
@@ -346,3 +350,140 @@ class TestNamespaceWiring:
         assert hasattr(client, "wallet")
         from agentx_sdk.wallet import WalletNamespace
         assert isinstance(client.wallet, WalletNamespace)
+
+
+# ── Faucet ───────────────────────────────────────────────────────────────────
+
+def claim_payload(**overrides) -> dict:
+    return {
+        "claim_id": str(uuid4()),
+        "agent_id": AGENT_UUID,
+        "wallet_id": WALLET_UUID,
+        "amount": 25,
+        "balance": 25,
+        "claim_day": "2026-10-15",
+        "next_claim_at": "2026-10-16T00:00:00+00:00",
+        "transaction_id": str(uuid4()),
+        **overrides,
+    }
+
+
+def refusal(status: int, reason: str, retry_after: str | None = None) -> httpx.Response:
+    headers = {"Retry-After": retry_after} if retry_after else {}
+    return httpx.Response(status, headers=headers, json={"detail": {
+        "reason": reason,
+        "message": f"Refused: {reason}.",
+        "next_claim_at": "2026-10-16T00:00:00+00:00" if retry_after else None,
+    }})
+
+
+class TestClaimFaucet:
+    @respx.mock
+    def test_claim_posts_empty_body_and_returns_claim(self):
+        route = respx.post(f"{BASE}/wallets/faucet").mock(
+            return_value=httpx.Response(200, json=claim_payload())
+        )
+        claim = make_client().wallet.claim_faucet()
+        assert isinstance(claim, FaucetClaimResponse)
+        assert claim.amount == 25 and claim.balance == 25
+        assert str(claim.claim_day) == "2026-10-15"
+        request = route.calls.last.request
+        assert json.loads(request.content) == {}
+        assert request.headers["Authorization"] == "Bearer test-key"
+
+    @respx.mock
+    def test_client_shortcut_is_the_same_call(self):
+        route = respx.post(f"{BASE}/wallets/faucet").mock(
+            return_value=httpx.Response(200, json=claim_payload())
+        )
+        assert make_client().claim_faucet().amount == 25
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_claim_teaches_the_wallet_its_uuid(self):
+        respx.post(f"{BASE}/wallets/faucet").mock(
+            return_value=httpx.Response(200, json=claim_payload())
+        )
+        lookup = mock_my_wallet()
+        respx.get(f"{BASE}/wallets/{AGENT_UUID}/transactions").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        client = make_client()
+        client.wallet.claim_faucet()
+        client.wallet.list_transactions()
+        assert lookup.call_count == 0
+
+    @respx.mock
+    def test_already_claimed_is_refused_with_reason_and_not_retried(self):
+        route = respx.post(f"{BASE}/wallets/faucet").mock(
+            return_value=refusal(429, "already_claimed", retry_after="3600")
+        )
+        client = AgentXClient(api_key="test-key", base_url=BASE)  # default retries
+        client.identity = AgentIdentity(agent_did=AGENT_DID, api_key="test-key")
+        with pytest.raises(FaucetRefusedError) as exc:
+            client.wallet.claim_faucet()
+        assert exc.value.reason == "already_claimed"
+        assert str(exc.value) == "Refused: already_claimed."
+        assert exc.value.next_claim_at == "2026-10-16T00:00:00+00:00"
+        assert exc.value.retry_after == 3600
+        assert exc.value.status_code == 429
+        assert route.call_count == 1
+
+    @pytest.mark.parametrize("status,reason", [
+        (409, "balance_ceiling"), (403, "not_active"), (429, "dry"), (429, "too_young"),
+    ])
+    @respx.mock
+    def test_every_refusal_keeps_its_reason(self, status, reason):
+        respx.post(f"{BASE}/wallets/faucet").mock(return_value=refusal(status, reason))
+        with pytest.raises(FaucetRefusedError) as exc:
+            make_client().wallet.claim_faucet()
+        assert exc.value.reason == reason
+        assert exc.value.next_claim_at is None
+        assert isinstance(exc.value, AgentXError)
+
+    @respx.mock
+    def test_faucet_switched_off_is_unavailable(self):
+        respx.post(f"{BASE}/wallets/faucet").mock(
+            return_value=httpx.Response(404, json={"detail": "Not Found"})
+        )
+        with pytest.raises(FaucetRefusedError) as exc:
+            make_client().wallet.claim_faucet()
+        assert exc.value.reason == "unavailable"
+        assert exc.value.status_code == 404
+
+    @pytest.mark.parametrize("response,error", [
+        (httpx.Response(500, json={"detail": "boom"}), ServerError),
+        (httpx.Response(429, json={"detail": "Too many requests"}), RateLimitError),
+    ])
+    @respx.mock
+    def test_other_failures_keep_their_type(self, response, error):
+        respx.post(f"{BASE}/wallets/faucet").mock(return_value=response)
+        with pytest.raises(error) as exc:
+            make_client().wallet.claim_faucet()
+        assert not isinstance(exc.value, FaucetRefusedError)
+
+
+class TestStructuredErrorDetail:
+    """Errors keep the server's status and raw ``detail``; a structured detail reads as its message."""
+
+    @respx.mock
+    def test_conflict_keeps_status_and_dict_detail(self):
+        detail = {"reason": "x", "message": "Readable."}
+        respx.post(f"{BASE}/wallets/transfer").mock(
+            return_value=httpx.Response(409, json={"detail": detail})
+        )
+        with pytest.raises(AgentXError) as exc:
+            make_client().wallet.transfer(OTHER_UUID, 5)
+        assert exc.value.status_code == 409
+        assert exc.value.detail == detail
+        assert str(exc.value) == "HTTP 409: Readable."
+
+    @respx.mock
+    def test_string_detail_message_unchanged(self):
+        respx.post(f"{BASE}/wallets/transfer").mock(
+            return_value=httpx.Response(400, json={"detail": "Insufficient funds"})
+        )
+        with pytest.raises(AgentXError) as exc:
+            make_client().wallet.transfer(OTHER_UUID, 5)
+        assert str(exc.value) == "HTTP 400: Insufficient funds"
+        assert exc.value.detail == "Insufficient funds"

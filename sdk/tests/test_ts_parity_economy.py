@@ -1,4 +1,4 @@
-"""The TypeScript SDK's wallet, governance and collectives send what agentx-py sends.
+"""The TypeScript SDK's wallet (including the faucet, transfers and stakes), governance and collectives send what agentx-py sends.
 
 Same method as ``test_ts_parity_tasks.py``: identical calls through ``AgentXClient``
 (httpx mock transport) and ``@agentx/sdk`` (Node, ``fetch`` stubbed); method, path,
@@ -7,6 +7,7 @@ query and JSON body of every request must match. Skipped without Node >= 22.18.
 
 import json
 import subprocess
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -28,7 +29,12 @@ RECORD = {
     "proposal_type": "general", "status": "active", "yes_power": 0, "no_power": 0,
     "voting_ends_at": NOW, "created_at": NOW,
     "vote_id": COLL, "voter_did": DID, "vote": "yes", "vote_power": 1,
+    # transaction, stake, faucet claim
+    "transaction_id": PROPOSAL, "amount": 5, "type": "payment", "timestamp": NOW,
+    "stake_id": PROPOSAL, "claim_id": PROPOSAL, "claim_day": "2026-10-07", "next_claim_at": NOW,
 }
+OTHER = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+LOCK = "2026-12-31T00:00:00+00:00"
 
 
 def _python_requests() -> list[dict]:
@@ -50,6 +56,15 @@ def _python_requests() -> list[dict]:
     c.wallet.create_wallet()
     c.wallet.create_wallet(initial_balance=100)
     c.wallet.get_balance()
+    c.wallet.claim_faucet()
+    c.wallet.transfer("did:agentx:bruno", 5)
+    c.wallet.transfer(OTHER, 3, tx_type="tip")
+    c.wallet.list_transactions()
+    c.wallet.list_transactions(limit=10)
+    c.wallet.stake(10)
+    c.wallet.stake(10, locked_until=datetime(2026, 12, 31, tzinfo=timezone.utc))
+    c.wallet.release_stake(PROPOSAL)
+    c.wallet.list_stakes()
 
     g = c.governance
     g.create_proposal("t", "d")
@@ -76,12 +91,12 @@ def _python_requests() -> list[dict]:
 
 TS_SCRIPT = """
 import { AgentX } from "./src/index.ts";
-const [PROPOSAL, COLL] = %s;
+const [PROPOSAL, COLL, OTHER, LOCK, RECORD] = %s;
 const seen = [];
 const fetch = async (input, init = {}) => {
   seen.push({ method: init.method ?? "GET", url: input,
               body: init.body === undefined ? null : JSON.parse(init.body) });
-  return new Response("{}", { status: 200 });
+  return new Response(JSON.stringify(RECORD), { status: 200 });
 };
 const a = new AgentX({ accessToken: "k", agentDid: "did:agentx:atlas",
                        baseUrl: "http://api.test", fetch });
@@ -90,6 +105,15 @@ await w.get();
 await w.create();
 await w.create({ initialBalance: 100 });
 await w.balance();
+await w.claimFaucet();
+await w.transfer("did:agentx:bruno", 5);
+await w.transfer(OTHER, 3, { type: "tip" });
+await w.transactions();
+await w.transactions({ limit: 10 });
+await w.stake(10);
+await w.stake(10, { lockedUntil: LOCK });
+await w.releaseStake(PROPOSAL);
+await w.stakes();
 
 await g.createProposal({ title: "t", description: "d" });
 await g.createProposal({ title: "t", description: "d", proposalType: "parameter_change",
@@ -115,7 +139,7 @@ console.log(JSON.stringify(seen));
 
 
 def _ts_requests(node: str) -> list[dict]:
-    script = TS_SCRIPT % json.dumps([PROPOSAL, COLL])
+    script = TS_SCRIPT % json.dumps([PROPOSAL, COLL, OTHER, LOCK, RECORD])
     proc = subprocess.run(
         [node, "--input-type=module", "-e", script],
         capture_output=True, text=True, timeout=60, cwd=TS_DIR,
@@ -130,6 +154,6 @@ def test_ts_wallet_governance_collectives_match_agentx_py():
     if node is None:
         pytest.skip("Node >= 22.18 not available")
     py, ts = _python_requests(), _ts_requests(node)
-    assert len(py) == len(ts) == 20
+    assert len(py) == len(ts) == 30
     for i, (p, t) in enumerate(zip(py, ts)):
         assert p == t, f"call {i}: agentx-py {p} != @agentx/sdk {t}"

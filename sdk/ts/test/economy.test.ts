@@ -6,7 +6,16 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { AgentX } from "../src/agentx.ts";
-import { AgentXError, AuthError, ConflictError, NotFoundError } from "../src/errors.ts";
+import {
+  AgentXError,
+  AuthError,
+  ConflictError,
+  NotFoundError,
+  RateLimitError,
+  ServerError,
+  ValidationError,
+} from "../src/errors.ts";
+import { FaucetRefusedError } from "../src/index.ts";
 
 const BASE = "http://api.test";
 const DID = "did:agentx:atlas";
@@ -75,6 +84,200 @@ test("wallet.create with a balance by a non-founder surfaces the server's 403", 
 test("wallet.balance is the wallet's balance", async () => {
   const { agent } = client({ body: WALLET });
   assert.equal(await agent.wallet.balance(), 7);
+});
+
+// ── Faucet ───────────────────────────────────────────────────────────────────
+
+const CLAIM = {
+  claim_id: PROPOSAL, agent_id: COLL, wallet_id: COLL, amount: 25, balance: 25,
+  claim_day: "2026-10-15", next_claim_at: "2026-10-16T00:00:00+00:00", transaction_id: PROPOSAL,
+};
+
+/** A fetch stub that answers each call from `replies` in turn (with headers). */
+function scripted(replies: { status?: number; body?: unknown; headers?: Record<string, string> }[]) {
+  const seen: Seen[] = [];
+  const fetch = (async (input: string, init: RequestInit = {}) => {
+    const url = new URL(input);
+    seen.push({
+      method: init.method ?? "GET",
+      path: url.pathname + url.search,
+      auth: new Headers(init.headers).get("Authorization"),
+      body: init.body === undefined ? undefined : JSON.parse(init.body as string),
+    });
+    const r = replies[Math.min(seen.length - 1, replies.length - 1)]!;
+    return new Response(r.body === undefined ? null : JSON.stringify(r.body), {
+      status: r.status ?? 200,
+      headers: r.headers,
+    });
+  }) as typeof globalThis.fetch;
+  const agent = new AgentX({ accessToken: "tok", agentDid: DID, baseUrl: BASE, fetch });
+  return { agent, seen };
+}
+
+test("wallet.claimFaucet posts an empty body, authenticated, and returns the claim", async () => {
+  const { agent, seen } = scripted([{ body: CLAIM }]);
+  const claim = await agent.wallet.claimFaucet();
+  assert.equal(claim.amount, 25);
+  assert.equal(claim.balance, 25);
+  assert.deepEqual(
+    seen.map((s) => [s.method, s.path, s.body, s.auth]),
+    [["POST", "/wallets/faucet", {}, "Bearer tok"]],
+  );
+});
+
+test("wallet.claimFaucet never names an agent in the request", async () => {
+  const { agent, seen } = scripted([{ body: CLAIM }]);
+  await agent.wallet.claimFaucet();
+  assert.ok(!JSON.stringify(seen[0]!.body).includes("did:"));
+  assert.ok(!seen[0]!.path.includes("did"));
+});
+
+test("a claim already made today is FaucetRefusedError with reason, time and wait; no retry", async () => {
+  const detail = {
+    reason: "already_claimed",
+    message: "Already claimed today.",
+    next_claim_at: "2026-10-16T00:00:00+00:00",
+  };
+  const { agent, seen } = scripted([{ status: 429, body: { detail }, headers: { "Retry-After": "3600" } }]);
+  const err = await agent.wallet.claimFaucet().then(
+    () => assert.fail("expected a refusal"),
+    (e: unknown) => e,
+  );
+  assert.ok(err instanceof FaucetRefusedError);
+  assert.ok(err instanceof AgentXError);
+  assert.equal(err.reason, "already_claimed");
+  assert.equal(err.message, "Already claimed today.");
+  assert.equal(err.nextClaimAt, "2026-10-16T00:00:00+00:00");
+  assert.equal(err.retryAfter, 3600);
+  assert.equal(err.status, 429);
+  assert.equal(seen.length, 1);
+});
+
+test("faucet refusals keep their reason for 409 and 403 too", async () => {
+  for (const [status, reason] of [[409, "balance_ceiling"], [403, "not_active"], [429, "dry"], [429, "too_young"]] as const) {
+    const { agent } = scripted([{ status, body: { detail: { reason, message: "no", next_claim_at: null } } }]);
+    await assert.rejects(agent.wallet.claimFaucet(), (e: unknown) => {
+      assert.ok(e instanceof FaucetRefusedError);
+      assert.equal(e.reason, reason);
+      assert.equal(e.nextClaimAt, null);
+      assert.equal(e.status, status);
+      return true;
+    });
+  }
+});
+
+test("the faucet switched off (404) is FaucetRefusedError 'unavailable'", async () => {
+  const { agent } = scripted([{ status: 404, body: { detail: "Not Found" } }]);
+  await assert.rejects(agent.wallet.claimFaucet(), (e: unknown) => {
+    assert.ok(e instanceof FaucetRefusedError);
+    assert.equal(e.reason, "unavailable");
+    assert.equal(e.status, 404);
+    return true;
+  });
+});
+
+test("other faucet failures keep their own error type", async () => {
+  const cases = [
+    [{ status: 500, body: { detail: "boom" } }, ServerError],
+    [{ status: 429, body: { detail: "Too many requests" } }, RateLimitError],
+    [{ status: 422, body: { detail: [{ loc: ["body"], msg: "bad" }] } }, ValidationError],
+  ] as const;
+  for (const [reply, type] of cases) {
+    const { agent } = scripted([reply]);
+    await assert.rejects(agent.wallet.claimFaucet(), (e: unknown) => {
+      assert.ok(e instanceof type);
+      assert.ok(!(e instanceof FaucetRefusedError));
+      return true;
+    });
+  }
+});
+
+// ── Transfers, ledger, stakes ───────────────────────────────────────────────
+
+const OTHER = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+
+test("wallet.transfer looks a DID up and sends agentx-py's body", async () => {
+  const { agent, seen } = scripted([
+    { body: { ...WALLET, agent_id: OTHER } },
+    { body: { transaction_id: PROPOSAL, amount: 5, type: "payment" } },
+  ]);
+  await agent.wallet.transfer("did:agentx:bruno", 5);
+  assert.deepEqual(
+    seen.map((s) => [s.method, s.path, s.body]),
+    [
+      ["GET", "/wallets/by-did?agent_did=did%3Aagentx%3Abruno", undefined],
+      ["POST", "/wallets/transfer", { to_id: OTHER, amount: 5, type: "payment" }],
+    ],
+  );
+});
+
+test("wallet.transfer to a UUID skips the lookup; type is passed through", async () => {
+  const { agent, seen } = scripted([{ body: { transaction_id: PROPOSAL } }]);
+  await agent.wallet.transfer(OTHER.toUpperCase(), 3, { type: "tip" });
+  assert.deepEqual(seen.map((s) => [s.method, s.path, s.body]), [
+    ["POST", "/wallets/transfer", { to_id: OTHER, amount: 3, type: "tip" }],
+  ]);
+});
+
+test("wallet.transfer to an agent without a wallet is NotFoundError, nothing sent", async () => {
+  const { agent, seen } = scripted([{ status: 404, body: { detail: "No wallet" } }]);
+  await assert.rejects(agent.wallet.transfer("did:agentx:ghost", 5), NotFoundError);
+  assert.equal(seen.length, 1);
+});
+
+test("wallet.transactions finds this agent's UUID once, then reads the ledger", async () => {
+  const { agent, seen } = scripted([{ body: WALLET }, { body: [{ transaction_id: PROPOSAL }] }]);
+  const first = await agent.wallet.transactions();
+  await agent.wallet.transactions({ limit: 10 });
+  assert.equal(first.length, 1);
+  assert.deepEqual(seen.map((s) => s.path), [
+    "/wallets/by-did?agent_did=did%3Aagentx%3Aatlas",
+    `/wallets/${COLL}/transactions?limit=50`,
+    `/wallets/${COLL}/transactions?limit=10`,
+  ]);
+});
+
+test("wallet.transactions opens an empty wallet when the agent has none", async () => {
+  const { agent, seen } = scripted([
+    { status: 404, body: { detail: "No wallet" } },
+    { body: WALLET },
+    { body: { items: [] } },
+  ]);
+  assert.deepEqual(await agent.wallet.transactions(), []);
+  assert.deepEqual(seen.map((s) => [s.method, s.path, s.body]), [
+    ["GET", "/wallets/by-did?agent_did=did%3Aagentx%3Aatlas", undefined],
+    ["POST", "/wallets", { initial_balance: 0 }],
+    ["GET", `/wallets/${COLL}/transactions?limit=50`, undefined],
+  ]);
+});
+
+test("a faucet claim teaches the wallet its UUID", async () => {
+  const { agent, seen } = scripted([{ body: CLAIM }, { body: [] }]);
+  await agent.wallet.claimFaucet();
+  await agent.wallet.transactions();
+  assert.deepEqual(seen.map((s) => s.path), ["/wallets/faucet", `/wallets/${COLL}/transactions?limit=50`]);
+});
+
+test("wallet.stake, releaseStake and stakes use agentx-py's routes and bodies", async () => {
+  const { agent, seen } = scripted([{ body: { stake_id: PROPOSAL } }, { body: { stake_id: PROPOSAL } },
+    { body: WALLET }, { body: WALLET }, { body: [] }]);
+  await agent.wallet.stake(10);
+  await agent.wallet.stake(10, { lockedUntil: new Date("2026-12-31T00:00:00Z") });
+  await agent.wallet.releaseStake(PROPOSAL);
+  assert.deepEqual(await agent.wallet.stakes(), []);
+  assert.deepEqual(seen.map((s) => [s.method, s.path, s.body]), [
+    ["POST", "/stakes", { amount: 10 }],
+    ["POST", "/stakes", { amount: 10, locked_until: "2026-12-31T00:00:00.000Z" }],
+    ["POST", `/stakes/${PROPOSAL}/release`, {}],
+    ["GET", "/wallets/by-did?agent_did=did%3Aagentx%3Aatlas", undefined],
+    ["GET", `/stakes/${COLL}`, undefined],
+  ]);
+});
+
+test("wallet.releaseStake refuses an id with a slash before any request", async () => {
+  const { agent, seen } = scripted([{ body: WALLET }]);
+  await assert.rejects(async () => agent.wallet.releaseStake("../wallets/x"));
+  assert.equal(seen.length, 0);
 });
 
 // ── Governance ───────────────────────────────────────────────────────────────

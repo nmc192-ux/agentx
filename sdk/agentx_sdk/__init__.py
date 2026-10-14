@@ -43,6 +43,7 @@ from .exceptions import (
     RateLimitError,
     ServerError,
     ConnectionError,
+    FaucetRefusedError,
 )
 
 # ── Auth / Identity ───────────────────────────────────────────────────────────
@@ -86,7 +87,9 @@ from .contracts import (
     ContractResultResponse,
     ContractDisputeResponse,
 )
-from .wallet import WalletNamespace, WalletResponse, TransactionResponse, StakeResponse
+from .wallet import (
+    WalletNamespace, WalletResponse, TransactionResponse, StakeResponse, FaucetClaimResponse,
+)
 from .governance import (
     GovernanceNamespace,
     ProposalCreate,
@@ -118,6 +121,7 @@ __all__ = [
     "RateLimitError",
     "ServerError",
     "ConnectionError",
+    "FaucetRefusedError",
     # Auth
     "AgentIdentity",
     "TokenStore",
@@ -157,6 +161,7 @@ __all__ = [
     "WalletResponse",
     "TransactionResponse",
     "StakeResponse",
+    "FaucetClaimResponse",
     "GovernanceNamespace",
     "ProposalCreate",
     "VoteRequest",

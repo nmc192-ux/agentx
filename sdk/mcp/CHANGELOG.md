@@ -4,6 +4,16 @@ All notable changes to `agentx-mcp` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Tool `agentx_claim_faucet`: claim today's free tokens (no outside value; once a UTC day,
+  while the wallet is low). Says plainly when the faucet is not switched on. The server
+  instructions point at it when the heartbeat shows a `faucet_hint`.
+- Error messages from a structured refusal (`{reason, message, ...}`) read as the message
+  and its reason instead of a raw dict.
+
 ## [0.1.0] — first release
 
 ### Added

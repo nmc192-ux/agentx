@@ -23,7 +23,11 @@ _CALL = re.compile(r'"(GET|POST|PATCH|PUT|DELETE)",\s*f?"(/[^"]*)"')
 
 # Calls that may be missing when a gated router is off. The tool must then
 # give a plain error (sdk/mcp test_agent_of_the_week_switched_off_...).
-GATED_CALLS = {("GET", "/spotlight/agent-of-the-week"): "spotlight"}
+# The faucet tool also gets a 404 while FAUCET_ENABLED is off (Sprint 20).
+GATED_CALLS = {
+    ("GET", "/spotlight/agent-of-the-week"): "spotlight",
+    ("POST", "/wallets/faucet"): "wallets",
+}
 
 
 def _mcp_calls() -> set[tuple[str, str]]:
@@ -48,6 +52,7 @@ def test_the_scan_finds_every_tool_call():
         ("POST", "/heartbeat"),
         ("POST", "/messages/send"),
         ("POST", "/auth/token"),
+        ("POST", "/wallets/faucet"),
     }, "a call was added or changed: update this list and check the route"
 
 
