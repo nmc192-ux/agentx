@@ -50,6 +50,7 @@ need_src() { [[ -n "$SRC_HOST" ]] || { echo "no POSTGRES_HOST in settings.env (a
 RESTORE_TEST_DB="${RESTORE_TEST_DB:-agentx_restore_test}"
 MAX_BACKUP_AGE_H="${MAX_BACKUP_AGE_H:-26}"
 RESTORE_MIN_SHARE="${RESTORE_MIN_SHARE:-50}"   # backup must hold >= this % of the live rows
+RESTORE_DISK_FACTOR="${RESTORE_DISK_FACTOR:-10}"   # data disk must have >= this x the dump's size free
 
 pg() {  # run a command inside the running db container (VPS side)
   if [[ "${PG_RUN:-container}" == native ]]; then
@@ -144,11 +145,16 @@ cmd_check() {
   echo "OK"
 }
 
+# A dump that died halfway (power, OOM, kill) leaves a .part file that nothing else deletes
+# and that the retention loop never counts; sweep the stale ones before writing a new dump.
+sweep_parts() { find "$BACKUP_DIR" -maxdepth 1 -name '*.dump.part' -mmin +1440 -delete 2>/dev/null || true; }
+
 cmd_dump() {
   need_src
   local stamp file
   stamp="$(date -u +%Y%m%d-%H%M%S)"
   mkdir -p "$BACKUP_DIR"
+  sweep_parts
   file="$BACKUP_DIR/neon-$stamp.dump"
   umask 077
   src pg_dump -Fc --no-owner --no-privileges > "$file.part"
@@ -194,6 +200,7 @@ cmd_backup() {
   stamp="$(date -u +%Y%m%d-%H%M%S)"
   mkdir -p "$BACKUP_DIR"
   file="$BACKUP_DIR/agentx-$stamp.dump"
+  sweep_parts
   umask 077
   dst pg_dump -Fc < /dev/null > "$file.part"
   pg pg_restore --list < "$file.part" > /dev/null
@@ -210,9 +217,10 @@ cmd_backup() {
 # live database -> throwaway dropped (also on failure). The live database is only read.
 # Any failure prints one "ALERT: ..." line on stderr and exits 1; the result is also written to
 # $BACKUP_DIR/restore-test.status ("ok|fail <utc time> <detail>") for the watchdog (LR-3).
-restore_status() {  # restore_status ok|fail DETAIL
+restore_status() {  # restore_status ok|fail DETAIL (written whole, then renamed: the watchdog never sees a half line)
   mkdir -p "$BACKUP_DIR"
-  printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$BACKUP_DIR/restore-test.status"
+  printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$BACKUP_DIR/restore-test.status.tmp" \
+    && mv -f "$BACKUP_DIR/restore-test.status.tmp" "$BACKUP_DIR/restore-test.status"
 }
 
 RT_REPORTED=""
@@ -238,6 +246,27 @@ drop_test_db() {
 
 total_rows() { awk -F'|' '$1 != "alembic_version" {s += $2} END {print s + 0}'; }
 
+# data_disk_short FILE -> a reason when the server's data disk may not hold a restored copy of
+# FILE (a compressed dump unpacks to several times its size, plus WAL), empty when there is room.
+# The throwaway copy lives on the same disk as the live database; filling it would stop the live
+# database, so the test refuses instead. If the free space cannot be read the guard stands aside
+# (the watchdog's disk check still applies) and says so.
+data_disk_short() {
+  local datadir free need
+  datadir="$(dst psql -X -At -c 'SHOW data_directory' 2>/dev/null || true)"
+  free="$([[ -n "$datadir" ]] && pg df -Pk "$datadir" 2>/dev/null | awk 'NR == 2 {print $4}' || true)"
+  if ! [[ "$free" =~ ^[0-9]+$ ]]; then
+    echo "note: could not read the free space of the data disk; restoring without that check" >&2
+    return 0
+  fi
+  need=$(( $(wc -c < "$1" | tr -d ' ') * RESTORE_DISK_FACTOR / 1024 ))
+  if (( free < need )); then
+    printf '%s KB free on the data disk, %s KB wanted (%s x the dump; RESTORE_DISK_FACTOR)' \
+      "$free" "$need" "$RESTORE_DISK_FACTOR"
+  fi
+  return 0
+}
+
 cmd_restore_test() {
   local file live a b
   # The name goes into SQL unquoted, and must never be the live database.
@@ -261,13 +290,20 @@ cmd_restore_test() {
   fi
   pg pg_restore --list < "$file" > /dev/null 2>&1 \
     || { restore_fail "newest backup $file is not a readable dump (corrupt or cut short)"; return 1; }
+  local short
+  short="$(data_disk_short "$file")"
+  [[ -z "$short" ]] || { restore_fail "not enough free disk for a restored copy: $short"; return 1; }
 
   trap restore_test_exit EXIT
   drop_test_db
   dst psql -X -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE $RESTORE_TEST_DB" > /dev/null
-  tst sh -c 'exec pg_restore --no-owner --no-privileges --single-transaction --exit-on-error \
-      -d "$PGDATABASE"' < "$file" > /dev/null 2>&1 \
-    || { restore_fail "pg_restore of $file stopped with an error"; return 1; }
+  # Only pg_restore's complaints are kept (stderr); the first one goes into the alert.
+  local err
+  if ! err="$(tst sh -c 'exec pg_restore --no-owner --no-privileges --single-transaction --exit-on-error \
+      -d "$PGDATABASE"' < "$file" 2>&1 > /dev/null)"; then
+    restore_fail "pg_restore of $file stopped: $(printf '%s\n' "$err" | grep -m1 'error' | cut -c1-160)"
+    return 1
+  fi
 
   a="$(counts tst)"
   b="$(counts dst)"

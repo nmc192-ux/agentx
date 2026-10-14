@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -364,6 +365,97 @@ def test_restore_test_never_targets_the_live_database(live_with_backup):
 def test_restore_test_fails_on_another_migration_version(live_with_backup):
     _pg("-c", "UPDATE alembic_version SET version_num = 'zzz_newer'", db=DST_DB)
     _assert_alert(run(live_with_backup, "restore-test"), "migration version")
+
+
+# ── LR-6a: sprint-close review of restore-test (adversarial) ─────────────────────────
+
+
+def _no_tmp_status(workdir: Path) -> None:
+    assert not (workdir / "backups" / "restore-test.status.tmp").exists()
+
+
+def test_restore_test_refuses_when_the_data_disk_is_short(live_with_backup):
+    """The throwaway copy shares the live cluster's disk: filling it would stop the live database,
+    so a dump that would not fit (factor pushed absurdly high) is refused before anything is created."""
+    workdir = live_with_backup
+    if _pg("-c", "SHOW data_directory") == "":
+        pytest.skip("cannot read data_directory here")
+    live_before = _pg("-c", "SELECT count(*) FROM agents", db=DST_DB)
+    result = run(workdir, "restore-test", RESTORE_DISK_FACTOR="1000000000")
+    _assert_alert(result, "not enough free disk")
+    assert "KB free on the data disk" in result.stderr and "RESTORE_DISK_FACTOR" in result.stderr
+    assert _status(workdir).startswith("fail ") and "not enough free disk" in _status(workdir)
+    _no_tmp_status(workdir)
+    assert _pg("-c", "SELECT count(*) FROM agents", db=DST_DB) == live_before
+    # The default factor lets a small dump through, and the guard stands aside (with a note)
+    # when the free space cannot be read instead of blocking the test.
+    assert run(workdir, "restore-test").returncode == 0
+    fake = workdir / "bin"
+    fake.mkdir()
+    (fake / "df").write_text("#!/bin/sh\nexit 1\n")
+    (fake / "df").chmod(0o755)
+    result = run(workdir, "restore-test", PATH=f"{fake}:{os.environ['PATH']}")
+    assert result.returncode == 0, result.stderr
+    assert "could not read the free space" in result.stderr
+
+
+def test_restore_test_alert_names_the_pg_restore_error(live_with_backup):
+    """A dump whose data blocks are damaged still passes `pg_restore --list` (the table of contents
+    is at the front), so the real restore is what fails; the alert must carry pg_restore's own
+    words, not just 'an error'."""
+    workdir = live_with_backup
+    newest = _newest_backup(workdir)
+    data = bytearray(newest.read_bytes())
+    data[-4096:] = b"\0" * 4096
+    newest.write_bytes(bytes(data))
+    assert subprocess.run(["pg_restore", "--list", str(newest)], capture_output=True).returncode == 0
+    result = run(workdir, "restore-test")
+    _assert_alert(result, "pg_restore of ")
+    assert "stopped: pg_restore: error:" in result.stderr, result.stderr
+    assert "stopped: pg_restore: error:" in _status(workdir)
+    _no_tmp_status(workdir)
+
+
+def test_restore_test_status_is_written_whole(live_with_backup):
+    """ok and fail results both land by rename, so the watchdog never reads a half-written line."""
+    workdir = live_with_backup
+    assert run(workdir, "restore-test").returncode == 0
+    assert _status(workdir).startswith("ok ") and _status(workdir).endswith("rows\n")
+    _no_tmp_status(workdir)
+    _assert_alert(run(workdir, "restore-test", RESTORE_TEST_DB="postgres"), "refusing")
+    assert _status(workdir).startswith("fail ") and _status(workdir).count("\n") == 1
+    _no_tmp_status(workdir)
+
+
+def test_restore_test_ignores_part_files_and_neon_dumps(live_with_backup):
+    """A dump still being written (or left behind by a crash) and the one-off Neon copies are never
+    taken for 'the newest nightly backup', however new they are."""
+    workdir = live_with_backup
+    backups = workdir / "backups"
+    (backups / "agentx-29990101-000000.dump.part").write_bytes(b"half written")
+    (backups / "neon-29990101-000000.dump").write_bytes(b"not a nightly")
+    result = run(workdir, "restore-test")
+    assert result.returncode == 0, result.stderr
+    assert "agentx-29990101" not in result.stdout and "neon-" not in result.stdout
+
+
+def test_backup_sweeps_stale_part_files_only(live_with_backup):
+    """A .part older than a day is debris from a dump that died; a fresh one may still be in flight."""
+    workdir = live_with_backup
+    backups = workdir / "backups"
+    stale = backups / "agentx-20200101-000000.dump.part"
+    fresh = backups / "agentx-29990101-000000.dump.part"
+    stale.write_bytes(b"x" * 10)
+    fresh.write_bytes(b"x" * 10)
+    old = stale.stat().st_mtime - 2 * 24 * 3600
+    os.utime(stale, (old, old))
+    before = len(list(backups.glob("agentx-*.dump")))
+    time.sleep(1.1)   # backup names carry the second; the fixture's backup may share this one
+    result = run(workdir, "backup")
+    assert result.returncode == 0, result.stderr
+    assert not stale.exists() and fresh.exists()
+    assert len(list(backups.glob("agentx-*.dump"))) == before + 1
+    fresh.unlink()
 
 
 if __name__ == "__main__":

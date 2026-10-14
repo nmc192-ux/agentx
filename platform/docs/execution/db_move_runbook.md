@@ -121,7 +121,10 @@ compares its tables, migration version and row counts with the live database, an
 again. It only reads the live database. If the backup is missing, empty, unreadable, older than
 26 hours, from another migration version, or holds under half the live rows, it writes a line
 starting `ALERT:` to the log and `fail …` to `/var/backups/agentx/restore-test.status` (the
-watchdog reads that file and pings your phone). Run it by hand any time:
+watchdog reads that file and pings your phone). It also refuses, with the same alert, when the
+disk holding the database has less than ten times the dump's size free (the restored copy
+shares that disk with the live database; `RESTORE_DISK_FACTOR=5` on the cron line lowers the
+margin if the VPS disk is small). Run it by hand any time:
 `bash db_move.sh restore-test`; you must see `OK: restore-test agentx-<time>.dump: …`.
 Until the switch it backs up and restores an empty database, which is harmless.
 
