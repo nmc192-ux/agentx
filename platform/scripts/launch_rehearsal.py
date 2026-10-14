@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""
+Launch rehearsal from an empty database (Sprint 19, step LR-1). LOCAL ONLY.
+═══════════════════════════════════════════════════════════════════════════
+
+Plays 1 Nov on this machine, natively (no Docker daemon here), in the order the
+VPS will see it:
+
+  1. Rebuilds the scratch database (init-db.sql → alembic head, as every smoke
+     script does). init-db.sql is what puts the eight founders in; the check is
+     that every DID of the founder roster is there and ACTIVE.
+  2. Starts the API with the VPS settings: no Redis (``REDIS_URL=memory://``,
+     RF-1), in-process cache on, founder heartbeat and Agent of the week on,
+     template founders (no LLM key).
+  3. Runs ``python -m src.jobs.scheduler --once``: every job must finish ``ok``
+     with no errors in its summary. Then starts the scheduler's normal loop and
+     leaves it running while the agents join (at least ``--loop-seconds``); it
+     must still be alive, log no traceback and stop cleanly on SIGTERM.
+  4. An outside agent joins five ways, and each one posts and finds its post in
+     the global feed:
+       join-page   the one-line instruction on ``/join`` ("Read <API>/.well-known/
+                   skill.md and follow it"): skill.md fetched as served, its
+                   onboard / post / feed curl blocks run as written
+       skill       the OpenClaw / Hermes skill ``skills/agentx/SKILL.md``
+       mcp         ``sdk/mcp`` over stdio (sdk/mcp/scripts/stdio_journey.py)
+       python-sdk  ``sdk/`` built as a wheel, the quickstart's Python block
+       ts-sdk      ``sdk/ts`` packed, the quickstart's TypeScript block
+
+Refuses any database host that is not this machine and any database name that
+does not start with ``agentx_smoke``, before touching anything. Exit code 0 when
+everything passed, 1 when a check failed, 2 when it refused or the stack would
+not start.
+
+Usage (from ``platform/``):
+
+    .venv/bin/python scripts/launch_rehearsal.py
+    .venv/bin/python scripts/launch_rehearsal.py --only join-page,mcp --loop-seconds 30
+"""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+from pathlib import Path
+from typing import Callable
+
+import httpx
+
+PLATFORM_DIR = Path(__file__).resolve().parent.parent
+REPO_DIR = PLATFORM_DIR.parent
+JOIN_PAGE = REPO_DIR / "ui" / "app" / "join" / "page.tsx"
+MCP_DIR = REPO_DIR / "sdk" / "mcp"
+sys.path.insert(0, str(PLATFORM_DIR))
+
+
+def _load(name: str):
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, PLATFORM_DIR / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+sim = _load("simulate_heartbeat")
+smoke = sim.smoke
+
+DB_NAME = f"{smoke.DB_PREFIX}_launch"
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+JOINS = ("join-page", "skill", "mcp", "python-sdk", "ts-sdk")
+FENCE = re.compile(r"```bash\n(.*?)```", re.S)
+
+
+# ── Guards and settings ───────────────────────────────────────────────────────
+
+def refuse_target(db: str, host: str) -> str | None:
+    """Why this target is refused, or None. Only a scratch database on this machine."""
+    if host not in LOCAL_HOSTS:
+        return f"database host {host!r} is not this machine (allowed: {sorted(LOCAL_HOSTS)})"
+    if not db.startswith(smoke.DB_PREFIX):
+        return f"database {db!r}: name must start with {smoke.DB_PREFIX!r}"
+    return None
+
+
+def launch_env(db: str) -> dict[str, str]:
+    """The API's and scheduler's environment: localhost only, VPS feature flags."""
+    env = {k: v for k, v in sim.local_env().items()
+           if k not in ("PLATFORM_BASE_URL", "AGENTX_BASE_URL", "LOCAL_CACHE")
+           and not k.startswith(("ANTHROPIC_", "OPENAI_", "PUBLIC_LIST_", "AUTH_LIST_"))}
+    return {
+        **env,
+        "POSTGRES_DB": db,
+        "REDIS_URL": "memory://",          # the VPS runs without Redis (RF-1)
+        "FOUNDER_HEARTBEAT_ENABLED": "true",
+        "AGENT_OF_WEEK_ENABLED": "true",
+        "FOUNDER_LLM_PROVIDER": "",        # template founders, no key needed
+        "RATE_LIMIT_MODE": "log",          # one machine plays every caller
+        "PYTHONWARNINGS": "ignore",
+    }
+
+
+def _psql(db: str, env: dict[str, str], query: str) -> list[list[str]]:
+    pg_env = {**os.environ, "PGHOST": smoke.DB_HOST, "PGPORT": env["POSTGRES_PORT"],
+              "PGUSER": env["POSTGRES_USER"]}
+    out = subprocess.run(["psql", "-d", db, "-At", "-F", "\t", "-v", "ON_ERROR_STOP=1", "-c", query],
+                         env=pg_env, capture_output=True, text=True, check=True).stdout
+    return [line.split("\t") for line in out.splitlines() if line]
+
+
+class Results:
+    def __init__(self) -> None:
+        self.rows: list[tuple[bool, str, str]] = []
+
+    def add(self, ok: bool, label: str, detail: str = "") -> bool:
+        self.rows.append((ok, label, detail))
+        print(f"{'PASS' if ok else 'FAIL'}  {label:<20} {detail}", flush=True)
+        return ok
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.rows) and all(r[0] for r in self.rows)
+
+
+# ── Founders and scheduler ────────────────────────────────────────────────────
+
+def check_founders(db: str, env: dict[str, str], res: Results) -> None:
+    from src.founders.roster import founder_roster
+
+    dids = sorted(founder_roster("", "development").values())
+    rows = _psql(db, env, "SELECT agent_did FROM agents WHERE status = 'ACTIVE' AND agent_did IN ("
+                 + ",".join(f"'{d}'" for d in dids) + ")")
+    missing = sorted(set(dids) - {r[0] for r in rows})
+    res.add(not missing, "founders", f"{len(dids) - len(missing)}/{len(dids)} active"
+            + (f", missing {missing}" if missing else ""))
+
+
+def job_problems(rows: list[list[str]], expected: list[str]) -> list[str]:
+    """What is wrong with ``scheduler_job_runs`` rows (job, status, summary JSON)."""
+    seen = {r[0]: r for r in rows}
+    problems = [f"{name}: never ran" for name in expected if name not in seen]
+    for name in expected:
+        if name not in seen:
+            continue
+        _, status, summary = seen[name]
+        if status != "ok":
+            problems.append(f"{name}: {status} {summary}")
+            continue
+        data = json.loads(summary or "{}")
+        errors = {k: v for k, v in data.items()
+                  if k in ("error", "errors", "trust_errors") and v} if isinstance(data, dict) else {}
+        if errors:
+            problems.append(f"{name}: {errors}")
+        elif isinstance(data, dict) and data.get("skipped"):   # e.g. switched off
+            problems.append(f"{name}: skipped ({data['skipped']})")
+    return problems
+
+
+def run_scheduler_once(db: str, env: dict[str, str], res: Results, log: Path) -> None:
+    from src.jobs.scheduler import JOBS
+
+    with open(log, "w") as fh:
+        done = subprocess.run([sys.executable, "-m", "src.jobs.scheduler", "--once"],
+                              cwd=PLATFORM_DIR, env=env, stdout=fh, stderr=subprocess.STDOUT,
+                              timeout=900)
+    rows = _psql(db, env, "SELECT job_name, last_status, last_summary::text FROM scheduler_job_runs")
+    problems = job_problems(rows, [j.name for j in JOBS])
+    if done.returncode != 0:
+        problems.insert(0, f"exit {done.returncode} (log: {log})")
+    res.add(not problems, "scheduler --once",
+            "; ".join(problems) if problems else f"{len(JOBS)} jobs ok: " + ", ".join(j.name for j in JOBS))
+
+
+def stop_scheduler_loop(proc: subprocess.Popen, started: float, need: float, log: Path,
+                        res: Results) -> None:
+    remaining = need - (time.monotonic() - started)
+    if remaining > 0:
+        print(f"• letting the scheduler loop run {remaining:.0f}s more", flush=True)
+        time.sleep(remaining)
+    alive = proc.poll() is None
+    ran = time.monotonic() - started
+    if alive:
+        proc.send_signal(signal.SIGTERM)
+        try:
+            code = proc.wait(60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            code = "hung"
+    else:
+        code = proc.returncode
+    text = log.read_text(errors="replace")
+    traceback = "Traceback" in text
+    ok = alive and code == 0 and not traceback
+    res.add(ok, "scheduler loop",
+            f"ran {ran:.0f}s, {'alive' if alive else 'DIED'}, SIGTERM exit {code}"
+            + (f", traceback in {log}" if traceback else ""))
+
+
+# ── The five joins ────────────────────────────────────────────────────────────
+
+def join_instruction_url(base: str, page: Path = JOIN_PAGE) -> str:
+    """The URL the /join page tells an agent to read, with this run's API base."""
+    text = page.read_text(encoding="utf-8")
+    skill = re.search(r"const SKILL_URL = `\$\{API_BASE\}(/[^`]+)`", text)
+    tell = re.search(r"const TELL_AGENT = `Read \$\{SKILL_URL\} and follow it", text)
+    if not (skill and tell):
+        raise RuntimeError(f"{page}: the one-line instruction (TELL_AGENT / SKILL_URL) moved")
+    return base + skill.group(1)
+
+
+def quickstart_blocks(skill_md: str, base: str) -> dict[str, str]:
+    """skill.md's onboard, create-post and read-feed curl blocks. Every URL in them
+    must be on *base*: this never follows a document to another host."""
+    blocks: dict[str, str] = {}
+    for block in FENCE.findall(skill_md):
+        for url in re.findall(r"curl -s (?:-X \w+ )?\"?(\S+?)[\"\s]", block):
+            if not url.startswith(base + "/"):
+                raise RuntimeError(f"skill.md sends the agent to {url!r}, not {base}")
+        if f"{base}/onboard " in block and "onboard" not in blocks:
+            blocks["onboard"] = block
+        elif f"-X POST {base}/posts " in block and "post" not in blocks:
+            blocks["post"] = block
+        elif f"{base}/feed/global" in block and "feed" not in blocks:
+            blocks["feed"] = block
+    missing = {"onboard", "post", "feed"} - blocks.keys()
+    if missing:
+        raise RuntimeError(f"skill.md has no {sorted(missing)} block")
+    return blocks
+
+
+def _bash_json(block: str) -> object:
+    done = subprocess.run(["bash", "-euc", block], capture_output=True, text=True, timeout=60,
+                          env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin"})
+    if done.returncode != 0:
+        raise RuntimeError(f"block failed ({done.returncode}): {done.stderr.strip()}")
+    return json.loads(done.stdout)
+
+
+def _feed_ids(feed: object) -> set[str]:
+    items = feed if isinstance(feed, list) else (feed.get("posts") or feed.get("items") or [])
+    return {p.get("post_id") for p in items}
+
+
+def join_page(base: str, work: Path) -> str:
+    url = join_instruction_url(base)
+    doc = httpx.get(url, timeout=10)
+    doc.raise_for_status()
+    blocks = quickstart_blocks(doc.text, base)
+    name = f"JoinPage{uuid.uuid4().hex[:6]}"
+    joined = _bash_json(blocks["onboard"].replace("YourAgent", name))
+    token, first = joined.get("token"), joined.get("post_id")
+    if not (token and first):
+        raise RuntimeError(f"onboard answered {joined}")
+    post = _bash_json(blocks["post"].replace("<your-token>", token)
+                      .replace("<your-name>", name)
+                      .replace("What I did today...", f"Rehearsal post {uuid.uuid4().hex[:8]}"))
+    if not post.get("post_id"):
+        raise RuntimeError(f"post answered {post}")
+    # limit=10 as written; on a fresh network the founders' posts can outrank ours.
+    feed = _bash_json(blocks["feed"].replace("<your-token>", token).replace("limit=10", "limit=50"))
+    if not {first, post["post_id"]} <= _feed_ids(feed):
+        raise RuntimeError("the onboard post or the new post is not in the global feed")
+    return f"{joined['agent_did']} read {url[len(base):]}, onboarded, posted, both posts on the feed"
+
+
+def join_skill(base: str, work: Path) -> str:
+    skill = _load("skill_live_check")
+    blocks = skill._blocks()
+    home = work / "home"
+    home.mkdir()
+    me = skill._join(blocks, base, home, f"SkillAgent{uuid.uuid4().hex[:6]}")
+    run_env = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(home), "AGENTX_URL": base,
+               "AGENTX_DID": me["agent_did"], "AGENTX_TOKEN": me["token"],
+               "AGENTX_REFRESH_TOKEN": me["refresh_token"]}
+    post = skill._run(blocks["/posts"], run_env)
+    if not post.get("post_id"):
+        raise RuntimeError(f"post answered {post}")
+    if post["post_id"] not in _feed_ids(skill._run(blocks["/feed/global"], run_env)):
+        raise RuntimeError("the skill's post is not in the global feed")
+    return f"{me['agent_did']} joined by SKILL.md, posted, post on the feed"
+
+
+def join_mcp(base: str, work: Path) -> str:
+    python = MCP_DIR / ".venv" / "bin" / "python"
+    if not python.exists():
+        raise RuntimeError(f"{python} missing: cd sdk/mcp && python -m venv .venv && .venv/bin/pip install -e .")
+    done = subprocess.run([str(python), str(MCP_DIR / "scripts" / "stdio_journey.py"), base],
+                          capture_output=True, text=True, timeout=180)
+    if done.returncode != 0:
+        raise RuntimeError(f"stdio journey exit {done.returncode}:\n{done.stdout}\n{done.stderr}")
+    return "agentx-mcp over stdio: join, post, read back, heartbeat"
+
+
+def _sdk_env(work: Path) -> dict[str, str]:
+    clean = {k: v for k, v in os.environ.items()
+             if not k.startswith(("POSTGRES_", "REDIS_", "VIRTUAL_ENV", "PYTHON"))}
+    return {**clean, "PIP_DISABLE_PIP_VERSION_CHECK": "1", "npm_config_audit": "false",
+            "npm_config_fund": "false", "npm_config_update_notifier": "false"}
+
+
+def join_python_sdk(base: str, work: Path) -> str:
+    cold = _load("cold_quickstart")
+    wheel = cold.build_wheel(work)
+    (work / "py").mkdir()
+    steps = cold.python_path(base, work / "py", _sdk_env(work), cold.sections(), wheel)
+    return f"{wheel.name}: quickstart Python block, post on the feed ({steps.total:.0f}s)"
+
+
+def join_ts_sdk(base: str, work: Path) -> str:
+    cold = _load("cold_quickstart")
+    tarball = cold.pack_ts_sdk(work)
+    (work / "ts").mkdir()
+    steps = cold.ts_path(base, work / "ts", _sdk_env(work), cold.sections(), tarball)
+    return f"{tarball.name}: quickstart TypeScript block, post on the feed ({steps.total:.0f}s)"
+
+
+JOIN_RUNNERS: dict[str, Callable[[str, Path], str]] = {
+    "join-page": join_page, "skill": join_skill, "mcp": join_mcp,
+    "python-sdk": join_python_sdk, "ts-sdk": join_ts_sdk,
+}
+
+
+def run_joins(base: str, names: list[str], res: Results) -> None:
+    for name in names:
+        with tempfile.TemporaryDirectory(prefix=f"agentx_launch_{name}_") as tmp:
+            try:
+                res.add(True, f"join {name}", JOIN_RUNNERS[name](base, Path(tmp)))
+            except (Exception, SystemExit) as exc:  # one failed join must not hide the others
+                res.add(False, f"join {name}", f"{type(exc).__name__}: {str(exc)[:1500]}")
+
+
+def check_new_agents(db: str, env: dict[str, str], res: Results, want: int) -> None:
+    """Agents that are not founders and have at least one post."""
+    from src.founders.roster import founder_roster
+
+    dids = ",".join(f"'{d}'" for d in founder_roster("", "development").values())
+    rows = _psql(db, env, "SELECT count(DISTINCT a.agent_did) FROM agents a "
+                          "JOIN posts p ON p.author_did = a.agent_did "
+                          f"WHERE a.agent_did NOT IN ({dids})")
+    have = int(rows[0][0])
+    res.add(have >= want, "outside posters", f"{have} non-founder agents have posted (want ≥ {want})")
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def parse_args(argv: list[str] | None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Launch rehearsal from an empty local database.")
+    p.add_argument("--db", default=DB_NAME, help=f"scratch database (must start with {smoke.DB_PREFIX!r})")
+    p.add_argument("--pg-host", default=smoke.DB_HOST, help="database host; only this machine is allowed")
+    p.add_argument("--loop-seconds", type=float, default=120.0,
+                   help="minimum time the scheduler loop runs (default 120)")
+    p.add_argument("--only", default=",".join(JOINS),
+                   help=f"comma-separated joins to run (default all: {','.join(JOINS)})")
+    args = p.parse_args(argv)
+    args.joins = [j.strip() for j in args.only.split(",") if j.strip()]
+    unknown = sorted(set(args.joins) - set(JOINS))
+    if unknown:
+        p.error(f"unknown join(s) {unknown}; choose from {list(JOINS)}")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    why = refuse_target(args.db, args.pg_host)
+    if why:
+        sys.stderr.write(f"✗ refusing: {why}\n")
+        return 2
+
+    env = launch_env(args.db)
+    os.environ.update(env)          # in-process imports (roster, JOBS) see the same settings
+    smoke.build_database(args.db, env)
+    res = Results()
+    check_founders(args.db, env, res)
+
+    tmp = Path(tempfile.gettempdir())
+    api_log, once_log, loop_log = (tmp / f"agentx_launch_{n}.log" for n in ("api", "once", "loop"))
+    api, base = smoke.start_server(env, api_log)
+    print(f"• API on {base}, REDIS_URL=memory:// (log: {api_log})", flush=True)
+    loop = None
+    try:
+        run_scheduler_once(args.db, env, res, once_log)
+        loop = subprocess.Popen([sys.executable, "-m", "src.jobs.scheduler"], cwd=PLATFORM_DIR,
+                                env=env, stdout=open(loop_log, "w"), stderr=subprocess.STDOUT)
+        started = time.monotonic()
+        print(f"• scheduler loop started (log: {loop_log})", flush=True)
+        run_joins(base, args.joins, res)
+        stop_scheduler_loop(loop, started, args.loop_seconds, loop_log, res)
+        loop = None
+        # One posting agent per join (the skill join here makes only one, not skill_live_check's two).
+        check_new_agents(args.db, env, res, want=len(args.joins))
+    finally:
+        for proc in (loop, api):
+            if proc is not None and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(20)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+
+    passed = sum(r[0] for r in res.rows)
+    print(f"launch rehearsal: {'PASSED' if res.ok else 'FAILED'} ({passed}/{len(res.rows)} checks)")
+    return 0 if res.ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
