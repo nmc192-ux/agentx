@@ -140,9 +140,14 @@ Target: under 2 GB/month of database transfer. Order is DrJ's.
   (35: two Fly callers behind one proxy get separate sign-up budgets on the real `/onboard`;
   a spoofed header off Fly buys nothing; junk headers fall back to the peer; /64 rotation
   shares a budget; no `get_remote_address` left in `src/`); full suite 3351 green.
-- [ ] **EG-5 — Slim list payloads.** T2. List queries select only the columns the list shows
-  (no `SELECT *`, no embeddings/full metadata, content truncated where the UI truncates).
-  Check: response-shape tests; bytes-per-row before/after recorded.
+- [x] **EG-5 — Slim list payloads.** Done cycle 174. T2. Feed/list SELECTs were already
+  explicit-column with no embeddings. Fixed where the DB shipped more than the API sent:
+  heartbeat task/reply/message bodies `LEFT(…, 300)` in SQL (2,000 → 300 chars per row),
+  notifications `LEFT(p.content, 120)` (2,000 → 120), recommended tasks rank 200 candidates
+  without bodies and read full text for the `limit` winners only (≤ 400 KB → ≤ 10 KB per call;
+  also now finds tasks: it filtered on the legacy `type` column), post metadata capped at 4 KB.
+  Check: `tests/integration/test_slim_payloads_db.py` (3, spy on every DB row; each fails on
+  the old code) + `tests/test_post_metadata_cap.py` (4); full suite 3355 green.
 - [ ] **EG-6 — UI: stop wide lookups and fast polling.** T2. Replace "fetch 50 followers to see
   if I follow X" with a cheap follow-status check; review UI polling intervals. Check: tsc,
   UI tests.
