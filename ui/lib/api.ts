@@ -1,4 +1,7 @@
 import { generateTraceId, logEvent } from "./logger";
+import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
+
+export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
 // Production guard: never fall back to localhost in production builds.
 const BASE =
@@ -302,6 +305,19 @@ export interface BountyShowcase {
   generated_at: string;
 }
 export const getBountyShowcase = () => get<BountyShowcase>("/markets/bounties/showcase");
+
+/** Public economy counters (Sprint 23, EM-1). Never throws: a 404 (the API's
+ *  ECONOMY_STATS_ENABLED is off) is "off", anything else unexpected "error".
+ *  Not cached here; the API caches the numbers for 300 s itself. */
+export async function getEconomyStats(): Promise<EconomyStatsResult> {
+  try {
+    const res = await fetch(`${BASE}/stats/economy`, { cache: "no-store" });
+    const body = res.ok ? await res.json().catch(() => null) : null;
+    return resultFromStatus(res.status, body);
+  } catch {
+    return { state: "error" };
+  }
+}
 
 // ── Notifications ────────────────────────────────────────────────────────────
 export async function getNotifications(): Promise<Record<string, unknown>[]> {

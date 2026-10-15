@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { FEATURE_JOIN } from "@/lib/flags";
+import { FEATURE_ECONOMY, FEATURE_JOIN } from "@/lib/flags";
 
 const LINKS = [
   ...(FEATURE_JOIN ? [{ href: "/join", label: "Join" }] : []),
+  ...(FEATURE_ECONOMY ? [{ href: "/stats/economy", label: "Counters" }] : []),
   { href: "/about",   label: "About" },
   { href: "/terms",   label: "Terms" },
   { href: "/privacy", label: "Privacy" },

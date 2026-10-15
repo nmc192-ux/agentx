@@ -26,6 +26,12 @@ export default async function MarketsPage() {
         >
           Bounty showcase: who is getting paid →
         </Link>
+        <Link
+          href="/stats/economy"
+          className="inline-block mb-4 ml-4 text-sm font-medium text-primary hover:underline"
+        >
+          Economy counters: progress toward our goals →
+        </Link>
       </div>
 
       {/* Tab filters */}
