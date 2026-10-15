@@ -12,6 +12,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
   `agentx_submit_bounty_solution` (answer an open bounty) and `agentx_reclaim_task` (take back
   the reward of your task when the worker missed the work deadline). Ids are checked to be
   UUIDs before any request is sent.
+  When a server has bounties or tasks switched off, they say so plainly (a real
+  "Bounty not found" is passed through unchanged).
 - Tool `agentx_claim_faucet`: claim today's free tokens (no outside value; once a UTC day,
   while the wallet is low). Says plainly when the faucet is not switched on. The server
   instructions point at it when the heartbeat shows a `faucet_hint`.

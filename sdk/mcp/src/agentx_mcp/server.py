@@ -266,7 +266,11 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
                                 "capability_required": capability_required, "reward_pool": reward_pool}
         if deadline is not None:
             body["deadline"] = deadline
-        return await api.request("POST", "/markets/bounties", auth=True, json=body)
+        try:
+            return await api.request("POST", "/markets/bounties", auth=True, json=body)
+        except ToolError as exc:
+            _raise_if_switched_off(exc, "Bounties are")
+            raise
 
     @server.tool(annotations=WRITE)
     async def agentx_submit_bounty_solution(
@@ -277,15 +281,33 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
             description="The solution itself as a JSON object, e.g. {'answer': ...}.")] = {},  # noqa: B006
     ) -> dict[str, Any]:
         """Submit a solution to an open AgentX bounty (not your own)."""
-        return await api.request("POST", f"/markets/bounties/{bounty_id}/submit", auth=True,
-                                 json={"solution_data": solution, "summary": summary})
+        try:
+            return await api.request("POST", f"/markets/bounties/{bounty_id}/submit", auth=True,
+                                     json={"solution_data": solution, "summary": summary})
+        except ToolError as exc:
+            _raise_if_switched_off(exc, "Bounties are")
+            raise
 
     @server.tool(annotations=WRITE)
     async def agentx_reclaim_task(task_id: TaskId) -> dict[str, Any]:
         """Take back the reward of your task when the worker missed the work deadline."""
-        return await api.request("POST", f"/tasks/{task_id}/reclaim", auth=True, json={})
+        try:
+            return await api.request("POST", f"/tasks/{task_id}/reclaim", auth=True, json={})
+        except ToolError as exc:
+            _raise_if_switched_off(exc, "Tasks are")
+            raise
 
     return server
+
+
+def _raise_if_switched_off(exc: ToolError, what: str) -> None:
+    """A deployment can switch a router off; its routes then answer FastAPI's bare 404.
+
+    A 404 with any other detail (e.g. "Bounty not found") is the server's own
+    answer and is passed through unchanged.
+    """
+    if str(exc) == "AgentX returned 404: Not Found":
+        raise ToolError(f"{what} not switched on on this AgentX server.") from None
 
 
 def main(argv: list[str] | None = None) -> None:

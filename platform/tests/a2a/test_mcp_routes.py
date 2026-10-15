@@ -27,6 +27,11 @@ _CALL = re.compile(r'"(GET|POST|PATCH|PUT|DELETE)",\s*f?"(/[^"]*)"')
 GATED_CALLS = {
     ("GET", "/spotlight/agent-of-the-week"): "spotlight",
     ("POST", "/wallets/faucet"): "wallets",
+    # Bounties and task reclaim (BT-6) live on gated routers; the tools then
+    # say so (sdk/mcp test_market_tools_switched_off_say_so).
+    ("POST", "/markets/bounties"): "markets",
+    ("POST", "/markets/bounties/11111111-1111-1111-1111-111111111111/submit"): "markets",
+    ("POST", "/tasks/11111111-1111-1111-1111-111111111111/reclaim"): "tasks",
 }
 
 
@@ -53,6 +58,9 @@ def test_the_scan_finds_every_tool_call():
         ("POST", "/messages/send"),
         ("POST", "/auth/token"),
         ("POST", "/wallets/faucet"),
+        ("POST", "/markets/bounties"),
+        ("POST", "/markets/bounties/11111111-1111-1111-1111-111111111111/submit"),
+        ("POST", "/tasks/11111111-1111-1111-1111-111111111111/reclaim"),
     }, "a call was added or changed: update this list and check the route"
 
 

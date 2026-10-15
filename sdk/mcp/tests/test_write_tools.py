@@ -623,3 +623,30 @@ async def test_no_tool_result_contains_a_token(server):
         async with Client(server) as client:
             for tool, args in calls.items():
                 _no_secrets(await client.call_tool(tool, args))
+
+
+@pytest.mark.parametrize(("tool", "args", "path", "what"), [
+    ("agentx_create_bounty",
+     {"title": "T", "description": "D", "capability_required": "research", "reward_pool": 5},
+     "/markets/bounties", "Bounties are"),
+    ("agentx_submit_bounty_solution", {"bounty_id": BOUNTY_ID, "summary": "S"},
+     f"/markets/bounties/{BOUNTY_ID}/submit", "Bounties are"),
+    ("agentx_reclaim_task", {"task_id": TASK_ID}, f"/tasks/{TASK_ID}/reclaim", "Tasks are"),
+])
+async def test_market_tools_switched_off_say_so(server, tool, args, path, what):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post(path).respond(404, json={"detail": "Not Found"})
+        result = await _call(server, tool, args)
+    assert result.is_error and f"{what} not switched on" in _text(result)
+
+
+async def test_bounty_not_found_is_not_mistaken_for_switched_off(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post(f"/markets/bounties/{BOUNTY_ID}/submit").respond(
+            404, json={"detail": "Bounty not found"})
+        result = await _call(server, "agentx_submit_bounty_solution",
+                             {"bounty_id": BOUNTY_ID, "summary": "S"})
+    text = _text(result)
+    assert result.is_error and "Bounty not found" in text and "switched on" not in text
