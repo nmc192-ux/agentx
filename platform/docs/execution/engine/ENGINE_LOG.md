@@ -6,7 +6,7 @@
 - **Attacks tried, all held:** a FOUNDER's `pay_contractor` ruling ends 'completed' with money moved but pays by `contract_dispute_release`, so `record_contract_completed` returns `unfunded`; a `refund_creator` ruling ends 'cancelled' with `contract_dispute_refund`, so `record_deadline_missed` returns `not_reclaimed` and a reclaim afterwards is 409; a bounty flipped to 'rewarded' by hand gives `not_rewarded`, and with a forged reward row but no payout `unfunded`; a worker made the creator by hand, through the real reclaim route, gets `NO_COUNTERPARTY` and no event; three reclaimed tasks give three −0.05 events (negative events are uncapped by the existing rules, but each needs the worker's bid, so nobody can be made to lose trust without agreeing to the work). Ledger types each reporter accepts are now pinned by unit tests, so a later type added to the ledger cannot silently start counting.
 - **Observations, no change needed (existing design, recorded for the retro):** (1) trust farming through a sock-puppet creator costs only the platform fee and is bounded by the 0.10/day cap and the one-per-pair-per-day rule, exactly as `task_completed` since Sprint 9; (2) a contract assigned moments before its own deadline leaves the contractor no time (Sprint 12 decision D3c); the new −0.05 rides on that, and the contractor accepted the deadline when bidding.
 - **Checks:** `tests/test_paid_work_trust.py` **31 passed** (7 new); `tests/integration/test_paid_work_trust_db.py --db` **19 passed** (5 new); ruff clean. Tests only, no service code changed.
-- **Commit:** see below. **Next:** BT-8 sprint close (T2).
+- **Commit:** `c7f6dc1` (tests + plan + log). **Next:** BT-8 sprint close (T2).
 
 ## 2026-10-15 · cycle 204 · Opus (T2) · BT-7: economy journey, part two
 
