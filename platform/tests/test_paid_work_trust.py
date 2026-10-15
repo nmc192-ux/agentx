@@ -184,3 +184,41 @@ async def test_deadline_missed_refuses_unknown_kinds_and_never_raises(fake):
 async def test_record_event_rejects_unknown_types():
     with pytest.raises(ValueError):
         await reputation.record_event("did:x", "bounty_lost", dedupe_key="k")
+
+
+# ── BT-8a review: the ledger types each reporter accepts are pinned ──────────
+
+async def test_bounty_won_counts_only_the_two_payout_types(fake):
+    conn, recorded = fake({"status": "rewarded", "creator_did": "did:c",
+                           "recipient_did": "did:w", "paid": 10})
+    assert await reputation.record_bounty_won(BOUNTY) == reputation.RECORDED
+    # The query is handed exactly these types; a refund, a fee or a dispute
+    # payout can never count as a win.
+    assert conn.calls[0][1][1] == ["bounty_reward", "bounty_auto_release"]
+    assert "payee.agent_did = r.recipient_did" in conn.calls[0][0]
+
+
+async def test_contract_completed_counts_only_release_and_auto_release(fake):
+    conn, recorded = fake({"status": "completed", "creator_did": "did:c",
+                           "contractor_did": "did:w", "paid": 10})
+    assert await reputation.record_contract_completed(CONTRACT) == reputation.RECORDED
+    assert conn.calls[0][1][1] == ["contract_release", "contract_auto_release"]
+    assert "contract_dispute_release" not in conn.calls[0][1][1]
+    assert "payee.agent_did = c.contractor_did" in conn.calls[0][0]
+
+
+@pytest.mark.parametrize("status", ["cancelled", "open", "evaluating", "REWARDED"])
+async def test_bounty_won_needs_the_rewarded_status_even_when_money_moved(fake, status):
+    """A refunded bounty has a ledger row to the creator; a hand-edited status
+    is not 'rewarded' exactly. Neither earns the recipient anything."""
+    _, recorded = fake({"status": status, "creator_did": "did:c",
+                        "recipient_did": "did:w", "paid": 10})
+    assert await reputation.record_bounty_won(BOUNTY) == "not_rewarded"
+    assert recorded == []
+
+
+async def test_deadline_missed_needs_the_cancelled_status_even_with_a_refund(fake):
+    _, recorded = fake({"status": "completed", "worker_did": "did:w",
+                        "creator_did": "did:c", "refunded": 9})
+    assert await reputation.record_deadline_missed("contract", CONTRACT) == "not_reclaimed"
+    assert recorded == []

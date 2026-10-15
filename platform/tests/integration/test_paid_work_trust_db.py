@@ -22,6 +22,10 @@ money path mocked):
   • the daily cap still holds across task, bounty and contract credit
   • recalculate_agent_trust applies the new types to the score
   • calling a reporter again, or with no evidence in the ledger, writes nothing
+  • (BT-8a review) a FOUNDER's dispute ruling is neither a completion nor a
+    missed deadline; a status flipped to 'rewarded' by hand, or a reward row
+    with no payout behind it, earns nothing; a worker who is also the creator
+    loses nothing; missed deadlines count per task (negative, uncapped)
 
 Run: cd platform && .venv/bin/python -m pytest tests/integration/test_paid_work_trust_db.py -v --db
 """
@@ -39,6 +43,7 @@ from src.services.auto_release import AUTO_RELEASE_DAYS
 from .support import START_BALANCE, Agent
 from .test_bounty_deadline_db import JUST_DUE, move_deadline as move_bounty_deadline, release
 from .test_bounty_escrow_db import evaluate, open_bounty, submit
+from .test_contract_dispute_db import PAY, REFUND, disputed_contract, settle
 from .test_contract_deadline_db import (
     age_delivery, assigned_contract, move_deadline as move_contract_deadline, reclaim,
     submitted_contract,
@@ -303,3 +308,122 @@ async def test_replay_applies_the_new_types(client, pool, agents):
     await reputation.recalculate_agent_trust()
     assert await score(pool, winner) == pytest.approx(round(before_winner + 0.05, 2))
     assert await score(pool, late) == pytest.approx(round(before_late - 0.05, 2))
+
+
+# ── Adversarial cases (BT-8a sprint-close review) ─────────────────────────────
+
+async def test_a_dispute_ruled_for_the_contractor_earns_no_completion_credit(
+    client, pool, agents,
+):
+    """A FOUNDER's ruling pays the contractor out of escrow (contract_dispute_release)
+    and the contract ends 'completed': the same end state as an approval, but
+    not the creator's acceptance. The reporter must not count it."""
+    creator = await agents("creator", START_BALANCE, age_days=OLD)
+    contractor = await agents("contractor", 0, age_days=OLD)
+    founder = await agents("founder", role="FOUNDER", age_days=OLD)
+    contract_id = await disputed_contract(client, creator, contractor, by=contractor)
+
+    resp = await settle(client, contract_id, founder, PAY)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["contract"]["status"] == "completed"
+    assert await pool.fetchval(
+        "SELECT COUNT(*) FROM transactions WHERE related_id = $1 "
+        "AND type = 'contract_dispute_release'", UUID(contract_id)) == 1
+
+    assert await reputation.record_contract_completed(contract_id, source="late") == "unfunded"
+    assert await reputation.record_deadline_missed("contract", contract_id) == "not_reclaimed"
+    assert await events(pool, contractor) == []
+    assert await events(pool, creator) == []
+    assert await events(pool, founder) == []
+
+
+async def test_a_dispute_ruled_for_the_creator_costs_the_contractor_nothing(
+    client, pool, agents,
+):
+    """A refund by ruling (contract_dispute_refund, contract 'cancelled') is not a
+    missed deadline, even on an overdue contract; and once cancelled it cannot be
+    reclaimed to make it one."""
+    creator = await agents("creator", START_BALANCE, age_days=OLD)
+    contractor = await agents("contractor", 0, age_days=OLD)
+    founder = await agents("founder", role="FOUNDER", age_days=OLD)
+    contract_id = await disputed_contract(client, creator, contractor, submitted=False)
+    await move_contract_deadline(pool, contract_id, "-1 second")     # overdue as well
+
+    resp = await settle(client, contract_id, founder, REFUND)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["contract"]["status"] == "cancelled"
+
+    assert await reputation.record_deadline_missed("contract", contract_id) == "not_reclaimed"
+    assert await reputation.record_contract_completed(contract_id) == "not_completed"
+    # The creator cannot turn the ruling into a reclaim afterwards.
+    assert (await reclaim(client, contract_id, creator)).status_code == 409
+    assert await pool.fetchval(
+        "SELECT COUNT(*) FROM transactions WHERE related_id = $1 "
+        "AND type = 'contract_deadline_refund'", UUID(contract_id)) == 0
+    assert await events(pool, contractor) == []
+
+
+async def test_a_rewarded_status_without_a_payout_earns_nothing(client, pool, agents):
+    """The ledger decides, not the status column: a bounty marked 'rewarded' by
+    hand, even with a reward row naming the winner, has paid nobody."""
+    creator = await agents("creator", START_BALANCE, age_days=OLD)
+    winner = await agents("winner", 0, age_days=OLD)
+    bounty_id = await open_bounty(client, creator)
+    submission_id = await submit(client, bounty_id, winner)
+    await evaluate(client, bounty_id, submission_id, creator, 0.9)
+
+    await pool.execute(
+        "UPDATE capability_bounties SET status = 'rewarded' WHERE bounty_id = $1",
+        UUID(bounty_id))
+    assert await reputation.record_bounty_won(bounty_id) == "not_rewarded"   # no reward row
+
+    await pool.execute(
+        "INSERT INTO bounty_rewards (bounty_id, submission_id, recipient_did, recipient_id, amount) "
+        "VALUES ($1, $2, $3, $4, 10)",
+        UUID(bounty_id), UUID(submission_id), winner.did, winner.agent_id)
+    assert await reputation.record_bounty_won(bounty_id) == "unfunded"       # no payout
+    assert await events(pool, winner) == []
+
+
+async def test_a_worker_who_is_also_the_creator_loses_nothing(client, pool, agents):
+    """The API refuses a self-bid, so the state is made by hand; the real reclaim
+    route then refunds the creator and reports the worker, who is the creator."""
+    creator = await agents("creator", START_BALANCE, age_days=OLD)
+    worker = await agents("worker", 0, age_days=OLD)
+    task_id = await assigned_task(client, creator, worker, 100)
+    await taken_ago(pool, task_id, f"{WORK_DAYS} days 1 minute")
+    await pool.execute(
+        "UPDATE tasks SET executor_agent_id = $2, executor_agent_did = $3 WHERE task_id = $1",
+        UUID(task_id), creator.agent_id, creator.did)
+    await pool.execute(
+        "UPDATE task_assignments SET agent_id = $2 WHERE task_id = $1",
+        UUID(task_id), creator.agent_id)
+
+    resp = await client.post(f"/tasks/{task_id}/reclaim", headers=creator.headers)
+    assert resp.status_code == 200, resp.text
+    assert await pool.fetchval(
+        "SELECT COUNT(*) FROM transactions WHERE related_id = $1 "
+        "AND type = 'task_work_deadline_refund'", UUID(task_id)) == 1
+
+    assert await reputation.record_deadline_missed("task", task_id) == reputation.NO_COUNTERPARTY
+    assert await events(pool, creator) == []
+    assert await events(pool, worker) == []
+
+
+async def test_missed_deadlines_count_per_task_and_are_not_capped(client, pool, agents):
+    """Negative events have no daily or pair cap (by the record_event rules): a
+    worker who takes three tasks from one creator and delivers none loses
+    0.05 three times. Each needs the worker's own bid, so nobody can be made
+    to lose trust without first agreeing to the work."""
+    creator = await agents("creator", START_BALANCE, age_days=OLD)
+    worker = await agents("worker", 0, age_days=OLD)
+    for _ in range(3):
+        task_id = await assigned_task(client, creator, worker, 10)
+        await taken_ago(pool, task_id, f"{WORK_DAYS} days 1 minute")
+        assert (await client.post(f"/tasks/{task_id}/reclaim",
+                                  headers=creator.headers)).status_code == 200
+
+    rows = await events(pool, worker, "deadline_missed")
+    assert len(rows) == 3
+    assert sum(float(r["event_weight"]) for r in rows) == pytest.approx(-0.15)
+    assert await events(pool, creator) == []

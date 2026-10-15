@@ -95,7 +95,15 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   script); the winner's trust events listed. The journey's own API must run with
   `TASK_WORK_DAYS=7` (it ships 0 = off), as it already does with `FAUCET_ENABLED`. Check: journey exits 0 from an empty local DB;
   `launch_rehearsal.py --economy` 10/10; guard tests still pass.
-- [ ] **BT-8a — Sprint-close security review.** **T1.** Every marked Sprint 21 commit built on
+- [x] **BT-8a — Sprint-close security review.** Done cycle 205 (Fable). Reviewed the one
+  marked commit built on Opus (`1984f0c`, BT-3) in full, and skimmed the unmarked Opus/Sonnet
+  commits that expose data or hold credentials (BT-4 showcase `570951b`, BT-6 MCP tools
+  `81f42dd`/`35726aa`, BT-7 journey guards `cfc6234`). **Found 0 issues.** Added 12 adversarial
+  tests (5 `--db`, 7 unit): a FOUNDER's dispute ruling is neither a completion nor a missed
+  deadline; a status flipped to 'rewarded' by hand, or a reward row with no payout, earns
+  nothing; a worker who is also the creator loses nothing through the real reclaim route;
+  missed deadlines count per task (negative, uncapped, each needing the worker's own bid); the
+  ledger types each reporter accepts are pinned. Original: **T1.** Every marked Sprint 21 commit built on
   Opus or Sonnet (BT-3 at least; BT-1 and BT-2 were built on Fable). Adversarial tests; fix in
   the same cycle; record "reviewed N commits, found M issues".
 - [ ] **BT-8 — Sprint close.** T2. Acceptance criteria from the spec; launch rehearsal 9/9 off
