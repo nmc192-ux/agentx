@@ -11,8 +11,8 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   migrations additive only (this sprint needs none); `scripts/launch_rehearsal.py` re-run at
   sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `1674d6e` (cycle 216, 11/11 with
-  `--economy`; later commits docs only).
+  rehearsal first thing in the cycle. Last rehearsed: `03df527` (cycle 221, 12/12 with
+  `--economy`).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 - SDK/MCP changes also run `platform/tests/a2a` (route pins).
 - "Outside agent" = the Agent-of-the-week rule (`services/spotlight_service.py`): ACTIVE, not
@@ -43,7 +43,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   gated-router 404 → "Economy stats are not switched on"). Changelogs; versions not bumped,
   nothing published. Check: `sdk` pytest incl. Python↔TS parity, `sdk/ts` build + tests,
   `sdk/mcp` pytest, `platform/tests/a2a` (pin the new route as gated on the setting).
-- [ ] **EM-4 — Rehearsal shows the counters move.** T2 (test tooling). `launch_rehearsal.py
+- [x] **EM-4 — Rehearsal shows the counters move.** Done cycle 221 (`03df527`); off check folded into "outside posters", counters read on a fourth fresh API. T2 (test tooling). `launch_rehearsal.py
   --economy` runs its API with `ECONOMY_STATS_ENABLED=1` and, after the economy and collectives
   journeys, asserts `bounties_paid ≥ 1` and `collectives_by_outsiders ≥ 1` (cache bypassed or
   waited out); the 9 launch checks with everything off assert `/stats/economy` is 404. Check:

@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 221 · Opus (T2) · EM-4: rehearsal shows the counters move
+
+- **Built** in `scripts/launch_rehearsal.py`: the launch API (everything off) must answer `/stats/economy` 404 — part of the "outside posters" check, so the off run stays 9 checks; `launch_env` drops any `ECONOMY_STATS_ENABLED` from the caller's environment. With `--economy`, after the economy and collectives journeys a fourth API on the same database with `ECONOMY_STATS_ENABLED=1` (a fresh process, so the 300 s cache is empty — no waiting) must show `bounties_paid ≥ 1` and `collectives_by_outsiders ≥ 1` (a 12th check, "counters"; missing, non-integer or boolean counts fail).
+- **Decisions I made (reversible):** the off assertion rides on an existing check rather than a new one, so the plan's "9/9 off, 12 with `--economy`" holds; counters are read from their own API rather than switching the collectives API on, so the journeys run exactly as before.
+- **Checks:** `launch_rehearsal.py --economy` **PASSED 12/12** at `03df527` (first 9 = the off run: founders 8/8, scheduler once and loop, five joins, outside posters with `/stats/economy` 404; economy 10/10; collectives 9/9 in 0.9 s; counters: bounties posted 2, paid 2, collectives 1, outside agents joined 10, posting 5, trusted 0); `tests/test_launch_rehearsal.py` **36 passed** (12 new); ruff clean.
+- **Commit:** `03df527`. **Next:** EM-5a Phase C security review (**T1**).
+
 ## 2026-10-15 · cycle 220 · Opus (T2) · EM-3: economy counters in the clients
 
 - **Built** Python `client.stats.economy()` (new `agentx_sdk/stats.py`, `StatsNamespace`) and `economy_stats(base_url=...)` that needs no client or token; TS `agent.stats.economy()` and `economyStats({ baseUrl })` (`src/stats.ts`, types `EconomyStats`/`EconomyCounter`; always sent without the bearer); MCP tool `agentx_economy_stats` (read-only, no credentials). A 404 reads "Economy stats are not switched on on this AgentX server" in all three; any other error (e.g. the 503 for a bad founder roster) passes through. Changelogs and MCP README updated; versions not bumped, nothing published.
