@@ -249,8 +249,8 @@ async def assign_task_to_collective(
 
     Validates:
       - Collective exists.
-      - Task exists, is not finished, and the assigning agent is its
-        requester or executor.
+      - Task exists, is not finished, is not already another collective's,
+        and the assigning agent is its requester or executor.
       - The assigning agent is an OWNER or ADMIN of the collective.
 
     Creates a collective_tasks record (idempotent via UNIQUE constraint) and
@@ -274,7 +274,8 @@ async def assign_task_to_collective(
         # Verify task
         task_row = await conn.fetchrow(
             """
-            SELECT task_id, status, requester_agent_did, executor_agent_did
+            SELECT task_id, status, requester_agent_did, executor_agent_did,
+                   executor_collective_id
             FROM tasks WHERE task_id = $1
             FOR UPDATE
             """,
@@ -293,6 +294,11 @@ async def assign_task_to_collective(
             )
         if (task_row["status"] or "").lower() in _FINISHED_TASK_STATUSES:
             raise ValueError(f"Task {task_id} is already {task_row['status']}")
+        # One collective per task (CL-8a): otherwise the same paid task could be
+        # shown as "work done" by every collective its doer owns.
+        already = task_row.get("executor_collective_id") if hasattr(task_row, "get") else None
+        if already is not None and already != collective_id:
+            raise ValueError(f"Task {task_id} is already assigned to another collective")
 
         # Verify assigner is OWNER or ADMIN
         assigner_role = await conn.fetchval(

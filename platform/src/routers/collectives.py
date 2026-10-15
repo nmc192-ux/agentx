@@ -132,7 +132,7 @@ async def create_collective(
 )
 async def list_collectives(
     request: Request,
-    q:       Optional[str] = Query(default=None, description="Search by name"),
+    q:       Optional[str] = Query(default=None, max_length=128, description="Search by name"),
     page:    int = Query(default=1, ge=1),
     limit:   int = Query(default=20, ge=1, le=100),
 ):
@@ -182,13 +182,30 @@ async def list_collectives(
 # ── GET /collectives/{id}/members ────────────────────────────────────────────
 # Must be registered BEFORE GET /{collective_id} to ensure correct routing.
 
+async def _require_visible(conn, collective_id: UUID, caller: Optional[AgentRecord]) -> bool:
+    """404 unless the collective exists and is public, or the caller is one of
+    its ACTIVE members (CL-8a: a private collective's profile and member list
+    were readable by anyone who had its id). Returns is_public."""
+    seen = await collective_work.visibility(conn, collective_id, caller.did if caller else None)
+    if seen is None or (not seen[0] and not seen[1]):
+        raise HTTPException(status_code=404, detail=f"Collective not found: {collective_id}")
+    return seen[0]
+
+
 @router.get(
     "/{collective_id}/members",
     response_model=list[CollectiveMemberResponse],
     summary="List active members of a collective",
 )
-async def list_collective_members(collective_id: UUID, request: Request):
-    """Return all ACTIVE members of a collective, ordered by role then trust score."""
+async def list_collective_members(
+    collective_id: UUID,
+    request:       Request,
+    caller:        Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """Return all ACTIVE members of a collective, ordered by role then trust score.
+    A private collective is 404 unless the caller is an ACTIVE member."""
+    async with get_db() as conn:
+        await _require_visible(conn, collective_id, caller)
     try:
         return await collective_service.get_members(collective_id)
     except ValueError as exc:
@@ -339,9 +356,15 @@ async def assign_task_to_collective(
     response_model=CollectiveWithMembers,
     summary="Get collective with members",
 )
-async def get_collective(collective_id: UUID, request: Request):
-    """Fetch collective profile and member list."""
+async def get_collective(
+    collective_id: UUID,
+    request:       Request,
+    caller:        Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """Fetch collective profile and member list. A private collective is 404
+    unless the caller is an ACTIVE member (its existence is not confirmed)."""
     async with get_db() as conn:
+        await _require_visible(conn, collective_id, caller)
         row = await conn.fetchrow(
             """
             SELECT
@@ -408,13 +431,26 @@ async def join_collective(
     Request membership in a collective.
     Creates a PENDING membership entry; an admin must approve it.
     """
-    # Verify collective exists
+    # Verify the collective exists, and read the caller's own standing in it.
     async with get_db() as conn:
-        exists = await conn.fetchval(
-            "SELECT 1 FROM collectives WHERE collective_id = $1", collective_id
+        row = await conn.fetchrow(
+            """
+            SELECT c.collective_id, cm.status::text AS status
+            FROM collectives c
+            LEFT JOIN collective_members cm
+                   ON cm.collective_id = c.collective_id AND cm.agent_did = $2
+            WHERE c.collective_id = $1
+            """,
+            collective_id, caller.did,
         )
-    if not exists:
+    if row is None:
         raise HTTPException(status_code=404, detail=f"Collective not found: {collective_id}")
+    # CL-8a: a banned agent is not "pending"; its row stays BANNED and it is told so.
+    if row["status"] == "BANNED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are banned from this collective",
+        )
 
     # The note is kept for the OWNER/ADMIN (CL-2); a repeat request changes nothing.
     message = (body.message or "").strip() or None
@@ -503,17 +539,20 @@ async def remove_member(
 ):
     """
     Remove a member from the collective.
-    - Members can remove themselves (leave).
-    - OWNER/ADMIN can remove any MEMBER.
+    - Members can remove themselves (leave, or withdraw a pending request);
+      a BANNED agent cannot (the ban stays).
+    - An ADMIN can remove a MEMBER (pending or active); only the OWNER can
+      remove an ADMIN (CL-8a: an ADMIN could remove another ADMIN).
     - OWNER cannot be removed (must transfer ownership first).
     """
     is_self = caller.did == agent_did
 
+    caller_role = None
     if not is_self:
         async with get_db() as conn:
             caller_role = await conn.fetchval(
                 """
-                SELECT role FROM collective_members
+                SELECT role::text FROM collective_members
                 WHERE collective_id = $1 AND agent_did = $2 AND status = 'ACTIVE'
                 """,
                 collective_id, caller.did,
@@ -521,22 +560,44 @@ async def remove_member(
         if caller_role not in ("OWNER", "ADMIN"):
             raise HTTPException(status_code=403, detail="Insufficient role to remove members")
 
-    # Cannot remove OWNER
     async with get_db() as conn:
-        target_role = await conn.fetchval(
-            "SELECT role FROM collective_members WHERE collective_id = $1 AND agent_did = $2",
+        target = await conn.fetchrow(
+            """
+            SELECT role::text AS role, status::text AS status FROM collective_members
+            WHERE collective_id = $1 AND agent_did = $2
+            """,
             collective_id, agent_did,
         )
 
-    if target_role == "OWNER":
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Member not found: {agent_did}")
+    if target["role"] == "OWNER":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Cannot remove the collective OWNER. Transfer ownership first.",
         )
+    if is_self and target["status"] == "BANNED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are banned from this collective",
+        )
+    if not is_self and target["role"] == "ADMIN" and caller_role != "OWNER":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the OWNER can remove an ADMIN",
+        )
 
+    # The row's role and status are re-checked in the DELETE itself, so a row
+    # changed between the read above and the write cannot slip past the rules.
+    if is_self:
+        guard = "AND role <> 'OWNER' AND status <> 'BANNED'"
+    elif caller_role == "OWNER":
+        guard = "AND role <> 'OWNER'"
+    else:
+        guard = "AND role = 'MEMBER'"
     async with transaction() as conn:
         deleted = await conn.execute(
-            "DELETE FROM collective_members WHERE collective_id = $1 AND agent_did = $2",
+            f"DELETE FROM collective_members WHERE collective_id = $1 AND agent_did = $2 {guard}",
             collective_id, agent_did,
         )
 

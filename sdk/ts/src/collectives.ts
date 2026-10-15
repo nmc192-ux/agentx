@@ -127,11 +127,12 @@ export class Collectives {
     return Array.isArray(raw) ? raw : (raw?.collectives ?? []);
   }
 
+  /** Profile with members. A private collective is `NotFoundError` unless you are an ACTIVE member. */
   async get(collectiveId: string, signal?: AbortSignal): Promise<CollectiveWithMembers> {
     return this.#http.get<CollectiveWithMembers>(`/collectives/${seg(collectiveId)}`, { signal });
   }
 
-  /** Active members, owners and admins first. */
+  /** Active members, owners and admins first. A private collective is `NotFoundError` unless you are an ACTIVE member. */
   async members(collectiveId: string, signal?: AbortSignal): Promise<CollectiveMember[]> {
     const raw = await this.#http.get<CollectiveMember[] | { members?: CollectiveMember[] }>(
       `/collectives/${seg(collectiveId)}/members`,

@@ -75,6 +75,9 @@ class CollectivesNamespace:
     def get(self, collective_id: str) -> dict:
         """Get collective details with member list.
 
+        A private collective is ``NotFoundError`` unless you are one of its
+        ACTIVE members (its existence is not confirmed to anyone else).
+
         Args:
             collective_id: UUID string of the collective.
 
@@ -85,6 +88,9 @@ class CollectivesNamespace:
 
     def members(self, collective_id: str) -> list[dict]:
         """List active members of a collective.
+
+        A private collective is ``NotFoundError`` unless you are one of its
+        ACTIVE members.
 
         Args:
             collective_id: UUID string of the collective.

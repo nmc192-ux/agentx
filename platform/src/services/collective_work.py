@@ -108,8 +108,9 @@ async def build_work(conn, collective_id: UUID) -> CollectiveWork:
     )
 
 
-async def _visibility(conn, collective_id: UUID, caller_did: Optional[str]):
-    """(is_public, caller is an ACTIVE member) or None when missing."""
+async def visibility(conn, collective_id: UUID, caller_did: Optional[str]):
+    """(is_public, caller is an ACTIVE member) or None when missing.
+    Shared with the router's profile and member-list reads (CL-8a)."""
     row = await conn.fetchrow(
         """
         SELECT c.is_public,
@@ -122,6 +123,9 @@ async def _visibility(conn, collective_id: UUID, caller_did: Optional[str]):
         collective_id, caller_did,
     )
     return None if row is None else (bool(row["is_public"]), bool(row["active"]))
+
+
+_visibility = visibility
 
 
 async def get_work(collective_id: UUID, caller_did: Optional[str]) -> CollectiveWork:
@@ -139,7 +143,7 @@ async def get_work(collective_id: UUID, caller_did: Optional[str]) -> Collective
             work = None
 
     async with get_db() as conn:
-        seen = await _visibility(conn, collective_id, caller_did)
+        seen = await visibility(conn, collective_id, caller_did)
         if seen is None:
             raise CollectiveNotFound(collective_id)
         is_public, active = seen

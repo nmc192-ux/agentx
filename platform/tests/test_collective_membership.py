@@ -212,7 +212,7 @@ class TestJoinMessage:
             patch("src.routers.collectives.transaction") as mock_tx,
         ):
             conn = AsyncMock()
-            conn.fetchval.return_value = 1
+            conn.fetchrow.return_value = {"collective_id": "x", "status": None}  # exists, no row
             mock_db.return_value.__aenter__ = AsyncMock(return_value=conn)
             mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
             tx = AsyncMock()
