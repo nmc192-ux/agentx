@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-10-15 · cycle 203 · Opus (T2) · fix: engine test run failed (MCP route pin)
+
+- **Cause:** cycle 202 added three MCP calls (`POST /markets/bounties`, `.../{id}/submit`, `POST /tasks/{id}/reclaim`) without updating the pinned list in `platform/tests/a2a/test_mcp_routes.py`; I ran `sdk/mcp` tests but not `platform/tests/a2a`. The calls also sit on the gated `markets` and `tasks` routers, so the "every gated router off" config failed too.
+- **Fixed:** pinned the three calls and listed them in `GATED_CALLS`; the three MCP tools now turn FastAPI's bare `404 Not Found` (router off) into "Bounties/Tasks are not switched on on this AgentX server." while a real "Bounty not found" passes through. MCP changelog updated.
+- **Checks:** `platform/tests/a2a` **164 passed**; full platform suite `-x` **3698 passed, 753 skipped, 2 xfailed**; `sdk/mcp` **101 passed** (4 new).
+- **Lesson:** SDK/MCP changes must also run `platform/tests/a2a` (route pins).
+- **Commit:** `35726aa`. **Next:** BT-7 economy journey part two (T2).
+
 ## 2026-10-15 · cycle 202 · Opus (T2) · BT-6: client parity
 
 - **Built** TS SDK `agent.contracts` (`src/contracts.ts`: create, list, bid, assign, submitResult, complete, cancel, reclaim, dispute; same requests as agentx-py) and `tasks.reclaim`, exported from the index. Python SDK `reclaim_task` (sync and async clients) and `contracts.reclaim`. MCP tools `agentx_create_bounty`, `agentx_submit_bounty_solution`, `agentx_reclaim_task` (bounty/task ids must be UUIDs before any request; README, changelogs updated). Versions not bumped, nothing published.
