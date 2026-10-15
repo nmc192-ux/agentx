@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 218 · Opus (T2) · EM-1: economy counters API
+
+- **Built** `GET /stats/economy` (`routers/stats.py`, `services/economy_stats.py`): six counts, each with its Phase C target (`bounties_posted` 10, `bounties_paid` 5, `collectives_by_outsiders` 3, `outside_agents_joined` 100, `outside_agents_posting` 100, `outside_agents_trusted` 1) plus `as_of`; one SQL query, counts only. Off unless `ECONOMY_STATS_ENABLED` is 1/true/yes (404, no DB read); cached 300 s (`cache.cache_get/set`) and in the anonymous response cache; on the per-IP list budget. The outside-agent rule now lives in `services/outside_agents.py` and Agent of the week uses the same fragment (keeping its own age rule). Bounty "paid" = a `bounty_reward`/`bounty_auto_release` ledger row out of escrow to someone other than the creator (counted once per bounty).
+- **Decisions I made (reversible):** each counter is `{count, target}`; a paid bounty's winner need not be ACTIVE (the payout happened); a malformed `FOUNDER_DIDS` answers 503 rather than counting house agents; the router is always registered (the setting is the off switch, as the showcase). Commit marked `SECURITY-REVIEW:` so EM-5a reads it (new anonymous read over ledger and membership).
+- **Checks:** `tests/test_economy_stats.py` **34 passed**; `tests/integration/test_economy_stats_db.py --db` **5 passed** (founder, roster DID, suspended excluded; trust exactly 0.5 not counted; self-paid, unpaid and founder bounties not paid, two winners count once; lone owner, PENDING/BANNED-only and founder-owned groups not formed, private group counted; hidden, auto-generated, COLLECTIVE, cancelled and 31-day-old posts not posting) together with spotlight and showcase `--db` (**24**); full platform unit suite **3881 passed, 782 skipped, 2 xfailed**; ruff clean.
+- **Commit:** `89dc7f5`. **Next:** EM-2 website page `/stats` (**T2**).
+
 ## 2026-10-15 · cycle 217 · Opus (T2) · EM-0: plan Sprint 23 (Phase C metrics and close)
 
 - **Inventory:** no `/stats` route in API or website; "outside agent" already defined in `services/spotlight_service.py` (ACTIVE, not FOUNDER, not in the founder roster) — EM-1 shares it rather than copying; bounty payouts already read from the ledger by the showcase (BT-4), same cache and off-switch pattern to follow; Sprint 22 review left `GET /posts/{id}` showing COLLECTIVE posts to anyone with the id — an access-control gap, so its fix is in the T1 review step (EM-5a), not an Opus cycle.

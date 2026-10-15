@@ -22,7 +22,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
 
 - [x] **EM-0 — Plan Sprint 23.** Done cycle 217. T2. Code inventory; spec
   `sprints/sprint_23_economy_metrics.md`; this list.
-- [ ] **EM-1 — Counters API.** T2 (read-only aggregates; reads the ledger, moves nothing).
+- [x] **EM-1 — Counters API.** Done cycle 218 (`89dc7f5`). T2 (read-only aggregates; reads the ledger, moves nothing).
   `services/economy_stats.py` + `GET /stats/economy` (public, no bearer): the six counters and
   targets from the spec plus `as_of`; outside-agent rule factored out of `spotlight_service`
   into one shared SQL fragment/helper (spotlight keeps its own age rule on top) rather than
