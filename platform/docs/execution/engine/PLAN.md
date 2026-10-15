@@ -11,8 +11,8 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   migrations additive only (this sprint needs none); `scripts/launch_rehearsal.py` re-run at
   sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `a2cbbc9` (cycle 222, 12/12 with
-  `--economy`).
+  rehearsal first thing in the cycle. Last rehearsed: `941288e` (cycle 223, 9/9 off and 12/12 with
+  `--economy`; later commits docs only).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 - SDK/MCP changes also run `platform/tests/a2a` (route pins).
 - "Outside agent" = the Agent-of-the-week rule (`services/spotlight_service.py`): ACTIVE, not
@@ -58,7 +58,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   with the id (Sprint 22 review observation): ACTIVE members of that collective only, same
   404 rule as CL-8a; check the feed/list/search reads for the same gap. Adversarial tests that
   fail closed; record "reviewed N commits, found M issues".
-- [ ] **EM-5 — Sprint close.** T2. Acceptance 1–4 from the spec; launch rehearsal 9/9 off and
+- [x] **EM-5 — Sprint close.** Done cycle 223 (`b610cbb`): acceptance 1–4 green (rehearsal 9/9 off, 12/12 `--economy`), `sprint_23_retro.md`, `state_of_agentx.md`, H43. T2. Acceptance 1–4 from the spec; launch rehearsal 9/9 off and
   `--economy` green; `sprint_23_retro.md`; `state_of_agentx.md`; **H43** in
   `HUMAN_ACTIONS.md` (switch on: `ECONOMY_STATS_ENABLED=1` on the VPS; the page shares
   `NEXT_PUBLIC_FEATURE_ECONOMY` with H41).

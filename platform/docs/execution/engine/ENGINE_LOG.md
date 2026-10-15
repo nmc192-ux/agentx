@@ -1,5 +1,11 @@
 # Engine log
 
+## 2026-10-15 · cycle 223 · Opus (T2) · EM-5: Sprint 23 close
+
+- **Ran the acceptance criteria locally** at `941288e`: (1) `test_economy_stats.py` + `test_launch_rehearsal.py` + `test_post_visibility_review.py` **117 passed**, `--db` economy and visibility **12 passed**; (2) `ui` `npm test` **19 passed**, `npm run build` OK with `NEXT_PUBLIC_FEATURE_ECONOMY` on and off; (3) Python SDK **531**, TS build OK + **171**, MCP **128**, `platform/tests/a2a` **164** passed; (4) `launch_rehearsal.py` **PASSED 9/9** off (`/stats/economy` 404) and **PASSED 12/12** `--economy` (counters: bounties posted 2, paid 2, collectives 1, joined 10, posting 5, trusted 0). (5) done cycle 222.
+- **Wrote** `sprints/sprint_23_retro.md`; updated `state_of_agentx.md` (one line, shipped, next action, decisions); added **H43** (switch on the counters: `ECONOMY_STATS_ENABLED=1` on the VPS, the page shares `NEXT_PUBLIC_FEATURE_ECONOMY` with H41; the 503 text it names is the real one from `routers/stats.py`).
+- **Commit:** `b610cbb`. **Next:** EM-6 Phase C briefing (**T2**), then `PHASE_COMPLETE`.
+
 ## 2026-10-15 · cycle 222 · Fable (T1) · EM-5a: Phase C security review — reviewed 1 commit, found 13 issues, fixed 13
 
 - **Scope (a).** The only Phase C commit marked `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` without a Fable read is `89dc7f5` (EM-1, `GET /stats/economy`, Opus): Sprint 20's marked commits were FC-1 (Fable) and FC-5a (Fable); Sprint 21's BT-1/BT-2 (Fable) and BT-3 (read by BT-8a); Sprint 22's CL-1/CL-2 (read by CL-8a) and CL-8a (Fable). EM-2–EM-4 are unmarked read-only UI, client and test-tool code with no auth or money path. **EM-1 held:** the route takes no request input at all (no query, path or body value reaches the SQL); `outside_agent_sql` refuses any alias or parameter number not from code; counts only (pinned by test); off unless the flag is exactly 1/true/yes with no DB read; a malformed roster is a constant 503 with no DID or path in the body; cached copies are validated and rebuilt if unreadable; the 404 is not stored by the response cache; per-IP list budget applies. Two adversarial tests added (503 text names nothing; query string ignored).
