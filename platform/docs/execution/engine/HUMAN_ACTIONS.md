@@ -101,7 +101,8 @@ down as usual.
   task's creator can take the reward back once the worker has had 7 days (counted by the
   server's clock from the moment the task was taken, or from the last time the creator
   rejected a result) and nothing is waiting for review. The worker gets nothing, the platform
-  keeps its small fee, and a late result is refused. It is built and tested on the branch and
+  keeps its small fee, and a late result is refused; the worker's trust score also drops a
+  little (−0.05, added cycle 199). It is built and tested on the branch and
   ships **off**; nothing changes until you do this.
   1. On the VPS:
      ```

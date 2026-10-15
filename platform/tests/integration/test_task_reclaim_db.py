@@ -21,7 +21,7 @@ What is proven:
   • 10 concurrent reclaims refund once; a reclaim racing a result submission
     ends in exactly one outcome; a late submission, approval or automatic
     release after a reclaim pays nothing
-  • no trust event is written (BT-3 adds that)
+  • the worker gets one 'deadline_missed' trust event, the creator none (BT-3)
 
 Run (needs local Postgres with trust auth for the current OS user):
     cd platform && .venv/bin/python -m pytest tests/integration/test_task_reclaim_db.py -v --db
@@ -142,7 +142,9 @@ async def test_reclaim_refunds_the_reward_once_and_keeps_the_fee(client, pool, a
     a = await assignment(pool, task_id)
     assert a["status"] == "failed" and a["completed_at"] is not None
     assert await total_tokens(pool) == before_total
-    assert await trust_events(pool, worker) == 0
+    # BT-3: one 'deadline_missed' for the worker (negative events need no
+    # established counterparty), nothing for the creator.
+    assert await trust_events(pool, worker) == 1
     assert await trust_events(pool, creator) == 0
 
     # It shows as cancelled everywhere a task is read.

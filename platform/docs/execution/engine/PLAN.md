@@ -46,7 +46,11 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   Check: `--db` tests: a NULL-deadline bounty older than 30 + 7 days is released (paid to the
   top score, or refunded); one younger is not; its `deadline` column stays NULL; existing
   auto-release tests unchanged and green.
-- [ ] **BT-3 — Trust from paid work.** T2 (calls the reviewed `record_event` without changing
+- [x] **BT-3 — Trust from paid work.** Done cycle 199 (Opus). Built as specified; the
+  reporters read the ledger, so a call with no matching payout or deadline refund writes
+  nothing. A dispute ruled for the contractor gives no `contract_completed` (a FOUNDER's
+  ruling, not the creator's acceptance); "delivered by the deadline" for `sla_compliance`
+  (spec line) not built: display-only today, left for later. Original spec: T2 (calls the reviewed `record_event` without changing
   its rules; adds event types and weights, so marked `SECURITY-REVIEW:` for BT-8a). New
   reporters in `reputation.py`: `record_bounty_won` (creator → winner, manual and automatic
   payout; not on refund), `record_contract_completed` (creator → worker, approval or

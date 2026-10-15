@@ -78,7 +78,7 @@ from ..models.task import (  # noqa: E402
     TaskResultResponse,
 )
 from ..models.capability import EligibleAgentResponse  # noqa: E402
-from ..services.reputation import record_task_completed  # noqa: E402
+from ..services.reputation import record_deadline_missed, record_task_completed  # noqa: E402
 from .auto_release import AUTO_RELEASE_DAYS  # noqa: E402
 from .token_service import InsufficientFundsError  # noqa: E402,F401  (re-exported for the router)
 
@@ -941,9 +941,9 @@ async def reclaim_task(task_id: UUID, caller_did: str) -> TaskResponse:
         so a creator cannot reject and reclaim in one breath). No time is
         taken from the caller.
 
-    Nothing is written to the worker's trust here (Sprint 21, BT-3 adds the
-    deadline-missed event after this transaction commits, like
-    ``_after_payment``).
+    After the transaction commits, the worker gets one ``deadline_missed``
+    trust event (Sprint 21, BT-3), like ``_after_payment``: a trust failure
+    cannot undo the refund.
 
     Raises:
         ValueError: task not found.
@@ -1040,6 +1040,7 @@ async def reclaim_task(task_id: UUID, caller_did: str) -> TaskResponse:
         "did not deliver)",
         task_id, caller_did, work_days, refunded, task_row["executor_agent_did"],
     )
+    await record_deadline_missed("task", task_id)
     return _row_to_task(dict(updated))
 
 

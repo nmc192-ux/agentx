@@ -1,5 +1,38 @@
 # Engine log
 
+## 2026-10-15 · cycle 199 · Opus (T2) · BT-3: trust from paid work — built
+
+- **Built** three reporters in `services/reputation.py`, all going through the unchanged
+  `record_event` (dedupe key, established counterparty for a positive event, pair and daily
+  caps): `record_bounty_won` (+0.05, winner, counterparty the creator; key `bounty_won:<id>`),
+  `record_contract_completed` (+0.05, contractor; key `contract_completed:<id>`),
+  `record_deadline_missed` (−0.05, worker; key `deadline_missed:<task|contract>:<id>`). Each
+  reads the **ledger** to decide: a bounty counts only with a `bounty_reward` /
+  `bounty_auto_release` payout to the winner, a contract only with `contract_release` /
+  `contract_auto_release` to the contractor, a missed deadline only with a
+  `task_work_deadline_refund` / `contract_deadline_refund` row. A caller cannot cost or earn
+  anyone trust by just calling. Wired after commit (never raise) in `distribute_rewards`,
+  `release_overdue_bounty` (rewarded only), `complete_contract`, `release_overdue_contract`,
+  `reclaim_contract`, `task_service.reclaim_task`. No migration, no setting.
+- **Decisions I made (reversible):** (1) a dispute ruled for the contractor gives no
+  `contract_completed` (a FOUNDER's ruling, not acceptance by the creator; the plan listed
+  approval and auto-release only). (2) A worker who is also the creator gets no
+  `deadline_missed`. (3) The spec's "delivered by the deadline (counted for
+  `sla_compliance`)" is not built: that breakdown is display-only today; noted for later.
+  H39's text now says a reclaim also costs the worker −0.05.
+- **Checks:** `tests/test_paid_work_trust.py` **24 passed**; `tests/integration/
+  test_paid_work_trust_db.py --db` **14 passed** (manual payout, automatic payout, refund
+  writes none; manual + automatic + direct report racing, ×4, one event; young creator none;
+  contract approve one; auto-release racing approval ×4 one; reclaimed contract −0.05 once and
+  no completion credit; 5 concurrent task reclaims one event; overdue-but-not-reclaimed and a
+  cancelled open contract none; daily cap 0.10 across 3 bounties + 3 contracts; pair cap per
+  type; replay moves scores +0.05 / −0.05). `test_task_reclaim_db.py` updated (the worker now
+  gets one event) **19 passed**. Full unit suite **3672 passed, 748 skipped, 2 xfailed**.
+  Full `--db` integration suite **698 passed, 10 failed**: the same ten founder tests
+  (civics, messages, trust replay) fail identically on the previous commit with this change
+  stashed; they are the known pre-existing failures from cycle 198, still a T3 follow-up.
+- **Commit:** COMMIT_HASH. **Next:** BT-4 showcase API (T2).
+
 ## 2026-10-15 · cycle 198 · Fable (T1) · BT-2: bounties stored with no deadline — built, ships off
 
 - **Built** the legacy-bounty rule: every bounty rule (`_lock_bounty`, so submissions close;

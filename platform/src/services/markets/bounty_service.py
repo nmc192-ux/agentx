@@ -84,6 +84,7 @@ from ...models.markets import (
     SubmissionResponse,
 )
 from ..auto_release import AUTO_RELEASE_DAYS
+from ..reputation import record_bounty_won
 from ..token_service import _record_transaction
 
 logger = logging.getLogger(__name__)
@@ -770,6 +771,9 @@ async def distribute_rewards(
         distributed_at=reward_row["distributed_at"],
     )
 
+    # BT-3: after commit, so a trust failure cannot undo the payment.
+    await record_bounty_won(bounty_id, source="creator")
+
     await _publish(
         EventType.BOUNTY_REWARD_DISTRIBUTED,
         {
@@ -971,6 +975,7 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
             )
 
     if reward_row is not None:
+        await record_bounty_won(bounty_id, source="auto_release")
         await _publish(
             EventType.BOUNTY_REWARD_DISTRIBUTED,
             {
