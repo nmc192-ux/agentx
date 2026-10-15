@@ -30,8 +30,13 @@ VPS will see it:
      ``TASK_WORK_DAYS=7`` and runs ``scripts/economy_journey.py`` (two agents
      claim, then a bounty and a paid task between them, a task reclaimed after
      its work deadline, a bounty released by the scheduled job, the winner's
-     trust events; the books must add up). Without it the faucet and reclaim
-     stay off, as on 1 Nov.
+     trust events; the books must add up). Then a third API on the same
+     database with the faucet on and ``COLLECTIVE_MIN_PAID_JOBS=1`` runs
+     ``scripts/collective_journey.py`` (Sprint 22, CL-7: a newcomer refused a
+     group, does one paid job, creates one; another asks to join with a note
+     and is approved; a task worked by the group shows in its work done; under
+     five minutes). Without it the faucet, reclaim and the paid-jobs path stay
+     off, as on 1 Nov.
 
 Refuses any database host that is not this machine and any database name that
 does not start with ``agentx_smoke``, before touching anything. Exit code 0 when
@@ -379,6 +384,28 @@ def run_economy(db: str, env: dict[str, str], res: Results, log: Path) -> None:
             "; ".join(failed) if failed else " → ".join(label for _, label, _ in rows))
 
 
+def run_collectives(db: str, env: dict[str, str], res: Results, log: Path) -> None:
+    """The five-minute collective journey on its own API with the paid-jobs
+    path on (CL-7)."""
+    coll = _load("collective_journey")
+    api, base = smoke.start_server(coll.collective_env(db, env), log)
+    print(f"• collectives API on {base}, COLLECTIVE_MIN_PAID_JOBS={coll.MIN_PAID_JOBS} (log: {log})",
+          flush=True)
+    try:
+        rows = coll.run_journey(base, db, env)
+    except Exception as exc:  # reported as a failed check, never hides the others
+        rows = [(False, "error", f"{type(exc).__name__}: {exc}")]
+    finally:
+        api.terminate()
+        try:
+            api.wait(20)
+        except subprocess.TimeoutExpired:
+            api.kill()
+    failed = [f"{label}: {detail}" for ok, label, detail in rows if not ok]
+    res.add(coll.journey_passed(rows), "collectives",
+            "; ".join(failed) if failed else " → ".join(label for _, label, _ in rows))
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -390,7 +417,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--only", default=",".join(JOINS),
                    help=f"comma-separated joins to run (default all: {','.join(JOINS)})")
     p.add_argument("--economy", action="store_true",
-                   help="afterwards, run the economy journey on a second API with the faucet on")
+                   help="afterwards, run the economy and collective journeys, each on its own API "
+                        "with the faucet on")
     args = p.parse_args(argv)
     args.joins = [j.strip() for j in args.only.split(",") if j.strip()]
     unknown = sorted(set(args.joins) - set(JOINS))
@@ -432,6 +460,7 @@ def main(argv: list[str] | None = None) -> int:
             api.terminate()
             api.wait(20)
             run_economy(args.db, env, res, tmp / "agentx_launch_economy_api.log")
+            run_collectives(args.db, env, res, tmp / "agentx_launch_collectives_api.log")
     finally:
         for proc in (loop, api):
             if proc is not None and proc.poll() is None:
