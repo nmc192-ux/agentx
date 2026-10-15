@@ -390,9 +390,14 @@ async def add_post_to_community(
         if member_row is None:
             raise ValueError("Not a member of this community")
 
-        # Verify post exists and is ACTIVE
+        # Verify the post exists, is ACTIVE and is open to everyone: a PRIVATE
+        # or COLLECTIVE post shared here would be shown to the whole community
+        # (EM-5a). Same answer as for a post that does not exist.
         post_row = await conn.fetchrow(
-            "SELECT post_id, status FROM posts WHERE post_id = $1 AND hidden_at IS NULL",
+            """
+            SELECT post_id, status FROM posts
+            WHERE post_id = $1 AND hidden_at IS NULL AND visibility IN ('PUBLIC', 'SYSTEM')
+            """,
             post_id,
         )
         if post_row is None:
@@ -514,6 +519,7 @@ async def get_community_feed(
             WHERE cp.community_id = $1
               AND p.status = 'ACTIVE'
               AND p.hidden_at IS NULL
+              AND p.visibility IN ('PUBLIC', 'SYSTEM')
             ORDER BY cp.created_at DESC
             LIMIT $2
             """,

@@ -96,6 +96,26 @@ router = APIRouter(prefix="/posts", tags=["Posts"])
 feed_router = APIRouter(tags=["Posts"])
 
 
+async def _require_collective_member(body: PostCreate, caller: AgentRecord) -> None:
+    """A COLLECTIVE post or reply needs a collective_id and the caller's ACTIVE
+    membership of it (422 / 403); otherwise anyone could put text into a
+    collective's stream (EM-5a)."""
+    if body.visibility.value != "COLLECTIVE":
+        return
+    if body.collective_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="COLLECTIVE visibility requires a collective_id",
+        )
+    async with get_db() as conn:
+        is_member = await post_moderation.is_active_member(conn, body.collective_id, caller.did)
+    if not is_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of the specified collective",
+        )
+
+
 async def _reject_duplicate(
     conn, author_did: str, content: str, parent_post_id: Optional[UUID] = None,
 ) -> None:
@@ -346,28 +366,7 @@ async def create_post(
     check_content(body.title, body.content)
 
     # Validate collective membership if COLLECTIVE visibility
-    if body.visibility.value == "COLLECTIVE":
-        if body.collective_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="COLLECTIVE visibility requires a collective_id",
-            )
-        async with get_db() as conn:
-            is_member = await conn.fetchval(
-                """
-                SELECT 1 FROM collective_members
-                WHERE collective_id = $1
-                  AND agent_did = $2
-                  AND status = 'ACTIVE'
-                """,
-                body.collective_id,
-                caller.did,
-            )
-        if not is_member:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of the specified collective",
-            )
+    await _require_collective_member(body, caller)
 
     # Validate and build the post record
     try:
@@ -437,6 +436,12 @@ async def create_post(
         logger.info("Post %s by %s held for review (%s)", response.post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
         return response
+    if response.visibility.value not in post_moderation.OPEN_VISIBILITIES:
+        # A COLLECTIVE or PRIVATE post is for its readers only: no POST_CREATED
+        # event (the public activity feeds print its title) and no NEW_POST
+        # broadcast of its text to every connected agent (EM-5a).
+        logger.info("Post %s is %s: not announced", response.post_id, response.visibility.value)
+        return response
     await emit_event(
         "POST_CREATED",
         caller.did,
@@ -491,7 +496,7 @@ async def interact_with_post(
             detail="agent_did does not match authenticated agent",
         )
 
-    interaction = await add_post_interaction(post_id, body)
+    interaction = await add_post_interaction(post_id, body, caller=caller)
     await emit_event(
         "POST_INTERACTION_CREATED",
         caller.did,
@@ -537,15 +542,19 @@ async def create_reply(
     async with get_db() as conn:
         parent = await conn.fetchrow(
             """
-            SELECT post_id, author_did FROM posts
-            WHERE post_id = $1::uuid AND visibility != 'PRIVATE' AND hidden_at IS NULL
+            SELECT post_id, author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1::uuid
             """,
             str(post_id),
         )
+        if parent is not None and not await post_moderation.may_see_post(conn, caller, parent):
+            parent = None       # a post the caller may not read does not exist for them
     if parent is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
     parent_author_did = parent["author_did"]
+
+    # A COLLECTIVE reply needs the same membership as a COLLECTIVE post.
+    await _require_collective_member(body_with_parent, caller)
 
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body_with_parent.title, body_with_parent.content)
@@ -553,7 +562,6 @@ async def create_reply(
     try:
         db_dict = post_factory.build(body_with_parent, author_did=caller.did)
     except PostValidationError as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     async with transaction() as conn:
@@ -609,11 +617,12 @@ async def create_reply(
         logger.info("Reply %s by %s held for review (%s)", response.post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
         return response
-    await emit_event(
-        "POST_CREATED",
-        caller.did,
-        {"post_id": str(db_dict["post_id"]), "parent_post_id": str(post_id)},
-    )
+    if response.visibility.value in post_moderation.OPEN_VISIBILITIES:
+        await emit_event(
+            "POST_CREATED",
+            caller.did,
+            {"post_id": str(db_dict["post_id"]), "parent_post_id": str(post_id)},
+        )
     return response
 
 
@@ -642,6 +651,7 @@ async def get_feed(request: Request):
             FROM posts
             WHERE agent_id IS NOT NULL
               AND hidden_at IS NULL
+              AND visibility IN ('PUBLIC', 'SYSTEM')
             ORDER BY created_at DESC
             LIMIT 50
             """
@@ -750,19 +760,25 @@ async def find_similar_posts(
     post_id: UUID    = Query(..., description="Reference post UUID"),
     limit:   int     = Query(default=10, ge=1, le=50),
     request: Request = None,
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Return up to `limit` posts semantically similar to the given post.
     Uses pgvector cosine similarity on Sentence-BERT embeddings.
-    Returns 404 if the reference post does not exist.
+    Returns 404 if the reference post does not exist or the caller may not
+    read it (its neighbours would describe it).
     Returns empty list if embeddings are not yet generated or model unavailable.
     """
     async with get_db() as conn:
-        # Verify post exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id
+        # Verify the reference post exists and is readable by the caller
+        ref = await conn.fetchrow(
+            """
+            SELECT author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1
+            """,
+            post_id,
         )
-        if not exists:
+        if ref is None or not await post_moderation.may_see_post(conn, caller, ref):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Post not found: {post_id}",
@@ -807,8 +823,10 @@ async def get_post(
     """
     Fetch a single post by UUID. Returns 404 if not found.
 
-    A hidden post (held for review, or hidden by a moderator) and a PRIVATE
-    post answer 404 to everyone except the author and moderators.
+    A post the caller may not read answers 404 like a missing one: a hidden
+    post (held for review, or hidden by a moderator) and a PRIVATE post to
+    everyone except the author and moderators; a COLLECTIVE post to everyone
+    but that collective's ACTIVE members, the author and moderators.
     """
     async with get_db() as conn:
         row = await conn.fetchrow(
@@ -825,9 +843,7 @@ async def get_post(
             """,
             post_id,
         )
-
-    if row is not None and (row["hidden_at"] is not None or row["visibility"] == "PRIVATE"):
-        if not post_moderation.may_see_hidden(caller, row["author_did"]):
+        if row is not None and not await post_moderation.may_see_post(conn, caller, row):
             row = None
 
     if row is None:
@@ -1092,14 +1108,17 @@ async def toggle_like(
     Creates a LIKE notification on first like (not on unlike).
     """
     async with get_db() as conn:
-        # Verify post exists
+        # Verify the post exists and the caller may read it
         post_row = await conn.fetchrow(
             """
-            SELECT post_id, author_did, like_count FROM posts
-            WHERE post_id = $1::uuid AND visibility != 'PRIVATE' AND hidden_at IS NULL
+            SELECT post_id, author_did, like_count, visibility, hidden_at, collective_id
+            FROM posts
+            WHERE post_id = $1::uuid
             """,
             str(post_id),
         )
+        if post_row is not None and not await post_moderation.may_see_post(conn, caller, post_row):
+            post_row = None
     if post_row is None:
         raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
 
@@ -1153,30 +1172,40 @@ async def get_replies(
     request: Request,
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=50, ge=1, le=100),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Return paginated replies for a post.
-    Used by the thread/detail view. No auth required for PUBLIC posts.
+    Used by the thread/detail view. No auth required for PUBLIC posts; a
+    parent the caller may not read is 404, and the list holds only replies
+    the caller may read (open ones, their own, their collectives').
     """
     offset = (page - 1) * limit
+    caller_did = caller.did if caller is not None else None
 
     async with get_db() as conn:
-        # Verify parent exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1::uuid AND hidden_at IS NULL", str(post_id)
-        )
-        if not exists:
-            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
-
-        total = await conn.fetchval(
+        # Verify the parent exists and the caller may read it
+        parent = await conn.fetchrow(
             """
-            SELECT COUNT(*) FROM posts
-            WHERE parent_post_id = $1::uuid AND status = 'ACTIVE' AND hidden_at IS NULL
+            SELECT author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1::uuid
             """,
             str(post_id),
         )
+        if parent is None or not await post_moderation.may_see_post(conn, caller, parent):
+            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+        visible = post_moderation.visible_to_sql("p", 2)
+        total = await conn.fetchval(
+            f"""
+            SELECT COUNT(*) FROM posts p
+            WHERE p.parent_post_id = $1::uuid AND p.status = 'ACTIVE' AND p.hidden_at IS NULL
+              AND {visible}
+            """,
+            str(post_id), caller_did,
+        )
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
                 p.post_id, p.author_did, p.post_type, p.title, p.content,
                 p.tags, p.visibility, p.status, p.collective_id,
@@ -1191,10 +1220,11 @@ async def get_replies(
             WHERE p.parent_post_id = $1::uuid
               AND p.status = 'ACTIVE'
               AND p.hidden_at IS NULL
+              AND {visible}
             ORDER BY p.created_at ASC
-            LIMIT $2 OFFSET $3
+            LIMIT $3 OFFSET $4
             """,
-            str(post_id), limit, offset,
+            str(post_id), caller_did, limit, offset,
         )
 
     posts = [_row_to_response(dict(r)) for r in rows]

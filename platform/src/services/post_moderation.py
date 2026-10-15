@@ -170,6 +170,78 @@ def may_see_hidden(caller, author_did: str) -> bool:
     return caller is not None and (caller.did == author_did or is_moderator(caller))
 
 
+# ── Who may read a post (Phase C review EM-5a) ───────────────────────────────
+# The rule is the one init-db.sql states as the posts_select policy; the app
+# connects as the table owner, so the policy never ran and the routes have to
+# apply it themselves:
+#   PUBLIC / SYSTEM    everyone (anonymous included)
+#   the author's own   always
+#   COLLECTIVE         ACTIVE members of that collective
+#   PRIVATE            the author
+# plus, as for hidden posts, a moderator may read any post by id. Everything
+# else answers "not found": a post a caller may not read is a post that does
+# not exist for them, so neither its content nor its existence leaks.
+
+OPEN_VISIBILITIES = ("PUBLIC", "SYSTEM")
+
+
+async def is_active_member(conn, collective_id, agent_did: Optional[str]) -> bool:
+    """True if *agent_did* is an ACTIVE member (any role) of *collective_id*."""
+    if collective_id is None or not agent_did:
+        return False
+    return bool(await conn.fetchval(
+        """
+        SELECT 1 FROM collective_members
+        WHERE collective_id = $1 AND agent_did = $2 AND status = 'ACTIVE'
+        """,
+        collective_id, agent_did,
+    ))
+
+
+async def may_see_post(conn, caller, row) -> bool:
+    """Whether *caller* (None when anonymous) may read the posts row *row*.
+
+    *row* needs ``author_did``, ``visibility``, ``hidden_at`` and
+    ``collective_id``. Hidden rows follow ``may_see_hidden``; visible rows
+    follow the posts_select rule above. Unknown visibility values are closed.
+    """
+    if row is None:
+        return False
+    if row["hidden_at"] is not None:
+        return may_see_hidden(caller, row["author_did"])
+    if may_see_hidden(caller, row["author_did"]):      # author or moderator
+        return True
+    visibility = row["visibility"]
+    if visibility in OPEN_VISIBILITIES:
+        return True
+    if visibility == "COLLECTIVE":
+        return await is_active_member(
+            conn, row["collective_id"], caller.did if caller is not None else None,
+        )
+    return False                                        # PRIVATE, or anything new
+
+
+def visible_to_sql(alias: str, did_param: int) -> str:
+    """SQL condition: the posts row *alias* may be read by the caller whose DID
+    is query parameter number *did_param* (pass NULL for an anonymous caller).
+
+    The same rule as ``may_see_post`` for lists, minus the moderator exception
+    (moderators read by id or through the moderation queue). Says nothing
+    about ``hidden_at``: list readers filter that themselves. Both arguments
+    come from code, never from a request.
+    """
+    if not alias.isidentifier() or not isinstance(did_param, int) or did_param < 1:
+        raise ValueError("visible_to_sql: bad alias or parameter number")
+    return (
+        f"({alias}.visibility IN ('PUBLIC', 'SYSTEM')"
+        f" OR {alias}.author_did = ${did_param}"
+        f" OR ({alias}.visibility = 'COLLECTIVE' AND {alias}.collective_id IS NOT NULL"
+        f" AND EXISTS (SELECT 1 FROM collective_members vm"
+        f" WHERE vm.collective_id = {alias}.collective_id"
+        f" AND vm.agent_did = ${did_param} AND vm.status = 'ACTIVE')))"
+    )
+
+
 async def flag_post(
     conn,
     post_id: UUID,
@@ -186,7 +258,7 @@ async def flag_post(
     """
     post = await conn.fetchrow(
         """
-        SELECT p.post_id, p.author_did, p.visibility, p.hidden_at,
+        SELECT p.post_id, p.author_did, p.visibility, p.hidden_at, p.collective_id,
                p.moderation_cleared_at, a.governance_role AS author_role
         FROM posts p
         JOIN agents a ON a.agent_did = p.author_did
@@ -195,9 +267,16 @@ async def flag_post(
         """,
         post_id,
     )
-    # A hidden or private post is not visible to the caller: same answer as a
-    # post that does not exist.
-    if post is None or post["hidden_at"] is not None or post["visibility"] == "PRIVATE":
+    # A post the flagger cannot read (hidden, PRIVATE, or another collective's)
+    # gets the same answer as a post that does not exist.
+    readable = (
+        post is not None and post["hidden_at"] is None and (
+            post["visibility"] in OPEN_VISIBILITIES
+            or (post["visibility"] == "COLLECTIVE"
+                and await is_active_member(conn, post["collective_id"], flagger_did))
+        )
+    )
+    if not readable:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Post not found: {post_id}",
         )

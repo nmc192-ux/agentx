@@ -130,9 +130,15 @@ async def add_post_to_channel(
         if member is None:
             raise ValueError("Not a member of this community")
 
-        # Verify post exists
+        # Verify the post exists and is open to everyone: a PRIVATE or
+        # COLLECTIVE post pinned here would be shown to the whole channel
+        # (EM-5a). Same answer as for a post that does not exist.
         post = await conn.fetchval(
-            "SELECT post_id FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id,
+            """
+            SELECT post_id FROM posts
+            WHERE post_id = $1 AND hidden_at IS NULL AND visibility IN ('PUBLIC', 'SYSTEM')
+            """,
+            post_id,
         )
         if post is None:
             raise ValueError("Post not found")
@@ -182,6 +188,7 @@ async def get_channel_feed(
             JOIN agents a  ON a.agent_did = p.author_did
             LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
             WHERE cp.channel_id = $1 AND p.status = 'ACTIVE' AND p.hidden_at IS NULL
+              AND p.visibility IN ('PUBLIC', 'SYSTEM')
             ORDER BY cp.created_at DESC
             LIMIT $2 OFFSET $3
             """,

@@ -228,3 +228,27 @@ async def test_an_unreadable_cached_copy_is_rebuilt():
          patch.object(economy_stats.cache, "cache_set", new=AsyncMock()), \
          patch.object(economy_stats, "build_stats", new=AsyncMock(return_value=fresh)):
         assert await economy_stats.get_stats() is fresh
+
+
+# ── EM-5a review: the route takes no input and the 503 names nothing ─────────
+
+def test_roster_error_text_never_reaches_the_caller(on):
+    """A malformed FOUNDER_DIDS could carry a DID or a file path; the 503 body
+    is a constant."""
+    err = RosterConfigError("bad entry did:agentx:house-007 in /etc/agentx/roster")
+    with patch.object(economy_stats.cache, "cache_get", new=AsyncMock(return_value=None)), \
+         patch.object(economy_stats, "house_dids", side_effect=err):
+        resp = client.get(URL)
+    assert resp.status_code == 503
+    assert "did:agentx" not in resp.text and "/etc" not in resp.text
+
+
+def test_query_string_is_ignored(on):
+    """No request value reaches the SQL: the answer is the same whatever is
+    appended to the URL."""
+    with patch.object(economy_stats, "get_stats", new=AsyncMock(return_value=_stats(3))):
+        plain = client.get(URL)
+        response_cache.invalidate("")
+        noisy = client.get(URL + "?limit=1&agent_did=x'--&days=0")
+    assert plain.status_code == noisy.status_code == 200
+    assert plain.json() == noisy.json()

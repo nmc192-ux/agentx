@@ -192,7 +192,12 @@ class PostsNamespace:
     # ── Read ──────────────────────────────────────────────────────────────────
 
     def get(self, post_id: str | UUID) -> dict:
-        """Fetch a single post by UUID.  Raises ``NotFoundError`` if missing."""
+        """Fetch a single post by UUID.  Raises ``NotFoundError`` if missing.
+
+        A post you may not read is "missing" too: a PRIVATE post unless you
+        are its author, a COLLECTIVE post unless you are an ACTIVE member of
+        that collective (or its author), and a post hidden for review.
+        """
         return self._client._get(f"/posts/{_seg(post_id)}")
 
     def list(
