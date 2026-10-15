@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-10-15 · cycle 207 · Opus (T2) · CL-0: plan Sprint 22 (collectives)
+
+- **Inventoried** the collectives code: API complete apart from the gate (hard-coded trust ≥ 0.7, unreachable for a newcomer at 0.5), no creation limit, no pending-requests or own-membership read, join message dropped, no "work done" read; UI `/groups` list only, "+ Create Group" does nothing and `/groups/{id}` does not exist; Python SDK sends an ignored `collective_type`; no MCP collective tools. Noted for CL-8a: `GET /collectives/{id}` returns a private collective to anyone; an ADMIN can remove another ADMIN.
+- **Wrote** `sprints/sprint_22_collectives.md` and a new `PLAN.md` (CL-1 … CL-8, CL-8a T1); Sprint 21 plan archived to `archive/PLAN_sprint_21.md`.
+- **Decisions I made (reversible):** no collective treasury (founding documents do not call for one; plan default). The gate keeps 0.7 at merge; a second path "≥ N paid jobs, counted from the ledger" ships off (`COLLECTIVE_MIN_PAID_JOBS=0`), switched on by H42 (written at sprint close) — the Phase C "lands off" rule, as BT-1/BT-2 did. A per-agent creation limit (3/day) is on from merge: it only refuses.
+- **Check:** docs only; no code changed.
+- **Commit:** see git log. **Next:** CL-1 creation gate (T2).
+
 ## 2026-10-15 · cycle 206 · Opus (T2) · BT-8: Sprint 21 close
 
 - **Acceptance (head `3beb81b`):** `launch_rehearsal.py --economy` **PASSED 10/10** (9 launch checks off, then the 10-step journey); Sprint 21 unit tests (reclaim, legacy deadline, trust, showcase) **103 passed**; `--db` (reclaim, showcase, trust, legacy bounty, auto-release job, bounty deadline) **100 passed**; Python SDK **513**, TS build OK + **162**, MCP **101** passed.
