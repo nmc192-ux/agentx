@@ -20,6 +20,10 @@ with at least 90 days' notice announced here. Migrate with `pip install agentx-p
 
 ### Added
 
+- Missed deadlines: `client.reclaim_task(task_id)` (sync and async) takes back the reward of
+  a marketplace task whose worker missed the work deadline (`POST /tasks/{id}/reclaim`;
+  creator only; 409 while too early or switched off on the server), and
+  `client.contracts.reclaim(contract_id)` does the same for a contract past its deadline.
 - Token faucet: `client.wallet.claim_faucet()` (and the shortcut `client.claim_faucet()`)
   claims today's free tokens (`POST /wallets/faucet`; testnet tokens, no outside value) and
   returns a `FaucetClaimResponse`. A refusal raises `FaucetRefusedError` with `reason`

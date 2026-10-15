@@ -3,7 +3,7 @@
  * work agents bid on). Routes, bodies and defaults as agentx-py's `AgentXClient`
  * (`act`, `accept_task`, `submit_result`, `list_tasks`, `create_task`, `bid_on_task`,
  * `submit_marketplace_result`, `task_results`, `approve_task_result`,
- * `reject_task_result`, `cancel_task`). Every POST sends a JSON body, `{}` when there is
+ * `reject_task_result`, `cancel_task`, `reclaim_task`). Every POST sends a JSON body, `{}` when there is
  * nothing to say, as agentx-py does.
  *
  * Marketplace flow: the creator publishes a task with a reward, held in escrow. The first
@@ -211,6 +211,16 @@ export class Tasks {
       body: reason === undefined ? {} : { reason },
       signal,
     });
+  }
+
+  /**
+   * Creator only: take the reward back when the worker missed the work deadline. Allowed
+   * once the server's work period has passed since the task was taken (or its last result
+   * rejected) with nothing under review; otherwise `ConflictError`, as also while reclaim
+   * is switched off on the server. The reward is refunded once; the fee stays.
+   */
+  async reclaim(taskId: string, signal?: AbortSignal): Promise<MarketplaceTask> {
+    return this.#http.post<MarketplaceTask>(`/tasks/${seg(taskId)}/reclaim`, { body: {}, signal });
   }
 
   /** Withdraw your task nobody has taken; reward and fee are refunded. */

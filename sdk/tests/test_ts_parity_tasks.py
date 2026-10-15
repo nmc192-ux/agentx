@@ -1,4 +1,4 @@
-"""The TypeScript SDK's tasks and bounties send what agentx-py sends.
+"""The TypeScript SDK's tasks, bounties and contracts send what agentx-py sends.
 
 The same calls are made through ``AgentXClient`` (over an httpx mock transport) and
 through ``@agentx/sdk`` (under Node, with ``fetch`` stubbed); method, path, query and
@@ -23,6 +23,8 @@ TS_DIR = Path(__file__).resolve().parents[1] / "ts"
 TASK = "6f1c0e1e-7d8a-4c1b-9a51-0d3f2b7c1a10"
 BOUNTY = "0b7a4c3e-2f1d-4e5a-8b6c-9d0e1f2a3b4c"
 SUB = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f"
+CONTRACT = "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a"
+BID = "3e4f5a6b-7c8d-4e9f-8a1b-2c3d4e5f6a7b"
 NOW = "2026-10-07T00:00:00Z"
 
 # Enough fields for every response model agentx-py builds (Task, Bounty).
@@ -31,6 +33,10 @@ RECORD = {
     "status": "open", "created_at": NOW, "updated_at": NOW,
     "bounty_id": BOUNTY, "creator_did": "did:agentx:atlas", "title": "t",
     "description": "d", "capability_required": "sql", "reward_pool": 10,
+    "contract_id": CONTRACT, "contract_type": "general", "budget": 5, "escrowed_budget": 5,
+    "bid_id": BID, "bidder_did": "did:agentx:bruno", "bid_amount": 4,
+    "result_id": SUB, "contractor_did": "did:agentx:bruno", "submitted_at": NOW,
+    "dispute_id": SUB, "initiator_did": "did:agentx:atlas", "reason": "r",
 }
 
 
@@ -60,7 +66,7 @@ def _python_requests() -> list[dict]:
         body = json.loads(request.content) if request.content else None
         seen.append(_norm(request.method, str(request.url), body))
         is_list = request.method == "GET" and (
-            request.url.path in ("/tasks", "/markets/bounties")
+            request.url.path in ("/tasks", "/markets/bounties", "/contracts")
             or request.url.path.endswith(("/results", "/submissions"))
         )
         return httpx.Response(200, json=[] if is_list else RECORD)
@@ -84,6 +90,7 @@ def _python_requests() -> list[dict]:
     c.reject_task_result(TASK)
     c.reject_task_result(TASK, "missing tests")
     c.cancel_task(TASK)
+    c.reclaim_task(TASK)
 
     c.create_bounty(BountyCreate(title="t", description="d", capability_required="sql",
                                  reward_pool=10))
@@ -99,12 +106,28 @@ def _python_requests() -> list[dict]:
     c.evaluate_bounty_submission(BOUNTY, SUB, 0.75)
     c.distribute_bounty_rewards(BOUNTY)
     c.cancel_bounty(BOUNTY)
+
+    k = c.contracts
+    k.create("t", "d", 5)
+    k.create("t", "d", 5, required_capability="sql",
+             deadline=datetime(2026, 12, 1, tzinfo=timezone.utc))
+    k.list()
+    k.list(status="all", limit=10, offset=20)
+    k.bid(CONTRACT, 4)
+    k.bid(CONTRACT, 4, proposal="two days")
+    k.assign(CONTRACT, BID)
+    k.submit_result(CONTRACT)
+    k.submit_result(CONTRACT, {"out": 1}, {"t": 2})
+    k.complete(CONTRACT)
+    k.cancel(CONTRACT)
+    k.reclaim(CONTRACT)
+    k.dispute(CONTRACT, "not delivered")
     return seen
 
 
 TS_SCRIPT = """
 import { AgentX } from "./src/index.ts";
-const [TASK, BOUNTY, SUB] = %s;
+const [TASK, BOUNTY, SUB, CONTRACT, BID] = %s;
 const seen = [];
 const fetch = async (input, init = {}) => {
   seen.push({ method: init.method ?? "GET", url: input,
@@ -130,6 +153,7 @@ await t.approve(TASK);
 await t.reject(TASK);
 await t.reject(TASK, "missing tests");
 await t.cancel(TASK);
+await t.reclaim(TASK);
 
 await b.create({ title: "t", description: "d", capabilityRequired: "sql", rewardPool: 10 });
 await b.create({ title: "t", description: "d", capabilityRequired: "sql", rewardPool: 10,
@@ -143,12 +167,28 @@ await b.submissions(BOUNTY);
 await b.evaluate(BOUNTY, SUB, 0.75);
 await b.distribute(BOUNTY);
 await b.cancel(BOUNTY);
+
+const k = a.contracts;
+await k.create({ title: "t", description: "d", budget: 5 });
+await k.create({ title: "t", description: "d", budget: 5, requiredCapability: "sql",
+                 deadline: "2026-12-01T00:00:00+00:00" });
+await k.list();
+await k.list({ status: "all", limit: 10, offset: 20 });
+await k.bid(CONTRACT, 4);
+await k.bid(CONTRACT, 4, { proposal: "two days" });
+await k.assign(CONTRACT, BID);
+await k.submitResult(CONTRACT);
+await k.submitResult(CONTRACT, { content: { out: 1 }, metadata: { t: 2 } });
+await k.complete(CONTRACT);
+await k.cancel(CONTRACT);
+await k.reclaim(CONTRACT);
+await k.dispute(CONTRACT, "not delivered");
 console.log(JSON.stringify(seen));
 """
 
 
 def _ts_requests(node: str) -> list[dict]:
-    script = TS_SCRIPT % json.dumps([TASK, BOUNTY, SUB])
+    script = TS_SCRIPT % json.dumps([TASK, BOUNTY, SUB, CONTRACT, BID])
     proc = subprocess.run(
         [node, "--input-type=module", "-e", script],
         capture_output=True, text=True, timeout=60, cwd=TS_DIR,
@@ -158,11 +198,11 @@ def _ts_requests(node: str) -> list[dict]:
     return [_norm(r["method"], r["url"], r["body"]) for r in raw]
 
 
-def test_ts_tasks_and_bounties_match_agentx_py():
+def test_ts_tasks_bounties_and_contracts_match_agentx_py():
     node = _node()
     if node is None:
         pytest.skip("Node >= 22.18 not available")
     py, ts = _python_requests(), _ts_requests(node)
-    assert len(py) == len(ts) == 27
+    assert len(py) == len(ts) == 41
     for i, (p, t) in enumerate(zip(py, ts)):
         assert p == t, f"call {i}: agentx-py {p} != @agentx/sdk {t}"

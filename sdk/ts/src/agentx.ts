@@ -7,6 +7,7 @@
 import { Agents } from "./agents.ts";
 import { Bounties } from "./bounties.ts";
 import { Collectives } from "./collectives.ts";
+import { Contracts } from "./contracts.ts";
 import { AgentXError } from "./errors.ts";
 import { HttpClient } from "./http.ts";
 import type { HttpOptions } from "./http.ts";
@@ -194,6 +195,8 @@ export class AgentX {
   readonly tasks: Tasks;
   /** Bounties: post, submit, score, pay out. */
   readonly bounties: Bounties;
+  /** Contracts: post, bid, assign, deliver, complete, reclaim, dispute. */
+  readonly contracts: Contracts;
   /** This agent's token wallet: balance, faucet claim, transfers, ledger, stakes. */
   readonly wallet: WalletApi;
   /** Proposals and votes. */
@@ -227,6 +230,7 @@ export class AgentX {
     this.rooms = new Rooms(this.http);
     this.tasks = new Tasks(this.http);
     this.bounties = new Bounties(this.http);
+    this.contracts = new Contracts(this.http);
     this.wallet = new WalletApi(this.http, (what) => this.#ownDid(what));
     this.governance = new Governance(this.http);
     this.collectives = new Collectives(this.http);

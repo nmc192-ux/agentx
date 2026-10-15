@@ -41,7 +41,12 @@ ALL_TOOLS = {
     "agentx_join", "agentx_whoami", "agentx_read_feed", "agentx_create_post", "agentx_reply",
     "agentx_notifications", "agentx_heartbeat", "agentx_discover_agents",
     "agentx_send_message", "agentx_agent_of_the_week", "agentx_claim_faucet",
+    "agentx_create_bounty", "agentx_submit_bounty_solution", "agentx_reclaim_task",
 }
+BOUNTY_ID = "7a2d3c9f-2e3b-4d4c-8f9a-1b2c3d4e5f60"
+TASK_ID = "8b3e4d0a-3f4c-4e5d-9a0b-2c3d4e5f6071"
+BOUNTY_ARGS = {"title": "Find X", "description": "Find it.", "capability_required": "research",
+               "reward_pool": 50}
 
 
 @pytest.fixture
@@ -85,12 +90,13 @@ async def _call(server, tool: str, args: dict):
 
 # ── listing ──────────────────────────────────────────────────────────────────
 
-async def test_lists_all_eleven_tools_and_write_tools_are_not_read_only(server):
+async def test_lists_all_fourteen_tools_and_write_tools_are_not_read_only(server):
     async with Client(server) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
     assert set(tools) == ALL_TOOLS
     for name in ("agentx_join", "agentx_create_post", "agentx_reply", "agentx_send_message",
-                 "agentx_heartbeat", "agentx_claim_faucet"):
+                 "agentx_heartbeat", "agentx_claim_faucet", "agentx_create_bounty",
+                 "agentx_submit_bounty_solution", "agentx_reclaim_task"):
         assert tools[name].annotations.read_only_hint is False
         assert tools[name].description and len(tools[name].description) < 200
     title = tools["agentx_create_post"].input_schema["properties"]["title"]
@@ -209,6 +215,9 @@ async def test_join_name_over_64_chars_rejected_before_request(server):
     ("agentx_heartbeat", {}),
     ("agentx_claim_faucet", {}),
     ("agentx_send_message", {"to_agent_did": "did:agentx:gia-001", "message": "hi"}),
+    ("agentx_create_bounty", BOUNTY_ARGS),
+    ("agentx_submit_bounty_solution", {"bounty_id": BOUNTY_ID, "summary": "S"}),
+    ("agentx_reclaim_task", {"task_id": TASK_ID}),
 ])
 async def test_write_tools_without_credentials_fail_closed(server, tool, args):
     with respx.mock(base_url=BASE, assert_all_called=False) as mock:
@@ -500,6 +509,96 @@ async def test_refresh_kept_in_memory_when_file_cannot_be_written(server, capsys
         assert secret not in err
 
 
+# ── bounties and task reclaim (BT-6) ─────────────────────────────────────────
+
+async def test_create_bounty_sends_bearer_and_body(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post("/markets/bounties").respond(201, json={"bounty_id": BOUNTY_ID})
+        result = await _call(server, "agentx_create_bounty",
+                             {**BOUNTY_ARGS, "deadline": "2026-11-30T00:00:00Z"})
+    assert _payload(result)["bounty_id"] == BOUNTY_ID
+    _no_secrets(result)
+    req = route.calls.last.request
+    assert req.headers["authorization"] == f"Bearer {TOKEN}"
+    assert json.loads(req.content) == {**BOUNTY_ARGS, "deadline": "2026-11-30T00:00:00Z"}
+
+
+async def test_create_bounty_without_deadline_sends_none(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post("/markets/bounties").respond(201, json={"bounty_id": BOUNTY_ID})
+        await _call(server, "agentx_create_bounty", BOUNTY_ARGS)
+    assert "deadline" not in json.loads(route.calls.last.request.content)
+
+
+@pytest.mark.parametrize("bad", [
+    {"reward_pool": 0}, {"reward_pool": -5}, {"title": ""}, {"title": "x" * 256},
+    {"capability_required": "x" * 101},
+])
+async def test_create_bounty_bad_input_rejected_before_request(server, bad):
+    _joined()
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        route = mock.post("/markets/bounties")
+        result = await _call(server, "agentx_create_bounty", {**BOUNTY_ARGS, **bad})
+    assert result.is_error and not route.called
+
+
+async def test_create_bounty_wallet_too_low_reads_as_error(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post("/markets/bounties").respond(400, json={"detail": "Insufficient balance"})
+        result = await _call(server, "agentx_create_bounty", BOUNTY_ARGS)
+    assert result.is_error and "400" in _text(result) and "Insufficient balance" in _text(result)
+
+
+async def test_submit_bounty_solution_posts_solution_and_summary(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post(f"/markets/bounties/{BOUNTY_ID}/submit").respond(
+            201, json={"submission_id": "s1", "bounty_id": BOUNTY_ID})
+        result = await _call(server, "agentx_submit_bounty_solution",
+                             {"bounty_id": BOUNTY_ID, "summary": "Done", "solution": {"answer": 42}})
+    assert _payload(result)["submission_id"] == "s1"
+    req = route.calls.last.request
+    assert req.headers["authorization"] == f"Bearer {TOKEN}"
+    assert json.loads(req.content) == {"solution_data": {"answer": 42}, "summary": "Done"}
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("agentx_submit_bounty_solution", {"bounty_id": "../../wallets/faucet", "summary": "S"}),
+    ("agentx_submit_bounty_solution", {"bounty_id": BOUNTY_ID, "summary": "x" * 2001}),
+    ("agentx_reclaim_task", {"task_id": "../wallets/faucet"}),
+    ("agentx_reclaim_task", {"task_id": "not-a-uuid"}),
+])
+async def test_ids_and_lengths_checked_before_request(server, tool, args):
+    _joined()
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        catch_all = mock.route()
+        result = await _call(server, tool, args)
+    assert result.is_error and not catch_all.called
+
+
+async def test_reclaim_task_posts_with_bearer(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post(f"/tasks/{TASK_ID}/reclaim").respond(
+            json={"task_id": TASK_ID, "status": "cancelled"})
+        result = await _call(server, "agentx_reclaim_task", {"task_id": TASK_ID})
+    assert _payload(result)["status"] == "cancelled"
+    _no_secrets(result)
+    assert route.calls.last.request.headers["authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_reclaim_task_too_early_reads_as_conflict(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post(f"/tasks/{TASK_ID}/reclaim").respond(
+            409, json={"detail": "The work deadline has not passed yet"})
+        result = await _call(server, "agentx_reclaim_task", {"task_id": TASK_ID})
+    assert result.is_error and "409" in _text(result) and "deadline" in _text(result)
+
+
 # ── token-absence scan over every tool ───────────────────────────────────────
 
 async def test_no_tool_result_contains_a_token(server):
@@ -510,6 +609,9 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_whoami": {}, "agentx_read_feed": {}, "agentx_discover_agents": {},
         "agentx_agent_of_the_week": {}, "agentx_notifications": {}, "agentx_heartbeat": {},
         "agentx_claim_faucet": {},
+        "agentx_create_bounty": BOUNTY_ARGS,
+        "agentx_submit_bounty_solution": {"bounty_id": BOUNTY_ID, "summary": "S"},
+        "agentx_reclaim_task": {"task_id": TASK_ID},
         "agentx_create_post": {"title": "T", "content": "C"},
         "agentx_reply": {"post_id": POST_ID, "content": "C"},
         "agentx_send_message": {"to_agent_did": "did:agentx:gia-001", "message": "m"},

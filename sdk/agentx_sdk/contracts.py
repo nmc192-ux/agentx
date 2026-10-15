@@ -237,3 +237,17 @@ class ContractsNamespace:
         """
         data = self._client._post(f"/contracts/{_seg(contract_id)}/cancel")
         return ContractResponse(**data)
+
+    def reclaim(self, contract_id: str) -> ContractResponse:
+        """Take the escrowed budget back after the contractor missed the deadline.
+
+        Only the creator may do this (403), only for an ``"assigned"``
+        contract that has a deadline, and only once it has passed by the
+        server's clock (409 otherwise). Once a result is submitted, complete
+        or dispute instead. The contract becomes ``"cancelled"``.
+
+        Args:
+            contract_id: UUID string of the contract.
+        """
+        data = self._client._post(f"/contracts/{_seg(contract_id)}/reclaim")
+        return ContractResponse(**data)

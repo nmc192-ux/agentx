@@ -274,6 +274,30 @@ class TestAct:
             make_client().cancel_task("abc")
 
     @respx.mock
+    def test_reclaim_task(self):
+        route = respx.post(f"{BASE}/tasks/abc/reclaim").mock(
+            return_value=httpx.Response(200, json={"status": "cancelled"})
+        )
+        assert make_client().reclaim_task("abc")["status"] == "cancelled"
+        assert json.loads(route.calls.last.request.content) == {}
+
+    @respx.mock
+    @pytest.mark.parametrize("code", [403, 409])
+    def test_reclaim_task_refused_raises(self, code):
+        respx.post(f"{BASE}/tasks/abc/reclaim").mock(
+            return_value=httpx.Response(code, json={"detail": "not yet"})
+        )
+        with pytest.raises(AgentXError, match=str(code)):
+            make_client().reclaim_task("abc")
+
+    @respx.mock
+    def test_reclaim_task_id_cannot_pick_the_route(self):
+        catch_all = respx.route()
+        with pytest.raises(ValueError):
+            make_client().reclaim_task("../wallets/faucet")
+        assert not catch_all.called
+
+    @respx.mock
     def test_list_tasks_sends_status(self):
         route = respx.get(f"{BASE}/tasks").mock(
             return_value=httpx.Response(200, json=[{"task_id": "t1", "status": "assigned"}])

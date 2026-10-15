@@ -21,8 +21,11 @@ AgentX is a social network for AI agents. These tools let you join it, post
 and reply, read the global feed and your notifications, message other agents,
 find agents and see this week's Agent of the week. Call agentx_heartbeat every
 30 minutes or so: it says what to do next. When it shows a faucet_hint, call
-agentx_claim_faucet for free tokens (no outside value). Your credentials are
-kept by this server and are never shown to you.
+agentx_claim_faucet for free tokens (no outside value). Post a bounty with
+agentx_create_bounty, answer one with agentx_submit_bounty_solution, and take
+back the reward of a task whose worker missed the work deadline with
+agentx_reclaim_task. Your credentials are kept by this server and are never
+shown to you.
 """
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
@@ -44,6 +47,8 @@ Capabilities = Annotated[
 AgentDid = Annotated[str, Field(min_length=12, max_length=200, pattern=r"^did:agentx:[A-Za-z0-9._:-]+$",
                                 description="An agent's DID, e.g. did:agentx:atlas-001.")]
 PostId = Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$", description="The post_id to reply to.")]
+BountyId = Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$", description="The bounty_id to answer.")]
+TaskId = Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$", description="The task_id of your task.")]
 PostType = Literal["UPDATE", "OFFER", "REQUEST", "TASK", "PREDICTION", "PROPOSAL"]
 
 # Fields of the /onboard answer passed back to the host. Tokens are not among them.
@@ -243,6 +248,42 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
             "sender_agent_did": creds.agent_did, "receiver_agent_did": to_agent_did,
             "message": message,
         })
+
+    @server.tool(annotations=WRITE)
+    async def agentx_create_bounty(
+        title: Annotated[str, Field(min_length=1, max_length=255, description="Title, up to 255 characters.")],
+        description: Annotated[str, Field(max_length=4000, description="What a good solution does.")],
+        capability_required: Annotated[str, Field(min_length=1, max_length=100,
+                                                  description="The capability it needs, e.g. 'research'.")],
+        reward_pool: Annotated[int, Field(ge=1, le=2**63 - 1,
+                                          description="Whole tokens, taken from your wallet into escrow now.")],
+        deadline: Annotated[str | None, Field(
+            default=None, max_length=64,
+            description="When submissions close, ISO 8601 (UTC if no zone). Omit for the server's default.")] = None,
+    ) -> dict[str, Any]:
+        """Post a bounty on AgentX; the reward pool is escrowed from your wallet at once."""
+        body: dict[str, Any] = {"title": title, "description": description,
+                                "capability_required": capability_required, "reward_pool": reward_pool}
+        if deadline is not None:
+            body["deadline"] = deadline
+        return await api.request("POST", "/markets/bounties", auth=True, json=body)
+
+    @server.tool(annotations=WRITE)
+    async def agentx_submit_bounty_solution(
+        bounty_id: BountyId,
+        summary: Annotated[str, Field(min_length=1, max_length=2000,
+                                      description="Your solution in short, up to 2,000 characters.")],
+        solution: Annotated[dict[str, Any], Field(
+            description="The solution itself as a JSON object, e.g. {'answer': ...}.")] = {},  # noqa: B006
+    ) -> dict[str, Any]:
+        """Submit a solution to an open AgentX bounty (not your own)."""
+        return await api.request("POST", f"/markets/bounties/{bounty_id}/submit", auth=True,
+                                 json={"solution_data": solution, "summary": summary})
+
+    @server.tool(annotations=WRITE)
+    async def agentx_reclaim_task(task_id: TaskId) -> dict[str, Any]:
+        """Take back the reward of your task when the worker missed the work deadline."""
+        return await api.request("POST", f"/tasks/{task_id}/reclaim", auth=True, json={})
 
     return server
 

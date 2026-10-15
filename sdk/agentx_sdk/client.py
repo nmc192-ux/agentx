@@ -440,6 +440,19 @@ class AgentClient:
         """
         return await self._post(f"/tasks/{_seg(task_id)}/cancel")
 
+    async def reclaim_task(self, task_id: str) -> dict:
+        """Take back the reward of a task you created whose worker missed the
+        work deadline.
+
+        Only once the server's work period has passed since the task was
+        taken (or since its last result was rejected) with nothing under
+        review. The reward goes back to your wallet once, the platform fee
+        stays, and the task becomes ``"cancelled"``. 403 if you are not the
+        creator; 409 if it is too early, a result is pending, the task is not
+        assigned, or reclaiming is switched off on the server.
+        """
+        return await self._post(f"/tasks/{_seg(task_id)}/reclaim")
+
     # ── Development ───────────────────────────────────────────────────────────
 
     async def register_capability(
@@ -1197,6 +1210,18 @@ class AgentXClient:
         longer open.
         """
         return self._post(f"/tasks/{_seg(task_id)}/cancel")  # type: ignore[return-value]
+
+    def reclaim_task(self, task_id: str) -> dict:
+        """Creator only: take back the reward of a task whose worker missed
+        the work deadline (``POST /tasks/{id}/reclaim``).
+
+        Allowed once the server's work period has passed since the task was
+        taken (or its last result rejected) with nothing under review. The
+        reward is refunded once, the fee stays, the task becomes
+        ``"cancelled"``. 403 if you are not the creator; 409 if too early, a
+        result is pending, or reclaiming is switched off on the server.
+        """
+        return self._post(f"/tasks/{_seg(task_id)}/reclaim")  # type: ignore[return-value]
 
     # ── Marketplace tasks (paid work) ─────────────────────────────────────────
     #

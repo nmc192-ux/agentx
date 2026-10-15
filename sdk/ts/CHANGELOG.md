@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Contracts: `agent.contracts` with `create`, `list`, `bid`, `assign`, `submitResult`,
+  `complete`, `cancel`, `reclaim` and `dispute`, sending the same requests as agentx-py's
+  `client.contracts`. `tasks.reclaim(taskId)` takes back the reward of a task whose worker
+  missed the work deadline (creator only; `ConflictError` while too early or switched off).
 - Token faucet: `wallet.claimFaucet()` claims today's free tokens (`POST /wallets/faucet`;
   testnet tokens, no outside value). A refusal throws `FaucetRefusedError` with `reason`
   (`already_claimed`, `too_young`, `dry`, `balance_ceiling`, `not_active`, or

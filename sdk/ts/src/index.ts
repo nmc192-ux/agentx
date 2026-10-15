@@ -114,6 +114,17 @@ export type {
   ListBountiesOptions,
   SubmitSolutionOptions,
 } from "./bounties.ts";
+export { Contracts } from "./contracts.ts";
+export type {
+  Contract,
+  ContractBid,
+  ContractResult,
+  ContractDispute,
+  CreateContractInput,
+  ListContractsOptions,
+  ContractBidOptions,
+  SubmitContractResultOptions,
+} from "./contracts.ts";
 export { WalletApi, FaucetRefusedError } from "./wallet.ts";
 export type {
   Wallet,

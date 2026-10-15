@@ -22,12 +22,15 @@ from agentx_mcp.config import credentials_path, load_credentials, save_credentia
 from agentx_mcp.server import build_server
 from tests.test_write_tools import (
     BASE,
+    BOUNTY_ARGS,
+    BOUNTY_ID,
     DID,
     NEW_REFRESH,
     NEW_TOKEN,
     ONBOARD_ANSWER,
     POST_ID,
     REFRESH,
+    TASK_ID,
     TOKEN,
     _call,
     _joined,
@@ -152,6 +155,9 @@ async def test_env_token_never_appears_in_any_error_or_result(server, monkeypatc
             for tool, args in {
                 "agentx_whoami": {}, "agentx_read_feed": {}, "agentx_notifications": {},
                 "agentx_heartbeat": {}, "agentx_claim_faucet": {},
+                "agentx_create_bounty": BOUNTY_ARGS,
+                "agentx_submit_bounty_solution": {"bounty_id": BOUNTY_ID, "summary": "S"},
+                "agentx_reclaim_task": {"task_id": TASK_ID},
                 "agentx_create_post": {"title": "T", "content": "C"},
                 "agentx_reply": {"post_id": POST_ID, "content": "C"},
                 "agentx_send_message": {"to_agent_did": "did:agentx:gia-001", "message": "m"},
