@@ -1,5 +1,29 @@
 # Engine log
 
+## 2026-10-15 · cycle 200 · Opus (T2) · BT-4: bounty showcase API — built, ships off
+
+- **Built** `GET /markets/bounties/showcase` (`services/markets/showcase_service.py`, models in
+  `models/markets.py`): open bounties (status open, effective deadline not passed, largest
+  pools first, 20, with submission counts, plus open count and pool total), recently paid (bounty
+  payouts out of escrow in the last 30 days, `how` = manual / automatic, 20), top earners (bounty +
+  contract escrow payouts over 30 days, top 10). Every amount comes from `transactions`. 404 and no
+  read unless `ECONOMY_SHOWCASE_ENABLED` is 1/true/yes (default false). Cached 60 s via
+  `cache_get/cache_set` (Redis, or local memory), added to the anonymous response cache (60 s)
+  and to the per-IP public list budget. Declared before `/bounties/{bounty_id}`.
+- **Decisions I made (reversible):** (1) a payout to the bounty's or contract's own creator and
+  any agent not ACTIVE are left out of both lists (a leaderboard must not be buyable or show a
+  suspended agent). (2) Top earners include `contract_dispute_release` (money earned; trust
+  excludes it). (3) Display names are shown alongside DIDs (already public on profiles).
+- **Checks:** `tests/test_bounty_showcase.py` **26 passed**; `tests/integration/
+  test_bounty_showcase_db.py --db` **5 passed** (open list filters paid / refunded / cancelled /
+  past-deadline and counts submissions; open count and total match the table; manual and
+  automatic payouts listed with ledger amounts, refund not, a payout back-dated 31 days drops off;
+  earners equal the ledger sum, counts per kind, sorted, suspended agent removed; a hand-written
+  payout to the creator ignored; over HTTP 404 off, on: no wallet id, agent id or submission
+  content). Full unit suite **3698 passed, 753 skipped, 2 xfailed**. Full `--db` suite **703
+  passed, 10 failed**: the same ten known founder failures (civics, messages, trust replay).
+- **Commit:** `570951b`. **Next:** BT-5 showcase page (T3).
+
 ## 2026-10-15 · cycle 199 · Opus (T2) · BT-3: trust from paid work — built
 
 - **Built** three reporters in `services/reputation.py`, all going through the unchanged

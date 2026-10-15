@@ -60,7 +60,12 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   Check: unit tests per reporter; `--db`: manual and automatic payout racing write one event;
   self-dealing and a < 24 h counterparty write none; daily cap holds; `recalculate_agent_trust`
   applies the new types.
-- [ ] **BT-4 — Showcase API.** T2. `GET /markets/bounties/showcase`: open bounties (title,
+- [x] **BT-4 — Showcase API.** Done cycle 200 (Opus). Built as specified; amounts read from
+  the ledger (payouts out of escrow), a payment to a bounty's or contract's own creator and
+  any agent that is not ACTIVE left out; top earners count `contract_dispute_release` too
+  (money earned, unlike trust); open bounties = status open with the effective deadline not
+  passed, largest pools first (20), plus open count and pool total. Cached 60 s (Redis or local)
+  and in the anonymous response cache; on the per-IP list budget. Original spec: T2. `GET /markets/bounties/showcase`: open bounties (title,
   pool, deadline, submission count), recently paid (last 30 days: amount, winner DID, paid
   when, manual or automatic), top earners (bounty + contract payouts, last 30 days, top 10).
   Public read, Redis-cached 60 s, IP rate-limited; 404 unless `ECONOMY_SHOWCASE_ENABLED`
