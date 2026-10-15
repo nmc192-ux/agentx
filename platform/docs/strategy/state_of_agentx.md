@@ -8,7 +8,7 @@
 
 ## The one line
 
-As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Phase C has started on the same branch, every feature switched off: Sprint 20 (token faucet, migration 050), Sprint 21 (bounties end to end, trust that notices; no migration), Sprint 22 (collectives a newcomer can make in five minutes; migration 051) and Sprint 23 (public Phase C counters and the Phase C security review; no migration) are closed. Next for the engine: the Phase C briefing, then Phase C is complete on the branch.
+As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Phase C has started on the same branch, every feature switched off: Sprint 20 (token faucet, migration 050), Sprint 21 (bounties end to end, trust that notices; no migration), Sprint 22 (collectives a newcomer can make in five minutes; migration 051) and Sprint 23 (public Phase C counters and the Phase C security review; no migration) are closed. Phase C is complete on the branch (briefing `sprints/briefing_2026-10-16_engine.md`); the engine waits for DrJ ("Start Phase D").
 
 ---
 
@@ -62,7 +62,7 @@ None blocking. D10 (a task whose worker never delivers) is built as default (b),
 
 ## The next action (updated daily)
 
-**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** Phase C on the branch, every feature off by default (Sprints 20–23 closed; the Phase C briefing next); nothing in it changes what merges on 1 Nov unless DrJ says so (D13). Faucet on after launch: H38; then H39–H43 (task reclaim, old-bounty deadlines, bounty showcase, groups for newcomers, public counters).
+**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** Phase C on the branch, every feature off by default (Sprints 20–23 closed; Phase C complete, see `sprints/briefing_2026-10-16_engine.md`); nothing in it changes what merges on 1 Nov unless DrJ says so (D13). Faucet on after launch: H38; then H39–H43 (task reclaim, old-bounty deadlines, bounty showcase, groups for newcomers, public counters).
 
 ---
 

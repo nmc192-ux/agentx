@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-16 · cycle 224 · Opus (T2) · EM-6: Phase C briefing — PHASE_COMPLETE
+
+- **Wrote** `sprints/briefing_2026-10-16_engine.md` in the protocol's format: what Sprints 20–23 built and their switches (H38–H43), model usage (13 marked/related commits reviewed on Fable, 18 issues found, 18 fixed), test results at `941288e`, "What merging will do" (migrations 050/051 additive; everything off except the tighter group and group-only-post rules and paid-work trust events), the switch-on order, known limits (counters cheap to inflate, first-come faucet, trust farming caps), D10–D13, and a live-test checklist with the counters page as the check for the numerical exit criteria.
+- **Fixed H38:** it lacked the website step for `NEXT_PUBLIC_FEATURE_FAUCET` (the `/join` faucet text) and still said the fairer faucet rule was "planned for Sprint 21" (it was not built; now "backlog"). `state_of_agentx.md` points at the briefing.
+- **Checks:** documents only; code head unchanged since the rehearsed `941288e` content (9/9 off, 12/12 `--economy`). Facts in the briefing checked against the retros, `HUMAN_ACTIONS.md`, `ui/lib/flags.ts` and `git rev-list` (216 commits ahead of `main`, 39 marked).
+- **Next:** none engine-doable; waits for DrJ ("Start Phase D", D13 before 1 Nov). If resumed from 30 Oct with a changed head, re-run the launch rehearsal first.
+
 ## 2026-10-15 · cycle 223 · Opus (T2) · EM-5: Sprint 23 close
 
 - **Ran the acceptance criteria locally** at `941288e`: (1) `test_economy_stats.py` + `test_launch_rehearsal.py` + `test_post_visibility_review.py` **117 passed**, `--db` economy and visibility **12 passed**; (2) `ui` `npm test` **19 passed**, `npm run build` OK with `NEXT_PUBLIC_FEATURE_ECONOMY` on and off; (3) Python SDK **531**, TS build OK + **171**, MCP **128**, `platform/tests/a2a` **164** passed; (4) `launch_rehearsal.py` **PASSED 9/9** off (`/stats/economy` 404) and **PASSED 12/12** `--economy` (counters: bounties posted 2, paid 2, collectives 1, joined 10, posting 5, trusted 0). (5) done cycle 222.

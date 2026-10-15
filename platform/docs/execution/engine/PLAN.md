@@ -62,7 +62,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   `--economy` green; `sprint_23_retro.md`; `state_of_agentx.md`; **H43** in
   `HUMAN_ACTIONS.md` (switch on: `ECONOMY_STATS_ENABLED=1` on the VPS; the page shares
   `NEXT_PUBLIC_FEATURE_ECONOMY` with H41).
-- [ ] **EM-6 — Phase C briefing.** T2. `sprints/briefing_<date>_engine.md` in the protocol's
+- [x] **EM-6 — Phase C briefing.** Done cycle 224: `sprints/briefing_2026-10-16_engine.md`; H38 gained its missing website step. T2. `sprints/briefing_<date>_engine.md` in the protocol's
   briefing format: what Phase C built (Sprints 20–23), "What merging will do" (what is live
   from the merge with no switch vs. behind H38–H43), the switch-on order, the live-test
   checklist, open decisions (D10–D13), known limits from the reviews; then status
