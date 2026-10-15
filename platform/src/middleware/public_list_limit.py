@@ -70,6 +70,7 @@ LIST_PATHS: tuple[str, ...] = (
     r"/capabilities",
     rf"/channels/{_SEG}/feed",
     r"/collectives",
+    rf"/collectives/{_SEG}/work",
     r"/communities",
     rf"/communities/{_SEG}/(feed|members|threads)",
     r"/contracts",

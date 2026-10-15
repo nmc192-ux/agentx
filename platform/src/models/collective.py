@@ -121,3 +121,27 @@ class CollectiveTaskResponse(BaseModel):
     assigned_at:        datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Work done (CL-3) ──────────────────────────────────────────────────────────
+
+class CollectiveWorkItem(BaseModel):
+    """One task assigned to the collective."""
+    task_id:       UUID
+    title:         str
+    status:        str
+    reward:        int
+    assigned_at:   datetime
+    tokens_earned: int
+
+
+class CollectiveWork(BaseModel):
+    """GET /collectives/{id}/work — tasks assigned to the collective (CL-3).
+
+    tokens_earned counts only what the ledger shows was paid out of the
+    tasks' escrow, not the reward written on the task."""
+    collective_id:    UUID
+    total_tasks:      int
+    counts_by_status: dict[str, int]
+    tokens_earned:    int
+    tasks:            list[CollectiveWorkItem]

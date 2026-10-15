@@ -9,6 +9,7 @@ Endpoints:
   GET    /collectives/{collective_id}                           — Collective + member list
   GET    /collectives/{collective_id}/requests                  — Pending requests (OWNER/ADMIN)
   GET    /collectives/{collective_id}/membership                — The caller's own membership
+  GET    /collectives/{collective_id}/work                      — Tasks assigned, tokens earned
   POST   /collectives/{collective_id}/join                      — Request membership
   POST   /collectives/{collective_id}/members/{did}/approve     — Approve member (admin)
   DELETE /collectives/{collective_id}/members/{did}             — Remove member
@@ -22,7 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from ..auth.middleware import AgentRecord, get_current_agent
+from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..config import get_settings
 from ..database import get_db, transaction
 from ..models.collective import (
@@ -33,11 +34,12 @@ from ..models.collective import (
     CollectiveTaskCreate,
     CollectiveTaskResponse,
     CollectiveWithMembers,
+    CollectiveWork,
     JoinRequest,
     MyMembershipResponse,
     PendingRequestResponse,
 )
-from ..services import collective_gate, collective_service
+from ..services import collective_gate, collective_service, collective_work
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +282,26 @@ async def my_membership(
         status=me["status"] or "none",
         since=me["joined_at"],
     )
+
+
+# ── GET /collectives/{id}/work (CL-3) ────────────────────────────────────────
+
+@router.get(
+    "/{collective_id}/work",
+    response_model=CollectiveWork,
+    summary="Tasks assigned to a collective and the tokens they earned",
+)
+async def collective_work_done(
+    collective_id: UUID,
+    request:       Request,
+    caller:        Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """Public for a public collective; a private one is 404 unless the caller
+    is an ACTIVE member. Tokens earned are read from the ledger."""
+    try:
+        return await collective_work.get_work(collective_id, caller.did if caller else None)
+    except collective_work.CollectiveNotFound:
+        raise HTTPException(status_code=404, detail=f"Collective not found: {collective_id}")
 
 
 # ── POST /collectives/{id}/tasks ──────────────────────────────────────────────
