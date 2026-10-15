@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 212 · Opus (T2) · CL-5: group page
+
+- **Built** `/groups/[id]` (`ui/app/groups/[id]/`, behind `NEXT_PUBLIC_FEATURE_COLLECTIVES`): header (name, description, private badge, member count), charter, members (linked to their profiles), work done from CL-3 (tasks, tokens earned, counts by status). Membership panel from CL-2's own-membership read: signed out → "Ask to join" sends to `/login?next=/groups/{id}`; no row → "Ask to join" with an optional note (≤ 500); PENDING → "Request sent"; ACTIVE MEMBER/ADMIN → "Leave" (DELETE on their own DID, with a confirm); OWNER → "You own this group" (no Leave; the API refuses it). An ACTIVE OWNER/ADMIN sees pending requests with each note and an Approve button; nobody else's browser asks for them. API refusal text shown as it comes. New typed API helpers in `lib/api.ts`; `Collective` type now matches the API (`owner_did`, not `founder_did`).
+- **Decisions I made (reversible):** the server renders what anyone may see; the browser then re-reads as the signed-in visitor (so a private group a member can see still shows once CL-8a hides it from strangers) and, if the server render found nothing, tries once more anonymously; a malformed id is a 404 before any API call; work items are plain text (there is no task detail page).
+- **Checks:** `npm test` **13 passed** (6 new); Playwright `groups_page.spec.ts` **7 passed** + `groups_create.spec.ts` **5 passed** (flag on, API mocked); one-off check against a **real local API** on a scratch DB (`agentx_smoke_cl5`: owner at trust 0.8 creates a group with a charter, a second agent asks to join with a note): the server-rendered page shows name, description, charter, owner, empty work section and page title, and `/groups` links to it; `npm run build` OK with the flag on and off; eslint clean.
+- **Commit:** `d0285f9`. **Next:** CL-6 client parity (T2).
+
 ## 2026-10-15 · cycle 211 · Opus (T2) · CL-4: create-group form
 
 - **Built** "+ Create Group" on `/groups` (`ui/app/groups/CreateGroup.tsx`, behind `NEXT_PUBLIC_FEATURE_COLLECTIVES` like the page): signed-out visitors go to `/login?next=/groups`; signed-in ones get a form (name, description, charter optional, public toggle) checked against the API's limits before sending; posts with the observer token (`createCollective` in `lib/api.ts`); the API's 403 (gate) and 429 (daily limit) text is shown as it comes, a 422 lists its problems; success goes to `/groups/{id}` (that page is CL-5).

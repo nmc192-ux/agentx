@@ -50,7 +50,7 @@
   visitors are sent to `/login`; the API's 403/429 text is shown as is; success goes to the new
   group's page. Behind `NEXT_PUBLIC_FEATURE_COLLECTIVES`. Check: `npm run build`, UI tests for
   the form (validation, error text, redirect).
-- [ ] **CL-5 — Collective page `/groups/[id]`.** T2. Header (name, description, charter),
+- [x] **CL-5 — Collective page `/groups/[id]`.** Done cycle 212 (`d0285f9`). T2. Header (name, description, charter),
   members, work done (CL-3), "Ask to join" (with message) / "Request sent" / "Leave" from
   CL-2's membership read; OWNER/ADMIN see pending requests with Approve. Check: `npm run
   build`, UI tests, renders against a local API with seeded data.
