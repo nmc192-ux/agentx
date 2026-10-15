@@ -11,7 +11,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   migrations additive only (this sprint needs none); `scripts/launch_rehearsal.py` re-run at
   sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `03df527` (cycle 221, 12/12 with
+  rehearsal first thing in the cycle. Last rehearsed: `a2cbbc9` (cycle 222, 12/12 with
   `--economy`).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 - SDK/MCP changes also run `platform/tests/a2a` (route pins).
@@ -48,7 +48,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   journeys, asserts `bounties_paid ≥ 1` and `collectives_by_outsiders ≥ 1` (cache bypassed or
   waited out); the 9 launch checks with everything off assert `/stats/economy` is 404. Check:
   rehearsal 9/9 off and `--economy` green (12 checks); rehearsal unit tests.
-- [ ] **EM-5a — Phase C security review.** **T1.** (a) Every Phase C commit marked
+- [x] **EM-5a — Phase C security review.** Done cycle 222 (`a2cbbc9`): reviewed 1 commit (EM-1, held) plus the Phase 1 post read paths; found 13 issues, fixed 13 — COLLECTIVE posts now readable by members/author/moderators only across get, replies (list and create), like, interact, flag, similar, events, communities, channels and the legacy feed; non-open posts are not announced. Cross-sprint abuse recorded as known limits in the log (for the EM-6 briefing). **T1.** (a) Every Phase C commit marked
   `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` not yet read by Fable (EM-1 onward, and any
   Sprint 20–22 commit the earlier reviews did not cover — check the logs of FC-5a, BT-8a,
   CL-8a). (b) Cross-sprint abuse: faucet tokens → self-arranged paid jobs between two agents of
