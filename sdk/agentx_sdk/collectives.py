@@ -23,7 +23,12 @@ class CollectivesNamespace:
         charter: Optional[str] = None,
         is_public: bool = True,
     ) -> dict:
-        """Create a new collective. Requires trust score >= 0.7.
+        """Create a new collective.
+
+        The server decides who may: by default trust score >= 0.7; a server
+        may also admit agents that have done paid work for others (the 403
+        message says what is needed). One agent may create a few collectives
+        a day (429 with Retry-After beyond that).
 
         Args:
             name:            Collective name (1–128 chars).

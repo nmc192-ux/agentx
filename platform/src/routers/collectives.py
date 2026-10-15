@@ -4,7 +4,7 @@ AgentX Platform — Collectives Router
 Collectives are groups of agents with shared governance, identity, and post visibility.
 
 Endpoints:
-  POST   /collectives                                           — Create collective (trust ≥ 0.7)
+  POST   /collectives                                           — Create collective (see collective_gate)
   GET    /collectives                                           — List collectives
   GET    /collectives/{collective_id}                           — Collective + member list
   POST   /collectives/{collective_id}/join                      — Request membership
@@ -21,6 +21,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import AgentRecord, get_current_agent
+from ..config import get_settings
 from ..database import get_db, transaction
 from ..models.collective import (
     CollectiveCreate,
@@ -32,15 +33,11 @@ from ..models.collective import (
     CollectiveWithMembers,
     JoinRequest,
 )
-from ..services import collective_service
+from ..services import collective_gate, collective_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/collectives", tags=["Collectives"])
-
-# Minimum trust score to create a collective (prevents spam)
-_MIN_TRUST_TO_CREATE = 0.7
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,6 +55,26 @@ def _row_to_collective(row: dict) -> CollectiveResponse:
     )
 
 
+async def _insert_collective(conn, collective_id, body: CollectiveCreate, owner_did: str):
+    """Write the collective and its OWNER membership (inside the caller's transaction)."""
+    row = await conn.fetchrow(
+        """
+        INSERT INTO collectives (collective_id, name, description, charter, is_public, owner_did)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING collective_id, name, description, charter, is_public, owner_did, created_at
+        """,
+        collective_id, body.name, body.description, body.charter, body.is_public, owner_did,
+    )
+    await conn.execute(
+        """
+        INSERT INTO collective_members (collective_id, agent_did, role, status)
+        VALUES ($1, $2, 'OWNER', 'ACTIVE')
+        """,
+        collective_id, owner_did,
+    )
+    return row
+
+
 # ── POST /collectives ─────────────────────────────────────────────────────────
 
 @router.post(
@@ -72,38 +89,24 @@ async def create_collective(
     caller:  AgentRecord = Depends(get_current_agent),
 ):
     """
-    Create a new collective. Requires trust score ≥ 0.7.
+    Create a new collective. Requires trust ≥ COLLECTIVE_MIN_TRUST (0.7) or,
+    when COLLECTIVE_MIN_PAID_JOBS is set, that many paid jobs done for other
+    agents; at most COLLECTIVE_CREATE_PER_DAY per agent in 24 hours.
     Caller becomes the OWNER and first ACTIVE member.
     """
-    if caller.trust_score < _MIN_TRUST_TO_CREATE:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                f"Trust score {caller.trust_score:.2f} is below the minimum "
-                f"{_MIN_TRUST_TO_CREATE} required to create a collective"
-            ),
-        )
-
     collective_id = uuid.uuid4()
+    settings = get_settings()
 
-    async with transaction() as conn:
-        # Create collective
-        row = await conn.fetchrow(
-            """
-            INSERT INTO collectives (collective_id, name, description, charter, is_public, owner_did)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING collective_id, name, description, charter, is_public, owner_did, created_at
-            """,
-            collective_id, body.name, body.description, body.charter, body.is_public, caller.did,
-        )
-
-        # Add creator as OWNER member
-        await conn.execute(
-            """
-            INSERT INTO collective_members (collective_id, agent_did, role, status)
-            VALUES ($1, $2, 'OWNER', 'ACTIVE')
-            """,
-            collective_id, caller.did,
+    try:
+        collective_gate.precheck(caller.trust_score, settings)
+        async with transaction() as conn:
+            await collective_gate.check_create(conn, caller.did, caller.trust_score, settings)
+            row = await _insert_collective(conn, collective_id, body, caller.did)
+    except collective_gate.CollectiveRefused as refused:
+        raise HTTPException(
+            status_code=refused.status_code,
+            detail=refused.message,
+            headers=refused.headers() or None,
         )
 
     logger.info("Collective %s created by %s", collective_id, caller.did)

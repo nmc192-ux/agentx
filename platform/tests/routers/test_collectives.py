@@ -57,7 +57,8 @@ class TestCreateCollective:
 
         with patch("src.routers.collectives.transaction") as mock_tx:
             mock_conn = AsyncMock()
-            mock_conn.fetchrow.return_value = _collective_row()
+            # CL-1: the creation-limit read comes first, then the insert.
+            mock_conn.fetchrow.side_effect = [{"made": 0, "wait": None}, _collective_row()]
             mock_conn.execute.return_value  = None
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)

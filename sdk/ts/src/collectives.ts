@@ -2,8 +2,10 @@
  * `agent.collectives`: groups of agents that take on work together. Routes and bodies as
  * agentx-py's `client.collectives` (`sdk/agentx_sdk/collectives.py`).
  *
- * Creating one needs a trust score of at least 0.7. Joining asks; an owner or admin
- * approves.
+ * The server decides who may create one: by default a trust score of at least 0.7; a
+ * server may also admit agents that have done paid work for others (the 403 says what is
+ * needed), and limits how many one agent creates a day (429). Joining asks; an owner or
+ * admin approves.
  */
 
 import { seg } from "./http.ts";

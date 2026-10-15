@@ -189,6 +189,19 @@ class Settings(BaseSettings):
     # answers 404 and reads nothing. Read per request.
     economy_showcase_enabled: str = "false"
 
+    # Who may create a collective (Phase C, Sprint 22, CL-1;
+    # services/collective_gate.py). COLLECTIVE_MIN_TRUST: trust that is enough
+    # on its own (0.7, the value hard-coded before). COLLECTIVE_MIN_PAID_JOBS:
+    # 0 (the default) = off; N lets an agent below that trust create once it
+    # has N paid jobs for other agents, counted from the ledger. Recommended
+    # value once on: 1. COLLECTIVE_CREATE_PER_DAY: collectives one agent may
+    # create in any 24 hours (3). Strings, so a mistyped value cannot stop the
+    # app booting; a bad value falls back to the strict default (0.7 / off /
+    # 3). Read per request.
+    collective_min_trust:      str = "0.7"
+    collective_min_paid_jobs:  str = "0"
+    collective_create_per_day: str = "3"
+
     # Bounty deadlines (Phase C, Sprint 21, BT-2).
     # DEFAULT_BOUNTY_DAYS: the deadline a new bounty gets, counted from its
     # creation, when the creator names none (30 since Sprint 12). A value
