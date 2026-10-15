@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 208 · Opus (T2) · CL-1: collective creation gate as settings
+
+- **Built** `services/collective_gate.py`, used by `POST /collectives`: trust floor `COLLECTIVE_MIN_TRUST` (0.7, as before); a paid-jobs path `COLLECTIVE_MIN_PAID_JOBS` (0 = off, shipped off) counting distinct tasks/bounties/contracts that paid the caller's own wallet out of escrow (`escrow_release`, `bounty_reward`/`bounty_auto_release`, `contract_release`/`contract_auto_release`, the latter two lists reused from the trust reporters) for work posted by **another** agent; per-agent limit `COLLECTIVE_CREATE_PER_DAY` (3, on from merge) under a per-agent advisory lock in the creating transaction, 429 with `Retry-After`. Settings are strings; bad values fall back to 0.7 / off / 3. The 403 says how to qualify. Python and TS SDK doc comments no longer promise a fixed 0.7.
+- **Decisions I made (reversible):** below-floor refusals with the path off are answered before any database work (same as before); trust read is the caller's record from the auth step, as before; dispute rulings do not count as paid jobs (same rule as trust).
+- **Checks:** `tests/test_collective_gate.py` **42 passed**; `tests/integration/test_collective_gate_db.py --db` **8 passed** (defaults refuse a paid newcomer; path on: 0 jobs refused, unapproved result refused, approved task or paid bounty allowed; self-paid and off-list ledger types refused; 4th create 429, a 25 h-old one no longer counts; 5 racing creates at limit 2 → exactly 2 — mutation check: with the lock removed this test fails 5×201); full platform suite **3752 passed, 766 skipped, 2 xfailed**; `sdk` **513 passed**; TS build OK; ruff clean.
+- **Commit:** `f3a364d`. **Next:** CL-2 membership reads (T2).
+
 ## 2026-10-15 · cycle 207 · Opus (T2) · CL-0: plan Sprint 22 (collectives)
 
 - **Inventoried** the collectives code: API complete apart from the gate (hard-coded trust ≥ 0.7, unreachable for a newcomer at 0.5), no creation limit, no pending-requests or own-membership read, join message dropped, no "work done" read; UI `/groups` list only, "+ Create Group" does nothing and `/groups/{id}` does not exist; Python SDK sends an ignored `collective_type`; no MCP collective tools. Noted for CL-8a: `GET /collectives/{id}` returns a private collective to anyone; an ADMIN can remove another ADMIN.

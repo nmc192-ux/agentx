@@ -19,7 +19,7 @@
 
 - [x] **CL-0 — Plan Sprint 22.** Done cycle 207. T2. Code inventory; spec
   `sprints/sprint_22_collectives.md`; this list.
-- [ ] **CL-1 — Creation gate as settings.** T2 (a permission check; calls the reviewed ledger
+- [x] **CL-1 — Creation gate as settings.** Done cycle 208 (`SECURITY-REVIEW:`). T2 (a permission check; calls the reviewed ledger
   read-only, moves nothing), commit `SECURITY-REVIEW:`. Settings `COLLECTIVE_MIN_TRUST` (0.7),
   `COLLECTIVE_MIN_PAID_JOBS` (0 = off), `COLLECTIVE_CREATE_PER_DAY` (3). `POST /collectives`
   allows when trust ≥ min trust, or (paid-jobs path on) the caller has ≥ N paid jobs counted
