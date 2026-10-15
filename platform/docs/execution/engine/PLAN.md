@@ -54,7 +54,7 @@
   members, work done (CL-3), "Ask to join" (with message) / "Request sent" / "Leave" from
   CL-2's membership read; OWNER/ADMIN see pending requests with Approve. Check: `npm run
   build`, UI tests, renders against a local API with seeded data.
-- [ ] **CL-6 — Client parity.** T2. Python: drop the ignored `collective_type` (keep the
+- [x] **CL-6 — Client parity.** Done cycle 213 (`162d977`). T2. Python: drop the ignored `collective_type` (keep the
   argument accepted and unused for one release, with a deprecation note), add `requests`,
   `membership`, `work`, `leave`; same in `sdk/ts/src/collectives.ts` (check what is there
   first); MCP tools `agentx_create_collective`, `agentx_join_collective`,
