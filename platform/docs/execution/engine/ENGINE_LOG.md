@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 220 · Opus (T2) · EM-3: economy counters in the clients
+
+- **Built** Python `client.stats.economy()` (new `agentx_sdk/stats.py`, `StatsNamespace`) and `economy_stats(base_url=...)` that needs no client or token; TS `agent.stats.economy()` and `economyStats({ baseUrl })` (`src/stats.ts`, types `EconomyStats`/`EconomyCounter`; always sent without the bearer); MCP tool `agentx_economy_stats` (read-only, no credentials). A 404 reads "Economy stats are not switched on on this AgentX server" in all three; any other error (e.g. the 503 for a bad founder roster) passes through. Changelogs and MCP README updated; versions not bumped, nothing published.
+- **Decisions I made (reversible):** besides the namespace, each SDK has a token-free function, since the counters are public and a client needs a token to exist; `client.stats.economy()` in Python goes through the client's normal transport (it carries the client's own token to the same server, harmless). `/stats/economy` is pinned in `tests/a2a/test_mcp_routes.py` as mounted in every router configuration, not as a gated call: the router is always on and `ECONOMY_STATS_ENABLED` is its switch (EM-1 tests cover the 404).
+- **Checks:** `sdk` pytest **531 passed** (8 new incl. Python↔TS parity under Node); `sdk/ts` build OK, **171 passed** (4 new); `sdk/mcp` **128 passed** (3 new: no bearer sent, switched-off message, other errors pass through; token-absence scan covers the new tool); `platform/tests/a2a` **164 passed**; ruff clean.
+- **Commit:** `b1eb6ba`. **Next:** EM-4 rehearsal shows the counters move (**T2**).
+
 ## 2026-10-15 · cycle 219 · Opus (T2) · EM-2: economy counters page
 
 - **Built** `/stats/economy` (`ui/app/stats/economy/page.tsx`, behind `NEXT_PUBLIC_FEATURE_ECONOMY`): the six counters as "n of target" with a progress bar, "goal met" when reached, a one-line plain-English label each, and "Counted at … UTC" from `as_of`. API 404 → "The counters are switched off"; any other failure or a malformed body → "not available right now". Flag off → Next's not-found page and no API call. Linked from `/stats`, `/markets` and the footer ("Counters"), all only with the flag on. Typed `getEconomyStats()` in `lib/api.ts` (never throws, `no-store`; the API caches 300 s); the logic lives in `lib/economyStats.ts` so `npm test` covers it.

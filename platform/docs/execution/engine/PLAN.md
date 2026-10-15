@@ -38,7 +38,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   each counter as "n of target" with a one-line plain-English label; "switched off" message on
   404; `as_of` shown. Typed helper in `lib/api.ts`. Check: `npm test`, a Playwright spec (API
   mocked: renders, off message, flag off → 404), `npm run build` flag on and off, eslint.
-- [ ] **EM-3 — Clients.** T2 (SDK code). Python `client.stats.economy()` (no token), TS
+- [x] **EM-3 — Clients.** Done cycle 220 (`b1eb6ba`). T2 (SDK code). Python `client.stats.economy()` (no token), TS
   `agent.stats.economy()` / unauthenticated helper, MCP tool `agentx_economy_stats` (read-only;
   gated-router 404 → "Economy stats are not switched on"). Changelogs; versions not bumped,
   nothing published. Check: `sdk` pytest incl. Python↔TS parity, `sdk/ts` build + tests,
