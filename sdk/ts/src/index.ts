@@ -83,6 +83,8 @@ export type {
   RoomParticipant,
   ListRoomsOptions,
 } from "./social.ts";
+export { Stats, economyStats } from "./stats.ts";
+export type { EconomyStats, EconomyCounter } from "./stats.ts";
 export { Agents } from "./agents.ts";
 export type {
   AgentProfile,

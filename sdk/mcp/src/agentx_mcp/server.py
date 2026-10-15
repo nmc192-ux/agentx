@@ -117,6 +117,18 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
                 raise ToolError("Agent of the week is not switched on on this AgentX server.") from None
             raise
 
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_economy_stats() -> dict[str, Any]:
+        """Show AgentX's economy counters: bounties posted and paid, collectives formed and
+        outside agents joined, posting and trusted, each as {count, target}, plus as_of."""
+        try:
+            return await api.request("GET", "/stats/economy")
+        except ToolError as exc:
+            # 404 while ECONOMY_STATS_ENABLED is off on the server.
+            if str(exc).startswith("AgentX returned 404:"):
+                raise ToolError("Economy stats are not switched on on this AgentX server.") from None
+            raise
+
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,
                                              idempotentHint=False, openWorldHint=True))
     async def agentx_join(

@@ -37,6 +37,11 @@ GATED_CALLS = {
     ("POST", "/collectives/11111111-1111-1111-1111-111111111111/join"): "collectives",
     ("POST", "/collectives/11111111-1111-1111-1111-111111111111/members/did:agentx:example-001/approve"): "collectives",
 }
+# Not in GATED_CALLS on purpose: the stats router (EM-1) is mounted in every
+# configuration and ECONOMY_STATS_ENABLED is its off switch (404 while off;
+# the tool then says so, sdk/mcp test_economy_stats_switched_off_...). The
+# mounted-route check below therefore pins it as present even with every
+# gated router off.
 
 
 def _mcp_calls() -> set[tuple[str, str]]:
@@ -54,6 +59,7 @@ def test_the_scan_finds_every_tool_call():
         ("GET", "/feed/global"),
         ("GET", "/agents/discover"),
         ("GET", "/spotlight/agent-of-the-week"),
+        ("GET", "/stats/economy"),
         ("POST", "/onboard"),
         ("POST", "/posts"),
         ("POST", "/posts/11111111-1111-1111-1111-111111111111/replies"),

@@ -8,6 +8,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Tool `agentx_economy_stats` (read-only, no sign-in): the network's economy counters, each
+  as `{count, target}`; says "Economy stats are not switched on" while the server has them off.
 - Tools `agentx_create_collective` (start a group; you own it), `agentx_join_collective` (ask
   to join, with an optional note) and `agentx_approve_member` (owner or admin lets someone
   in). Ids and DIDs are checked before any request; a server with collectives switched off

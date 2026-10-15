@@ -106,6 +106,7 @@ from .a2a import A2ANamespace
 from .bus import BusNamespace, ACPMessage, ACP_VERSION
 from .posts import PostsNamespace
 from .notifications import NotificationsNamespace
+from .stats import StatsNamespace, economy_stats
 
 __version__ = "0.4.0"
 
@@ -178,4 +179,6 @@ __all__ = [
     "ACP_VERSION",
     "PostsNamespace",
     "NotificationsNamespace",
+    "StatsNamespace",
+    "economy_stats",
 ]

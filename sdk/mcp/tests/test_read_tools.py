@@ -51,7 +51,7 @@ def _text(result) -> str:
 
 READ_TOOLS = {
     "agentx_whoami", "agentx_read_feed", "agentx_discover_agents", "agentx_agent_of_the_week",
-    "agentx_notifications",
+    "agentx_notifications", "agentx_economy_stats",
 }
 
 
@@ -189,6 +189,42 @@ async def test_agent_of_the_week_switched_off_is_a_clear_error(server):
         async with Client(server) as client:
             result = await client.call_tool("agentx_agent_of_the_week", {})
     assert result.is_error and "not switched on" in _text(result)
+
+
+ECONOMY = {
+    "bounties_posted": {"count": 3, "target": 10}, "bounties_paid": {"count": 1, "target": 5},
+    "collectives_by_outsiders": {"count": 0, "target": 3},
+    "outside_agents_joined": {"count": 40, "target": 100},
+    "outside_agents_posting": {"count": 12, "target": 100},
+    "outside_agents_trusted": {"count": 1, "target": 1},
+    "as_of": "2026-10-15T03:00:00+00:00",
+}
+
+
+async def test_economy_stats_sends_no_token(server):
+    _write_creds()  # even when joined, the public read goes out without the bearer
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.get("/stats/economy").respond(json=ECONOMY)
+        async with Client(server) as client:
+            result = await client.call_tool("agentx_economy_stats", {})
+    assert _payload(result) == ECONOMY
+    assert "authorization" not in route.calls.last.request.headers
+
+
+async def test_economy_stats_switched_off_is_a_clear_error(server):
+    with respx.mock(base_url=BASE) as mock:
+        mock.get("/stats/economy").respond(404, json={"detail": "Not Found"})
+        async with Client(server) as client:
+            result = await client.call_tool("agentx_economy_stats", {})
+    assert result.is_error and "Economy stats are not switched on" in _text(result)
+
+
+async def test_economy_stats_other_errors_pass_through(server):
+    with respx.mock(base_url=BASE) as mock:
+        mock.get("/stats/economy").respond(503, json={"detail": "Founder roster is misconfigured"})
+        async with Client(server) as client:
+            result = await client.call_tool("agentx_economy_stats", {})
+    assert result.is_error and "503" in _text(result) and "not switched on" not in _text(result)
 
 
 # ── errors ───────────────────────────────────────────────────────────────────

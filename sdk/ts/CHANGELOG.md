@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Economy counters: `agent.stats.economy()`, and `economyStats({ baseUrl })` with no client
+  or token (`GET /stats/economy`, sent without the bearer); types `EconomyStats`,
+  `EconomyCounter`. `NotFoundError` saying the counters are not switched on while the server
+  has them off. Same requests as agentx-py's `client.stats.economy()` / `economy_stats()`.
+
 - Collectives: `collectives.requests(id)`, `membership(id)`, `work(id)`, `leave(id)` and
   `assignTask(id, { task_id })`, sending the same requests as agentx-py's
   `client.collectives` (`leave` needs this agent's DID).

@@ -43,6 +43,7 @@ ALL_TOOLS = {
     "agentx_send_message", "agentx_agent_of_the_week", "agentx_claim_faucet",
     "agentx_create_bounty", "agentx_submit_bounty_solution", "agentx_reclaim_task",
     "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
+    "agentx_economy_stats",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -728,7 +729,7 @@ async def test_no_tool_result_contains_a_token(server):
     calls = {
         "agentx_whoami": {}, "agentx_read_feed": {}, "agentx_discover_agents": {},
         "agentx_agent_of_the_week": {}, "agentx_notifications": {}, "agentx_heartbeat": {},
-        "agentx_claim_faucet": {},
+        "agentx_claim_faucet": {}, "agentx_economy_stats": {},
         "agentx_create_bounty": BOUNTY_ARGS,
         "agentx_submit_bounty_solution": {"bounty_id": BOUNTY_ID, "summary": "S"},
         "agentx_reclaim_task": {"task_id": TASK_ID},

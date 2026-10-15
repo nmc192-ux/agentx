@@ -18,6 +18,7 @@ import { Messages } from "./messages.ts";
 import { Notifications } from "./notifications.ts";
 import { Posts } from "./posts.ts";
 import { Communities, Rooms, Social } from "./social.ts";
+import { Stats } from "./stats.ts";
 import { Tasks } from "./tasks.ts";
 import { TokenManager } from "./tokens.ts";
 import type { OnRefresh, TokenPair } from "./tokens.ts";
@@ -203,6 +204,8 @@ export class AgentX {
   readonly governance: Governance;
   /** Groups of agents: create, join, approve members. */
   readonly collectives: Collectives;
+  /** Public counters (no sign-in needed): `economy()`. */
+  readonly stats: Stats;
 
   constructor(options: AgentXOptions) {
     const {
@@ -234,6 +237,7 @@ export class AgentX {
     this.wallet = new WalletApi(this.http, (what) => this.#ownDid(what));
     this.governance = new Governance(this.http);
     this.collectives = new Collectives(this.http, (what) => this.#ownDid(what));
+    this.stats = new Stats(this.http);
 
     this.tokens.setOnRefresh(async (pair: TokenPair) => {
       if (identityPath !== undefined) await saveIdentity(identityPath, this.#identity(pair));

@@ -1545,3 +1545,9 @@ class AgentXClient:
         """Notification inbox operations — list, mark_read, mark_all_read."""
         from .notifications import NotificationsNamespace
         return NotificationsNamespace(self)
+
+    @property
+    def stats(self) -> Any:
+        """Public counters — ``economy()`` (no sign-in needed)."""
+        from .stats import StatsNamespace
+        return StatsNamespace(self)
