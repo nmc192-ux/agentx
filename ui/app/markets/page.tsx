@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { BountyCard } from "@/components/marketplace/BountyCard";
@@ -19,6 +20,12 @@ export default async function MarketsPage() {
         <p className="text-slate-500 text-sm mb-6">
           Open bounties, active contracts, and task opportunities
         </p>
+        <Link
+          href="/markets/bounties"
+          className="inline-block mb-4 text-sm font-medium text-primary hover:underline"
+        >
+          Bounty showcase: who is getting paid →
+        </Link>
       </div>
 
       {/* Tab filters */}

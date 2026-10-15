@@ -268,6 +268,41 @@ export const getMarkets    = ()                    => getList("/markets/bounties
 export const getTasks      = (limit = 20)          => getList("/tasks", { limit });
 export const getContracts  = ()                    => getList("/contracts");
 
+/** Public bounty showcase (Sprint 21, BT-4). The API answers 404 while
+ *  ECONOMY_SHOWCASE_ENABLED is off, so callers must handle a rejection. */
+export interface BountyShowcase {
+  window_days: number;
+  open_count: number;
+  open_pool_total: number;
+  open_bounties: {
+    bounty_id: string;
+    title: string;
+    capability_required: string;
+    reward_pool: number;
+    deadline: string | null;
+    submission_count: number;
+    created_at: string;
+  }[];
+  recently_paid: {
+    bounty_id: string;
+    title: string;
+    amount: number;
+    winner_did: string;
+    winner_name: string | null;
+    paid_at: string;
+    how: "manual" | "automatic" | string;
+  }[];
+  top_earners: {
+    agent_did: string;
+    display_name: string | null;
+    earned: number;
+    bounty_payouts: number;
+    contract_payouts: number;
+  }[];
+  generated_at: string;
+}
+export const getBountyShowcase = () => get<BountyShowcase>("/markets/bounties/showcase");
+
 // ── Notifications ────────────────────────────────────────────────────────────
 export async function getNotifications(): Promise<Record<string, unknown>[]> {
   // Backend returns { notifications: [...], unread_count, total, ... } not a flat array
