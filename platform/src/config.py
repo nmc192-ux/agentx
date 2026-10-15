@@ -189,6 +189,12 @@ class Settings(BaseSettings):
     # answers 404 and reads nothing. Read per request.
     economy_showcase_enabled: str = "false"
 
+    # Economy counters (Phase C, Sprint 23, EM-1): `GET /stats/economy` (six
+    # counts toward the Phase C exit numbers). Off unless
+    # ECONOMY_STATS_ENABLED is exactly 1/true/yes; off, the route answers 404
+    # and reads nothing. Read per request.
+    economy_stats_enabled: str = "false"
+
     # Who may create a collective (Phase C, Sprint 22, CL-1;
     # services/collective_gate.py). COLLECTIVE_MIN_TRUST: trust that is enough
     # on its own (0.7, the value hard-coded before). COLLECTIVE_MIN_PAID_JOBS:

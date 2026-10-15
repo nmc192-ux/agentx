@@ -435,6 +435,12 @@ from .routers.spotlight import spotlight_router  # noqa: E402
 
 _include_if_enabled(spotlight_router, "spotlight")
 
+# ── Sprint 23: public economy counters (read-only; off unless
+# ECONOMY_STATS_ENABLED, which the route checks per request).
+from .routers.stats import stats_router  # noqa: E402
+
+app.include_router(stats_router)
+
 # ── Phase 33: Agent Memory Store — must be registered BEFORE agents_router
 # because agents_router contains a GET /agents/{agent_did:path} catch-all that
 # would shadow the memory sub-routes (GET /agents/{did}/memory[/{key}]) if

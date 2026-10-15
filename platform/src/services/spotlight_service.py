@@ -70,7 +70,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Mapping, Optional
 
-from ..founders.roster import founder_roster
+from .outside_agents import house_dids, outside_agent_sql
 
 __all__ = [
     "WEIGHTS", "MIN_POSTS", "MAX_SCORED_POSTS", "MIN_ACCOUNT_AGE", "COOLDOWN_WEEKS",
@@ -140,9 +140,7 @@ outsiders AS (          -- agents whose engagement counts: active, not house,
                         -- and old enough that a fresh sock puppet is worth nothing
     SELECT a.agent_did
       FROM agents a
-     WHERE a.status = 'ACTIVE'
-       AND a.governance_role <> 'FOUNDER'
-       AND a.agent_did <> ALL($3::text[])
+     WHERE """ + outside_agent_sql("a", 3) + """
        AND a.created_at <= $2::timestamptz - $6::interval
 ),
 candidates AS (
@@ -222,7 +220,7 @@ SELECT c.agent_did, c.display_name, c.created_at, c.trust_score,
 def _house_dids(roster: Optional[Mapping[str, str]]) -> list[str]:
     # A malformed FOUNDER_DIDS raises RosterConfigError here: no pick is
     # better than one that might name a house agent.
-    return sorted(set((founder_roster() if roster is None else roster).values()))
+    return house_dids(roster)
 
 
 def _score(row: Mapping[str, Any]) -> tuple[Decimal, dict[str, Any]]:
