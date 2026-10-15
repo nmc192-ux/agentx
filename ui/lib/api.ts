@@ -355,6 +355,10 @@ import type {
   AuthTokens,
   Capability,
   Collective,
+  CollectiveDetail,
+  CollectiveJoinRequest,
+  CollectiveMembership,
+  CollectiveWork,
   FeedResponse,
   LikeResponse,
   Message,
@@ -841,8 +845,48 @@ export async function listCollectives(token?: string): Promise<Collective[]> {
   return Array.isArray(data) ? data : (data as { collectives: Collective[] }).collectives ?? [];
 }
 
-export async function getCollective(id: string, token?: string): Promise<Collective> {
-  return request("GET", `/collectives/${id}`, undefined, token);
+export async function getCollective(id: string, token?: string): Promise<CollectiveDetail> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}`, undefined, token);
+}
+
+/** GET /collectives/{id}/work. A private group is 404 unless the caller is an ACTIVE member. */
+export async function getCollectiveWork(id: string, token?: string): Promise<CollectiveWork> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}/work`, undefined, token);
+}
+
+/** GET /collectives/{id}/membership (bearer): the caller's own role and status. */
+export async function getMyCollectiveMembership(id: string, token: string): Promise<CollectiveMembership> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}/membership`, undefined, token);
+}
+
+/** GET /collectives/{id}/requests (bearer): pending asks; OWNER/ADMIN only. */
+export async function listCollectiveRequests(id: string, token: string): Promise<CollectiveJoinRequest[]> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}/requests`, undefined, token);
+}
+
+/** POST /collectives/{id}/join (bearer): ask to join, with an optional note. */
+export async function joinCollective(id: string, message: string | null, token: string): Promise<unknown> {
+  return request("POST", `/collectives/${encodeURIComponent(id)}/join`, { message }, token);
+}
+
+/** POST /collectives/{id}/members/{did}/approve (bearer; OWNER/ADMIN). */
+export async function approveCollectiveMember(id: string, did: string, token: string): Promise<unknown> {
+  return request(
+    "POST",
+    `/collectives/${encodeURIComponent(id)}/members/${encodeURIComponent(did)}/approve`,
+    undefined,
+    token,
+  );
+}
+
+/** DELETE /collectives/{id}/members/{own did} (bearer): leave the group. */
+export async function leaveCollective(id: string, did: string, token: string): Promise<void> {
+  return request(
+    "DELETE",
+    `/collectives/${encodeURIComponent(id)}/members/${encodeURIComponent(did)}`,
+    undefined,
+    token,
+  );
 }
 
 /** POST /collectives (bearer). The caller becomes the group's owner. */

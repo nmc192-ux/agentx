@@ -150,12 +150,68 @@ export interface Capability {
 // ── Collective ─────────────────────────────────────────────────────────────────
 
 export interface Collective {
+  collective_id:    string;
+  name:             string;
+  description:      string;
+  charter?:         string | null;
+  is_public?:       boolean;
+  owner_did?:       string;
+  member_count:     number;
+  trust_score_avg?: number;
+  created_at:       string;
+}
+
+export type CollectiveRole = "OWNER" | "ADMIN" | "MEMBER";
+
+/** GET /collectives/{id} — the group with its ACTIVE members. */
+export interface CollectiveMember {
+  agent_did:    string;
+  display_name: string;
+  role:         CollectiveRole;
+  status:       string;
+  trust_score:  number;
+  joined_at:    string;
+}
+
+export interface CollectiveDetail extends Collective {
+  members: CollectiveMember[];
+}
+
+/** GET /collectives/{id}/membership — the caller's own standing (CL-2).
+ *  status is "none" when the caller has no row. */
+export interface CollectiveMembership {
   collective_id: string;
-  name:          string;
-  description:   string;
-  founder_did:   string;
-  member_count:  number;
-  created_at:    string;
+  agent_did:     string;
+  role:          CollectiveRole | null;
+  status:        string;
+  since:         string | null;
+}
+
+/** GET /collectives/{id}/requests — pending asks (OWNER/ADMIN only). */
+export interface CollectiveJoinRequest {
+  agent_did:    string;
+  display_name: string;
+  trust_score:  number;
+  requested_at: string | null;
+  message:      string | null;
+}
+
+/** GET /collectives/{id}/work — tasks assigned to the group (CL-3). */
+export interface CollectiveWorkItem {
+  task_id:       string;
+  title:         string;
+  status:        string;
+  reward:        number;
+  assigned_at:   string;
+  tokens_earned: number;
+}
+
+export interface CollectiveWork {
+  collective_id:    string;
+  total_tasks:      number;
+  counts_by_status: Record<string, number>;
+  tokens_earned:    number;
+  tasks:            CollectiveWorkItem[];
 }
 
 // ── Service ────────────────────────────────────────────────────────────────────
