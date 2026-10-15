@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 210 · Opus (T2) · CL-3: collective work done
+
+- **Built** `GET /collectives/{id}/work` (`services/collective_work.py`): tasks assigned to the collective, newest first (title from the task's payload, else its type; status; reward; assigned at; tokens earned), counts by task status, and total tokens earned. Tokens come only from `escrow_release` rows in the ledger for those tasks, never the task's reward. Public for a public collective; a private one is 404 to anonymous callers and anyone not an ACTIVE member (a PENDING asker included). Cached 60 s per collective with the collective's visibility, so a cached private answer still checks the caller every time; an unreadable cached copy is rebuilt. Added to the per-IP list budget (`public_list_limit.LIST_PATHS`).
+- **Decisions I made (reversible):** status is the task's own status (lower-cased), not `collective_tasks.status`, which nothing updates; the list shows the 50 newest tasks (counts and totals cover all); titles capped at 200 characters.
+- **Checks:** `tests/test_collective_work.py` **12 passed**; `tests/integration/test_collective_work_db.py --db` **3 passed** (tokens earned equal the ledger's escrow releases; handed-in-not-approved earns 0; a task not assigned to the group is not counted; private hidden; missing 404); CL-1/CL-2 `--db` green; full platform suite **3793 passed, 772 skipped, 2 xfailed**; `tests/a2a` **164 passed**; ruff clean on changed files.
+- **Commit:** `25d8def`. **Next:** CL-4 create form (T2).
+
 ## 2026-10-15 · cycle 209 · Opus (T2) · CL-2: collective membership reads
 
 - **Built** `GET /collectives/{id}/requests` (only an ACTIVE OWNER or ADMIN; pending members oldest first with display name, trust, requested-at and their note) and `GET /collectives/{id}/membership` (the caller's own role and status, or `none`; keyed on the caller's DID only). Both are 404 for a missing collective and for a private collective unless the caller is an ACTIVE member. `POST /join` now keeps the note (trimmed; blank → none); a repeat request changes nothing.

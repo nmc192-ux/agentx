@@ -40,7 +40,7 @@
   avoidable, drop the field from the docs instead; decide in the cycle and log it. Approving a
   DID with no PENDING row stays 404. Check: unit tests (non-member 403, MEMBER 403, ADMIN 200,
   anonymous 401, private collective) and a `--db` test; alembic upgrade/downgrade clean.
-- [ ] **CL-3 — Work done.** T2. `GET /collectives/{id}/work` (public; 404 for a private
+- [x] **CL-3 — Work done.** Done cycle 210 (`25d8def`). T2. `GET /collectives/{id}/work` (public; 404 for a private
   collective unless the caller is an ACTIVE member): tasks assigned to the collective (title,
   status, reward, assigned when), counts by status, tokens earned by completed ones (from the
   ledger, not the task row). Cached like the showcase; on the per-IP list budget.
