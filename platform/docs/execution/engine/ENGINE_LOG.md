@@ -1,5 +1,11 @@
 # Engine log
 
+## 2026-10-15 · cycle 201 · Sonnet (T3) · BT-5: bounty showcase page
+
+- **Built** `ui/app/markets/bounties/page.tsx` (open bounties, recently paid, top earners, empty states, a "not available yet" note when the API answers 404), `getBountyShowcase` + types in `ui/lib/api.ts`, links from `/markets` and `/stats`. All behind `NEXT_PUBLIC_FEATURE_ECONOMY` (redirects home when off). Server-rendered; no secrets on the client.
+- **Checks:** `tsc --noEmit` and `eslint` clean; `npm run build` OK; page rendered against a local mock API with seeded data (all three sections showed the data). No UI unit-test suite exists (Playwright e2e only; not run).
+- **Commit:** `07523c9`. **Next:** BT-6 client parity (T2).
+
 ## 2026-10-15 · cycle 200 · Opus (T2) · BT-4: bounty showcase API — built, ships off
 
 - **Built** `GET /markets/bounties/showcase` (`services/markets/showcase_service.py`, models in

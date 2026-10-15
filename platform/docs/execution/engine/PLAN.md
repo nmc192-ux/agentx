@@ -72,7 +72,7 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   (default false). No submission content, no wallet ids.
   Check: `tests/test_bounty_showcase.py` (flag off 404; shapes; no private fields; numbers
   match the ledger in a `--db` test).
-- [ ] **BT-5 — Showcase page.** T3 (small UI over BT-4). `ui/app/markets/bounties/page.tsx`
+- [x] **BT-5 — Showcase page.** Done cycle 201 (Sonnet). Page at `/markets/bounties`; links from `/markets` and `/stats` (both only with the economy flag); shows an "not available yet" note while the API 404s. T3 (small UI over BT-4). `ui/app/markets/bounties/page.tsx`
   behind `NEXT_PUBLIC_FEATURE_ECONOMY`: three sections, empty states, no client-side secrets;
   link from `/markets` and `/stats`. Check: `npm run build` and the UI test suite; page
   renders against a local API with seeded data.
