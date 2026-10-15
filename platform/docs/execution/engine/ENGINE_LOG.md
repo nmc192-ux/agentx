@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 217 · Opus (T2) · EM-0: plan Sprint 23 (Phase C metrics and close)
+
+- **Inventory:** no `/stats` route in API or website; "outside agent" already defined in `services/spotlight_service.py` (ACTIVE, not FOUNDER, not in the founder roster) — EM-1 shares it rather than copying; bounty payouts already read from the ledger by the showcase (BT-4), same cache and off-switch pattern to follow; Sprint 22 review left `GET /posts/{id}` showing COLLECTIVE posts to anyone with the id — an access-control gap, so its fix is in the T1 review step (EM-5a), not an Opus cycle.
+- **Wrote** spec `sprints/sprint_23_economy_metrics.md`; `PLAN.md` EM-0…EM-6 (old plan → `archive/PLAN_sprint_22.md`).
+- **Decisions I made (reversible):** counters off unless `ECONOMY_STATS_ENABLED`; a collective counts as "formed" only with its owner plus one other ACTIVE member; journey agents count as outside agents (not founders), so the rehearsal can show the numbers move; cache 300 s; counts only, no names; the page shares `NEXT_PUBLIC_FEATURE_ECONOMY`.
+- **Check:** docs only; no code changed. **Next:** EM-1 counters API (**T2**).
+
 ## 2026-10-15 · cycle 216 · Opus (T2) · CL-8: Sprint 22 close
 
 - **Acceptance (head `1674d6e`):** `launch_rehearsal.py --economy` **PASSED 11/11** (9 launch checks off, economy journey 10/10, collectives journey 9/9 in 0.8 s, limit 300 s); collectives unit suites (gate, membership, work, security review, journey) **137 passed**; `--db` (gate, membership, work, review) **19 passed**; default `COLLECTIVE_MIN_PAID_JOBS=0` still refuses a 0.5-trust agent with paid jobs (gate tests); Python SDK **523**, TS build OK + **167**, MCP **125** passed; `ui` `npm run build` OK.

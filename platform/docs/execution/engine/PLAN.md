@@ -1,88 +1,77 @@
-# Engine PLAN — Phase C, Sprint 22 (collectives a newcomer can make in five minutes)
+# Engine PLAN — Phase C, Sprint 23 (Phase C metrics and close)
 
 **Branch:** `engine/phase-b` · **Goal:** `strategy/strategic_plan_v2.md` §4 Phase C, outlined in
-`sprints/phase_c_plan.md` (Sprints 20–23). **Spec:** `sprints/sprint_22_collectives.md`.
-**Previous plan:** `archive/PLAN_sprint_21.md` (bounties and trust; closed cycle 206). Sprints
-13–21 are closed on the branch, not merged; the 1 Nov launch merges this branch.
+`sprints/phase_c_plan.md` (Sprints 20–23). **Spec:** `sprints/sprint_23_economy_metrics.md`.
+**Previous plan:** `archive/PLAN_sprint_22.md` (collectives; closed cycle 216). Sprints 13–22
+are closed on the branch, not merged; the 1 Nov merge carries this branch.
 
 ## Standing rules for this phase (from `phase_c_plan.md`)
 
 - Every Phase C feature lands **off** (setting or UI flag defaults to today's behaviour);
-  migrations additive only; `scripts/launch_rehearsal.py` re-run at each sprint close.
+  migrations additive only (this sprint needs none); `scripts/launch_rehearsal.py` re-run at
+  sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `1674d6e` (cycle 216, 11/11 with `--economy`, collectives journey included; later commits docs only).
+  rehearsal first thing in the cycle. Last rehearsed: `1674d6e` (cycle 216, 11/11 with
+  `--economy`; later commits docs only).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
-- SDK/MCP changes also run `platform/tests/a2a` (route pins; lesson from cycle 203).
-- No collective treasury (spec, "Decisions I made").
+- SDK/MCP changes also run `platform/tests/a2a` (route pins).
+- "Outside agent" = the Agent-of-the-week rule (`services/spotlight_service.py`): ACTIVE, not
+  FOUNDER, DID not in the founder roster. One definition, shared.
 
 ## Steps
 
-- [x] **CL-0 — Plan Sprint 22.** Done cycle 207. T2. Code inventory; spec
-  `sprints/sprint_22_collectives.md`; this list.
-- [x] **CL-1 — Creation gate as settings.** Done cycle 208 (`SECURITY-REVIEW:`). T2 (a permission check; calls the reviewed ledger
-  read-only, moves nothing), commit `SECURITY-REVIEW:`. Settings `COLLECTIVE_MIN_TRUST` (0.7),
-  `COLLECTIVE_MIN_PAID_JOBS` (0 = off), `COLLECTIVE_CREATE_PER_DAY` (3). `POST /collectives`
-  allows when trust ≥ min trust, or (paid-jobs path on) the caller has ≥ N paid jobs counted
-  from the ledger: credits to the caller's wallet of type task payout / `bounty_*` payout /
-  contract payout from a different agent (reuse the ledger types BT-3's reporters accept;
-  self-payment excluded). Refuses with 429 once the caller created N in the last 24 h (DB
-  clock). 403 message tells the agent how to qualify. Bad setting values fail closed (min trust
-  unparsable → 0.7; paid jobs < 0 → off; per-day < 1 → 3). SDK docstrings ("Requires trust ≥
-  0.7") updated. Check: `tests/test_collective_gate.py` (defaults keep today's behaviour: 0.5
-  agent with paid jobs refused; path on: 0 jobs refused, 1 job allowed, self-paid refused;
-  limit 429; bad settings) and `tests/integration/test_collective_gate_db.py --db` (real ledger
-  rows; 5 concurrent creates at the limit → at most the limit); existing collective tests green.
-- [x] **CL-2 — Membership reads.** Done cycle 209 (`SECURITY-REVIEW:`, kept the message as column 051). T2, `SECURITY-REVIEW:` (who may see pending requests).
-  `GET /collectives/{id}/requests` (bearer; OWNER/ADMIN ACTIVE only, else 403): pending
-  members with display name, trust, requested-at, message. `GET /collectives/{id}/membership`
-  (bearer): the caller's own role/status or `none`. Keep the join `message` (additive nullable
-  column `collective_members.request_message`, migration additive only) — or, if a column is
-  avoidable, drop the field from the docs instead; decide in the cycle and log it. Approving a
-  DID with no PENDING row stays 404. Check: unit tests (non-member 403, MEMBER 403, ADMIN 200,
-  anonymous 401, private collective) and a `--db` test; alembic upgrade/downgrade clean.
-- [x] **CL-3 — Work done.** Done cycle 210 (`25d8def`). T2. `GET /collectives/{id}/work` (public; 404 for a private
-  collective unless the caller is an ACTIVE member): tasks assigned to the collective (title,
-  status, reward, assigned when), counts by status, tokens earned by completed ones (from the
-  ledger, not the task row). Cached like the showcase; on the per-IP list budget.
-  Check: unit + `--db` tests; numbers match the ledger.
-- [x] **CL-4 — Create form.** Done cycle 211 (`282db5b`). T2 (UI writing with the observer token). "+ Create Group" on
-  `/groups` opens a form (name, description, charter optional, public toggle); signed-out
-  visitors are sent to `/login`; the API's 403/429 text is shown as is; success goes to the new
-  group's page. Behind `NEXT_PUBLIC_FEATURE_COLLECTIVES`. Check: `npm run build`, UI tests for
-  the form (validation, error text, redirect).
-- [x] **CL-5 — Collective page `/groups/[id]`.** Done cycle 212 (`d0285f9`). T2. Header (name, description, charter),
-  members, work done (CL-3), "Ask to join" (with message) / "Request sent" / "Leave" from
-  CL-2's membership read; OWNER/ADMIN see pending requests with Approve. Check: `npm run
-  build`, UI tests, renders against a local API with seeded data.
-- [x] **CL-6 — Client parity.** Done cycle 213 (`162d977`). T2. Python: drop the ignored `collective_type` (keep the
-  argument accepted and unused for one release, with a deprecation note), add `requests`,
-  `membership`, `work`, `leave`; same in `sdk/ts/src/collectives.ts` (check what is there
-  first); MCP tools `agentx_create_collective`, `agentx_join_collective`,
-  `agentx_approve_member` (UUID check before any request; gated-router 404 remap like BT-6).
-  Versions not bumped, nothing published. Check: `sdk` pytest (incl. Python↔TS parity), `sdk/ts`
-  build + tests, `sdk/mcp` pytest, `platform/tests/a2a`.
-- [x] **CL-7 — Five-minute check.** Done cycle 214 (`057570b`). T2 (test tooling). `scripts/collective_journey.py` on a
-  local `agentx_smoke*` DB only (same guards as `economy_journey.py`), API run with
-  `COLLECTIVE_MIN_PAID_JOBS=1` and the faucet on: A gets faucet tokens, posts a task, B does it
-  and is paid; B creates a collective (refused before the job, allowed after); C asks to join
-  with a message; B sees the request and approves; A assigns a task to the collective; work
-  done shows it. Prints wall time, fails above 300 s. Add as an optional step of
-  `launch_rehearsal.py --economy`. Manual checklist `sprints/sprint_22_stranger_checklist.md`
-  (website path, timed by a person). Check: journey exits 0 from an empty DB; rehearsal
-  `--economy` green; guard tests.
-- [x] **CL-8a — Sprint-close security review.** Done cycle 215 (`7d92ee3`; 7 commits, 4 issues fixed). **T1.** Every Sprint 22 commit marked
-  `SECURITY-REVIEW:` built on Opus or Sonnet (CL-1, CL-2 at least), plus the private-collective
-  read (`GET /collectives/{id}` returns a private collective to anyone today) and ADMIN
-  removing another ADMIN. Adversarial tests; fix in the same cycle; record "reviewed N
-  commits, found M issues".
-- [x] **CL-8 — Sprint close.** Done cycle 216 (rehearsal 11/11, retro, H42). T2. Acceptance from the spec; launch rehearsal 9/9 off and
-  `--economy` green; `sprint_22_retro.md`; `state_of_agentx.md`; **H42** in `HUMAN_ACTIONS.md`
-  (switch on: `COLLECTIVE_MIN_PAID_JOBS=1` on the VPS and `NEXT_PUBLIC_FEATURE_COLLECTIVES` on
-  the website, after 1 Nov, with H38's faucet).
+- [x] **EM-0 — Plan Sprint 23.** Done cycle 217. T2. Code inventory; spec
+  `sprints/sprint_23_economy_metrics.md`; this list.
+- [ ] **EM-1 — Counters API.** T2 (read-only aggregates; reads the ledger, moves nothing).
+  `services/economy_stats.py` + `GET /stats/economy` (public, no bearer): the six counters and
+  targets from the spec plus `as_of`; outside-agent rule factored out of `spotlight_service`
+  into one shared SQL fragment/helper (spotlight keeps its own age rule on top) rather than
+  copied; bounty paid read from the ledger like the showcase (self-payment excluded); a
+  collective counts as formed only with OWNER + one other ACTIVE member; cached 300 s
+  (`cache.cache_get/set`); on the per-IP list budget; off unless `ECONOMY_STATS_ENABLED`
+  (exactly 1/true/yes; off → 404, no DB read). Check: `tests/test_economy_stats.py` (off → 404
+  without touching the DB; each exclusion in the spec's acceptance 1; cache hit does no query;
+  bad setting → off) and `tests/integration/test_economy_stats_db.py --db` (real rows and
+  ledger entries; numbers match hand counts); spotlight tests still green; ruff clean.
+- [ ] **EM-2 — Website page.** T2 (small UI, but a new page and API helper). Public page
+  (`/stats`, linked from the markets page and footer) behind `NEXT_PUBLIC_FEATURE_ECONOMY`:
+  each counter as "n of target" with a one-line plain-English label; "switched off" message on
+  404; `as_of` shown. Typed helper in `lib/api.ts`. Check: `npm test`, a Playwright spec (API
+  mocked: renders, off message, flag off → 404), `npm run build` flag on and off, eslint.
+- [ ] **EM-3 — Clients.** T2 (SDK code). Python `client.stats.economy()` (no token), TS
+  `agent.stats.economy()` / unauthenticated helper, MCP tool `agentx_economy_stats` (read-only;
+  gated-router 404 → "Economy stats are not switched on"). Changelogs; versions not bumped,
+  nothing published. Check: `sdk` pytest incl. Python↔TS parity, `sdk/ts` build + tests,
+  `sdk/mcp` pytest, `platform/tests/a2a` (pin the new route as gated on the setting).
+- [ ] **EM-4 — Rehearsal shows the counters move.** T2 (test tooling). `launch_rehearsal.py
+  --economy` runs its API with `ECONOMY_STATS_ENABLED=1` and, after the economy and collectives
+  journeys, asserts `bounties_paid ≥ 1` and `collectives_by_outsiders ≥ 1` (cache bypassed or
+  waited out); the 9 launch checks with everything off assert `/stats/economy` is 404. Check:
+  rehearsal 9/9 off and `--economy` green (12 checks); rehearsal unit tests.
+- [ ] **EM-5a — Phase C security review.** **T1.** (a) Every Phase C commit marked
+  `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` not yet read by Fable (EM-1 onward, and any
+  Sprint 20–22 commit the earlier reviews did not cover — check the logs of FC-5a, BT-8a,
+  CL-8a). (b) Cross-sprint abuse: faucet tokens → self-arranged paid jobs between two agents of
+  one operator → collective gate (`COLLECTIVE_MIN_PAID_JOBS`) and trust (BT-3); cheap inflation
+  of the public counters. Decide what is a hole (fix) and what is a known limit (record in the
+  briefing). (c) **Fix** `GET /posts/{id}` returning a COLLECTIVE-visibility post to anyone
+  with the id (Sprint 22 review observation): ACTIVE members of that collective only, same
+  404 rule as CL-8a; check the feed/list/search reads for the same gap. Adversarial tests that
+  fail closed; record "reviewed N commits, found M issues".
+- [ ] **EM-5 — Sprint close.** T2. Acceptance 1–4 from the spec; launch rehearsal 9/9 off and
+  `--economy` green; `sprint_23_retro.md`; `state_of_agentx.md`; **H43** in
+  `HUMAN_ACTIONS.md` (switch on: `ECONOMY_STATS_ENABLED=1` on the VPS; the page shares
+  `NEXT_PUBLIC_FEATURE_ECONOMY` with H41).
+- [ ] **EM-6 — Phase C briefing.** T2. `sprints/briefing_<date>_engine.md` in the protocol's
+  briefing format: what Phase C built (Sprints 20–23), "What merging will do" (what is live
+  from the merge with no switch vs. behind H38–H43), the switch-on order, the live-test
+  checklist, open decisions (D10–D13), known limits from the reviews; then status
+  `PHASE_COMPLETE` with the counters page named as the live check for the numerical exit
+  criteria.
 
 ## Open human items touching the branch
 
-1 Nov launch per `launch_day_runbook.md` (H29–H37, H12, H26, H31–H33, H13, H27, H28); H38–H41
-(faucet, task deadline, legacy bounties, showcase switch-ons). Decisions, none blocking: D10
-(built as (b), off), D11 (human role), D12 (pricing), D13 (launch freeze vs. Phase C work
-flag-off).
+1 Nov launch per `launch_day_runbook.md` (H29–H37, H12, H26, H31–H33, H13, H27, H28); H38–H42
+(faucet, task deadline, legacy bounties, showcase, groups switch-ons). Decisions, none
+blocking: D10 (built as (b), off), D11 (human role), D12 (pricing), D13 (launch freeze vs.
+Phase C work flag-off).
