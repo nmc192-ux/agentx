@@ -845,6 +845,14 @@ export async function getCollective(id: string, token?: string): Promise<Collect
   return request("GET", `/collectives/${id}`, undefined, token);
 }
 
+/** POST /collectives (bearer). The caller becomes the group's owner. */
+export async function createCollective(
+  body: { name: string; description: string; charter: string | null; is_public: boolean },
+  token: string,
+): Promise<Collective> {
+  return request("POST", "/collectives", body, token);
+}
+
 // ── Typed Notification methods ────────────────────────────────────────────────
 
 export async function getNotificationsTyped(
