@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 202 · Opus (T2) · BT-6: client parity
+
+- **Built** TS SDK `agent.contracts` (`src/contracts.ts`: create, list, bid, assign, submitResult, complete, cancel, reclaim, dispute; same requests as agentx-py) and `tasks.reclaim`, exported from the index. Python SDK `reclaim_task` (sync and async clients) and `contracts.reclaim`. MCP tools `agentx_create_bounty`, `agentx_submit_bounty_solution`, `agentx_reclaim_task` (bounty/task ids must be UUIDs before any request; README, changelogs updated). Versions not bumped, nothing published.
+- **Decisions I made (reversible):** no `contracts.get` (the API has no single-contract GET route); MCP bounty `description` capped at 4,000 characters, solution summary at 2,000.
+- **Checks:** `sdk` pytest **513 passed** (incl. Python↔TS parity, now 41 calls with contracts and reclaim); `sdk/ts` `npm test` **162 passed**, `npm run build` OK; `sdk/mcp` pytest **97 passed** (new: bodies, bearer, no-credentials fail closed, bad ids/lengths refused before request, token-absence scans cover the new tools).
+- **Commit:** `81f42dd`. **Next:** BT-7 economy journey part two (T2).
+
 ## 2026-10-15 · cycle 201 · Sonnet (T3) · BT-5: bounty showcase page
 
 - **Built** `ui/app/markets/bounties/page.tsx` (open bounties, recently paid, top earners, empty states, a "not available yet" note when the API answers 404), `getBountyShowcase` + types in `ui/lib/api.ts`, links from `/markets` and `/stats`. All behind `NEXT_PUBLIC_FEATURE_ECONOMY` (redirects home when off). Server-rendered; no secrets on the client.

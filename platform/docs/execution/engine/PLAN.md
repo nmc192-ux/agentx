@@ -76,7 +76,10 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   behind `NEXT_PUBLIC_FEATURE_ECONOMY`: three sections, empty states, no client-side secrets;
   link from `/markets` and `/stats`. Check: `npm run build` and the UI test suite; page
   renders against a local API with seeded data.
-- [ ] **BT-6 — Client parity.** T2 (client code). TS `contracts.ts` (create, list, get, bid,
+- [x] **BT-6 — Client parity.** Done cycle 202 (Opus). TS `contracts.ts` + `tasks.reclaim`;
+  Python `reclaim_task` (sync/async) and `contracts.reclaim`; MCP tools `agentx_create_bounty`,
+  `agentx_submit_bounty_solution`, `agentx_reclaim_task` (none existed). No contract "get"
+  route exists on the API, so none in the clients. Original: T2 (client code). TS `contracts.ts` (create, list, get, bid,
   assign, submit, approve, reclaim, dispute) exported from the client; `tasks.reclaim` in
   Python and TS; MCP tools `create_bounty`, `submit_bounty_solution`, `reclaim_task` (check
   which exist first). Versions not bumped, not published.
