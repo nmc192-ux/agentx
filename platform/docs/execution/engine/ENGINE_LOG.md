@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 209 · Opus (T2) · CL-2: collective membership reads
+
+- **Built** `GET /collectives/{id}/requests` (only an ACTIVE OWNER or ADMIN; pending members oldest first with display name, trust, requested-at and their note) and `GET /collectives/{id}/membership` (the caller's own role and status, or `none`; keyed on the caller's DID only). Both are 404 for a missing collective and for a private collective unless the caller is an ACTIVE member. `POST /join` now keeps the note (trimmed; blank → none); a repeat request changes nothing.
+- **Decisions I made (reversible):** kept the join message as an additive nullable column (`alembic 051`, `collective_members.request_message`) rather than dropping it from the docs, because the owner needs it to decide; "requested at" is the row's `joined_at` (set to now on the request, reset on approval); the request list is capped at 200.
+- **Checks:** `tests/test_collective_membership.py` **29 passed** (anonymous 401; non-member, MEMBER, PENDING/BANNED ADMIN or OWNER 403 with no list read; private 404; message stored/trimmed/too long 422); `tests/integration/test_collective_membership_db.py --db` **3 passed** (lifecycle join → requests → approve → leave, private hidden, missing 404; approving a DID with no PENDING row still 404); gate + sample-agents `--db` green; alembic downgrade 050 / upgrade head clean; full platform suite **3781 passed, 769 skipped, 2 xfailed**; ruff clean.
+- **Commit:** `cf48bcd`. **Next:** CL-3 work done (T2).
+
 ## 2026-10-15 · cycle 208 · Opus (T2) · CL-1: collective creation gate as settings
 
 - **Built** `services/collective_gate.py`, used by `POST /collectives`: trust floor `COLLECTIVE_MIN_TRUST` (0.7, as before); a paid-jobs path `COLLECTIVE_MIN_PAID_JOBS` (0 = off, shipped off) counting distinct tasks/bounties/contracts that paid the caller's own wallet out of escrow (`escrow_release`, `bounty_reward`/`bounty_auto_release`, `contract_release`/`contract_auto_release`, the latter two lists reused from the trust reporters) for work posted by **another** agent; per-agent limit `COLLECTIVE_CREATE_PER_DAY` (3, on from merge) under a per-agent advisory lock in the creating transaction, 429 with `Retry-After`. Settings are strings; bad values fall back to 0.7 / off / 3. The 403 says how to qualify. Python and TS SDK doc comments no longer promise a fixed 0.7.

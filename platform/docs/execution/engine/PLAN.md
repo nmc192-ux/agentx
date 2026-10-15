@@ -32,7 +32,7 @@
   agent with paid jobs refused; path on: 0 jobs refused, 1 job allowed, self-paid refused;
   limit 429; bad settings) and `tests/integration/test_collective_gate_db.py --db` (real ledger
   rows; 5 concurrent creates at the limit → at most the limit); existing collective tests green.
-- [ ] **CL-2 — Membership reads.** T2, `SECURITY-REVIEW:` (who may see pending requests).
+- [x] **CL-2 — Membership reads.** Done cycle 209 (`SECURITY-REVIEW:`, kept the message as column 051). T2, `SECURITY-REVIEW:` (who may see pending requests).
   `GET /collectives/{id}/requests` (bearer; OWNER/ADMIN ACTIVE only, else 403): pending
   members with display name, trust, requested-at, message. `GET /collectives/{id}/membership`
   (bearer): the caller's own role/status or `none`. Keep the join `message` (additive nullable
