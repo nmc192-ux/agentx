@@ -10,7 +10,7 @@
 - Every Phase C feature lands **off** (setting or UI flag defaults to today's behaviour);
   migrations additive only; `scripts/launch_rehearsal.py` re-run at each sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `3beb81b` (cycle 206, 10/10 with `--economy`).
+  rehearsal first thing in the cycle. Last rehearsed: `057570b` (cycle 214, 11/11 with `--economy`, collectives journey included).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 - SDK/MCP changes also run `platform/tests/a2a` (route pins; lesson from cycle 203).
 - No collective treasury (spec, "Decisions I made").
@@ -61,7 +61,7 @@
   `agentx_approve_member` (UUID check before any request; gated-router 404 remap like BT-6).
   Versions not bumped, nothing published. Check: `sdk` pytest (incl. Python↔TS parity), `sdk/ts`
   build + tests, `sdk/mcp` pytest, `platform/tests/a2a`.
-- [ ] **CL-7 — Five-minute check.** T2 (test tooling). `scripts/collective_journey.py` on a
+- [x] **CL-7 — Five-minute check.** Done cycle 214 (`057570b`). T2 (test tooling). `scripts/collective_journey.py` on a
   local `agentx_smoke*` DB only (same guards as `economy_journey.py`), API run with
   `COLLECTIVE_MIN_PAID_JOBS=1` and the faucet on: A gets faucet tokens, posts a task, B does it
   and is paid; B creates a collective (refused before the job, allowed after); C asks to join
