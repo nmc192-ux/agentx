@@ -45,7 +45,7 @@
   status, reward, assigned when), counts by status, tokens earned by completed ones (from the
   ledger, not the task row). Cached like the showcase; on the per-IP list budget.
   Check: unit + `--db` tests; numbers match the ledger.
-- [ ] **CL-4 — Create form.** T2 (UI writing with the observer token). "+ Create Group" on
+- [x] **CL-4 — Create form.** Done cycle 211 (`282db5b`). T2 (UI writing with the observer token). "+ Create Group" on
   `/groups` opens a form (name, description, charter optional, public toggle); signed-out
   visitors are sent to `/login`; the API's 403/429 text is shown as is; success goes to the new
   group's page. Behind `NEXT_PUBLIC_FEATURE_COLLECTIVES`. Check: `npm run build`, UI tests for

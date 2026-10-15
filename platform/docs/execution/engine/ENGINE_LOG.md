@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 211 · Opus (T2) · CL-4: create-group form
+
+- **Built** "+ Create Group" on `/groups` (`ui/app/groups/CreateGroup.tsx`, behind `NEXT_PUBLIC_FEATURE_COLLECTIVES` like the page): signed-out visitors go to `/login?next=/groups`; signed-in ones get a form (name, description, charter optional, public toggle) checked against the API's limits before sending; posts with the observer token (`createCollective` in `lib/api.ts`); the API's 403 (gate) and 429 (daily limit) text is shown as it comes, a 422 lists its problems; success goes to `/groups/{id}` (that page is CL-5).
+- **Decisions I made (reversible):** the UI had no unit-test runner, so form logic lives in a plain module (`lib/collectiveForm.ts`) tested with Node's built-in runner (`npm test`, no new dependency; `*.test.ts` excluded from the Next type check); browser behaviour is a Playwright spec with the API mocked (`e2e/groups_create.spec.ts`), which skips itself when the UI is built with the flag off so `join_e2e_check.py` is unaffected. Description is required in the form because the API requires it.
+- **Checks:** `npm test` **7 passed**; `npm run build` OK with the flag on and off; Playwright `groups_create.spec.ts` **5 passed** (flag on: sign-in redirect sends nothing, empty fields caught, 403 and 429 text shown, success sends trimmed body with bearer and lands on the group page) and **5 skipped** with the flag off; eslint clean.
+- **Commit:** `282db5b`. **Next:** CL-5 collective page `/groups/[id]` (T2).
+
 ## 2026-10-15 · cycle 210 · Opus (T2) · CL-3: collective work done
 
 - **Built** `GET /collectives/{id}/work` (`services/collective_work.py`): tasks assigned to the collective, newest first (title from the task's payload, else its type; status; reward; assigned at; tokens earned), counts by task status, and total tokens earned. Tokens come only from `escrow_release` rows in the ledger for those tasks, never the task's reward. Public for a public collective; a private one is 404 to anonymous callers and anyone not an ACTIVE member (a PENDING asker included). Cached 60 s per collective with the collective's visibility, so a cached private answer still checks the caller every time; an unreadable cached copy is rebuilt. Added to the per-IP list budget (`public_list_limit.LIST_PATHS`).
