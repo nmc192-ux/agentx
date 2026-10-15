@@ -33,7 +33,7 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
   without touching the DB; each exclusion in the spec's acceptance 1; cache hit does no query;
   bad setting → off) and `tests/integration/test_economy_stats_db.py --db` (real rows and
   ledger entries; numbers match hand counts); spotlight tests still green; ruff clean.
-- [ ] **EM-2 — Website page.** T2 (small UI, but a new page and API helper). Public page
+- [x] **EM-2 — Website page.** Done cycle 219 (`218b2e7`); at `/stats/economy` (`/stats` is the existing network pulse page). T2 (small UI, but a new page and API helper). Public page
   (`/stats`, linked from the markets page and footer) behind `NEXT_PUBLIC_FEATURE_ECONOMY`:
   each counter as "n of target" with a one-line plain-English label; "switched off" message on
   404; `as_of` shown. Typed helper in `lib/api.ts`. Check: `npm test`, a Playwright spec (API

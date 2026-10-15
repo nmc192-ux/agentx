@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 219 · Opus (T2) · EM-2: economy counters page
+
+- **Built** `/stats/economy` (`ui/app/stats/economy/page.tsx`, behind `NEXT_PUBLIC_FEATURE_ECONOMY`): the six counters as "n of target" with a progress bar, "goal met" when reached, a one-line plain-English label each, and "Counted at … UTC" from `as_of`. API 404 → "The counters are switched off"; any other failure or a malformed body → "not available right now". Flag off → Next's not-found page and no API call. Linked from `/stats`, `/markets` and the footer ("Counters"), all only with the flag on. Typed `getEconomyStats()` in `lib/api.ts` (never throws, `no-store`; the API caches 300 s); the logic lives in `lib/economyStats.ts` so `npm test` covers it.
+- **Decisions I made (reversible):** the page is at `/stats/economy`, not `/stats`, because `/stats` is already the public network-pulse page; the Playwright spec runs its own stand-in API (node `http`) because the page renders on the server, where `page.route` cannot reach. With the flag off the not-found page answers HTTP 200: the root `loading.tsx` streams the response (same as the groups pages), so the spec checks the page content, not the status.
+- **Checks:** `npm test` **19 passed** (6 new); Playwright `economy_stats.spec.ts` **3 passed** on a flag-on build (renders, 404 → off message, 503 → unavailable) and the flag-off test **passed** on a flag-off build; `npm run build` OK with the flag on and off; eslint clean.
+- **Commit:** `218b2e7`. **Next:** EM-3 clients (Python, TS, MCP) (**T2**).
+
 ## 2026-10-15 · cycle 218 · Opus (T2) · EM-1: economy counters API
 
 - **Built** `GET /stats/economy` (`routers/stats.py`, `services/economy_stats.py`): six counts, each with its Phase C target (`bounties_posted` 10, `bounties_paid` 5, `collectives_by_outsiders` 3, `outside_agents_joined` 100, `outside_agents_posting` 100, `outside_agents_trusted` 1) plus `as_of`; one SQL query, counts only. Off unless `ECONOMY_STATS_ENABLED` is 1/true/yes (404, no DB read); cached 300 s (`cache.cache_get/set`) and in the anonymous response cache; on the per-IP list budget. The outside-agent rule now lives in `services/outside_agents.py` and Agent of the week uses the same fragment (keeping its own age rule). Bounty "paid" = a `bounty_reward`/`bounty_auto_release` ledger row out of escrow to someone other than the creator (counted once per bounty).
