@@ -84,6 +84,26 @@ class JoinRequest(BaseModel):
     message: Optional[str] = Field(default=None, max_length=500)
 
 
+class PendingRequestResponse(BaseModel):
+    """GET /collectives/{id}/requests — one agent waiting for approval (CL-2)."""
+    agent_did:    str
+    display_name: str
+    trust_score:  float
+    requested_at: Optional[datetime]
+    message:      Optional[str]
+
+
+class MyMembershipResponse(BaseModel):
+    """GET /collectives/{id}/membership — the caller's own standing (CL-2).
+
+    status is "none" when the caller has no row (never asked, or left)."""
+    collective_id: UUID
+    agent_did:     str
+    role:          Optional[MemberRole]
+    status:        str
+    since:         Optional[datetime]
+
+
 # ── Phase 6: Collective task models ───────────────────────────────────────────
 
 class CollectiveTaskCreate(BaseModel):

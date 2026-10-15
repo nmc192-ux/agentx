@@ -7,6 +7,8 @@ Endpoints:
   POST   /collectives                                           — Create collective (see collective_gate)
   GET    /collectives                                           — List collectives
   GET    /collectives/{collective_id}                           — Collective + member list
+  GET    /collectives/{collective_id}/requests                  — Pending requests (OWNER/ADMIN)
+  GET    /collectives/{collective_id}/membership                — The caller's own membership
   POST   /collectives/{collective_id}/join                      — Request membership
   POST   /collectives/{collective_id}/members/{did}/approve     — Approve member (admin)
   DELETE /collectives/{collective_id}/members/{did}             — Remove member
@@ -32,6 +34,8 @@ from ..models.collective import (
     CollectiveTaskResponse,
     CollectiveWithMembers,
     JoinRequest,
+    MyMembershipResponse,
+    PendingRequestResponse,
 )
 from ..services import collective_gate, collective_service
 
@@ -189,6 +193,95 @@ async def list_collective_members(collective_id: UUID, request: Request):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
+# ── Membership reads (CL-2) ──────────────────────────────────────────────────
+
+async def _collective_and_caller(conn, collective_id: UUID, did: str):
+    """The collective's visibility and the caller's row in it (role, status, …).
+
+    404 when the collective does not exist, and also when it is private and the
+    caller is not an ACTIVE member of it: a private collective's existence is
+    not confirmed to outsiders by these reads."""
+    row = await conn.fetchrow(
+        """
+        SELECT c.is_public, cm.role::text AS role, cm.status::text AS status, cm.joined_at
+        FROM collectives c
+        LEFT JOIN collective_members cm
+               ON cm.collective_id = c.collective_id AND cm.agent_did = $2
+        WHERE c.collective_id = $1
+        """,
+        collective_id, did,
+    )
+    if row is None or (not row["is_public"] and row["status"] != "ACTIVE"):
+        raise HTTPException(status_code=404, detail=f"Collective not found: {collective_id}")
+    return row
+
+
+@router.get(
+    "/{collective_id}/requests",
+    response_model=list[PendingRequestResponse],
+    summary="Pending membership requests (OWNER/ADMIN only)",
+)
+async def list_pending_requests(
+    collective_id: UUID,
+    request:       Request,
+    caller:        AgentRecord = Depends(get_current_agent),
+):
+    """Agents waiting for approval, oldest first, with the note they sent.
+    Only an ACTIVE OWNER or ADMIN of the collective may see them."""
+    async with get_db() as conn:
+        me = await _collective_and_caller(conn, collective_id, caller.did)
+        if me["status"] != "ACTIVE" or me["role"] not in ("OWNER", "ADMIN"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an OWNER or ADMIN of the collective can see membership requests",
+            )
+        rows = await conn.fetch(
+            """
+            SELECT cm.agent_did, a.display_name, a.trust_score, cm.joined_at,
+                   cm.request_message
+            FROM collective_members cm
+            JOIN agents a ON a.agent_did = cm.agent_did
+            WHERE cm.collective_id = $1 AND cm.status = 'PENDING'
+            ORDER BY cm.joined_at ASC NULLS LAST, cm.agent_did
+            LIMIT 200
+            """,
+            collective_id,
+        )
+    return [
+        PendingRequestResponse(
+            agent_did=r["agent_did"],
+            display_name=r["display_name"],
+            trust_score=float(r["trust_score"] or 0.0),
+            requested_at=r["joined_at"],
+            message=r["request_message"],
+        )
+        for r in rows
+    ]
+
+
+@router.get(
+    "/{collective_id}/membership",
+    response_model=MyMembershipResponse,
+    summary="The caller's own membership in a collective",
+)
+async def my_membership(
+    collective_id: UUID,
+    request:       Request,
+    caller:        AgentRecord = Depends(get_current_agent),
+):
+    """The caller's role and status (PENDING, ACTIVE, BANNED), or "none".
+    Only ever about the caller; no other agent's standing is returned."""
+    async with get_db() as conn:
+        me = await _collective_and_caller(conn, collective_id, caller.did)
+    return MyMembershipResponse(
+        collective_id=collective_id,
+        agent_did=caller.did,
+        role=me["role"],
+        status=me["status"] or "none",
+        since=me["joined_at"],
+    )
+
+
 # ── POST /collectives/{id}/tasks ──────────────────────────────────────────────
 
 @router.post(
@@ -301,14 +394,17 @@ async def join_collective(
     if not exists:
         raise HTTPException(status_code=404, detail=f"Collective not found: {collective_id}")
 
+    # The note is kept for the OWNER/ADMIN (CL-2); a repeat request changes nothing.
+    message = (body.message or "").strip() or None
     async with transaction() as conn:
         await conn.execute(
             """
-            INSERT INTO collective_members (collective_id, agent_did, role, status)
-            VALUES ($1, $2, 'MEMBER', 'PENDING')
+            INSERT INTO collective_members
+                (collective_id, agent_did, role, status, joined_at, request_message)
+            VALUES ($1, $2, 'MEMBER', 'PENDING', now(), $3)
             ON CONFLICT (collective_id, agent_did) DO NOTHING
             """,
-            collective_id, caller.did,
+            collective_id, caller.did, message,
         )
 
     logger.info("%s requested to join collective %s", caller.did, collective_id)
