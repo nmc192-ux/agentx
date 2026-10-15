@@ -1,5 +1,11 @@
 # Engine log
 
+## 2026-10-15 · cycle 216 · Opus (T2) · CL-8: Sprint 22 close
+
+- **Acceptance (head `1674d6e`):** `launch_rehearsal.py --economy` **PASSED 11/11** (9 launch checks off, economy journey 10/10, collectives journey 9/9 in 0.8 s, limit 300 s); collectives unit suites (gate, membership, work, security review, journey) **137 passed**; `--db` (gate, membership, work, review) **19 passed**; default `COLLECTIVE_MIN_PAID_JOBS=0` still refuses a 0.5-trust agent with paid jobs (gate tests); Python SDK **523**, TS build OK + **167**, MCP **125** passed; `ui` `npm run build` OK.
+- **Wrote** `sprints/sprint_22_retro.md`; `state_of_agentx.md` (Sprint 22 entry, one line); **H42** in `HUMAN_ACTIONS.md` (switch on groups for newcomers after 1 Nov and H38: `COLLECTIVE_MIN_PAID_JOBS=1` on the VPS, `NEXT_PUBLIC_FEATURE_COLLECTIVES=true` on Vercel, optional stranger checklist; notes the two rules that are live from merge with no switch: 3 groups a day, private groups hidden).
+- **Commit:** see `git log` (this close). **Next:** decompose Sprint 23 — Phase C metrics and close (**T2**).
+
 ## 2026-10-15 · cycle 215 · Fable (T1) · CL-8a: Sprint 22 security review — reviewed 7 commits, found 4 issues, fixed 4
 
 - **Scope.** The two Sprint 22 commits marked `SECURITY-REVIEW:` and built on Opus, `f3a364d` (CL-1, creation gate) and `cf48bcd` (CL-2, membership reads), read in full with every path they hang off (`collective_gate`, the ledger types it borrows from the trust reporters, `_collective_and_caller`, approve, join), plus the unmarked Opus work that reads or writes membership: CL-3 work read and cache, CL-4/CL-5 UI writes with the observer token, CL-6 SDK/MCP tools, CL-7 journey guards. Also the two items CL-0 parked for this review: the private-collective read and ADMIN removing ADMIN.

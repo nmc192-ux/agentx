@@ -10,7 +10,7 @@
 - Every Phase C feature lands **off** (setting or UI flag defaults to today's behaviour);
   migrations additive only; `scripts/launch_rehearsal.py` re-run at each sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `057570b` (cycle 214, 11/11 with `--economy`, collectives journey included).
+  rehearsal first thing in the cycle. Last rehearsed: `1674d6e` (cycle 216, 11/11 with `--economy`, collectives journey included; later commits docs only).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 - SDK/MCP changes also run `platform/tests/a2a` (route pins; lesson from cycle 203).
 - No collective treasury (spec, "Decisions I made").
@@ -70,12 +70,12 @@
   `launch_rehearsal.py --economy`. Manual checklist `sprints/sprint_22_stranger_checklist.md`
   (website path, timed by a person). Check: journey exits 0 from an empty DB; rehearsal
   `--economy` green; guard tests.
-- [ ] **CL-8a — Sprint-close security review.** **T1.** Every Sprint 22 commit marked
+- [x] **CL-8a — Sprint-close security review.** Done cycle 215 (`7d92ee3`; 7 commits, 4 issues fixed). **T1.** Every Sprint 22 commit marked
   `SECURITY-REVIEW:` built on Opus or Sonnet (CL-1, CL-2 at least), plus the private-collective
   read (`GET /collectives/{id}` returns a private collective to anyone today) and ADMIN
   removing another ADMIN. Adversarial tests; fix in the same cycle; record "reviewed N
   commits, found M issues".
-- [ ] **CL-8 — Sprint close.** T2. Acceptance from the spec; launch rehearsal 9/9 off and
+- [x] **CL-8 — Sprint close.** Done cycle 216 (rehearsal 11/11, retro, H42). T2. Acceptance from the spec; launch rehearsal 9/9 off and
   `--economy` green; `sprint_22_retro.md`; `state_of_agentx.md`; **H42** in `HUMAN_ACTIONS.md`
   (switch on: `COLLECTIVE_MIN_PAID_JOBS=1` on the VPS and `NEXT_PUBLIC_FEATURE_COLLECTIVES` on
   the website, after 1 Nov, with H38's faucet).
