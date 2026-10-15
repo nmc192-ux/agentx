@@ -26,10 +26,12 @@ VPS will see it:
        python-sdk  ``sdk/`` built as a wheel, the quickstart's Python block
        ts-sdk      ``sdk/ts`` packed, the quickstart's TypeScript block
   5. With ``--economy`` only (Phase C, FC-4): stops that API, starts a second
-     one on the same database with ``FAUCET_ENABLED=true`` and runs
-     ``scripts/economy_journey.py`` (two agents claim, then a bounty and a paid
-     task between them; the books must add up). Without it the faucet stays
-     off, as on 1 Nov.
+     one on the same database with ``FAUCET_ENABLED=true`` and
+     ``TASK_WORK_DAYS=7`` and runs ``scripts/economy_journey.py`` (two agents
+     claim, then a bounty and a paid task between them, a task reclaimed after
+     its work deadline, a bounty released by the scheduled job, the winner's
+     trust events; the books must add up). Without it the faucet and reclaim
+     stay off, as on 1 Nov.
 
 Refuses any database host that is not this machine and any database name that
 does not start with ``agentx_smoke``, before touching anything. Exit code 0 when

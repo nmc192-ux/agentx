@@ -1,4 +1,4 @@
-"""Unit tests for scripts/economy_journey.py (Phase C, Sprint 20, FC-4).
+"""Unit tests for scripts/economy_journey.py (Phase C, Sprint 20, FC-4; Sprint 21, BT-7).
 
 The journey itself needs local Postgres and is run by hand, by the engine or by
 ``launch_rehearsal.py --economy``. These tests pin its safety guards (never a
@@ -86,6 +86,35 @@ def test_env_turns_faucet_on_and_keeps_other_faucet_defaults():
     assert "FAUCET_MIN_AGE_MINUTES" not in env and "FAUCET_AMOUNT" not in env
 
 
+def test_env_turns_task_reclaim_on_whatever_it_inherits():
+    env = ej.economy_env("agentx_smoke_economy", {"TASK_WORK_DAYS": "0"})
+    assert env["TASK_WORK_DAYS"] == str(ej.TASK_WORK_DAYS) == "7"
+    assert ej.economy_env("agentx_smoke_economy", {})["TASK_WORK_DAYS"] == "7"
+
+
+@pytest.mark.parametrize("db,host", [
+    ("agentx", "localhost"), ("neondb", "localhost"), ("agentx_smoke_economy", "db.neon.tech"),
+])
+def test_release_job_refuses_anything_but_a_local_scratch_database(no_database, db, host):
+    with pytest.raises(RuntimeError, match="refusing"):
+        ej.run_release_job(db, {"POSTGRES_HOST": host})
+
+
+def test_release_job_runs_on_the_scratch_database_only(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen.update(cmd=cmd, **kw)
+        return ej.subprocess.CompletedProcess(cmd, 0, stdout="{'bounties': 1}\n")
+    monkeypatch.setattr(ej.subprocess, "run", fake_run)
+    out = ej.run_release_job("agentx_smoke_economy",
+                             {"POSTGRES_HOST": "localhost", "POSTGRES_DB": "agentx"})
+    assert out == "{'bounties': 1}"
+    assert seen["cmd"][1:] == ["-m", "src.jobs.auto_release"]
+    assert seen["env"]["POSTGRES_DB"] == "agentx_smoke_economy"
+    assert seen["env"]["REDIS_URL"] == "memory://"
+
+
 def test_launch_rehearsal_economy_is_opt_in():
     assert lr.parse_args([]).economy is False
     assert lr.parse_args(["--economy"]).economy is True
@@ -112,7 +141,8 @@ def test_ledger_mismatch_is_reported():
 
 
 def test_journey_passed_needs_every_step():
-    good = [(True, f"s{i}", "") for i in range(7)]
+    n = ej.STEP_COUNT
+    good = [(True, f"s{i}", "") for i in range(n)]
     assert ej.journey_passed(good)
-    assert not ej.journey_passed(good[:5])            # stopped early
-    assert not ej.journey_passed(good[:6] + [(False, "books", "x")])
+    assert not ej.journey_passed(good[:7])            # part one only, or stopped early
+    assert not ej.journey_passed(good[:n - 1] + [(False, "books", "x")])
