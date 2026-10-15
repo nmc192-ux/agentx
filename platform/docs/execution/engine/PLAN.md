@@ -84,7 +84,12 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   Python and TS; MCP tools `create_bounty`, `submit_bounty_solution`, `reclaim_task` (check
   which exist first). Versions not bumped, not published.
   Check: `sdk/` pytest, `sdk/ts` build + tests, MCP tests.
-- [ ] **BT-7 — Economy journey, part two.** T2 (test tooling). `scripts/economy_journey.py`
+- [x] **BT-7 — Economy journey, part two.** Done cycle 204 (Opus). Four new steps (reclaim,
+  auto-release, trust, then books): reclaim refused at once, allowed after back-dating the
+  assignment 8 days; the release job (`src.jobs.auto_release`, subprocess, same guard) leaves an
+  undue bounty alone and pays B once its deadline is back-dated; B's trust events are exactly
+  bounty_won, task_completed, deadline_missed (pair cap stops a second bounty_won). Agents now
+  aged 2 days (was 2 h) so they can vouch. Original: T2 (test tooling). `scripts/economy_journey.py`
   gains: a task reclaimed after a missed work deadline and a bounty auto-released (time moved
   by back-dating rows on the local `agentx_smoke*` DB only, guarded like the rest of the
   script); the winner's trust events listed. The journey's own API must run with

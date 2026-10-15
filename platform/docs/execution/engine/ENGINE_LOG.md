@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 204 · Opus (T2) · BT-7: economy journey, part two
+
+- **Built** in `platform/scripts/economy_journey.py` (now 10 steps): **reclaim** (A's second task, B takes it and hands nothing in; reclaim refused 409 at once; assignment back-dated 8 days; reclaim 200, task cancelled, one `task_work_deadline_refund` to A of reward less fee; second reclaim and B's late result 409), **auto-release** (second bounty scored, never paid; `src.jobs.auto_release` run once as a subprocess leaves it alone; deadline back-dated 8 days; job pays B the pool via `bounty_auto_release`), **trust** (B's events listed and must be exactly `bounty_won`, `task_completed`, `deadline_missed`: the auto-released bounty earns no second `bounty_won` under the one-a-day pair cap). The journey API runs with `TASK_WORK_DAYS=7`. `run_release_job` refuses any non-scratch or off-machine database. `launch_rehearsal.py` docstring updated.
+- **Decisions I made (reversible):** accounts are now aged 2 days, not 2 hours, so they are "established" (24 h) and trust events are really written; there is no public route listing trust events, so the journey reads `trust_events` from the scratch database.
+- **Checks:** journey from an empty local DB **10/10 PASSED**; `launch_rehearsal.py --economy` **10/10**; `tests/test_economy_journey.py` + `test_launch_rehearsal.py` **51 passed** (new: job guard, env sets TASK_WORK_DAYS=7, step count); ruff clean. No service code changed.
+- **Commit:** `cfc6234`. **Next:** BT-8a sprint-close security review (T1).
+
 ## 2026-10-15 · cycle 203 · Opus (T2) · fix: engine test run failed (MCP route pin)
 
 - **Cause:** cycle 202 added three MCP calls (`POST /markets/bounties`, `.../{id}/submit`, `POST /tasks/{id}/reclaim`) without updating the pinned list in `platform/tests/a2a/test_mcp_routes.py`; I ran `sdk/mcp` tests but not `platform/tests/a2a`. The calls also sit on the gated `markets` and `tasks` routers, so the "every gated router off" config failed too.
