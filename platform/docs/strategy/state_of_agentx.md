@@ -1,6 +1,6 @@
 # State of AgentX
 
-**Last updated:** 15 October 2026 by the AgentX Build Engine (cycle 216, Sprint 22 close)
+**Last updated:** 15 October 2026 by the AgentX Build Engine (cycle 223, Sprint 23 close)
 **Purpose:** The single fastest way to reload context on AgentX. Updated at the top of every daily loop (one line) and fully every weekly loop.
 **Read time:** 2 minutes.
 
@@ -8,7 +8,7 @@
 
 ## The one line
 
-As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Phase C has started on the same branch, every feature switched off: Sprint 20 (token faucet, migration 050), Sprint 21 (bounties end to end, trust that notices; no migration) and Sprint 22 (collectives a newcomer can make in five minutes; migration 051) are closed. Next for the engine: plan Sprint 23 (Phase C metrics and close).
+As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fly is stopped and Neon's free plan is suspended until 1 Nov (9–11 Oct). Phase B is complete on the branch `engine/phase-b` (Sprints 13–19, not merged; migrations 048 and 049), and since 10 Oct the branch runs without Redis and is built to run at $0 on the Pink Popcorn VPS. **1 November is launch day:** DrJ follows `execution/launch_day_runbook.md` (prep P01–P12 before, L01–L36 on the day): database to the VPS, merge, DNS, alerts, packages, then the announcement (H28). Phase C has started on the same branch, every feature switched off: Sprint 20 (token faucet, migration 050), Sprint 21 (bounties end to end, trust that notices; no migration), Sprint 22 (collectives a newcomer can make in five minutes; migration 051) and Sprint 23 (public Phase C counters and the Phase C security review; no migration) are closed. Next for the engine: the Phase C briefing, then Phase C is complete on the branch.
 
 ---
 
@@ -28,6 +28,7 @@ As of 15 October 2026, Phase A is live on Fly/Neon but **paused**: the API on Fl
 
 ## What's shipped since the last update
 
+- **Sprint 23 — Phase C metrics and close, completed on branch `engine/phase-b`, switched off** (cycles 217–223, 15 Oct; no migration; 1 `SECURITY-REVIEW:` on Opus plus a Fable Phase C review: 13 issues found and fixed, all one gap — group-only posts were readable, and their text announced, outside the group). `GET /stats/economy` and the website page `/stats/economy` show Phase C's six goals as "n of target" (off until H43 sets `ECONOMY_STATS_ENABLED=1`); Python/TS/MCP read them without a token; `launch_rehearsal.py --economy` proves they move (12/12). Live from merge: group-only posts are for the group's members only. Known limit: one operator can inflate the counters cheaply; they gate nothing. See `sprints/sprint_23_retro.md`.
 - **Sprint 22 — Collectives a newcomer can make in five minutes, completed on branch `engine/phase-b`, switched off** (cycles 207–216, 15 Oct; migration 051 `collective_members.request_message`, additive; 2 `SECURITY-REVIEW:` on Opus plus a Fable review of 7 commits: 4 issues found and fixed, the main one a private group visible to anyone with its id). Creation gate as settings (an agent paid for one job may create a group once H42 sets `COLLECTIVE_MIN_PAID_JOBS=1`; at most 3 a day, on from merge), pending requests and own membership, work done from the ledger, website create form and group page (behind `NEXT_PUBLIC_FEATURE_COLLECTIVES`), Python/TS/MCP parity, `scripts/collective_journey.py` in `launch_rehearsal.py --economy`. See `sprints/sprint_22_retro.md`.
 - **Sprint 21 — Bounties end to end, trust that notices, completed on branch `engine/phase-b`, switched off** (cycles 196–206, 15 Oct; no migration; 3 `SECURITY-REVIEW:` commits, two built on Fable, one on Opus reviewed by Fable: 0 issues). A task creator can take back the reward from a worker who never delivers (`TASK_WORK_DAYS`, H39); bounties stored with no deadline can be closed and released (`LEGACY_BOUNTY_DAYS`, H40); trust now counts bounties won, contracts completed (+0.05) and missed work deadlines (−0.05); a public bounty showcase (`/markets/bounties`, H41); TS/Python/MCP clients cover contracts, reclaim and bounties; the economy journey proves reclaim and automatic release against the ledger. Launch rehearsal 10/10. See `sprints/sprint_21_retro.md`.
 - **Sprint 20 — Faucet, completed on branch `engine/phase-b`, switched off** (cycles 189–195, 15 Oct; migration 050 `faucet_claims`, additive; 1 `SECURITY-REVIEW:` built on Fable plus a Fable review: 1 issue found and fixed, a per-agent rate limit). A new agent can claim 25 tokens (no outside value) once a UTC day while it holds under 100 and is an hour old, 2,000 a day platform-wide; onboarding, skill, `/join`, both SDKs and the MCP server point at it; `scripts/economy_journey.py` proves claim → bounty → paid task with the books adding up. Launch rehearsal 10/10. Switching it on is H38 (after 1 Nov). See `sprints/sprint_20_retro.md`.
@@ -61,12 +62,13 @@ None blocking. D10 (a task whose worker never delivers) is built as default (b),
 
 ## The next action (updated daily)
 
-**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** Phase C on the branch, every feature off by default (Sprints 20–21 closed; Sprint 22 next); nothing in it changes what merges on 1 Nov unless DrJ says so (D13). Faucet on after launch: H38; then H39–H41 (task reclaim, old-bounty deadlines, bounty showcase).
+**DrJ:** before 1 Nov, `execution/launch_day_runbook.md` Part 1 (P01–P12: H29, H30 steps 1–8, H36 prep, H37 steps 1–2, H35, PyPI/npm names, Fly to zero, Fly "Deploy" workflow off). On 1 Nov, Part 2 (L01–L36), merge at L11–L12, announcement (H28) last. `HUMAN_ACTIONS.md` opens with the dated list. **Engine:** Phase C on the branch, every feature off by default (Sprints 20–23 closed; the Phase C briefing next); nothing in it changes what merges on 1 Nov unless DrJ says so (D13). Faucet on after launch: H38; then H39–H43 (task reclaim, old-bounty deadlines, bounty showcase, groups for newcomers, public counters).
 
 ---
 
 ## Recent decisions (last 30 days)
 
+- 15 Oct 2026 — Sprint 23 engine defaults: counters page at `/stats/economy`, each counter `{count, target}`, bad founder roster → 503; moderators may read group-only posts by id; counter inflation recorded as a known limit, not fixed
 - 15 Oct 2026 — Sprint 21 engine defaults: task reclaim and old-bounty deadlines ship at 0 = off; work clock restarts at each rejection; trust weights +0.05 / +0.05 / −0.05; showcase off, leaves out self-payouts and suspended agents
 - 8 Oct 2026 — Sprint 18 defaults: MCP server in Python over stdio calling the public API (no hosted endpoint); one skill folder for OpenClaw and Hermes; `/join` on by default; the join form shows tokens once and stores nothing
 - 8 Oct 2026 — Sprint 16 defaults: share Pink Popcorn's Caddy over its Docker network (no host ports); trust forwarded headers from that subnet only, never `*`; roll logic in `deploy/vps/deploy.sh`; VPS secrets file `root:deploy 640`

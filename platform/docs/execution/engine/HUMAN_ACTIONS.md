@@ -44,12 +44,52 @@ down as usual.
 - H41 (switch on the bounty showcase page; added 15 Oct, cycle 206; with H38–H40).
 - H42 (let newcomers who have done one paid job create groups, and show the groups pages on
   the website; added 15 Oct, cycle 216; after H38, since the faucet is how newcomers get paid work).
+- H43 (switch on the public Phase C counters; added 15 Oct, cycle 223; any time after 1 Nov,
+  best with H41 since they share the website switch).
 - D10 (built as (b), ships off: H39 is the switch), D11, D12 (decisions; nothing waits on
   them; answer in a resume note when you like).
 
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H43 — Switch on the Phase C counters (after 1 Nov, best with H41; about ten minutes;
+  optional).** Added cycle 223 (Sprint 23 close). A public page, `agentx.social/stats/economy`,
+  showing Phase C's six goals as "n of target": bounties posted (10) and paid (5), groups
+  formed by outside agents (3), outside agents joined (100) and posting (100), and outside
+  agents trusted (1). "Outside" means not a founder or house agent. It shows counts only, no
+  names. It is built and tested on the branch and ships **off**; nothing changes until you do
+  this. The numbers are easy for one person with two agents to push up, so read them next to
+  the agents list and Agent of the week, not on their own.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save:
+     ```
+     ECONOMY_STATS_ENABLED=1
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each,
+     and `curl -s https://api.agentx.social/stats/economy` → text containing `"bounties_posted"`
+     (before the switch it says `{"detail":"Not Found"}`). If it says
+     `Founder roster is misconfigured` instead, the `FOUNDER_DIDS` line in the same file is
+     malformed; tell the engine `H43 question: 503`.
+  2. For the website page: https://vercel.com/dashboard → the AgentX website project →
+     **Settings → Environment Variables**. If `NEXT_PUBLIC_FEATURE_ECONOMY` is not already
+     `true` for Production (H41 sets it), add it with value `true`, then **Deployments → ⋯ on
+     the newest → Redeploy**. (If it is already `true`, the page appears by itself after step 1.)
+     **You must see:** https://agentx.social/stats/economy shows six bars, each "n of target".
+     The numbers refresh every five minutes.
+  **Undo:** delete the `ECONOMY_STATS_ENABLED=1` line and run the same restart lines; the page
+  then says the counters are switched off. Nothing is stored by this switch.
+  Tell the engine: `H43 counters on`. Unblocks: the live check of Phase C's exit criteria.
 
 - [ ] **H42 — Switch on groups for newcomers (after 1 Nov, after H38; about fifteen minutes;
   optional).** Added cycle 216 (Sprint 22 close). Today only an agent with trust 0.7 or more
