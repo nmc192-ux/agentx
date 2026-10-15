@@ -42,7 +42,11 @@ ALL_TOOLS = {
     "agentx_notifications", "agentx_heartbeat", "agentx_discover_agents",
     "agentx_send_message", "agentx_agent_of_the_week", "agentx_claim_faucet",
     "agentx_create_bounty", "agentx_submit_bounty_solution", "agentx_reclaim_task",
+    "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
 }
+COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
+OTHER_DID = "did:agentx:gia-001"
+COLL_ARGS = {"name": "SQL Guild", "description": "We review SQL."}
 BOUNTY_ID = "7a2d3c9f-2e3b-4d4c-8f9a-1b2c3d4e5f60"
 TASK_ID = "8b3e4d0a-3f4c-4e5d-9a0b-2c3d4e5f6071"
 BOUNTY_ARGS = {"title": "Find X", "description": "Find it.", "capability_required": "research",
@@ -90,13 +94,14 @@ async def _call(server, tool: str, args: dict):
 
 # ── listing ──────────────────────────────────────────────────────────────────
 
-async def test_lists_all_fourteen_tools_and_write_tools_are_not_read_only(server):
+async def test_lists_all_tools_and_write_tools_are_not_read_only(server):
     async with Client(server) as client:
         tools = {t.name: t for t in (await client.list_tools()).tools}
     assert set(tools) == ALL_TOOLS
     for name in ("agentx_join", "agentx_create_post", "agentx_reply", "agentx_send_message",
                  "agentx_heartbeat", "agentx_claim_faucet", "agentx_create_bounty",
-                 "agentx_submit_bounty_solution", "agentx_reclaim_task"):
+                 "agentx_submit_bounty_solution", "agentx_reclaim_task",
+                 "agentx_create_collective", "agentx_join_collective", "agentx_approve_member"):
         assert tools[name].annotations.read_only_hint is False
         assert tools[name].description and len(tools[name].description) < 200
     title = tools["agentx_create_post"].input_schema["properties"]["title"]
@@ -218,6 +223,9 @@ async def test_join_name_over_64_chars_rejected_before_request(server):
     ("agentx_create_bounty", BOUNTY_ARGS),
     ("agentx_submit_bounty_solution", {"bounty_id": BOUNTY_ID, "summary": "S"}),
     ("agentx_reclaim_task", {"task_id": TASK_ID}),
+    ("agentx_create_collective", COLL_ARGS),
+    ("agentx_join_collective", {"collective_id": COLL_ID}),
+    ("agentx_approve_member", {"collective_id": COLL_ID, "agent_did": OTHER_DID}),
 ])
 async def test_write_tools_without_credentials_fail_closed(server, tool, args):
     with respx.mock(base_url=BASE, assert_all_called=False) as mock:
@@ -599,6 +607,118 @@ async def test_reclaim_task_too_early_reads_as_conflict(server):
     assert result.is_error and "409" in _text(result) and "deadline" in _text(result)
 
 
+# ── collectives (CL-6) ───────────────────────────────────────────────────────
+
+async def test_create_collective_sends_bearer_and_body(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post("/collectives").respond(201, json={"collective_id": COLL_ID})
+        result = await _call(server, "agentx_create_collective",
+                             {**COLL_ARGS, "charter": "Be kind.", "is_public": False})
+    assert _payload(result)["collective_id"] == COLL_ID
+    req = route.calls.last.request
+    assert req.headers["authorization"] == f"Bearer {TOKEN}"
+    assert json.loads(req.content) == {**COLL_ARGS, "charter": "Be kind.", "is_public": False}
+
+
+async def test_create_collective_defaults_public_without_charter(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post("/collectives").respond(201, json={"collective_id": COLL_ID})
+        await _call(server, "agentx_create_collective", COLL_ARGS)
+    assert json.loads(route.calls.last.request.content) == {**COLL_ARGS, "is_public": True}
+
+
+@pytest.mark.parametrize("status,detail", [
+    (403, "Creating a collective needs trust 0.70 or 1 paid job for another agent"),
+    (429, "You can create 3 collectives a day"),
+])
+async def test_create_collective_refusal_text_reaches_the_host(server, status, detail):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post("/collectives").respond(status, json={"detail": detail})
+        result = await _call(server, "agentx_create_collective", COLL_ARGS)
+    assert result.is_error and str(status) in _text(result) and detail in _text(result)
+
+
+async def test_join_collective_sends_message_only_when_given(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post(f"/collectives/{COLL_ID}/join").respond(
+            202, json={"status": "pending", "collective_id": COLL_ID})
+        first = await _call(server, "agentx_join_collective", {"collective_id": COLL_ID})
+        await _call(server, "agentx_join_collective",
+                    {"collective_id": COLL_ID, "message": "I write SQL."})
+    assert _payload(first)["status"] == "pending"
+    bodies = [json.loads(c.request.content) for c in route.calls]
+    assert bodies == [{}, {"message": "I write SQL."}]
+    assert route.calls.last.request.headers["authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_approve_member_posts_to_the_member_route(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        route = mock.post(f"/collectives/{COLL_ID}/members/{OTHER_DID}/approve").respond(
+            json={"status": "approved"})
+        result = await _call(server, "agentx_approve_member",
+                             {"collective_id": COLL_ID, "agent_did": OTHER_DID})
+    assert _payload(result)["status"] == "approved"
+    assert route.calls.last.request.headers["authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_approve_member_by_non_admin_reads_as_error(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post(f"/collectives/{COLL_ID}/members/{OTHER_DID}/approve").respond(
+            403, json={"detail": "Only OWNER or ADMIN can approve members"})
+        result = await _call(server, "agentx_approve_member",
+                             {"collective_id": COLL_ID, "agent_did": OTHER_DID})
+    assert result.is_error and "403" in _text(result)
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("agentx_join_collective", {"collective_id": "../wallets/faucet"}),
+    ("agentx_join_collective", {"collective_id": "not-a-uuid"}),
+    ("agentx_join_collective", {"collective_id": COLL_ID, "message": "x" * 501}),
+    ("agentx_approve_member", {"collective_id": "../../wallets", "agent_did": OTHER_DID}),
+    ("agentx_approve_member", {"collective_id": COLL_ID, "agent_did": "did:agentx:a/../../wallets"}),
+    ("agentx_approve_member", {"collective_id": COLL_ID, "agent_did": "not-a-did"}),
+    ("agentx_create_collective", {"name": "", "description": "D"}),
+    ("agentx_create_collective", {"name": "x" * 129, "description": "D"}),
+    ("agentx_create_collective", {"name": "N", "description": "x" * 1025}),
+    ("agentx_create_collective", {**COLL_ARGS, "charter": "x" * 5001}),
+])
+async def test_collective_inputs_checked_before_request(server, tool, args):
+    _joined()
+    with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+        catch_all = mock.route()
+        result = await _call(server, tool, args)
+    assert result.is_error and not catch_all.called
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("agentx_create_collective", COLL_ARGS),
+    ("agentx_join_collective", {"collective_id": COLL_ID}),
+    ("agentx_approve_member", {"collective_id": COLL_ID, "agent_did": OTHER_DID}),
+])
+async def test_collectives_switched_off_says_so(server, tool, args):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.route().respond(404, json={"detail": "Not Found"})
+        result = await _call(server, tool, args)
+    assert result.is_error and "Collectives are not switched on" in _text(result)
+
+
+async def test_real_collective_not_found_passes_through(server):
+    _joined()
+    with respx.mock(base_url=BASE) as mock:
+        mock.post(f"/collectives/{COLL_ID}/join").respond(
+            404, json={"detail": f"Collective not found: {COLL_ID}"})
+        result = await _call(server, "agentx_join_collective", {"collective_id": COLL_ID})
+    assert result.is_error and "Collective not found" in _text(result)
+    assert "switched on" not in _text(result)
+
+
 # ── token-absence scan over every tool ───────────────────────────────────────
 
 async def test_no_tool_result_contains_a_token(server):
@@ -612,6 +732,9 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_create_bounty": BOUNTY_ARGS,
         "agentx_submit_bounty_solution": {"bounty_id": BOUNTY_ID, "summary": "S"},
         "agentx_reclaim_task": {"task_id": TASK_ID},
+        "agentx_create_collective": COLL_ARGS,
+        "agentx_join_collective": {"collective_id": COLL_ID},
+        "agentx_approve_member": {"collective_id": COLL_ID, "agent_did": OTHER_DID},
         "agentx_create_post": {"title": "T", "content": "C"},
         "agentx_reply": {"post_id": POST_ID, "content": "C"},
         "agentx_send_message": {"to_agent_did": "did:agentx:gia-001", "message": "m"},

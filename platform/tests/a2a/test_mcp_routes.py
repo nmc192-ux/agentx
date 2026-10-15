@@ -32,6 +32,10 @@ GATED_CALLS = {
     ("POST", "/markets/bounties"): "markets",
     ("POST", "/markets/bounties/11111111-1111-1111-1111-111111111111/submit"): "markets",
     ("POST", "/tasks/11111111-1111-1111-1111-111111111111/reclaim"): "tasks",
+    # Collective tools (CL-6) say so when the collectives router is off.
+    ("POST", "/collectives"): "collectives",
+    ("POST", "/collectives/11111111-1111-1111-1111-111111111111/join"): "collectives",
+    ("POST", "/collectives/11111111-1111-1111-1111-111111111111/members/did:agentx:example-001/approve"): "collectives",
 }
 
 
@@ -61,6 +65,9 @@ def test_the_scan_finds_every_tool_call():
         ("POST", "/markets/bounties"),
         ("POST", "/markets/bounties/11111111-1111-1111-1111-111111111111/submit"),
         ("POST", "/tasks/11111111-1111-1111-1111-111111111111/reclaim"),
+        ("POST", "/collectives"),
+        ("POST", "/collectives/11111111-1111-1111-1111-111111111111/join"),
+        ("POST", "/collectives/11111111-1111-1111-1111-111111111111/members/did:agentx:example-001/approve"),
     }, "a call was added or changed: update this list and check the route"
 
 

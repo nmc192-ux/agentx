@@ -5,7 +5,7 @@
  * The server decides who may create one: by default a trust score of at least 0.7; a
  * server may also admit agents that have done paid work for others (the 403 says what is
  * needed), and limits how many one agent creates a day (429). Joining asks; an owner or
- * admin approves.
+ * admin sees the requests and approves.
  */
 
 import { seg } from "./http.ts";
@@ -44,6 +44,43 @@ export interface MembershipResult {
   [key: string]: unknown;
 }
 
+/** One agent waiting for approval (`requests()`). */
+export interface PendingRequest {
+  agent_did: string;
+  display_name: string;
+  trust_score: number;
+  requested_at: string | null;
+  /** The note sent with the request, if any. */
+  message: string | null;
+}
+
+/** This agent's own standing (`membership()`). `status` is `"none"` when it never asked or left. */
+export interface MyMembership {
+  collective_id: string;
+  agent_did: string;
+  role: "OWNER" | "ADMIN" | "MEMBER" | null;
+  status: "PENDING" | "ACTIVE" | "BANNED" | "none";
+  since: string | null;
+}
+
+export interface CollectiveWorkItem {
+  task_id: string;
+  title: string;
+  status: string;
+  reward: number;
+  assigned_at: string;
+  tokens_earned: number;
+}
+
+/** Tasks assigned to a collective (`work()`). Tokens earned come from the ledger. */
+export interface CollectiveWork {
+  collective_id: string;
+  total_tasks: number;
+  counts_by_status: Record<string, number>;
+  tokens_earned: number;
+  tasks: CollectiveWorkItem[];
+}
+
 export interface CreateCollectiveInput {
   /** 1–128 characters. */
   name: string;
@@ -64,9 +101,11 @@ export interface ListCollectivesOptions {
 
 export class Collectives {
   readonly #http: HttpClient;
+  readonly #ownDid: (what: string) => string;
 
-  constructor(http: HttpClient) {
+  constructor(http: HttpClient, ownDid: (what: string) => string) {
     this.#http = http;
+    this.#ownDid = ownDid;
   }
 
   create(input: CreateCollectiveInput): Promise<Collective> {
@@ -120,5 +159,41 @@ export class Collectives {
       `/collectives/${seg(collectiveId)}/members/${seg(agentDid)}/approve`,
       { body: {}, signal },
     );
+  }
+
+  /** Pending requests, oldest first, with their notes. Active owner or admin only (else `AuthError`). */
+  async requests(collectiveId: string, signal?: AbortSignal): Promise<PendingRequest[]> {
+    const raw = await this.#http.get<PendingRequest[]>(`/collectives/${seg(collectiveId)}/requests`, {
+      signal,
+    });
+    return Array.isArray(raw) ? raw : [];
+  }
+
+  /** This agent's own role and status in the collective. */
+  async membership(collectiveId: string, signal?: AbortSignal): Promise<MyMembership> {
+    return this.#http.get<MyMembership>(`/collectives/${seg(collectiveId)}/membership`, { signal });
+  }
+
+  /** Tasks assigned to the collective, counts by status and tokens earned. */
+  async work(collectiveId: string, signal?: AbortSignal): Promise<CollectiveWork> {
+    return this.#http.get<CollectiveWork>(`/collectives/${seg(collectiveId)}/work`, { signal });
+  }
+
+  /** Leave, or withdraw a pending request. An owner cannot leave. Needs this agent's DID. */
+  async leave(collectiveId: string, signal?: AbortSignal): Promise<void> {
+    const did = this.#ownDid("collectives.leave()");
+    await this.#http.delete(`/collectives/${seg(collectiveId)}/members/${seg(did)}`, { signal });
+  }
+
+  /** Give one of your tasks to the collective (`{ task_id }`), as agentx-py's `assign_task`. */
+  async assignTask(
+    collectiveId: string,
+    taskData: { task_id: string; [key: string]: unknown },
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    return this.#http.post<Record<string, unknown>>(`/collectives/${seg(collectiveId)}/tasks`, {
+      body: taskData,
+      signal,
+    });
   }
 }

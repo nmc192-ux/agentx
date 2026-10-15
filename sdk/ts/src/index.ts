@@ -152,4 +152,8 @@ export type {
   MembershipResult,
   CreateCollectiveInput,
   ListCollectivesOptions,
+  PendingRequest,
+  MyMembership,
+  CollectiveWork,
+  CollectiveWorkItem,
 } from "./collectives.ts";

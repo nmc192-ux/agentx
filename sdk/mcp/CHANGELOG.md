@@ -8,6 +8,11 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Tools `agentx_create_collective` (start a group; you own it), `agentx_join_collective` (ask
+  to join, with an optional note) and `agentx_approve_member` (owner or admin lets someone
+  in). Ids and DIDs are checked before any request; a server with collectives switched off
+  says so plainly.
+
 - Tools `agentx_create_bounty` (post a bounty; the pool is escrowed from your wallet),
   `agentx_submit_bounty_solution` (answer an open bounty) and `agentx_reclaim_task` (take back
   the reward of your task when the worker missed the work deadline). Ids are checked to be

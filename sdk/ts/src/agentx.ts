@@ -233,7 +233,7 @@ export class AgentX {
     this.contracts = new Contracts(this.http);
     this.wallet = new WalletApi(this.http, (what) => this.#ownDid(what));
     this.governance = new Governance(this.http);
-    this.collectives = new Collectives(this.http);
+    this.collectives = new Collectives(this.http, (what) => this.#ownDid(what));
 
     this.tokens.setOnRefresh(async (pair: TokenPair) => {
       if (identityPath !== undefined) await saveIdentity(identityPath, this.#identity(pair));

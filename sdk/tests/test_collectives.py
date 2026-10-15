@@ -11,6 +11,7 @@ import pytest
 import respx
 
 from agentx_sdk import AgentXClient, AgentIdentity, CollectivesNamespace
+from agentx_sdk.exceptions import AgentXError
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -96,6 +97,27 @@ class TestCreateCollective:
         )
         body = json.loads(route.calls[0].request.content)
         assert body["is_public"] is False
+
+
+    @respx.mock
+    def test_collective_type_not_sent_and_warns(self):
+        route = respx.post(f"{BASE}/collectives").mock(
+            return_value=httpx.Response(201, json=collective_payload())
+        )
+        with pytest.warns(DeprecationWarning, match="collective_type"):
+            make_client().collectives.create(
+                name="T", description="D", collective_type="research",
+            )
+        body = json.loads(route.calls[0].request.content)
+        assert "collective_type" not in body
+
+    @respx.mock
+    def test_no_warning_without_collective_type(self, recwarn):
+        respx.post(f"{BASE}/collectives").mock(
+            return_value=httpx.Response(201, json=collective_payload())
+        )
+        make_client().collectives.create(name="T", description="D")
+        assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
 
 
 # -- List ---------------------------------------------------------------------
@@ -194,6 +216,82 @@ class TestApprove:
         ).mock(return_value=httpx.Response(200, json={"status": "approved"}))
         result = make_client().collectives.approve(COLLECTIVE_ID, MEMBER_DID)
         assert result["status"] == "approved"
+
+
+# -- Requests / membership / work / leave (CL-6) ------------------------------
+
+class TestRequests:
+    @respx.mock
+    def test_requests(self):
+        item = {"agent_did": MEMBER_DID, "display_name": "M", "trust_score": 0.5,
+                "requested_at": "2026-10-15T00:00:00Z", "message": "hi"}
+        route = respx.get(f"{BASE}/collectives/{COLLECTIVE_ID}/requests").mock(
+            return_value=httpx.Response(200, json=[item])
+        )
+        assert make_client().collectives.requests(COLLECTIVE_ID) == [item]
+        assert route.calls[0].request.headers["authorization"] == "Bearer test-key"
+
+    @respx.mock
+    def test_requests_forbidden_raises(self):
+        respx.get(f"{BASE}/collectives/{COLLECTIVE_ID}/requests").mock(
+            return_value=httpx.Response(403, json={"detail": "Only an OWNER or ADMIN"})
+        )
+        with pytest.raises(AgentXError) as exc:
+            make_client().collectives.requests(COLLECTIVE_ID)
+        assert exc.value.status_code == 403
+
+    def test_requests_bad_id_sends_nothing(self):
+        with respx.mock(assert_all_called=False) as router:
+            with pytest.raises(ValueError):
+                make_client().collectives.requests("../wallets")
+            assert not router.calls
+
+
+class TestMembership:
+    @respx.mock
+    def test_membership(self):
+        payload = {"collective_id": COLLECTIVE_ID, "agent_did": AGENT_DID,
+                   "role": None, "status": "none", "since": None}
+        respx.get(f"{BASE}/collectives/{COLLECTIVE_ID}/membership").mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        assert make_client().collectives.membership(COLLECTIVE_ID)["status"] == "none"
+
+
+class TestWork:
+    @respx.mock
+    def test_work(self):
+        payload = {"collective_id": COLLECTIVE_ID, "total_tasks": 0,
+                   "counts_by_status": {}, "tokens_earned": 0, "tasks": []}
+        respx.get(f"{BASE}/collectives/{COLLECTIVE_ID}/work").mock(
+            return_value=httpx.Response(200, json=payload)
+        )
+        assert make_client().collectives.work(COLLECTIVE_ID)["tokens_earned"] == 0
+
+
+class TestLeave:
+    @respx.mock
+    def test_leave_deletes_own_membership(self):
+        route = respx.delete(
+            f"{BASE}/collectives/{COLLECTIVE_ID}/members/{AGENT_DID}"
+        ).mock(return_value=httpx.Response(204))
+        assert make_client().collectives.leave(COLLECTIVE_ID) is None
+        assert route.called
+
+    def test_leave_without_did_sends_nothing(self):
+        client = AgentXClient(api_key="test-key", base_url=BASE, max_retries=0)
+        with respx.mock(assert_all_called=False) as router:
+            with pytest.raises(AgentXError, match="DID"):
+                client.collectives.leave(COLLECTIVE_ID)
+            assert not router.calls
+
+    @respx.mock
+    def test_owner_cannot_leave(self):
+        respx.delete(f"{BASE}/collectives/{COLLECTIVE_ID}/members/{AGENT_DID}").mock(
+            return_value=httpx.Response(422, json={"detail": "Cannot remove the collective OWNER."})
+        )
+        with pytest.raises(AgentXError, match="OWNER"):
+            make_client().collectives.leave(COLLECTIVE_ID)
 
 
 # -- Assign Task --------------------------------------------------------------

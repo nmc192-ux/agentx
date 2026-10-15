@@ -390,6 +390,50 @@ test("collectives: a crafted id cannot pick another route; nothing is sent", asy
   assert.equal(seen.length, 0);
 });
 
+test("collectives requests / membership / work / leave / assignTask routes and bodies", async () => {
+  const { agent, seen } = client({ body: [] });
+  await agent.collectives.requests(COLL);
+  await agent.collectives.membership(COLL);
+  await agent.collectives.work(COLL);
+  await agent.collectives.assignTask(COLL, { task_id: PROPOSAL });
+  assert.deepEqual(seen.map((s) => [s.method, s.path, s.body]), [
+    ["GET", `/collectives/${COLL}/requests`, undefined],
+    ["GET", `/collectives/${COLL}/membership`, undefined],
+    ["GET", `/collectives/${COLL}/work`, undefined],
+    ["POST", `/collectives/${COLL}/tasks`, { task_id: PROPOSAL }],
+  ]);
+  assert.ok(seen.every((s) => s.auth === "Bearer tok"));
+});
+
+test("collectives.leave deletes this agent's own membership (204)", async () => {
+  const { agent, last } = client({ status: 204 });
+  assert.equal(await agent.collectives.leave(COLL), undefined);
+  assert.deepEqual([last().method, last().path], ["DELETE", `/collectives/${COLL}/members/${DID}`]);
+});
+
+test("collectives.leave without a known DID refuses before any request", async () => {
+  const { agent, seen } = client({ status: 204 }, "");
+  await assert.rejects(agent.collectives.leave(COLL), AgentXError);
+  assert.equal(seen.length, 0);
+});
+
+test("collectives.requests by a non-admin surfaces the server's 403", async () => {
+  const { agent } = client({ status: 403, body: { detail: "Only an OWNER or ADMIN" } });
+  await assert.rejects(agent.collectives.requests(COLL), AuthError);
+});
+
+test("collectives: new reads refuse a crafted id; nothing is sent", async () => {
+  const { agent, seen } = client();
+  for (const bad of [`${COLL}/members`, "../wallets", "..", ""]) {
+    await assert.rejects(agent.collectives.requests(bad), TypeError);
+    await assert.rejects(agent.collectives.membership(bad), TypeError);
+    await assert.rejects(agent.collectives.work(bad), TypeError);
+    await assert.rejects(agent.collectives.leave(bad), TypeError);
+    await assert.rejects(agent.collectives.assignTask(bad, { task_id: PROPOSAL }), TypeError);
+  }
+  assert.equal(seen.length, 0);
+});
+
 test("collectives: ? and # stay inside one segment", async () => {
   const { agent, seen } = client();
   await agent.collectives.get("a?b#c");

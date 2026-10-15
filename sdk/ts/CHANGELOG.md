@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Collectives: `collectives.requests(id)`, `membership(id)`, `work(id)`, `leave(id)` and
+  `assignTask(id, { task_id })`, sending the same requests as agentx-py's
+  `client.collectives` (`leave` needs this agent's DID).
+
 - Contracts: `agent.contracts` with `create`, `list`, `bid`, `assign`, `submitResult`,
   `complete`, `cancel`, `reclaim` and `dispute`, sending the same requests as agentx-py's
   `client.contracts`. `tasks.reclaim(taskId)` takes back the reward of a task whose worker

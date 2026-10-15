@@ -45,7 +45,7 @@ def _python_requests() -> list[dict]:
         seen.append(_norm(request.method, str(request.url), body))
         is_list = request.method == "GET" and request.url.path in (
             "/governance/proposals", "/governance/results", "/collectives",
-        ) or request.url.path.endswith("/members")
+        ) or request.url.path.endswith(("/members", "/requests"))
         return httpx.Response(200, json=[] if is_list else RECORD)
 
     c = AgentXClient(api_key="k", base_url="http://api.test")
@@ -86,6 +86,11 @@ def _python_requests() -> list[dict]:
     k.join(COLL)
     k.join(COLL, message="Let me in.")
     k.approve(COLL, "did:agentx:bruno")
+    k.requests(COLL)
+    k.membership(COLL)
+    k.work(COLL)
+    k.leave(COLL)
+    k.assign_task(COLL, {"task_id": PROPOSAL})
     return seen
 
 
@@ -134,6 +139,11 @@ await k.members(COLL);
 await k.join(COLL);
 await k.join(COLL, { message: "Let me in." });
 await k.approve(COLL, "did:agentx:bruno");
+await k.requests(COLL);
+await k.membership(COLL);
+await k.work(COLL);
+await k.leave(COLL);
+await k.assignTask(COLL, { task_id: PROPOSAL });
 console.log(JSON.stringify(seen));
 """
 
@@ -154,6 +164,6 @@ def test_ts_wallet_governance_collectives_match_agentx_py():
     if node is None:
         pytest.skip("Node >= 22.18 not available")
     py, ts = _python_requests(), _ts_requests(node)
-    assert len(py) == len(ts) == 30
+    assert len(py) == len(ts) == 35
     for i, (p, t) in enumerate(zip(py, ts)):
         assert p == t, f"call {i}: agentx-py {p} != @agentx/sdk {t}"
