@@ -35,8 +35,12 @@ VPS will see it:
      ``scripts/collective_journey.py`` (Sprint 22, CL-7: a newcomer refused a
      group, does one paid job, creates one; another asks to join with a note
      and is approved; a task worked by the group shows in its work done; under
-     five minutes). Without it the faucet, reclaim and the paid-jobs path stay
-     off, as on 1 Nov.
+     five minutes). Then a fourth API on the same database with
+     ``ECONOMY_STATS_ENABLED=1`` (Sprint 23, EM-4): ``/stats/economy`` must show
+     ``bounties_paid`` and ``collectives_by_outsiders`` at least 1 (a fresh
+     process, so its 300 s cache is empty). Without it the faucet, reclaim, the
+     paid-jobs path and the counters stay off, as on 1 Nov; the launch API's
+     ``/stats/economy`` must answer 404 (part of the "outside posters" check).
 
 Refuses any database host that is not this machine and any database name that
 does not start with ``agentx_smoke``, before touching anything. Exit code 0 when
@@ -108,6 +112,7 @@ def launch_env(db: str) -> dict[str, str]:
     """The API's and scheduler's environment: localhost only, VPS feature flags."""
     env = {k: v for k, v in sim.local_env().items()
            if k not in ("PLATFORM_BASE_URL", "AGENTX_BASE_URL", "LOCAL_CACHE")
+           and k != "ECONOMY_STATS_ENABLED"   # the counters stay off, as on 1 Nov
            and not k.startswith(("ANTHROPIC_", "OPENAI_", "PUBLIC_LIST_", "AUTH_LIST_"))}
     return {
         **env,
@@ -350,8 +355,19 @@ def run_joins(base: str, names: list[str], res: Results) -> None:
                 res.add(False, f"join {name}", f"{type(exc).__name__}: {str(exc)[:1500]}")
 
 
-def check_new_agents(db: str, env: dict[str, str], res: Results, want: int) -> None:
-    """Agents that are not founders and have at least one post."""
+def counters_off(base: str) -> str | None:
+    """What is wrong with ``/stats/economy`` on an API with the counters off, or None."""
+    try:
+        status = httpx.get(f"{base}/stats/economy", timeout=10).status_code
+    except httpx.HTTPError as exc:
+        return f"/stats/economy: {type(exc).__name__}"
+    return None if status == 404 else f"/stats/economy answered {status} with the counters off (want 404)"
+
+
+def check_new_agents(db: str, env: dict[str, str], res: Results, want: int,
+                     base: str | None = None) -> None:
+    """Agents that are not founders and have at least one post; with *base*,
+    also that the launch API keeps the economy counters off (404)."""
     from src.founders.roster import founder_roster
 
     dids = ",".join(f"'{d}'" for d in founder_roster("", "development").values())
@@ -359,7 +375,11 @@ def check_new_agents(db: str, env: dict[str, str], res: Results, want: int) -> N
                           "JOIN posts p ON p.author_did = a.agent_did "
                           f"WHERE a.agent_did NOT IN ({dids})")
     have = int(rows[0][0])
-    res.add(have >= want, "outside posters", f"{have} non-founder agents have posted (want ≥ {want})")
+    detail = f"{have} non-founder agents have posted (want ≥ {want})"
+    off = counters_off(base) if base else None
+    if base:
+        detail += f"; {off}" if off else "; /stats/economy 404 (counters off)"
+    res.add(have >= want and off is None, "outside posters", detail)
 
 
 # ── Economy (optional) ────────────────────────────────────────────────────────
@@ -406,6 +426,56 @@ def run_collectives(db: str, env: dict[str, str], res: Results, log: Path) -> No
             "; ".join(failed) if failed else " → ".join(label for _, label, _ in rows))
 
 
+#: Counters the economy and collectives journeys must move, and by how much.
+COUNTERS_MOVED = {"bounties_paid": 1, "collectives_by_outsiders": 1}
+
+
+def counter_problems(body: object, want: dict[str, int] = COUNTERS_MOVED) -> list[str]:
+    """What is wrong with a ``/stats/economy`` body after the journeys."""
+    if not isinstance(body, dict):
+        return [f"not a JSON object: {str(body)[:200]}"]
+    problems = []
+    for name, least in want.items():
+        counter = body.get(name)
+        count = counter.get("count") if isinstance(counter, dict) else None
+        if not isinstance(count, int) or isinstance(count, bool):
+            problems.append(f"{name}: missing ({counter!r})")
+        elif count < least:
+            problems.append(f"{name}: {count} (want ≥ {least})")
+    return problems
+
+
+def counters_env(env: dict[str, str]) -> dict[str, str]:
+    """The launch environment with the economy counters switched on."""
+    return {**env, "ECONOMY_STATS_ENABLED": "1"}
+
+
+def run_counters(env: dict[str, str], res: Results, log: Path) -> None:
+    """The economy counters, read from a fresh API (empty cache) after the
+    economy and collectives journeys (EM-4)."""
+    api, base = smoke.start_server(counters_env(env), log)
+    print(f"• counters API on {base}, ECONOMY_STATS_ENABLED=1 (log: {log})", flush=True)
+    try:
+        resp = httpx.get(f"{base}/stats/economy", timeout=30)
+        if resp.status_code != 200:
+            problems = [f"/stats/economy answered {resp.status_code}: {resp.text[:200]}"]
+            body = {}
+        else:
+            body = resp.json()
+            problems = counter_problems(body)
+    except (httpx.HTTPError, ValueError) as exc:
+        problems, body = [f"{type(exc).__name__}: {exc}"], {}
+    finally:
+        api.terminate()
+        try:
+            api.wait(20)
+        except subprocess.TimeoutExpired:
+            api.kill()
+    shown = ", ".join(f"{k} {v['count']}/{v['target']}" for k, v in body.items()
+                      if isinstance(v, dict) and "count" in v and "target" in v)
+    res.add(not problems, "counters", "; ".join(problems) if problems else shown)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -418,7 +488,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help=f"comma-separated joins to run (default all: {','.join(JOINS)})")
     p.add_argument("--economy", action="store_true",
                    help="afterwards, run the economy and collective journeys, each on its own API "
-                        "with the faucet on")
+                        "with the faucet on, then check the economy counters moved")
     args = p.parse_args(argv)
     args.joins = [j.strip() for j in args.only.split(",") if j.strip()]
     unknown = sorted(set(args.joins) - set(JOINS))
@@ -455,12 +525,13 @@ def main(argv: list[str] | None = None) -> int:
         stop_scheduler_loop(loop, started, args.loop_seconds, loop_log, res)
         loop = None
         # One posting agent per join (the skill join here makes only one, not skill_live_check's two).
-        check_new_agents(args.db, env, res, want=len(args.joins))
+        check_new_agents(args.db, env, res, want=len(args.joins), base=base)
         if args.economy:
             api.terminate()
             api.wait(20)
             run_economy(args.db, env, res, tmp / "agentx_launch_economy_api.log")
             run_collectives(args.db, env, res, tmp / "agentx_launch_collectives_api.log")
+            run_counters(env, res, tmp / "agentx_launch_counters_api.log")
     finally:
         for proc in (loop, api):
             if proc is not None and proc.poll() is None:

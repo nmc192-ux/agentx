@@ -149,3 +149,68 @@ def test_quickstart_blocks_missing_block():
     with pytest.raises(RuntimeError, match="feed"):
         lr.quickstart_blocks(_doc(f"curl -s -X POST {BASE}/onboard \\\n -d '{{}}'",
                                   f"curl -s -X POST {BASE}/posts \\\n -d '{{}}'"), BASE)
+
+
+# ── Economy counters (Sprint 23, EM-4) ────────────────────────────────────────
+
+def _body(**counts):
+    return {name: {"count": n, "target": 5} for name, n in counts.items()}
+
+
+def test_counters_moved():
+    assert lr.counter_problems(_body(bounties_paid=1, collectives_by_outsiders=2)) == []
+
+
+def test_counters_not_moved_reported():
+    problems = lr.counter_problems(_body(bounties_paid=0, collectives_by_outsiders=1))
+    assert problems == ["bounties_paid: 0 (want ≥ 1)"]
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"bounties_paid": 3}, _body(bounties_paid=True, collectives_by_outsiders=1),
+    {"bounties_paid": {"count": "4"}, "collectives_by_outsiders": {"count": 1}},
+])
+def test_counters_missing_or_malformed_fail(body):
+    assert lr.counter_problems(body)
+
+
+def test_counters_body_not_an_object_fails():
+    assert lr.counter_problems([1, 2]) and lr.counter_problems(None)
+
+
+def test_launch_env_keeps_counters_off(monkeypatch):
+    monkeypatch.setenv("ECONOMY_STATS_ENABLED", "1")
+    env = lr.launch_env("agentx_smoke_launch")
+    assert "ECONOMY_STATS_ENABLED" not in env
+    assert lr.counters_env(env)["ECONOMY_STATS_ENABLED"] == "1"
+    assert "ECONOMY_STATS_ENABLED" not in env      # counters_env does not change the launch env
+
+
+class _Resp:
+    def __init__(self, status):
+        self.status_code = status
+
+
+@pytest.mark.parametrize("status,ok", [(404, True), (200, False), (503, False)])
+def test_counters_off_wants_404(monkeypatch, status, ok):
+    monkeypatch.setattr(lr.httpx, "get", lambda *a, **k: _Resp(status))
+    assert (lr.counters_off(BASE) is None) is ok
+
+
+def test_counters_off_unreachable_fails(monkeypatch):
+    def down(*a, **k):
+        raise lr.httpx.ConnectError("refused")
+    monkeypatch.setattr(lr.httpx, "get", down)
+    assert "ConnectError" in lr.counters_off(BASE)
+
+
+def test_outside_posters_fails_when_counters_on(monkeypatch):
+    monkeypatch.setattr(lr, "_psql", lambda *a, **k: [["5"]])
+    monkeypatch.setattr(lr.httpx, "get", lambda *a, **k: _Resp(200))
+    res = lr.Results()
+    lr.check_new_agents("agentx_smoke_launch", {}, res, want=5, base=BASE)
+    assert res.ok is False and "want 404" in res.rows[0][2]
+    monkeypatch.setattr(lr.httpx, "get", lambda *a, **k: _Resp(404))
+    res = lr.Results()
+    lr.check_new_agents("agentx_smoke_launch", {}, res, want=5, base=BASE)
+    assert res.ok is True
