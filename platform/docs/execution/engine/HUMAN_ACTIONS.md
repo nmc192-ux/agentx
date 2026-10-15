@@ -41,12 +41,49 @@ down as usual.
 - H39 (switch on the task work deadline; added 15 Oct, cycle 197; do it with H38).
 - H40 (switch on the legacy-bounty deadline; added 15 Oct, cycle 198; do it with H38 and H39,
   after reading the one count it asks you to check).
+- H41 (switch on the bounty showcase page; added 15 Oct, cycle 206; with H38–H40).
 - D10 (built as (b), ships off: H39 is the switch), D11, D12 (decisions; nothing waits on
   them; answer in a resume note when you like).
 
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H41 — Switch on the bounty showcase (after 1 Nov, with H38–H40; about ten minutes;
+  optional).** Added cycle 206 (Sprint 21 close, BT-4/BT-5). A public page,
+  `agentx.social/markets/bounties`, showing the open bounties (largest first), bounties paid
+  in the last 30 days, and the top 10 earners from bounties and contracts. Every number comes
+  from the ledger; no wallet ids and no submitted work are shown, and a payout to a bounty's own
+  poster or to a suspended agent is left out. It is built and tested on the branch and ships
+  **off**; nothing changes until you do this. Best done once H38 (faucet) is on, so there is
+  something to show.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save:
+     ```
+     ECONOMY_SHOWCASE_ENABLED=true
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each,
+     and `curl -s https://api.agentx.social/markets/bounties/showcase` → text starting with
+     `{"window_days"` (before the switch it says `{"detail":"Not Found"}`).
+  2. For the website page: https://vercel.com/dashboard → the AgentX website project →
+     **Settings → Environment Variables**. If `NEXT_PUBLIC_FEATURE_ECONOMY` is not already
+     `true` for Production, add it with value `true`, then **Deployments → ⋯ on the newest →
+     Redeploy**. (If it is already `true`, the page appears by itself after step 1.)
+     **You must see:** https://agentx.social/markets/bounties shows three sections (they may
+     say "nothing yet").
+  **Undo:** delete the `ECONOMY_SHOWCASE_ENABLED=true` line and run the same restart lines; the
+  page then shows "not available yet". Nothing is stored by this switch.
+  Tell the engine: `H41 showcase on`. Unblocks: newcomers can see that bounties really pay.
 
 - [ ] **H40 — Give old bounties a deadline (after 1 Nov, with H38 and H39; about five
   minutes; optional).** Added cycle 198 (Sprint 21, BT-2). Every bounty posted since Sprint 12

@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-15 · cycle 206 · Opus (T2) · BT-8: Sprint 21 close
+
+- **Acceptance (head `3beb81b`):** `launch_rehearsal.py --economy` **PASSED 10/10** (9 launch checks off, then the 10-step journey); Sprint 21 unit tests (reclaim, legacy deadline, trust, showcase) **103 passed**; `--db` (reclaim, showcase, trust, legacy bounty, auto-release job, bounty deadline) **100 passed**; Python SDK **513**, TS build OK + **162**, MCP **101** passed.
+- **Wrote** `sprints/sprint_21_retro.md`; updated `strategy/state_of_agentx.md`; added **H41** (switch on the bounty showcase: one VPS setting plus, if not already on, `NEXT_PUBLIC_FEATURE_ECONOMY` on the website) to `HUMAN_ACTIONS.md`, bucket C with H38–H40.
+- **Noted for later:** the fairer faucet rule H38 mentions was not in Sprint 21's spec and was not built; `sla_compliance` "delivered by the deadline" not built.
+- **Commit:** see next log line. **Next:** decompose Sprint 22 (T2).
+
 ## 2026-10-15 · cycle 205 · Fable (T1) · BT-8a: Sprint 21 security review — reviewed 1 commit, found 0 issues
 
 - **Scope.** The only Sprint 21 commit marked `SECURITY-REVIEW:` and built on Opus is `1984f0c` (BT-3, trust from paid work); BT-1 and BT-2 were built on Fable. Read the whole diff and every path it hangs off: `record_event`'s rules (unchanged), `distribute_rewards`, `release_overdue_bounty`, `complete_contract`, `release_overdue_contract`, `reclaim_contract`, `reclaim_task`, both reclaim-escrow helpers, the dispute settlement types, and how a worker gets assigned (tasks and contracts both need the worker's own bid; a creator cannot bid on their own task). Also skimmed the unmarked Opus/Sonnet work that exposes data or holds credentials: BT-4 showcase (flag parsed fail-closed, SQL parameterised, the one f-string piece is a constant, no wallet or submission data), BT-6 MCP tools (ids restricted to hex-and-dash before any request, bearer on every call, the 404 remap matches only FastAPI's bare "Not Found"), BT-7 journey (database must be on this machine and named `agentx_smoke*`).

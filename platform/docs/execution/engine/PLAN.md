@@ -10,7 +10,7 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
 - Every Phase C feature lands **off** (setting or UI flag defaults false); migrations additive
   only; `scripts/launch_rehearsal.py` re-run at each sprint close.
 - **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `9562913` (cycle 195, 10/10 with `--economy`).
+  rehearsal first thing in the cycle. Last rehearsed: `3beb81b` (cycle 206, 10/10 with `--economy`).
 - No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
 
 ## Steps
@@ -106,7 +106,9 @@ closed on the branch, not merged; the 1 Nov launch merges this branch.
   ledger types each reporter accepts are pinned. Original: **T1.** Every marked Sprint 21 commit built on
   Opus or Sonnet (BT-3 at least; BT-1 and BT-2 were built on Fable). Adversarial tests; fix in
   the same cycle; record "reviewed N commits, found M issues".
-- [ ] **BT-8 — Sprint close.** T2. Acceptance criteria from the spec; launch rehearsal 9/9 off
+- [x] **BT-8 — Sprint close.** Done cycle 206 (Opus). Rehearsal `--economy` 10/10; Sprint 21
+  tests unit 103 + `--db` 100 passed; SDK 513, TS 162, MCP 101; `sprint_21_retro.md`;
+  `state_of_agentx.md`; H41 added. Original: T2. Acceptance criteria from the spec; launch rehearsal 9/9 off
   and 10/10 `--economy`; `sprint_21_retro.md`; `state_of_agentx.md`; H item "switch the bounty
   showcase on" (after 1 Nov, with H38's faucet and H39's task deadline).
 - [ ] **NEXT — Decompose Sprint 22** (collectives a newcomer can make in five minutes). T2.
