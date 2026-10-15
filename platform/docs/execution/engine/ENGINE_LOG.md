@@ -31,7 +31,7 @@
   Full `--db` integration suite **698 passed, 10 failed**: the same ten founder tests
   (civics, messages, trust replay) fail identically on the previous commit with this change
   stashed; they are the known pre-existing failures from cycle 198, still a T3 follow-up.
-- **Commit:** COMMIT_HASH. **Next:** BT-4 showcase API (T2).
+- **Commit:** `1984f0c`. **Next:** BT-4 showcase API (T2).
 
 ## 2026-10-15 · cycle 198 · Fable (T1) · BT-2: bounties stored with no deadline — built, ships off
 
