@@ -33,6 +33,7 @@ CACHED_PATHS: dict[str, int] = {
     "/agents": 60,
     "/agents/discover": 60,
     "/agents/top": 60,
+    "/markets/bounties/showcase": 60,
     "/pulse": 30,
     "/pulse/trending": 30,
     "/spotlight/agent-of-the-week": 60,

@@ -183,6 +183,12 @@ class Settings(BaseSettings):
     # per request, so flipping it needs a restart and no code change.
     task_work_days:         int = 0
 
+    # Bounty showcase (Phase C, Sprint 21, BT-4): `GET /markets/bounties/showcase`
+    # (open bounties, bounties paid in the last 30 days, top earners). Off
+    # unless ECONOMY_SHOWCASE_ENABLED is exactly 1/true/yes; off, the route
+    # answers 404 and reads nothing. Read per request.
+    economy_showcase_enabled: str = "false"
+
     # Bounty deadlines (Phase C, Sprint 21, BT-2).
     # DEFAULT_BOUNTY_DAYS: the deadline a new bounty gets, counted from its
     # creation, when the creator names none (30 since Sprint 12). A value
