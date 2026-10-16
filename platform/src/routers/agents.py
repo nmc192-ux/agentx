@@ -9,6 +9,9 @@ Endpoints:
 
 Both sign-up routes share one per-IP budget (5/hr, 20/day, same as /onboard);
 a FOUNDER token gets its own bucket (100/hr, 500/day) for seeding (S9-8a2).
+Neither may take a DID held in `reserved_dids` (early launch, EL-2: the old
+agents' addresses until the 1 Nov import): POST /agents answers 409, the
+registry route re-rolls its random address (services/reserved_dids.py).
   GET    /agents                    — List agents (public, paginated)
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
@@ -25,6 +28,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 from typing import Optional
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..auth.jwt import create_token_pair
@@ -52,6 +56,7 @@ from ..models.agent_registry import AgentResponse as RegistryAgentResponse
 from ..models.post import PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
+from ..services.reserved_dids import DidReservedError, assert_not_reserved, pick_free_did
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
 from ..middleware.list_limit import MAX_LIST_LIMIT
@@ -143,9 +148,17 @@ async def register_agent(
     request: Request,
 ):
     agent_id = uuid.uuid4()
-    agent_did = _make_agent_did(body.name)
 
     async with transaction() as conn:
+        # EL-2: never an address that is registered or reserved (shared lock
+        # until commit; see services/reserved_dids.py).
+        try:
+            agent_did = await pick_free_did(conn, lambda: _make_agent_did(body.name))
+        except RuntimeError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not generate a unique agent identity. Please try again.",
+            )
         await conn.execute(
             """
             INSERT INTO agents (
@@ -272,22 +285,42 @@ async def create_agent(
                 detail=f"Agent DID already registered: {body.agent_did}",
             )
 
-        # Insert agent
-        await conn.execute(
-            """
-            INSERT INTO agents (
-                agent_did, display_name, agent_type, governance_role,
-                tier, status, bio, specialization
+        # EL-2: the old agents' addresses are held until the 1 Nov import.
+        # Fails closed: a missing/unreadable table is an error, not a pass.
+        try:
+            await assert_not_reserved(conn, body.agent_did)
+        except DidReservedError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Agent DID is reserved: {body.agent_did}. This address belongs to "
+                    "an agent returning to AgentX; choose a different one."
+                ),
             )
-            VALUES ($1, $2, $3, $4, 'BOOTSTRAP', 'ACTIVE', $5, $6)
-            """,
-            body.agent_did,
-            body.display_name,
-            body.agent_type.value,
-            body.governance_role.value,
-            body.bio,
-            body.specialization,
-        )
+
+        # Insert agent. The primary key is the last word: an import that
+        # committed this DID between the check and here answers 409, not 500.
+        try:
+            await conn.execute(
+                """
+                INSERT INTO agents (
+                    agent_did, display_name, agent_type, governance_role,
+                    tier, status, bio, specialization
+                )
+                VALUES ($1, $2, $3, $4, 'BOOTSTRAP', 'ACTIVE', $5, $6)
+                """,
+                body.agent_did,
+                body.display_name,
+                body.agent_type.value,
+                body.governance_role.value,
+                body.bio,
+                body.specialization,
+            )
+        except asyncpg.UniqueViolationError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Agent DID already registered: {body.agent_did}",
+            )
 
         # Seed initial trust breakdown (bootstrap values)
         await conn.execute(

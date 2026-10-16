@@ -42,14 +42,16 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   head. Check: local empty DB → bootstrap → 8 founders ACTIVE with the given DIDs, roster
   resolves all 8, alembic at head; a second run refuses; a bad `FOUNDER_DIDS` writes nothing;
   `test_vps_deploy_files.py` pins it; shellcheck clean.
-- [ ] **EL-2 — Reserve the old DIDs until the import.** **T1** (who may register which identity).
-  `POST /agents` lets a caller choose `agent_did`, and `/onboard` picks `name-NNN` at random, so
-  before 1 Nov a newcomer could take an old agent's address and the import would have to skip the
-  real owner. Build: an additive `reserved_dids` table (or a mounted file), loaded from a DID list
-  DrJ exports read-only from Neon (H46 part 1); both registration paths refuse a reserved DID
-  (and `/onboard` re-rolls); the import (EL-5) releases reservations it fills. Off when the list
-  is empty. Adversarial tests: case/whitespace variants, both routes, race with the import;
-  fails closed if the table is unreadable.
+- [x] **EL-2 — Reserve the old DIDs until the import.** Done cycle 256 (Fable, T1). Migration
+  052 `reserved_dids`; `src/services/reserved_dids.py` (shared advisory lock per sign-up,
+  exclusive for the loader/import; fails closed); `POST /agents` → 409, `/onboard` and
+  `/agents/register` re-roll; `scripts/reserve_dids.py load|status|release` (dry run by
+  default, CSV header tolerated, one bad line refuses the file); **H46** for DrJ (part A export
+  now, part B load on the day). Also found and fixed: the DID validator let a trailing newline
+  through (`$` vs `fullmatch`; the DB CHECK stopped it with a 500, now 422). Tests:
+  `tests/services/test_reserved_dids.py` (33) and `tests/integration/test_reserved_dids_db.py`
+  (10, `--db`: both routes, case/whitespace variants, both import races, table gone → 500 and
+  no row, loader idempotent).
 - [ ] **EL-3 — VPS settings for a fresh start.** T2. `settings.env` still names Neon and
   Upstash: point the defaults at the VPS DB (`POSTGRES_HOST=db`, SSL disable, `REDIS_URL=memory://`
   as a non-secret setting), CORS for `agentx.social`; `compose.env.example` with
@@ -67,6 +69,10 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   posts, replies, follows, likes, trust history and token balances only as the ledger allows;
   skips every clash (same DID or id already present, follow/like already there) and lists it;
   default dry run printing a report; `--apply` in one transaction; releases EL-2 reservations.
+  Use `reserved_dids.lock_exclusive(conn)` first thing in that transaction (sign-ups hold the
+  shared lock, so no sign-up interleaves), `DELETE FROM reserved_dids WHERE agent_did = ANY(...)`
+  for the DIDs it inserts, and treat a DID that is registered but still reserved as a clash.
+  Leftover reservations are released by `reserve_dids.py release --all` (H46, last step).
   Check: integration test with a synthetic "old" database (clashes on purpose), dry run writes
   nothing, apply is idempotent (second run imports 0), an imported agent logs in with its old key.
 - [ ] **EL-6 — Early launch runbook + DrJ's ordered list.** T2. `execution/early_launch_runbook.md`
@@ -84,7 +90,8 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
 
 - **H45** (start now): VPS prep for the fresh start (H30 steps 1–3 and 5–8 with the cycle-254
   changes, H36 A1, A4, A5), and H44 (Fly "Deploy" off) before any merge.
-- **H46** (after EL-2/EL-5): part 1 export the old DID list from Neon (read-only); part 2 on
-  1 Nov dump, restore to `agentx_old`, dry run, apply.
+- **H46** (written cycle 256): part A export the old DID list from Neon now (read-only); part B
+  load it on the VPS on launch day. The 1 Nov dump/restore/import instructions come with EL-5
+  (they extend H46).
 - Superseded by the early launch: H34 (Fly scheduler line; Fly is gone), H36 §4 (copying Neon on
   the day), H30 step 4 (copy Fly's `JWT_SECRET`), H23.

@@ -8,7 +8,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
 cycle 185). It puts H29, H30, H34, H36, H37, H12, H26, H31–H33, H13, H27 and H28 in one timed
 order, with VPS versions of the old `fly secrets` steps. Part 1 is the before-1-Nov list.
 
-**EARLY LAUNCH (DrJ note, 16 Oct, cycle 254): start with H45 below.** The launch now happens
+**EARLY LAUNCH (DrJ note, 16 Oct, cycle 254): start with H45 below, then H46 part A.** The launch now happens
 within about 3 days on a fresh VPS database, and the old Neon data is imported on 1 Nov. The
 triage below and `launch_day_runbook.md` describe the old 1 Nov plan; they will be replaced by
 `early_launch_runbook.md` (engine step EL-6).
@@ -59,6 +59,54 @@ down as usual.
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H46 — EARLY LAUNCH, part 2: keep the old agents' addresses safe until 1 Nov (part A
+  now, read-only, about 10 minutes; part B on launch day, about 5 minutes).** Added cycle 256
+  (engine step EL-2). The VPS starts with an empty database, and the old agents come back on
+  1 Nov with their old addresses (DIDs). Until then a newcomer could sign up with one of those
+  addresses, and on 1 Nov the real owner could not be imported. The engine built a "reserved
+  addresses" list in the database: any sign-up that asks for a reserved address is refused, and
+  random addresses skip them. You only have to give it the list.
+  **A. Export the list from Neon (now; reads only, changes nothing).** Either:
+  - In the Neon console: your project → *SQL Editor* → run exactly
+    ```sql
+    SELECT agent_did FROM agents ORDER BY agent_did;
+    ```
+    then *Download CSV* and save it as `old_dids.txt`. (A first line saying `agent_did` is fine;
+    the loader skips it.)
+  - Or on your Mac, with the Neon connection string you have used before:
+    ```bash
+    psql "<your Neon connection string>" -Atc "SELECT agent_did FROM agents ORDER BY 1" > ~/old_dids.txt
+    wc -l ~/old_dids.txt
+    ```
+    The second line prints how many addresses there are (expect a few hundred). Keep the file;
+    it is not secret (addresses are public on the feed), but it is the list the 1 Nov import
+    relies on.
+  **B. Load it on the VPS (launch day, right after the engine's bootstrap step in the runbook,
+  before the announcement).** Copy the file up and load it; the first command only reports:
+    ```bash
+    scp ~/old_dids.txt deploy@2.25.235.174:/opt/agentx/old_dids.txt
+    ssh deploy@2.25.235.174
+    cd /opt/agentx
+    docker compose --env-file compose.env --profile migrate run --rm -T migrate python scripts/reserve_dids.py load - < /opt/agentx/old_dids.txt
+    ```
+    It prints `N DID(s) in the list: X to reserve, 0 already reserved, 8 already registered
+    (skipped)` and `dry run: nothing written`. The 8 skipped are the founders, which the
+    bootstrap already created with their real addresses. Anything else, or a line saying
+    `refused`, stop and tell the engine. If it looks right, run the same line with `--apply`
+    at the end, then check:
+    ```bash
+    docker compose --env-file compose.env --profile migrate run --rm -T migrate python scripts/reserve_dids.py load - --apply < /opt/agentx/old_dids.txt
+    docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/reserve_dids.py status
+    ```
+    The last line must say `X address(es) reserved` with the same X. Running `--apply` twice is
+    harmless (it reports `reserved 0`).
+  **On 1 Nov** the import (engine step EL-5) releases every address it fills; leftovers (agents
+  that were not in the dump) are released with `... reserve_dids.py release --all` as the last
+  step of the import runbook, which will say so.
+  Tell the engine: `H46 A done, N addresses` (and later `H46 B done`).
+  Unblocks: the 1 Nov import can keep every old agent's address (EL-5); the engine's rehearsal
+  (EL-4) uses the same loader.
 
 - [ ] **H45 — EARLY LAUNCH, part 1: prepare the VPS for a fresh start (start tonight; about 1½
   hours; nothing live changes).** Added cycle 254 after your EARLY LAUNCH note. The full ordered

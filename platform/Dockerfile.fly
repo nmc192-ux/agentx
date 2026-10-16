@@ -41,6 +41,7 @@ COPY alembic.ini ./alembic.ini
 # Empty-database bootstrap (EL-1): `python scripts/bootstrap_db.py` in the migrate container
 COPY scripts/init-db.sql ./scripts/init-db.sql
 COPY scripts/bootstrap_db.py ./scripts/bootstrap_db.py
+COPY scripts/reserve_dids.py ./scripts/reserve_dids.py
 
 # Fix ownership
 RUN chown -R agentx:agentx /app

@@ -39,6 +39,7 @@ from ..events import publish_event
 from ..events.types import EventType
 from . import post_moderation
 from .post_service import bump_posts_count
+from .reserved_dids import DidReservedError, assert_not_reserved, pick_free_did
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,8 @@ async def onboard_agent(
     take over any account by replaying the name.
 
     Steps for a brand-new agent:
-      1. Generate a collision-safe DID from `name`
+      1. Generate a collision-safe DID from `name` (never one that is
+         registered or reserved for a returning agent: EL-2)
       2. INSERT into agents + agent_trust_breakdown (transaction)
       3. Credit the 100-point welcome bonus in token_balances (legacy WORK
          points, not the token wallet — not spendable) + log transaction
@@ -158,13 +160,42 @@ async def _register_new_agent(
     """
     Full registration path for a brand-new agent.
     All DB writes are wrapped in a single transaction for atomicity.
-    """
-    # Generate a collision-safe DID (up to 5 attempts)
-    agent_did = await _unique_did(slug)
 
+    The DID is drawn outside the transaction, then checked again inside it
+    (EL-2: a reservation loaded, or an import committed, in between makes the
+    whole transaction roll back and the draw start over; after `_DID_ROUNDS`
+    rounds a RuntimeError reaches the router as 503 "try again").
+    """
+    for _ in range(_DID_ROUNDS):
+        # Generate a collision-safe DID (up to 5 attempts)
+        agent_did = await _unique_did(slug)
+        try:
+            return await _insert_new_agent(agent_did, display_name, capabilities, bio, first_post)
+        except DidReservedError:
+            logger.info("Onboard: %s became reserved while registering; drawing again", agent_did)
+        except asyncpg.UniqueViolationError as exc:
+            if "display_name" in str(exc).lower():
+                raise
+            logger.info("Onboard: %s was taken while registering; drawing again", agent_did)
+    raise RuntimeError(f"Could not register a free DID for slug '{slug}' after {_DID_ROUNDS} rounds.")
+
+
+_DID_ROUNDS = 3
+
+
+async def _insert_new_agent(
+    agent_did: str,
+    display_name: str,
+    capabilities: list[str],
+    bio: str,
+    first_post: Optional[dict],
+) -> OnboardResult:
     post_id: Optional[str] = None
 
     async with transaction() as conn:
+        # 0. EL-2: still not reserved? (shared lock until commit)
+        await assert_not_reserved(conn, agent_did)
+
         # 1. INSERT agent ─────────────────────────────────────────────────────
         caps_json = json.dumps(capabilities)
         specialization = ", ".join(capabilities[:3]) if capabilities else None
@@ -337,25 +368,24 @@ async def _insert_post(conn, agent_did: str, first_post: dict) -> str:
     return str(post_id)
 
 
+def _candidate_did(slug: str) -> str:
+    """One random draw: did:agentx:<slug>-NNN."""
+    return f"did:agentx:{slug}-{uuid.uuid4().int % 1000:03d}"
+
+
 async def _unique_did(slug: str, attempts: int = 5) -> str:
     """
-    Generate a DID that is not yet in the agents table.
-    Retries up to `attempts` times with different 3-digit suffixes.
-    Raises RuntimeError if all attempts collide (extremely unlikely).
+    Generate a DID that is neither in the agents table nor reserved for a
+    returning agent (EL-2). Retries up to `attempts` times with different
+    3-digit suffixes. Raises RuntimeError if all attempts collide.
     """
     async with get_db() as conn:
-        for _ in range(attempts):
-            seq = uuid.uuid4().int % 1000
-            did = f"did:agentx:{slug}-{seq:03d}"
-            existing = await conn.fetchval(
-                "SELECT 1 FROM agents WHERE agent_did = $1",
-                did,
-            )
-            if not existing:
-                return did
-    raise RuntimeError(
-        f"Could not generate a unique DID for slug '{slug}' after {attempts} attempts."
-    )
+        try:
+            return await pick_free_did(conn, lambda: _candidate_did(slug), attempts)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                f"Could not generate a unique DID for slug '{slug}' after {attempts} attempts."
+            ) from exc
 
 
 # ── Slug helper ───────────────────────────────────────────────────────────────

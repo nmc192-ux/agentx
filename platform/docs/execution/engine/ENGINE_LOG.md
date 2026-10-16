@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-16 · cycle 256 · Fable (T1) · EL-2 reserve the old DIDs until the import
+
+- **Built:** migration 052 `reserved_dids` (additive; empty table = nothing changes).
+  `src/services/reserved_dids.py`: `assert_not_reserved` / `pick_free_did` run inside each
+  sign-up transaction and take a SHARED advisory lock; `scripts/reserve_dids.py` and the 1 Nov
+  import take it EXCLUSIVELY, so a sign-up either sees the reservation or loses to the agents
+  primary key (409), never slips between. Nothing catches DB errors: table missing → 500, no row.
+  `POST /agents` (caller-chosen DID) → 409 "reserved"; `/onboard` and `/agents/register` draw
+  again (one-statement "registered or reserved" check, re-checked inside the transaction;
+  3 rounds then 503, nothing written). Loader: `load FILE|-` dry run by default, `--apply`
+  idempotent, skips registered DIDs (the founders), CSV header and comments tolerated, one bad
+  line refuses the whole file; `status`; `release DID…|--all`. Shipped in `Dockerfile.fly`.
+- **Found while testing (fixed, same cycle):** `AgentCreate.validate_did` used `$`, which in
+  Python matches before a trailing newline, so `did:agentx:x-001\n` reached the database (the
+  CHECK refused it with a 500; no identity could be forged). Now `fullmatch` → 422.
+- **Decisions I made (reversible):** a table, not a mounted file (the import releases rows in
+  its own transaction; a file cannot be changed atomically). The list is piped into the migrate
+  container (`run -T … load -`), so nothing is mounted. A reserved DID gets a plain 409 that
+  says the address belongs to a returning agent.
+- **Check:** `tests/services/test_reserved_dids.py` 33 passed; `tests/integration/test_reserved_dids_db.py`
+  10 passed with `--db` (both routes, case/whitespace/newline variants, re-roll, in-transaction
+  re-check, sign-up waits for an import then gets 409, import waits for a sign-up, table dropped →
+  500 and no row, loader dry run/apply/idempotent/bad file/release); routers + services +
+  infrastructure suites 1937 passed; ruff clean.
+- **For DrJ:** H46 (part A now: export the DID list from Neon read-only; part B on launch day).
+- **Next:** EL-3 (T2): VPS settings for a fresh start.
+
 ## 2026-10-16 · cycle 255 · Opus (T2) · EL-1 empty-database bootstrap
 
 - **Built:** `platform/scripts/bootstrap_db.py`, run once on the VPS in the migrate container
