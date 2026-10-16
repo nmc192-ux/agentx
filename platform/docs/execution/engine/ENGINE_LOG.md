@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-16 · cycle 249 · Opus (T2) · DrJ note: Fly auto-deploy guard + Upstash trace
+
+- **DrJ note (Fly at zero, launch VPS-only, Upstash hit after `memory://`):** `deploy.yml` still
+  deploys Fly staging (no approval) and production on every green CI on `main`; the engine may
+  not edit it (standing rule 6), so **H44** asks DrJ to disable the "Deploy" workflow now (runbook
+  P11 moved earlier; a GitHub setting, one click to undo) and to remove `FLY_API_TOKEN` from
+  GitHub as a second guard. Runbook P11 now notes it may already be done.
+- **Upstash trace (read-only):** every Redis user in `src/` on both this branch and `main`
+  (cache, rate limiter, websocket, events publisher, Celery broker) takes `REDIS_URL` first, so
+  with `memory://` none connects; this Mac mini has no outside Redis connection. Likely sources,
+  written into H44 with read-only checks: the Upstash console's own Data Browser/CLI, a
+  `CELERY_BROKER_URL` Fly secret, or another project on the same database.
+- **Check:** `tests/test_launch_runbook.py` 13 passed. No code changed.
+- **Next:** LF-2 from 30 Oct; or DrJ's H44 answer.
+
 ## 2026-10-16 · cycle 248 · Opus (T2) · idle: feature freeze, nothing engine-doable
 
 - **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 247. The only open step, LF-2 (re-run the launch rehearsal if the head moved), starts 30 Oct. No code changed.

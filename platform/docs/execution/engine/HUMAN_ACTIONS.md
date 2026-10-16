@@ -15,6 +15,8 @@ the runbook above; this list only says *when* each open item is due. Tick the bo
 down as usual.
 
 **A. Before 1 Nov (any evening; changes nothing live)**
+- **H44 first** (added 16 Oct, cycle 249): switch off the Fly "Deploy" workflow now (runbook P11
+  moved earlier), and three read-only checks for what touched Upstash.
 - H37 (steps 1–2 now: ntfy app, UptimeRobot account; step 3, switching the alerts on, is on the day in the runbook).
 - H36 (prep now, runbook Part 1; the move itself is on the day in the runbook).
 - H30 (steps 1–8 now, they change nothing live; the first start, step 9, is on the day in the runbook).
@@ -52,6 +54,58 @@ down as usual.
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H44 — Switch off Fly auto-deploy now, and find what touched Upstash on 16 Oct (about
+  ten minutes; changes nothing live).** Added cycle 249 after your 16 Oct note (Fly at zero,
+  Upstash deleted, "something still hit it").
+
+  **Why now, not 31 Oct.** `.github/workflows/deploy.yml` still runs on every green CI on `main`:
+  it deploys Fly **staging with no approval**, then Fly production after approval. With every
+  machine destroyed, a deploy would most likely create new machines, start billing again and
+  write to Neon. The engine is not allowed to edit `deploy.yml`, and doesn't need to: switching
+  the workflow off is a GitHub setting. This is runbook step P11, moved earlier; it is safe to do
+  today because nothing should deploy to Fly ever again. (`Deploy to VPS` only runs when you
+  start it by hand, so it is not affected.)
+  1. GitHub → the repo → **Actions** → left list → **Deploy** (not "Deploy to VPS") → **⋯** at
+     the top right → **Disable workflow**. You must see: "This workflow was disabled manually."
+  2. Belt and braces (optional, recommended): GitHub → the repo → **Settings** → **Secrets and
+     variables** → **Actions** → find `FLY_API_TOKEN` → **Remove**. Then even if the workflow is
+     re-enabled by mistake, it cannot reach Fly. (If the token also sits under Settings →
+     Environments → `production` or `staging`, remove it there too.) Then on fly.io →
+     Account → **Access Tokens**, revoke the token named for GitHub Actions.
+  3. In runbook P11 (31 Oct) you will then just check the page still says "disabled".
+
+  **Upstash: what the engine found (read-only checks, cycle 249).**
+  - Every Redis user in the AgentX code (cache, rate limiter, websocket, events, and Celery on
+    the `main` that Fly runs) uses `REDIS_URL` first. With `REDIS_URL=memory://` none of them
+    connects to Redis. The `REDIS_HOST=vast-jay-35806.upstash.io` lines in `fly.toml` and
+    `deploy/vps/settings.env` are only used when `REDIS_URL` is missing.
+  - The Mac mini (this engine) has no connection to any outside Redis; all its tests use the
+    local Redis.
+  - So the 16 Oct hit came from outside the code. Most likely first:
+    a. **The Upstash website itself.** Opening the database page, its "Data Browser" or "CLI"
+       tab sends real Redis commands that Upstash counts. If you looked at it on 16 Oct before
+       deleting, that is probably it.
+    b. **A Fly secret that overrides `REDIS_URL` for Celery.** Read-only check on your Mac:
+       ```
+       fly secrets list -a agentx-platform
+       fly secrets list -a agentx-platform-staging
+       ```
+       If you see `CELERY_BROKER_URL` (or any second Redis URL), that is the culprit (the old
+       Celery scheduler machine used it). Remove it: `fly secrets unset CELERY_BROKER_URL -a
+       <app>` (the machines are gone, so this restarts nothing).
+    c. **Another project on the same Upstash database** (ScoopFeeds, Pink Popcorn, a script on
+       the VPS). Read-only check on the VPS:
+       ```
+       grep -rIl "vast-jay-35806" /root /opt /etc 2>/dev/null | head
+       ```
+       Any file it prints is still configured for Upstash.
+  - Since the database is deleted, any leftover caller now just fails; it cannot cost money.
+  - For the VPS: keep `REDIS_URL=memory://` in `/etc/agentx/api.env` (H30 step 4 already says
+    so). Without it the API would try the deleted Upstash host; it fails open, but slowly.
+
+  Tell the engine: `H44 done` plus which of a/b/c it was (or "not found"). Unblocks: a merge
+  that cannot touch Fly; closes the Upstash question.
 
 - [ ] **H43 — Switch on the Phase C counters (after 1 Nov, best with H41; about ten minutes;
   optional).** Added cycle 223 (Sprint 23 close). A public page, `agentx.social/stats/economy`,

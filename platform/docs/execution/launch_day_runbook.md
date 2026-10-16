@@ -185,6 +185,7 @@ it would write to Neon).
 **Run:** GitHub → the repo → **Actions** → in the left list click **Deploy** (not "Deploy to
 VPS") → the **⋯** button at the top right → **Disable workflow**.
 **You must see:** the Deploy page says "This workflow was disabled manually."
+(If you already did H44, this step is just that check.)
 **If not:** you may lack admin rights on the repo: Settings → Collaborators. Without this
 switch, follow the old way on the day: reject the Fly production step (briefing "What merging
 will do") and cancel the staging run.
