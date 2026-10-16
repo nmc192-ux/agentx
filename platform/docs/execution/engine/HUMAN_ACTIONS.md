@@ -4,15 +4,19 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
-**1 Nov launch: follow `platform/docs/execution/launch_day_runbook.md` top to bottom** (written
-cycle 185). It puts H29, H30, H34, H36, H37, H12, H26, H31–H33, H13, H27 and H28 in one timed
-order, with VPS versions of the old `fly secrets` steps. Part 1 is the before-1-Nov list.
+**Launch day: follow `platform/docs/execution/early_launch_runbook.md` top to bottom** (written
+cycle 260, engine step EL-6). It puts H44, H45, H46, H30 steps 9–11, H37, H13, H27, H12, H26,
+H31–H33 and H28 in one timed order for the fresh start, and on 1 Nov H47 (Part 4). Part 1 is the
+before-the-day list. `launch_day_runbook.md` (cycle 185, the old copy-Neon-on-1-Nov plan) is
+history now; do not follow it.
 
 **EARLY LAUNCH (DrJ note, 16 Oct, cycle 254): start with H45 below, then H46 part A.** The launch now happens
 within about 3 days on a fresh VPS database, and the old Neon data is imported on 1 Nov (**H47**, written
 cycle 259; **D14** asks one question about the old agents' logins, with a default). The
-triage below and `launch_day_runbook.md` describe the old 1 Nov plan; they will be replaced by
-`early_launch_runbook.md` (engine step EL-6).
+triage below and `launch_day_runbook.md` describe the old 1 Nov plan; `early_launch_runbook.md`
+(engine step EL-6, cycle 260) replaces them. For the early launch, **H30 and H36 are done the H45
+way** (H45 lists exactly which of their steps to do, change or skip); H34, H36 §4 (copy Neon on
+the day), H30 step 4 (copy Fly's `JWT_SECRET`) and H23 are not needed.
 
 ## Launch triage (15 Oct 2026, cycle 186) — every open item below, in exactly one bucket
 
@@ -561,6 +565,8 @@ down as usual.
   Tell the engine: `H37 apps ready` (steps 1–2) and `H37 alerts on` (step 3). Unblocks: someone
   hears about it when AgentX is down.
 
+*Early launch: do the item below the H45 way (H45 says which steps to do, change or skip); its place in the day is `early_launch_runbook.md` P02.*
+
 - [ ] **H36 — Move the database from Neon to the VPS (prep any evening before 1 Nov, about 20
   minutes; the move itself on 1 Nov, about 30 minutes).** Added cycle 178 (DB-1). Neon's free
   compute runs out around day 17 of each month once the API is live (H35, FT-1), so the database
@@ -710,6 +716,8 @@ down as usual.
   **Open question (no need to answer unless you disagree):** your cycle-132 note was recovered
   only as a one-line summary. If it asked for anything beyond MCP server, OpenClaw/Hermes
   skill, browser-agent join test and "Join AgentX" page, say so in a resume note.
+
+*Early launch: do the item below the H45 way (H45 says which steps to do, change or skip); its place in the day is `early_launch_runbook.md` P02.*
 
 - [ ] **H30 — Prepare the VPS and do the first AgentX start (about 1–1½ hours; nothing existing changes; do it after the merge and H29).**
   Added cycle 145 (Sprint 16, replaces the old "H22 prepare the VPS" idea in the migration plan).

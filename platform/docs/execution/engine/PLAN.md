@@ -79,7 +79,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   Leftover reservations are released by `reserve_dids.py release --all` (H46, last step).
   Check: integration test with a synthetic "old" database (clashes on purpose), dry run writes
   nothing, apply is idempotent (second run imports 0), an imported agent logs in with its old key.
-- [ ] **EL-6 — Early launch runbook + DrJ's ordered list.** T2. `execution/early_launch_runbook.md`
+- [x] **EL-6 — Early launch runbook + DrJ's ordered list.** Done cycle 260 (`early_launch_runbook.md`: P01–P09, L01–L33, N01–N07; 29 runbook tests). T2. `execution/early_launch_runbook.md`
   (replaces `launch_day_runbook.md` for the day; that one stays as history): prep (H45), go/no-go,
   merge (Fly guard checked first), first VPS deploy, bootstrap, smoke on `api-vps`, Hostinger hPanel
   clicks for `api` (A → 2.25.235.174, delete the AAAA), smoke on `api`, scheduler, backups,

@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-17 · cycle 260 · Opus (T2) · EL-6 early launch runbook
+
+- **Built:** `platform/docs/execution/early_launch_runbook.md`, DrJ's ordered list for the day,
+  replacing `launch_day_runbook.md` (kept as history). Part 1 before the day (P01 H44 Fly guard,
+  P02 H45 VPS prep, P03 H46 A export, files, alert apps, npm/PyPI, tools, branch green); Part 2
+  the day (L01–L33): Fly guard checked first → DB healthy and empty → merge → Vercel (Phase C
+  flags absent) → Deploy to VPS run 1 stops on purpose at deploy.sh's empty-DB refusal (the image
+  is then on the VPS) → `IMAGE_TAG=<hash> … bootstrap_db.py` → `--check` exit 0 → run 2 green →
+  founders' DIDs and `reserved_dids` checked → H46 B load → smoke on `api-vps` → a reserved DID
+  gets 409 → Hostinger hPanel (`api` A 66.241.125.103 → 2.25.235.174, delete AAAA
+  2a09:8280:1::108:ae41:0) → smoke + spoofed-address + Phase C 404s on `api` → heartbeat/AotW →
+  scheduler → backup + restore-test → alerts → `/join` by hand → packages → H33 → announce last.
+  Part 4 the 1 Nov import (N01–N07, H47 as steps); Part 5 after (D14, Phase C order, H25).
+  HUMAN_ACTIONS: the top now points at the new runbook; H30 and H36 carry a line saying to do
+  them the H45 way.
+- **Found while writing:** the first Deploy to VPS run cannot succeed on an empty DB by design
+  (EL-1), and `compose.env` has no `IMAGE_TAG` until a deploy succeeds, so the bootstrap must be
+  run with `IMAGE_TAG=<hash>` in front. Written into L07–L10 and pinned by a test.
+- **Check:** `tests/test_launch_runbook.py` 29 passed (14 new for the early runbook: P/L/N
+  numbering, must-see/if-not/undo on every step, times in order, every path/script/db_move
+  subcommand/`scripts/*.py` exists, the quoted script output still matches bootstrap_db,
+  deploy.sh, reserve_dids and import_old_data, required needles, no Neon copy on launch day, the
+  order guard < merge < deploy 1 < bootstrap < deploy 2 < reserve < 409 check < DNS < scheduler,
+  no Phase C switch on the day, announcement last, import backs up first and dry-runs before
+  apply, no secret-looking strings); ruff clean.
+- **Next:** EL-7 (T1): security review of EL-1, EL-2, EL-5.
+
 ## 2026-10-16 · cycle 259 · Fable (T1) · EL-5 the 1 Nov import tool
 
 - **Built:** `scripts/import_old_data.py` (shipped in `Dockerfile.fly`). DrJ restores the Neon dump
