@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-16 · cycle 257 · Opus (T2) · EL-3 VPS settings for a fresh start
+
+- **Built:** `deploy/vps/settings.env` no longer names Neon or Upstash: `POSTGRES_HOST=db`,
+  user/db `agentx`, `POSTGRES_SSL_MODE=disable` (same as `db.env.example`), `REDIS_URL=memory://`
+  instead of `REDIS_HOST/PORT/TLS`, CORS `agentx.social` + `www` + the Vercel URL (https only).
+  `compose.env.example`: `AGENTX_DB_ENV=/etc/agentx/db.env` from the start. `secrets.env.example`:
+  `JWT_SECRET` (new, `openssl rand -hex 32`, never Fly's), `SENTRY_DSN`, `FOUNDER_DIDS`; no
+  `POSTGRES_PASSWORD`/`REDIS_PASSWORD`. `db_move.sh` no longer reads the Neon side from
+  settings.env (it would now say `db`): `SRC_HOST` must be given, else it refuses.
+- **Fails closed:** with `AGENTX_DB_ENV` empty the apps still point at `db` (never Neon) but get no
+  database password, so `Settings` raises and they do not start; with db.env missing compose refuses.
+- **Decisions I made (reversible):** CORS keeps the Vercel URL beside `agentx.social`/`www` so the
+  current frontend keeps working; H45 already tells DrJ the matching api.env/compose.env lines, so
+  HUMAN_ACTIONS is unchanged (EL-6 rewrites H30/H36).
+- **Check:** `test_vps_deploy_files.py` (new `TestSettingsFreshStart`: same keys as Fly bar Redis,
+  only db/Redis/CORS differ, no Neon/Upstash, app loads these settings with memory Redis, refuses
+  without the db password; compose config all apps → `db`, missing db.env refuses) +
+  `test_db_move.py --db` 25 passed; `tests/infrastructure` + launch tests 205 passed;
+  `vps_rehearsal.py` PASSED; shellcheck and ruff clean.
+- **Next:** EL-4 (T2): rehearse the early launch locally.
+
 ## 2026-10-16 · cycle 256 · Fable (T1) · EL-2 reserve the old DIDs until the import
 
 - **Built:** migration 052 `reserved_dids` (additive; empty table = nothing changes).

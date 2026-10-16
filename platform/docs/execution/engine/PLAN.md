@@ -52,7 +52,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   `tests/services/test_reserved_dids.py` (33) and `tests/integration/test_reserved_dids_db.py`
   (10, `--db`: both routes, case/whitespace variants, both import races, table gone → 500 and
   no row, loader idempotent).
-- [ ] **EL-3 — VPS settings for a fresh start.** T2. `settings.env` still names Neon and
+- [x] **EL-3 — VPS settings for a fresh start.** Done cycle 257 (no Neon/Upstash in deploy/vps; db.env from the start; db_move.sh needs an explicit `SRC_HOST`). T2. `settings.env` still names Neon and
   Upstash: point the defaults at the VPS DB (`POSTGRES_HOST=db`, SSL disable, `REDIS_URL=memory://`
   as a non-secret setting), CORS for `agentx.social`; `compose.env.example` with
   `AGENTX_DB_ENV=/etc/agentx/db.env` from the start; `secrets.env.example` without the Fly

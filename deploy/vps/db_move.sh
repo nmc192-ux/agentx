@@ -34,17 +34,18 @@ env_value() {  # env_value FILE NAME -> last value of NAME in FILE, quotes remov
   printf '%s' "$v"
 }
 
-# The Neon side: settings.env as on Fly, but the direct endpoint, not the "-pooler" one
-# (Neon's pooler is PgBouncer in transaction mode; pg_dump wants a plain session).
-SRC_HOST="${SRC_HOST:-$(env_value settings.env POSTGRES_HOST | sed 's/-pooler\././')}"
-SRC_PORT="${SRC_PORT:-$(env_value settings.env POSTGRES_PORT)}"
-SRC_USER="${SRC_USER:-$(env_value settings.env POSTGRES_USER)}"
-SRC_DB="${SRC_DB:-$(env_value settings.env POSTGRES_DB)}"
+# The Neon side. Since the early launch (EL-3) settings.env names the VPS database, not Neon,
+# so Neon is only ever reached when SRC_HOST is given on the command line: the direct endpoint,
+# not the "-pooler" one (Neon's pooler is PgBouncer in transaction mode; pg_dump wants a plain session).
+SRC_HOST="${SRC_HOST:-}"
+SRC_PORT="${SRC_PORT:-5432}"
+SRC_USER="${SRC_USER:-neondb_owner}"
+SRC_DB="${SRC_DB:-neondb}"
 SRC_SSLMODE="${SRC_SSLMODE:-verify-full}"
 SRC_SSLROOTCERT="${SRC_SSLROOTCERT:-/etc/ssl/certs/ca-certificates.crt}"   # the VPS's CA bundle
 DB_IMAGE="${DB_IMAGE:-pgvector/pgvector:pg17}"   # must equal the db service image in docker-compose.yml
 # Only the commands that read Neon need it (backup and restore-test never touch Neon).
-need_src() { [[ -n "$SRC_HOST" ]] || { echo "no POSTGRES_HOST in settings.env (and no SRC_HOST)" >&2; exit 1; }; }
+need_src() { [[ -n "$SRC_HOST" ]] || { echo "no SRC_HOST: give Neon's direct endpoint, e.g. SRC_HOST=ep-....neon.tech" >&2; exit 1; }; }
 
 # restore-test (LR-2): the throwaway database, and how old the newest backup may be.
 RESTORE_TEST_DB="${RESTORE_TEST_DB:-agentx_restore_test}"

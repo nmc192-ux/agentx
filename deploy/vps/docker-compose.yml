@@ -9,10 +9,10 @@
 #   docker compose --env-file compose.env --profile scheduler up -d scheduler  # ONLY when Fly's is stopped
 #   docker compose --env-file compose.env --profile db up -d db                # own Postgres (DB-1)
 #
-# Database (DB-1, platform/docs/execution/db_move_runbook.md): the API, scheduler and migrate use
-# Neon (settings.env + api.env) until compose.env says AGENTX_DB_ENV=/etc/agentx/db.env. That file
-# is loaded last, so its POSTGRES_HOST=db / user / password win. The same file creates the `db`
-# container's superuser. Going back to Neon = empty AGENTX_DB_ENV again and recreate api-1/api-2.
+# Database (early launch, EL-3): the API, scheduler and migrate use the `db` container from the
+# start. compose.env says AGENTX_DB_ENV=/etc/agentx/db.env; that file is loaded last, so its
+# POSTGRES_HOST=db / user / password win, and the same file creates the `db` container's
+# superuser. Left empty, the apps get no database password and refuse to start (fail closed).
 #
 # Rules pinned by platform/tests/infrastructure/test_vps_deploy_files.py:
 #   - nothing is published on the host: only Caddy, on ${PROXY_NETWORK} (agentx_edge, shared by
@@ -36,7 +36,7 @@ x-app: &app
   env_file:
     - path: ./settings.env
     - path: "${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}"
-    # Which database: /dev/null (empty) = Neon; /etc/agentx/db.env = the VPS `db` container.
+    # The VPS `db` container's settings and password (/etc/agentx/db.env via compose.env).
     - path: "${AGENTX_DB_ENV:-/dev/null}"
   restart: unless-stopped
   mem_limit: 512m

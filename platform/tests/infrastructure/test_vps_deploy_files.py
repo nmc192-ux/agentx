@@ -8,7 +8,8 @@ unsafe shape:
      refuses to start if the trust list is empty or a wildcard.
   3. scheduler and migrate are profile-gated, so a plain `up` never starts a second
      scheduler or a migration.
-  4. settings.env carries exactly Fly's [env] values; no secret-looking values in deploy/.
+  4. settings.env carries Fly's [env] keys, with the database, Redis and CORS values of the
+     early launch (EL-3); no secret-looking values in deploy/.
 S16-3 adds:
   5. agentx.caddy serves the two API names from api-1/api-2:8000 with active health checks
      and retries, and never trusts incoming forwarded headers (no trusted_proxies, no
@@ -34,6 +35,10 @@ DB-1 adds:
  12. A `db` Postgres container (pgvector, pg17) behind its own profile, on the private network
      only (never Caddy's shared one), no port, its own settings file (never api.env), a named
      volume. The apps use Neon until AGENTX_DB_ENV names that file; then POSTGRES_* point at it.
+EL-3 (early launch, fresh VPS database) changes:
+ 13. No Neon, no Upstash: settings.env names the `db` container and REDIS_URL=memory://;
+     compose.env.example names db.env from the start; nothing is copied from Fly (a new
+     JWT_SECRET, FOUNDER_DIDS for the bootstrap). Without db.env the apps refuse to start.
 """
 import json
 import os
@@ -169,9 +174,10 @@ class TestDatabaseService:
             "POSTGRES_DB": "agentx", "POSTGRES_SSL_MODE": "disable", "POSTGRES_PASSWORD": "",
         }
 
-    def test_neon_is_the_default(self):
+    def test_vps_db_is_the_default(self):
+        # EL-3: the early launch starts on the VPS database; there is no Neon phase.
         values = _env_file(VPS / "compose.env.example")
-        assert values["AGENTX_DB_ENV"] == ""
+        assert values["AGENTX_DB_ENV"] == "/etc/agentx/db.env"
         assert values["AGENTX_DB_SECRETS_FILE"] == "/etc/agentx/db.env"
 
     def test_db_move_neon_side_verifies_tls_from_a_throwaway_container(self):
@@ -229,19 +235,77 @@ class TestForwardedGuard:
         assert re.fullmatch(r"\d+\.\d+\.\d+\.\d+/(1[6-9]|2\d|3[0-2])", value)
 
 
-class TestSettingsMatchFly:
-    def test_settings_equal_fly_env(self):
-        fly_env = tomllib.loads(FLY_TOML.read_text())["env"]
-        settings = _env_file(VPS / "settings.env")
-        assert settings == {k: str(v) for k, v in fly_env.items()}
+FRESH_START = {   # EL-3: the only values that differ from Fly's [env]
+    "POSTGRES_HOST": "db", "POSTGRES_PORT": "5432", "POSTGRES_USER": "agentx",
+    "POSTGRES_DB": "agentx", "POSTGRES_SSL_MODE": "disable", "REDIS_URL": "memory://",
+}
+FLY_ONLY = {"REDIS_HOST", "REDIS_PORT", "REDIS_TLS"}   # Upstash; gone with REDIS_URL
+
+
+class TestSettingsFreshStart:
+    def _settings(self) -> dict[str, str]:
+        return _env_file(VPS / "settings.env")
+
+    def test_same_keys_as_fly_and_only_db_redis_cors_differ(self):
+        fly_env = {k: str(v) for k, v in tomllib.loads(FLY_TOML.read_text())["env"].items()}
+        settings = self._settings()
+        assert set(settings) == (set(fly_env) - FLY_ONLY) | {"REDIS_URL"}
+        for key, value in settings.items():
+            if key in FRESH_START:
+                assert value == FRESH_START[key], key
+            elif key != "CORS_ORIGINS":
+                assert value == fly_env[key], key
+
+    def test_database_matches_db_env_example(self):
+        db = _env_file(VPS / "db.env.example")
+        settings = self._settings()
+        for key in ("POSTGRES_HOST", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_DB", "POSTGRES_SSL_MODE"):
+            assert settings[key] == db[key], key
+
+    def test_cors_allows_the_site_over_https_only(self):
+        origins = json.loads(self._settings()["CORS_ORIGINS"])
+        assert "https://agentx.social" in origins
+        assert all(o.startswith("https://") and "*" not in o for o in origins)
+
+    @pytest.mark.parametrize("name", ["settings.env", "compose.env.example", "secrets.env.example"])
+    def test_no_neon_or_upstash(self, name):
+        text = (VPS / name).read_text().lower()
+        assert "neon.tech" not in text and "upstash" not in text and "neondb" not in text
 
     def test_no_secrets_in_settings(self):
-        assert not SECRET_NAMES & set(_env_file(VPS / "settings.env"))
+        assert not SECRET_NAMES & set(self._settings())
 
     def test_secrets_example_has_names_only(self):
+        text = (VPS / "secrets.env.example").read_text()
         values = _env_file(VPS / "secrets.env.example")
-        assert {"POSTGRES_PASSWORD", "REDIS_PASSWORD", "JWT_SECRET", "SENTRY_DSN"} <= set(values)
+        assert {"JWT_SECRET", "SENTRY_DSN", "FOUNDER_DIDS"} <= set(values)
+        # The database password lives in db.env (loaded last); there is no Redis.
+        assert not {"POSTGRES_PASSWORD", "REDIS_PASSWORD"} & set(values)
         assert all(v == "" for v in values.values())
+        # A new JWT_SECRET, never Fly's (Fly is at zero; H30 step 4 superseded).
+        assert "openssl rand -hex 32" in text
+        assert "Fly's value" not in text
+
+    def _load(self, monkeypatch, extra: dict[str, str]):
+        from src.config import Settings
+        for key in list(os.environ):
+            if key.startswith(("POSTGRES_", "REDIS_", "JWT_", "CORS_")) or key == "APP_ENV":
+                monkeypatch.delenv(key, raising=False)
+        for key, value in {**self._settings(), **extra}.items():
+            monkeypatch.setenv(key, value)
+        return Settings(_env_file=None)
+
+    def test_app_loads_these_settings_without_redis(self, monkeypatch):
+        settings = self._load(monkeypatch, {"JWT_SECRET": "x" * 64, "POSTGRES_PASSWORD": "pw"})
+        assert settings.is_production
+        assert settings.redis_url == "memory://"
+        assert settings.postgres_host == "db" and settings.postgres_ssl_mode == "disable"
+        assert "https://agentx.social" in settings.cors_origins
+
+    def test_app_refuses_to_start_without_db_env(self, monkeypatch):
+        # compose.env with an empty AGENTX_DB_ENV loads no database password: fail closed.
+        with pytest.raises(ValueError, match="db_password"):
+            self._load(monkeypatch, {"JWT_SECRET": "x" * 64})
 
     def test_no_secret_looking_values_in_deploy(self):
         pattern = re.compile(
@@ -262,7 +326,8 @@ class TestComposeConfig:
     def _config(self, *profiles, **extra_env):
         env = {
             **os.environ, "AGENTX_SECRETS_FILE": "./secrets.env.example",
-            "AGENTX_DB_SECRETS_FILE": "./db.env.example", **extra_env,
+            "AGENTX_DB_SECRETS_FILE": "./db.env.example", "AGENTX_DB_ENV": "./db.env.example",
+            **extra_env,
         }
         flags = [arg for p in profiles for arg in ("--profile", p)]
         return subprocess.run(
@@ -275,18 +340,22 @@ class TestComposeConfig:
         services = json.loads(result.stdout)["services"]
         return {name: svc["environment"]["POSTGRES_HOST"] for name, svc in services.items()}
 
-    def test_apps_use_neon_by_default(self):
-        hosts = self._postgres_hosts(self._config("scheduler", "migrate"))
-        assert set(hosts) == set(APP_SERVICES)
-        assert all(h.endswith(".neon.tech") for h in hosts.values()), hosts
-
-    def test_switch_points_every_app_at_db(self):
-        hosts = self._postgres_hosts(self._config("scheduler", "migrate", "db", AGENTX_DB_ENV="./db.env.example"))
+    def test_every_app_uses_the_vps_db(self):
+        hosts = self._postgres_hosts(self._config("scheduler", "migrate", "db"))
         assert hosts == {name: "db" for name in (*APP_SERVICES, "db")}
 
-    def test_deploy_works_before_db_settings_exist(self):
-        # H30 deploys before /etc/agentx/db.env exists: only the db profile may need it.
-        assert self._config(AGENTX_DB_SECRETS_FILE="./missing.env").returncode == 0
+    def test_settings_alone_point_at_db_but_carry_no_password(self):
+        # Even with an empty AGENTX_DB_ENV nothing points at Neon; the app then has no
+        # database password and refuses to start (TestSettingsFreshStart).
+        result = self._config("scheduler", "migrate", AGENTX_DB_ENV="")
+        hosts = self._postgres_hosts(result)
+        assert set(hosts.values()) == {"db"}
+        services = json.loads(result.stdout)["services"]
+        assert all("POSTGRES_PASSWORD" not in svc["environment"] for svc in services.values())
+
+    def test_deploy_refuses_without_db_env(self):
+        # EL-3: compose.env names db.env from the start, so a missing file stops compose.
+        assert self._config(AGENTX_DB_ENV="./missing.env").returncode != 0
         assert self._config("db", AGENTX_DB_SECRETS_FILE="./missing.env").returncode != 0
 
     def test_config_succeeds_with_example_env(self):

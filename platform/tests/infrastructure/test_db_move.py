@@ -247,10 +247,11 @@ def test_root_cert_only_named_when_the_mode_verifies(source_db, workdir, tmp_pat
 
 
 def test_refuses_to_run_without_a_source_host(workdir):
-    (workdir / "settings.env").write_text("POSTGRES_PORT=5432\nPOSTGRES_USER=u\nPOSTGRES_DB=d\n")
+    # EL-3: settings.env names the VPS `db`; it is never taken as the Neon side.
+    (workdir / "settings.env").write_text("POSTGRES_HOST=db\nPOSTGRES_PORT=5432\nPOSTGRES_USER=u\nPOSTGRES_DB=d\n")
     result = run(workdir, "check", SRC_HOST="")
     assert result.returncode == 1
-    assert "no POSTGRES_HOST" in result.stderr
+    assert "no SRC_HOST" in result.stderr
 
 
 def test_usage_and_missing_file(workdir):
