@@ -1,5 +1,10 @@
 # Engine log
 
+## 2026-10-16 · cycle 226 · Opus (T2) · idle: feature freeze, nothing engine-doable
+
+- **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed. The only open step, LF-2 (re-run the launch rehearsal if the head moved), starts 30 Oct; until then the freeze allows only reported bugs and the runbook, which LF-1 brought up to date last cycle. No code changed.
+- **Next:** wait for DrJ (a bug report, D13, "Start Phase D"), or LF-2 from 30 Oct.
+
 ## 2026-10-16 · cycle 225 · Opus (T2) · LF-1: launch runbook brought up to date for Phase C
 
 - **DrJ's note:** feature freeze until launch; only reported bugs and the runbook. No bug reported, so this cycle checked `execution/launch_day_runbook.md` (written cycle 185, before Sprints 20–23) against the Phase C briefing.
