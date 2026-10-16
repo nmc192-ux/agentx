@@ -1,5 +1,10 @@
 # Engine log
 
+## 2026-10-16 · cycle 250 · Opus (T2) · idle: feature freeze, nothing engine-doable
+
+- **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 249. H44 (disable the Fly "Deploy" workflow) still waits on DrJ. The only open step, LF-2 (re-run the launch rehearsal if the head moved), starts 30 Oct. No code changed.
+- **Next:** wait for DrJ (H44, a bug report, H30 on the VPS, "Start Phase D"), or LF-2 from 30 Oct.
+
 ## 2026-10-16 · cycle 249 · Opus (T2) · DrJ note: Fly auto-deploy guard + Upstash trace
 
 - **DrJ note (Fly at zero, launch VPS-only, Upstash hit after `memory://`):** `deploy.yml` still
