@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-10-16 · cycle 227 · Opus (T2) · LF-1b: H29 answer into the VPS files
+
+- **DrJ's note (H29):** Caddy is `pinkpopcorn-feed-caddy-1`, on `pinkpopcorn-feed_default` together with Pink Popcorn's app; Caddyfile `/root/pinkpopcorn-feed/deploy/Caddyfile` mounted as the single file `/etc/caddy/Caddyfile`. Use the separate small network the S16 review proposed; Upstash no longer needed.
+- **Built:** `compose.env.example` now `PROXY_NETWORK=agentx_edge`, `PROXY_SUBNET=10.250.0.0/24`, `CADDY_CONTAINER=pinkpopcorn-feed-caddy-1`. `deploy.sh` first makes sure of the network: creates it if missing, (re)connects Caddy (a recreated Caddy loses it), and refuses to deploy — nothing pulled, migrated or replaced — if a setting or Caddy is missing, the range is not `PROXY_SUBNET`, or any container other than Caddy and the `agentx` compose project is on it. Found while doing it: with a single-file mount `import agentx.caddy` cannot see a neighbouring file, so H30 step 6 now appends the block (`tee -a`, keeps the inode the container sees), with a backup, `validate`, and a restore line.
+- **Docs:** H29 ticked with the answer; H30 steps 0, 5 (compose.env with the real values, a range-free check, `network create`/`connect`, what to do if Pink Popcorn's Caddy is recreated) and 6 rewritten; H36 prep note; launch runbook P01 (done), P02, L20 (real container name); `db_move_runbook.md` §1/§3; migration plan §3.
+- **Decisions I made (reversible):** network name `agentx_edge` and range 10.250.0.0/24 (outside Docker's default pools; H30 step 5 checks it is free first); the deploy refuses rather than warns on a stranger on the network; containers count as AgentX by the compose project label.
+- **Checks:** `tests/infrastructure/test_vps_deploy_files.py` **105 passed** (6 new deploy tests + 3 parametrised, 1 example test), `tests/infrastructure/` **121 passed, 40 skipped**; `test_launch_runbook.py` **13 passed**; shellcheck clean; a Pink-Popcorn-style Caddyfile with the block appended adapts in Caddy. Not run against a live Docker daemon (none on this Mac): the Go templates are standard, but H30 step 5's last check is the real proof.
+- **Commit:** `a85f035` (`SECURITY-REVIEW:`). **Next:** LF-2 from 30 Oct (the head has moved, so the rehearsal re-runs); otherwise wait for DrJ.
+
 ## 2026-10-16 · cycle 226 · Opus (T2) · idle: feature freeze, nothing engine-doable
 
 - **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed. The only open step, LF-2 (re-run the launch rehearsal if the head moved), starts 30 Oct; until then the freeze allows only reported bugs and the runbook, which LF-1 brought up to date last cycle. No code changed.

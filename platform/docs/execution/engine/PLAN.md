@@ -87,5 +87,12 @@ current. D13: Phase C rides along switched off.
   `faucet_claims` exists and is empty; L21 checks `/stats/economy` and the showcase answer 404;
   Part 3 gives the H38 → H43 switch-on order. Check: `tests/test_launch_runbook.py` 13 passed
   (six new required phrases).
+- [x] **LF-1b — H29 answer into the VPS files (DrJ note, cycle 227).** Done cycle 227, `a85f035`.
+  T2. AgentX reaches Pink Popcorn's Caddy over `agentx_edge` (10.250.0.0/24, Caddy and AgentX
+  only); `deploy.sh` creates it, reconnects Caddy and refuses to deploy if anything else is on it
+  or its range differs; H30 step 6 appends the site block (the Caddyfile is a single-file mount,
+  so `import` cannot work). Check: `test_vps_deploy_files.py` 105 passed, `test_launch_runbook.py`
+  13 passed, shellcheck clean, combined Caddyfile adapts. Marked `SECURITY-REVIEW:` for the
+  next Fable review.
 - [ ] **LF-2 — From 30 Oct: re-run the launch rehearsal if the head moved** (T2); otherwise
   idle until DrJ reports a bug or launches.
