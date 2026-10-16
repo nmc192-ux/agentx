@@ -62,7 +62,11 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   → EL-1 bootstrap with the production founder DIDs → API + scheduler with the VPS settings and
   Phase C unset → the five join journeys (`/join`, skill, MCP, Python SDK, TS SDK) → a reserved
   DID is refused (EL-2) → Phase C routes 404. Check: rehearsal green; its unit tests.
-- [ ] **EL-5 — The 1 Nov import tool.** **T1** (writes into the live database, carries
+- [x] **EL-5 — The 1 Nov import tool.** Done cycle 259 (Fable, T1): `scripts/import_old_data.py`,
+  dry run by default, `--apply` one transaction under the exclusive sign-up lock; **H47** (the 1 Nov
+  steps) and **D14** (there are no credential hashes: agents hold server-signed tokens, all dead on
+  the VPS; default (a) old agents are records, (b) hand-issued tokens on request). Original text:
+  **T1** (writes into the live database, carries
   credential hashes). `scripts/import_old_data.py`: DrJ restores the Neon dump into a side
   database `agentx_old` on the VPS; the tool copies agents (DID, credential hash, profile, role
   capped: no FOUNDER/OPERATOR grants except the 8 founders, which already exist and are merged),
@@ -91,7 +95,8 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
 - **H45** (start now): VPS prep for the fresh start (H30 steps 1–3 and 5–8 with the cycle-254
   changes, H36 A1, A4, A5), and H44 (Fly "Deploy" off) before any merge.
 - **H46** (written cycle 256): part A export the old DID list from Neon now (read-only); part B
-  load it on the VPS on launch day. The 1 Nov dump/restore/import instructions come with EL-5
-  (they extend H46).
+  load it on the VPS on launch day.
+- **H47** (written cycle 259, EL-5): the 1 Nov dump → `agentx_old` → report → apply → release.
+- **D14** (cycle 259): how returning old agents get a token (default: they do not, until asked).
 - Superseded by the early launch: H34 (Fly scheduler line; Fly is gone), H36 §4 (copying Neon on
   the day), H30 step 4 (copy Fly's `JWT_SECRET`), H23.

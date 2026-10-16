@@ -1,5 +1,46 @@
 # Engine log
 
+## 2026-10-16 · cycle 259 · Fable (T1) · EL-5 the 1 Nov import tool
+
+- **Built:** `scripts/import_old_data.py` (shipped in `Dockerfile.fly`). DrJ restores the Neon dump
+  into a side database `agentx_old`; the tool reads it (read-only transaction) and copies into the
+  live database in ONE transaction, dry run by default (same statements, rolled back) and `--apply`
+  to keep: agents (same DID and agent_id, profile, status, tier, trust; role CAPPED: FOUNDER/
+  OPERATOR/DELEGATE → MEMBER, listed), the 8 founders MERGED onto the bootstrap rows by roster DID
+  (old agent_id → live agent_id map), posts and replies parents-first, likes, follows (counters
+  recounted by the DB triggers; `posts_count` += what came in), trust events + reputation history
+  (dedupe keys respected), trust_scores and breakdown for inserted agents (the imported
+  `trust_score` wins over the breakdown trigger), legacy WORK/GOV/REP balances and wallets ONLY
+  where the old ledger adds up exactly (a wallet comes in as one `import` ledger line from NULL and
+  `token_supply.total_minted`); everything else skipped and listed by reason: DID now another
+  agent's, DID registered AND reserved, agent_id taken, display name in use by an ACTIVE agent,
+  malformed DID, author not imported, parent missing, post in a collective, ledger disagrees.
+  `lock_exclusive` first thing (sign-ups hold the shared lock); reservations of inserted DIDs
+  deleted in the same transaction; one audit row per run as Atlas. Refuses, writing nothing:
+  same database, live missing founders (not bootstrapped), old alembic version unknown or NEWER
+  than live (older is fine: missing columns take defaults), RLS-hidden login, old DB unreadable.
+  Idempotent: an agent with the same DID and agent_id is "already imported"; second run imports 0.
+- **Found while building (not a bug, a fact DrJ should know → D14):** there are no credential
+  hashes to import. Agents hold server-signed JWTs (refresh TTL 24 h) signed with Fly's secret; the
+  VPS has a new secret (cycle 257 decision), so no old agent can act until it gets a new token.
+  The import keeps the record; access is D14 (default (a): nothing; (b) a hand-issued token
+  command on request, T1). Also: `db_move.sh dump` reads the Neon password from api.env, which
+  the fresh start no longer holds → H47 step 2 uses a temporary `neon.env` typed without echo.
+- **Decisions I made (reversible):** founders keep the bootstrap's seeded points and wallets (their
+  old balances are not merged; their old ledger lines with imported members are copied as record);
+  collectives, tasks, contracts, bounties, stakes, messages, notifications, comments, audit rows are
+  NOT copied (reported as "left behind" counts); `tier` and `status` copied as they were.
+- **Check:** `tests/integration/test_import_old_data_db.py` 7 passed (`--db`; synthetic old DB made
+  OLDER: two columns dropped, alembic 042; dry run writes nothing and matches apply; apply: ids kept,
+  role capped, founder post attached to the live founder, counters right, clashes untouched, wallet
+  minted on the record with `related_id` = old wallet, reservations released only for what came in,
+  audit row; refresh token for an imported DID → 200 with role MEMBER, suspended → 403, not
+  imported → 401; second apply 0; refusals: same DB, version 999, live behind old, RLS probe, wrong
+  roster). `tests/test_import_old_data.py` 29 passed; `test_reserved_dids_db.py` 10 passed;
+  `test_bootstrap_db` + `test_launch_rehearsal` 105 passed; ruff clean.
+- **Next:** EL-6 (T2): early launch runbook + DrJ's ordered list (H30/H36 rewritten, H47 as the
+  1 Nov part), `test_launch_runbook.py` extended.
+
 ## 2026-10-16 · cycle 258 · Opus (T2) · EL-4 rehearse the early launch locally
 
 - **Built:** `scripts/launch_rehearsal.py --early`. Drops the scratch database to EMPTY and builds it

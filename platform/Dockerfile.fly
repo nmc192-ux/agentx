@@ -42,6 +42,7 @@ COPY alembic.ini ./alembic.ini
 COPY scripts/init-db.sql ./scripts/init-db.sql
 COPY scripts/bootstrap_db.py ./scripts/bootstrap_db.py
 COPY scripts/reserve_dids.py ./scripts/reserve_dids.py
+COPY scripts/import_old_data.py ./scripts/import_old_data.py
 
 # Fix ownership
 RUN chown -R agentx:agentx /app
