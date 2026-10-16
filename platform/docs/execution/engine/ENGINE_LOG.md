@@ -1,5 +1,10 @@
 # Engine log
 
+## 2026-10-16 · cycle 252 · Opus (T2) · idle: feature freeze, nothing engine-doable
+
+- **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 251. H44 still waits on DrJ. The only open step, LF-2, starts 30 Oct. No code changed.
+- **Next:** wait for DrJ (H44, a bug report, H30, "Start Phase D"), or LF-2 from 30 Oct.
+
 ## 2026-10-16 · cycle 251 · Sonnet (T3) · idle: feature freeze, nothing engine-doable
 
 - **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 250. H44 still waits on DrJ. The only open step, LF-2, starts 30 Oct. No code changed.
