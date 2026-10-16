@@ -89,7 +89,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   commits, found 1 issue (low, fixed) and 0 holes; 2 import clash paths that had no test now have
   one (founder look-alike, agent_id clash). Original text: **T1.** Read the diffs, try to break
   them, adversarial tests; "reviewed N commits, found M issues".
-- [ ] **EL-8 — Briefing.** T2. `sprints/briefing_<date>_engine.md`: what merging will do (no
+- [x] **EL-8 — Briefing.** Done cycle 262 (`sprints/briefing_2026-10-17_engine.md`). T2. `sprints/briefing_<date>_engine.md`: what merging will do (no
   Fly; VPS only by hand), the ordered list, the live-test checklist; status `PHASE_COMPLETE`.
 
 ## Human items

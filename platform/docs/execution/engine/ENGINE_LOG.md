@@ -1,5 +1,18 @@
 # Engine log
 
+## 2026-10-17 · cycle 262 · Opus (T2) · EL-8 briefing → PHASE_COMPLETE (early launch)
+
+- **Wrote:** `platform/docs/sprints/briefing_2026-10-17_engine.md` in the protocol's format. It
+  covers what shipped (EL-0 … EL-7 with their commits) and what merging will do. Merging starts
+  CI; the old Fly **Deploy** still fires on a green CI on `main` unless H44 is done first;
+  Deploy to VPS only runs by hand; Vercel redeploys by itself; Phase C stays off. The briefing
+  also has the reversible decisions, D14, and a live-test checklist whose lines match the
+  runbook's "You must see" text (L05, L09, L11, L12, L16, L18, L19, L21–L23, L26, N04–N06).
+- **Check:** `tests/test_launch_runbook.py` 29 passed; docs only, no code changed.
+- **Status:** `PHASE_COMPLETE`. Everything left is DrJ's: H44 → H45 → H46 A → launch day → H47
+  on 1 Nov; D14 open (default (a)).
+- **Next:** wait for DrJ (launch day result, "D14: b", a bug report, or "Start Phase D").
+
 ## 2026-10-17 · cycle 261 · Fable (T1) · EL-7 security review of EL-1, EL-2, EL-5
 
 - **Reviewed 3 commits, found 1 issue (low), 0 holes.** Read `61af479` (EL-1 bootstrap, built on
