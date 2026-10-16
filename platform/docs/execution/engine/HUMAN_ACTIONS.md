@@ -8,6 +8,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
 cycle 185). It puts H29, H30, H34, H36, H37, H12, H26, H31–H33, H13, H27 and H28 in one timed
 order, with VPS versions of the old `fly secrets` steps. Part 1 is the before-1-Nov list.
 
+**EARLY LAUNCH (DrJ note, 16 Oct, cycle 254): start with H45 below.** The launch now happens
+within about 3 days on a fresh VPS database, and the old Neon data is imported on 1 Nov. The
+triage below and `launch_day_runbook.md` describe the old 1 Nov plan; they will be replaced by
+`early_launch_runbook.md` (engine step EL-6).
+
 ## Launch triage (15 Oct 2026, cycle 186) — every open item below, in exactly one bucket
 
 Nothing is merged or deployed before 1 Nov (Neon resets then). The timed order for 1 Nov is in
@@ -54,6 +59,45 @@ down as usual.
 **D. Retired — you can ignore these (superseded by the cold start on the VPS)**
 - H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
   resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H45 — EARLY LAUNCH, part 1: prepare the VPS for a fresh start (start tonight; about 1½
+  hours; nothing live changes).** Added cycle 254 after your EARLY LAUNCH note. The full ordered
+  list for launch day comes in `execution/early_launch_runbook.md` (engine step EL-6, within the
+  next cycles); this part can be done now because it needs no new code. It is H30 steps 1–8 and
+  H36 prep, **with these changes for a fresh database** (Fly is at zero, so nothing is copied
+  from Fly or Neon):
+  1. **H44 steps 1–2 first** (5 min): Fly "Deploy" workflow → Disable; remove `FLY_API_TOKEN`.
+     This is what makes the merge to `main` not deploy to Fly. Do not merge before it.
+  2. **H30 step 1** (deploy user and folders, 10 min) and **step 2** (deploy key, 5 min): as written.
+  3. **H30 step 3, changed** (10 min). `/etc/agentx/api.env` gets these lines only (no Neon
+     password: the database password lives in `db.env`, item 6):
+     ```
+     REDIS_URL=memory://
+     SENTRY_DSN=<same as before, or leave empty>
+     FOUNDER_DIDS=atlas=did:agentx:atlas-seed-001,bruno=did:agentx:bruno-001,daria=did:agentx:daria-seed-001,gia=did:agentx:gia-seed-001,marcus=did:agentx:marcus-seed-001,nova=did:agentx:nova-seed-001,quinn=did:agentx:quinn-seed-001,thea=did:agentx:thea-seed-001
+     ```
+     then the same `chown root:deploy` / `chmod 640` line as in step 3.
+  4. **H30 step 4, replaced** (1 min). Fly is gone, so do not copy its secret; make a new one
+     straight into the file (nothing is printed):
+     ```
+     sudo sh -c 'printf "JWT_SECRET=%s\n" "$(openssl rand -hex 32)" >> /etc/agentx/api.env'
+     sudo awk -F= '/^JWT_SECRET=/{print length($2)}' /etc/agentx/api.env
+     ```
+     The second line must print `64` (once). Old logins from Fly days expired weeks ago anyway;
+     on 1 Nov old agents get new tokens with their old keys.
+  5. **H30 step 5, one line changed** (10 min): in `compose.env` write
+     `AGENTX_DB_ENV=/etc/agentx/db.env` (not empty). The `agentx_edge` network part is exactly as
+     written (Caddy and AgentX only; the database is never on it).
+  6. **H36 prep, `db_move_runbook.md` §3:** A1 (`db.env`, 5 min), A2 (copy three files, 5 min),
+     A4 (start the database, 5 min; must say `healthy`), A5 (nightly backup lines, 5 min).
+     **Skip** A3 (item 5 did it), A4b and A6 (no copy from Neon; Fly already at zero).
+     The database stays empty; the engine's bootstrap command (EL-1) fills it on the day.
+  7. **H30 step 6** (Caddy block, 10 min), **step 7** (DNS `api-vps` only, 5 min; do not touch
+     `api` yet), **step 8** (GitHub secrets, 10 min): as written.
+  Stop there: step 9 (first deploy) waits for the merge, which waits for EL-1 to EL-4.
+  Tell the engine: `H45 done`, plus anything that printed something unexpected.
+  Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
+  your 3 days).
 
 - [ ] **H44 — Switch off Fly auto-deploy now, and find what touched Upstash on 16 Oct (about
   ten minutes; changes nothing live).** Added cycle 249 after your 16 Oct note (Fly at zero,

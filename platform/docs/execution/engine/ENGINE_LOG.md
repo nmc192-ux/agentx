@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-16 · cycle 254 · Opus (T2) · DrJ note: EARLY LAUNCH planned (EL-0)
+
+- **DrJ note:** early launch within 3 days on a fresh VPS database; old Neon data imported 1 Nov.
+  Feature-freeze plan archived (`archive/PLAN_sprint_23.md`); new `PLAN.md` with EL-1…EL-8.
+- **Found while planning (read-only):** (1) an empty VPS database gets only `alembic upgrade head`,
+  but the base schema and founders come from `scripts/init-db.sql` (migration 001 is a no-op), which
+  seeds `-001` DIDs while production's founders are `*-seed-001` + `bruno-001` (H13 step 1) → EL-1
+  bootstrap. (2) `POST /agents` accepts a caller-chosen `agent_did`, so before 1 Nov a newcomer
+  could claim an old agent's DID and the import would have to skip the real owner → EL-2 (T1),
+  reserve the old DIDs from a list DrJ exports read-only (H46). (3) H30 step 4 copies
+  `JWT_SECRET` from Fly over `fly ssh`, impossible with Fly at zero. (4) `settings.env` still names
+  Neon and Upstash → EL-3.
+- **Decisions I made (reversible):** a new random `JWT_SECRET` on the VPS (old Fly tokens long
+  expired; old agents re-login with their imported keys on 1 Nov). Founders seeded with the H13
+  step-1 DIDs. The Fly guard stays a GitHub setting (H44 + remove `FLY_API_TOKEN`), since the
+  engine may not edit `deploy.yml`. Import (EL-5) never grants FOUNDER/OPERATOR roles.
+- **H45** added: VPS prep DrJ can start tonight (H44 first, then H30 1–3/5–8 and H36 A1/A2/A4/A5 with
+  the fresh-start changes). No code changed.
+- **Check:** `tests/test_launch_runbook.py` 13 passed (docs only).
+- **Next:** EL-1 (T2).
+
 ## 2026-10-16 · cycle 253 · Sonnet (T3) · idle: feature freeze, nothing engine-doable
 
 - **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 252. H44 still waits on DrJ. The only open step, LF-2, starts 30 Oct. No code changed.

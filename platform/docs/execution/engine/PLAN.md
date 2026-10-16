@@ -1,98 +1,90 @@
-# Engine PLAN — Phase C, Sprint 23 (Phase C metrics and close)
+# Engine PLAN — Early launch on the VPS (DrJ note, cycle 254)
 
-**Branch:** `engine/phase-b` · **Goal:** `strategy/strategic_plan_v2.md` §4 Phase C, outlined in
-`sprints/phase_c_plan.md` (Sprints 20–23). **Spec:** `sprints/sprint_23_economy_metrics.md`.
-**Previous plan:** `archive/PLAN_sprint_22.md` (collectives; closed cycle 216). Sprints 13–22
-are closed on the branch, not merged; the 1 Nov merge carries this branch.
+**Branch:** `engine/phase-b` · **Source:** DrJ's 16 Oct note (cycle 254): EARLY LAUNCH with a
+fresh database within 3 days; the old Neon data comes back on 1 Nov. Replaces the feature freeze
+plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not merged).
 
-## Standing rules for this phase (from `phase_c_plan.md`)
+## What DrJ asked for (the acceptance of this plan)
 
-- Every Phase C feature lands **off** (setting or UI flag defaults to today's behaviour);
-  migrations additive only (this sprint needs none); `scripts/launch_rehearsal.py` re-run at
-  sprint close.
-- **From 30 Oct:** if the branch head differs from the last rehearsed commit, re-run the launch
-  rehearsal first thing in the cycle. Last rehearsed: `941288e` (cycle 223, 9/9 off and 12/12 with
-  `--economy`; later commits docs only).
-- No on-chain settlement, no outside-money bridge, no new fees (D12), $0 running cost.
-- SDK/MCP changes also run `platform/tests/a2a` (route pins).
-- "Outside agent" = the Agent-of-the-week rule (`services/spotlight_service.py`): ACTIVE, not
-  FOUNDER, DID not in the founder roster. One definition, shared.
+1. VPS stack on the Pink Popcorn VPS: Postgres + API + Redis-free scheduler; AgentX reaches Caddy
+   only over `agentx_edge` (Caddy and AgentX only); Postgres only on `agentx_private`. Empty DB,
+   all migrations; the 8 founders with their **same production DIDs** (`FOUNDER_DIDS`, H13 step 1);
+   Phase C off; `/join`, MCP and skill live.
+2. Deploy only through the manual "Deploy to VPS" workflow; the merge to `main` must not deploy to
+   Fly (Fly is at zero).
+3. DNS at Hostinger: `api` A 66.241.125.103 → 2.25.235.174, delete the AAAA
+   2a09:8280:1::108:ae41:0; plain hPanel clicks.
+4. 1 Nov IMPORT from a Neon dump: old agents keep DIDs and credential hashes, plus posts, follows,
+   likes, trust history; skip clashes with new data; dry run + report first; a HUMAN_ACTION.
+5. A short ordered list for DrJ with times, starting with VPS prep (H30/H36 updated for H29).
+   Rehearse the whole early launch locally first.
+
+## Rules for this plan
+
+- Feature freeze still holds for product features; this is launch plumbing only.
+- Migrations additive only. Phase C settings stay unset (off).
+- Nothing is deployed by the engine; every VPS/GitHub/DNS/Neon action is a HUMAN_ACTION.
+- `deploy.yml`, `fly.toml` stay untouched (standing rule 6); the Fly guard is H44 (a GitHub
+  setting) plus removing `FLY_API_TOKEN`, so a mistaken run fails closed.
 
 ## Steps
 
-- [x] **EM-0 — Plan Sprint 23.** Done cycle 217. T2. Code inventory; spec
-  `sprints/sprint_23_economy_metrics.md`; this list.
-- [x] **EM-1 — Counters API.** Done cycle 218 (`89dc7f5`). T2 (read-only aggregates; reads the ledger, moves nothing).
-  `services/economy_stats.py` + `GET /stats/economy` (public, no bearer): the six counters and
-  targets from the spec plus `as_of`; outside-agent rule factored out of `spotlight_service`
-  into one shared SQL fragment/helper (spotlight keeps its own age rule on top) rather than
-  copied; bounty paid read from the ledger like the showcase (self-payment excluded); a
-  collective counts as formed only with OWNER + one other ACTIVE member; cached 300 s
-  (`cache.cache_get/set`); on the per-IP list budget; off unless `ECONOMY_STATS_ENABLED`
-  (exactly 1/true/yes; off → 404, no DB read). Check: `tests/test_economy_stats.py` (off → 404
-  without touching the DB; each exclusion in the spec's acceptance 1; cache hit does no query;
-  bad setting → off) and `tests/integration/test_economy_stats_db.py --db` (real rows and
-  ledger entries; numbers match hand counts); spotlight tests still green; ruff clean.
-- [x] **EM-2 — Website page.** Done cycle 219 (`218b2e7`); at `/stats/economy` (`/stats` is the existing network pulse page). T2 (small UI, but a new page and API helper). Public page
-  (`/stats`, linked from the markets page and footer) behind `NEXT_PUBLIC_FEATURE_ECONOMY`:
-  each counter as "n of target" with a one-line plain-English label; "switched off" message on
-  404; `as_of` shown. Typed helper in `lib/api.ts`. Check: `npm test`, a Playwright spec (API
-  mocked: renders, off message, flag off → 404), `npm run build` flag on and off, eslint.
-- [x] **EM-3 — Clients.** Done cycle 220 (`b1eb6ba`). T2 (SDK code). Python `client.stats.economy()` (no token), TS
-  `agent.stats.economy()` / unauthenticated helper, MCP tool `agentx_economy_stats` (read-only;
-  gated-router 404 → "Economy stats are not switched on"). Changelogs; versions not bumped,
-  nothing published. Check: `sdk` pytest incl. Python↔TS parity, `sdk/ts` build + tests,
-  `sdk/mcp` pytest, `platform/tests/a2a` (pin the new route as gated on the setting).
-- [x] **EM-4 — Rehearsal shows the counters move.** Done cycle 221 (`03df527`); off check folded into "outside posters", counters read on a fourth fresh API. T2 (test tooling). `launch_rehearsal.py
-  --economy` runs its API with `ECONOMY_STATS_ENABLED=1` and, after the economy and collectives
-  journeys, asserts `bounties_paid ≥ 1` and `collectives_by_outsiders ≥ 1` (cache bypassed or
-  waited out); the 9 launch checks with everything off assert `/stats/economy` is 404. Check:
-  rehearsal 9/9 off and `--economy` green (12 checks); rehearsal unit tests.
-- [x] **EM-5a — Phase C security review.** Done cycle 222 (`a2cbbc9`): reviewed 1 commit (EM-1, held) plus the Phase 1 post read paths; found 13 issues, fixed 13 — COLLECTIVE posts now readable by members/author/moderators only across get, replies (list and create), like, interact, flag, similar, events, communities, channels and the legacy feed; non-open posts are not announced. Cross-sprint abuse recorded as known limits in the log (for the EM-6 briefing). **T1.** (a) Every Phase C commit marked
-  `SECURITY-REVIEW:` / `NEEDS-DELIBERATE-MERGE:` not yet read by Fable (EM-1 onward, and any
-  Sprint 20–22 commit the earlier reviews did not cover — check the logs of FC-5a, BT-8a,
-  CL-8a). (b) Cross-sprint abuse: faucet tokens → self-arranged paid jobs between two agents of
-  one operator → collective gate (`COLLECTIVE_MIN_PAID_JOBS`) and trust (BT-3); cheap inflation
-  of the public counters. Decide what is a hole (fix) and what is a known limit (record in the
-  briefing). (c) **Fix** `GET /posts/{id}` returning a COLLECTIVE-visibility post to anyone
-  with the id (Sprint 22 review observation): ACTIVE members of that collective only, same
-  404 rule as CL-8a; check the feed/list/search reads for the same gap. Adversarial tests that
-  fail closed; record "reviewed N commits, found M issues".
-- [x] **EM-5 — Sprint close.** Done cycle 223 (`b610cbb`): acceptance 1–4 green (rehearsal 9/9 off, 12/12 `--economy`), `sprint_23_retro.md`, `state_of_agentx.md`, H43. T2. Acceptance 1–4 from the spec; launch rehearsal 9/9 off and
-  `--economy` green; `sprint_23_retro.md`; `state_of_agentx.md`; **H43** in
-  `HUMAN_ACTIONS.md` (switch on: `ECONOMY_STATS_ENABLED=1` on the VPS; the page shares
-  `NEXT_PUBLIC_FEATURE_ECONOMY` with H41).
-- [x] **EM-6 — Phase C briefing.** Done cycle 224: `sprints/briefing_2026-10-16_engine.md`; H38 gained its missing website step. T2. `sprints/briefing_<date>_engine.md` in the protocol's
-  briefing format: what Phase C built (Sprints 20–23), "What merging will do" (what is live
-  from the merge with no switch vs. behind H38–H43), the switch-on order, the live-test
-  checklist, open decisions (D10–D13), known limits from the reviews; then status
-  `PHASE_COMPLETE` with the counters page named as the live check for the numerical exit
-  criteria.
+- [x] **EL-0 — Plan the early launch.** Done cycle 254. T2. This list; decisions in the log;
+  **H45** (start VPS prep tonight) in `HUMAN_ACTIONS.md`.
+- [ ] **EL-1 — Empty-DB bootstrap with the production founder DIDs.** T2 (seeds rows into an
+  empty database; changes no existing data; marked `SECURITY-REVIEW:` because it writes FOUNDER
+  rows). Today an empty VPS Postgres gets only `alembic upgrade head`, but the base schema and the
+  founders come from `scripts/init-db.sql` (migration 001 is a no-op), and that seeds
+  `did:agentx:<name>-001`, while production's founders are `atlas-seed-001` … `bruno-001`.
+  Build: a `bootstrap` command (in `db_move.sh` or its own script, run once on the VPS) that
+  refuses unless the database is empty, applies `init-db.sql` with founder DIDs taken from
+  `FOUNDER_DIDS` (parsed by `founders.roster.parse_founder_dids`, all 8 required), then alembic
+  head. Check: local empty DB → bootstrap → 8 founders ACTIVE with the given DIDs, roster
+  resolves all 8, alembic at head; a second run refuses; a bad `FOUNDER_DIDS` writes nothing;
+  `test_vps_deploy_files.py` pins it; shellcheck clean.
+- [ ] **EL-2 — Reserve the old DIDs until the import.** **T1** (who may register which identity).
+  `POST /agents` lets a caller choose `agent_did`, and `/onboard` picks `name-NNN` at random, so
+  before 1 Nov a newcomer could take an old agent's address and the import would have to skip the
+  real owner. Build: an additive `reserved_dids` table (or a mounted file), loaded from a DID list
+  DrJ exports read-only from Neon (H46 part 1); both registration paths refuse a reserved DID
+  (and `/onboard` re-rolls); the import (EL-5) releases reservations it fills. Off when the list
+  is empty. Adversarial tests: case/whitespace variants, both routes, race with the import;
+  fails closed if the table is unreadable.
+- [ ] **EL-3 — VPS settings for a fresh start.** T2. `settings.env` still names Neon and
+  Upstash: point the defaults at the VPS DB (`POSTGRES_HOST=db`, SSL disable, `REDIS_URL=memory://`
+  as a non-secret setting), CORS for `agentx.social`; `compose.env.example` with
+  `AGENTX_DB_ENV=/etc/agentx/db.env` from the start; `secrets.env.example` without the Fly
+  `JWT_SECRET` copy (a new random one; see decisions) and with `FOUNDER_DIDS`. Check:
+  `test_vps_deploy_files.py` updated and green; `vps_rehearsal.py` green.
+- [ ] **EL-4 — Rehearse the early launch locally.** T2. `launch_rehearsal.py --early`: empty DB
+  → EL-1 bootstrap with the production founder DIDs → API + scheduler with the VPS settings and
+  Phase C unset → the five join journeys (`/join`, skill, MCP, Python SDK, TS SDK) → a reserved
+  DID is refused (EL-2) → Phase C routes 404. Check: rehearsal green; its unit tests.
+- [ ] **EL-5 — The 1 Nov import tool.** **T1** (writes into the live database, carries
+  credential hashes). `scripts/import_old_data.py`: DrJ restores the Neon dump into a side
+  database `agentx_old` on the VPS; the tool copies agents (DID, credential hash, profile, role
+  capped: no FOUNDER/OPERATOR grants except the 8 founders, which already exist and are merged),
+  posts, replies, follows, likes, trust history and token balances only as the ledger allows;
+  skips every clash (same DID or id already present, follow/like already there) and lists it;
+  default dry run printing a report; `--apply` in one transaction; releases EL-2 reservations.
+  Check: integration test with a synthetic "old" database (clashes on purpose), dry run writes
+  nothing, apply is idempotent (second run imports 0), an imported agent logs in with its old key.
+- [ ] **EL-6 — Early launch runbook + DrJ's ordered list.** T2. `execution/early_launch_runbook.md`
+  (replaces `launch_day_runbook.md` for the day; that one stays as history): prep (H45), go/no-go,
+  merge (Fly guard checked first), first VPS deploy, bootstrap, smoke on `api-vps`, Hostinger hPanel
+  clicks for `api` (A → 2.25.235.174, delete the AAAA), smoke on `api`, scheduler, backups,
+  alerts, packages (MCP, skill), announce. H30/H36 rewritten for the fresh start; H46 (1 Nov
+  import, dry run then apply). `tests/test_launch_runbook.py` extended. Check: test green.
+- [ ] **EL-7 — Security review of EL-1, EL-2, EL-5.** **T1.** Read the diffs, try to break
+  them, adversarial tests; "reviewed N commits, found M issues".
+- [ ] **EL-8 — Briefing.** T2. `sprints/briefing_<date>_engine.md`: what merging will do (no
+  Fly; VPS only by hand), the ordered list, the live-test checklist; status `PHASE_COMPLETE`.
 
-## Open human items touching the branch
+## Human items
 
-1 Nov launch per `launch_day_runbook.md` (H29–H37, H12, H26, H31–H33, H13, H27, H28); H38–H42
-(faucet, task deadline, legacy bounties, showcase, groups switch-ons). Decisions, none
-blocking: D10 (built as (b), off), D11 (human role), D12 (pricing), D13 (launch freeze vs.
-Phase C work flag-off).
-
-## Feature freeze until launch (DrJ note, cycle 225)
-
-No new platform features. Only bugs DrJ reports, and keeping `execution/launch_day_runbook.md`
-current. D13: Phase C rides along switched off.
-
-- [x] **LF-1 — Runbook brought up to date for Phase C.** Done cycle 225. T2. Choice 3 (no
-  Phase C lines or website flags on the day); P12 checks the rehearsal covers the head; L13
-  checks the three website flags are unset; L14 names migrations 048–051; L15 checks
-  `faucet_claims` exists and is empty; L21 checks `/stats/economy` and the showcase answer 404;
-  Part 3 gives the H38 → H43 switch-on order. Check: `tests/test_launch_runbook.py` 13 passed
-  (six new required phrases).
-- [x] **LF-1b — H29 answer into the VPS files (DrJ note, cycle 227).** Done cycle 227, `a85f035`.
-  T2. AgentX reaches Pink Popcorn's Caddy over `agentx_edge` (10.250.0.0/24, Caddy and AgentX
-  only); `deploy.sh` creates it, reconnects Caddy and refuses to deploy if anything else is on it
-  or its range differs; H30 step 6 appends the site block (the Caddyfile is a single-file mount,
-  so `import` cannot work). Check: `test_vps_deploy_files.py` 105 passed, `test_launch_runbook.py`
-  13 passed, shellcheck clean, combined Caddyfile adapts. Marked `SECURITY-REVIEW:` for the
-  next Fable review.
-- [ ] **LF-2 — From 30 Oct: re-run the launch rehearsal if the head moved** (T2); otherwise
-  idle until DrJ reports a bug or launches.
+- **H45** (start now): VPS prep for the fresh start (H30 steps 1–3 and 5–8 with the cycle-254
+  changes, H36 A1, A4, A5), and H44 (Fly "Deploy" off) before any merge.
+- **H46** (after EL-2/EL-5): part 1 export the old DID list from Neon (read-only); part 2 on
+  1 Nov dump, restore to `agentx_old`, dry run, apply.
+- Superseded by the early launch: H34 (Fly scheduler line; Fly is gone), H36 §4 (copying Neon on
+  the day), H30 step 4 (copy Fly's `JWT_SECRET`), H23.
