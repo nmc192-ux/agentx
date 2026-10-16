@@ -14,6 +14,14 @@
 # version keeps serving. Each API container must report "healthy" before the next one is
 # replaced, so Caddy always has one to send traffic to. The scheduler is restarted only if it
 # was already running, never started here (exactly one scheduler, plan §5).
+#
+# Before anything else it makes sure of the proxy network (H29 answer, cycle 227): a small
+# network shared only by Pink Popcorn's Caddy and AgentX (PROXY_NETWORK, normally agentx_edge),
+# so Pink Popcorn's own app cannot reach the API directly or send it a forwarded address the
+# API would believe. It creates the network if missing, (re)connects Caddy (a recreated Caddy
+# container loses the connection), and refuses to deploy if the network's range is not
+# PROXY_SUBNET (the API trusts forwarded headers from that range only) or anything other than
+# Caddy and AgentX's own containers is on it.
 set -euo pipefail
 
 TAG="${1:-}"
@@ -32,6 +40,45 @@ PREVIOUS="$(sed -n 's/^IMAGE_TAG=//p' compose.env | tail -n 1)"
 # Shell environment wins over --env-file, so every compose call below uses the new tag.
 export IMAGE_TAG="$TAG"
 dc() { docker compose --env-file compose.env "$@"; }
+# A compose.env value; the shell environment wins, as it does for docker compose.
+setting() { local v="${!1:-}"; [[ -n "$v" ]] || v="$(sed -n "s/^$1=//p" compose.env | tail -n 1)"; printf '%s' "$v"; }
+
+ensure_proxy_network() {
+  local net subnet caddy caddy_id members id project
+  net="$(setting PROXY_NETWORK)"
+  subnet="$(setting PROXY_SUBNET)"
+  caddy="$(setting CADDY_CONTAINER)"
+  if [[ -z "$net" || -z "$subnet" || -z "$caddy" ]]; then
+    echo "compose.env must set PROXY_NETWORK, PROXY_SUBNET and CADDY_CONTAINER" >&2
+    return 2
+  fi
+  if ! docker network inspect "$net" >/dev/null 2>&1; then
+    echo "creating network $net ($subnet)"
+    docker network create --driver bridge --subnet "$subnet" "$net" >/dev/null
+  fi
+  if [[ "$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$net")" != "$subnet " ]]; then
+    echo "refusing to deploy: network $net is not exactly $subnet (PROXY_SUBNET)" >&2
+    return 1
+  fi
+  caddy_id="$(docker inspect -f '{{.Id}}' "$caddy" 2>/dev/null)" || {
+    echo "refusing to deploy: Caddy container $caddy not found (CADDY_CONTAINER)" >&2
+    return 1
+  }
+  # shellcheck disable=SC2016  # a Go template for docker, not a shell variable
+  members="$(docker network inspect -f '{{range $id, $c := .Containers}}{{$id}} {{end}}' "$net")"
+  if [[ " $members " != *" $caddy_id "* ]]; then
+    echo "connecting $caddy to $net"
+    docker network connect "$net" "$caddy"
+  fi
+  for id in $members; do
+    [[ "$id" == "$caddy_id" ]] && continue
+    project="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$id" 2>/dev/null || true)"
+    if [[ "$project" != "$PROJECT" ]]; then
+      echo "refusing to deploy: container $id on $net is neither Caddy nor AgentX" >&2
+      return 1
+    fi
+  done
+}
 
 scheduler_running() {
   [[ -n "$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" \
@@ -56,6 +103,7 @@ wait_healthy() {
   return 1
 }
 
+ensure_proxy_network
 echo "deploying $TAG (previous: ${PREVIOUS:-none})"
 had_scheduler=no
 if scheduler_running; then had_scheduler=yes; fi

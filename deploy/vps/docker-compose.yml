@@ -15,11 +15,12 @@
 # container's superuser. Going back to Neon = empty AGENTX_DB_ENV again and recreate api-1/api-2.
 #
 # Rules pinned by platform/tests/infrastructure/test_vps_deploy_files.py:
-#   - nothing is published on the host: only the shared Caddy (on ${PROXY_NETWORK}) can reach the API;
+#   - nothing is published on the host: only Caddy, on ${PROXY_NETWORK} (agentx_edge, shared by
+#     Caddy and AgentX only; deploy.sh checks that), can reach the API;
 #   - forwarded headers are trusted from ${PROXY_SUBNET} only, never "*";
 #   - scheduler and migrate never start on a plain `up` (profiles), so there is never a
 #     second scheduler by accident (plan §5);
-#   - db is on the private network only (not Caddy's, which Pink Popcorn shares), publishes no
+#   - db is on the private network only (not the proxy network Caddy is on), publishes no
 #     port, and never sees api.env (no JWT secret in the database container).
 
 name: agentx
@@ -124,5 +125,5 @@ networks:
   agentx:
     name: agentx_private
   proxy:
-    name: "${PROXY_NETWORK:?set PROXY_NETWORK (Pink Popcorn's Caddy network, H29)}"
+    name: "${PROXY_NETWORK:?set PROXY_NETWORK (agentx_edge: Caddy and AgentX only, H29)}"
     external: true

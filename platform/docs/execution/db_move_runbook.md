@@ -13,8 +13,8 @@ going anyway (`vps_migration_plan.md`).
 
 A fourth container, `db` (Postgres 17 with pgvector, the same extension Neon has for
 `posts.embedding`), runs beside `api-1`, `api-2` and `scheduler` on the VPS. It sits on AgentX's
-private Docker network only. It is not on Caddy's network (which Pink Popcorn shares), it
-publishes no port, and nothing outside the VPS can reach it. Its data lives in the Docker volume
+private Docker network only. It is not on `agentx_edge` (the small network Caddy uses to reach
+the API), it publishes no port, and nothing outside the VPS can reach it. Its data lives in the Docker volume
 `agentx_pgdata`. One settings file, `/etc/agentx/db.env`, holds its user, database name and
 password, and the API reads the same file. The switch is one line in `/opt/agentx/compose.env`:
 
@@ -44,8 +44,9 @@ moment the VPS takes its first write, Neon is out of date (§5).
 
 ## 3. Before 1 Nov (any evening; about 20 minutes; nothing live changes)
 
-Do these after H30 steps 1–8 (deploy user, `/etc/agentx`, `compose.env`, Caddy, DNS for
-`api-vps`, GitHub secrets). H30 step 9, the first deploy, waits for 1 Nov (B6), because it needs
+Do these after H30 steps 1–8 (deploy user, `/etc/agentx`, `compose.env` and the `agentx_edge`
+network, Caddy, DNS for `api-vps`, GitHub secrets). H30 step 5's `compose.env` already has the two
+A3 lines, so A3 is then only a check that they are there. H30 step 9, the first deploy, waits for 1 Nov (B6), because it needs
 the merge.
 
 **A1. Make the database settings file** (on the VPS):

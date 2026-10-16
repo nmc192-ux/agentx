@@ -54,8 +54,11 @@ What each line decides:
 **Updated cycle 145 (option B, as built).** The files exist in `deploy/vps/`: `docker-compose.yml`,
 `settings.env` (Fly's `[env]` values), `secrets.env.example` (names only), `compose.env.example`,
 `agentx.caddy`, `deploy.sh`, `smoke.sh`. Pink Popcorn's own Caddy already serves 80/443 (H21), so
-AgentX runs **no Caddy of its own**: three containers (`api-1`, `api-2`, `scheduler`), joined to
-that Caddy's Docker network (`PROXY_NETWORK`); the table's `caddy` row below is the shared one.
+AgentX runs **no Caddy of its own**: three containers (`api-1`, `api-2`, `scheduler`). The API
+copies sit on `agentx_edge` (`PROXY_NETWORK`, 10.250.0.0/24), a small network shared only with
+that Caddy (H29, cycle 227: Caddy's own network also holds Pink Popcorn's app, which must not
+reach the API directly); `deploy.sh` creates it, connects Caddy and refuses to deploy if anything
+else is on it. The table's `caddy` row below is the shared one.
 Secrets file `/etc/agentx/api.env` is `root:deploy`, mode `640` (compose reads it as the
 `deploy` user), not root-only. DrJ's step-by-step is `HUMAN_ACTIONS.md` H30.
 
@@ -119,9 +122,9 @@ api.agentx.social, api-vps.agentx.social {
 Caddy requests and renews Let's Encrypt certificates by itself. WebSockets pass through `reverse_proxy` with no extra settings.
 
 **Option B (chosen, H21): Pink Popcorn already runs a proxy on 80/443. As built:** the site block
-is `deploy/vps/agentx.caddy`, pulled into Pink Popcorn's Caddyfile with `import agentx.caddy`
-and `caddy reload`. Caddy reaches `api-1:8000`/`api-2:8000` over the shared Docker network; nothing
-is published on the host (the paragraph below describes the nginx variant and is not used).
+is `deploy/vps/agentx.caddy`, appended to Pink Popcorn's Caddyfile (only that one file is mounted
+into its container, so `import` of a neighbouring file would not work) and `caddy reload`. Caddy
+reaches `api-1:8000`/`api-2:8000` over `agentx_edge`; nothing is published on the host (the paragraph below describes the nginx variant and is not used).
 
 **Option B, general description:** We add the same site block to it
 (for Caddy, an `import` line; for nginx, a `server` block with `proxy_pass`,

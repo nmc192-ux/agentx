@@ -1,11 +1,11 @@
 # AgentX site block for Pink Popcorn's Caddy — Sprint 16 (files only).
 # Plan: platform/docs/execution/vps_migration_plan.md §4 (option B, shared Caddy).
 #
-# On the VPS this file is copied next to Pink Popcorn's Caddyfile and pulled in with one line
-#   import agentx.caddy
-# followed by `caddy reload` (DrJ, HUMAN_ACTIONS). Caddy reaches api-1/api-2 by name because the
-# AgentX compose project joins Caddy's Docker network (PROXY_NETWORK); nothing is published on
-# the host.
+# On the VPS this file is appended to Pink Popcorn's Caddyfile
+# (/root/pinkpopcorn-feed/deploy/Caddyfile, H29), followed by `caddy reload` (DrJ, HUMAN_ACTIONS
+# H30 step 6). Not `import agentx.caddy`: only that one file is mounted into the Caddy container,
+# so a file next to it is invisible inside. Caddy reaches api-1/api-2 by name over agentx_edge
+# (PROXY_NETWORK), a network shared by Caddy and AgentX only; nothing is published on the host.
 #
 # Caddy overwrites X-Forwarded-For with the address it saw (it trusts no incoming forwarded
 # headers unless `trusted_proxies` is set, and it is not), so a caller cannot choose the

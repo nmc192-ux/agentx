@@ -216,6 +216,13 @@ class TestForwardedGuard:
         assert result.returncode == 1
         assert "refusing to start" in result.stderr
 
+    def test_example_uses_the_caddy_and_agentx_only_network(self):
+        # H29: Pink Popcorn's app shares pinkpopcorn-feed_default with Caddy, so AgentX never joins it.
+        example = _env_file(VPS / "compose.env.example")
+        assert example["PROXY_NETWORK"] == "agentx_edge"
+        assert example["CADDY_CONTAINER"] == "pinkpopcorn-feed-caddy-1"
+        assert "pinkpopcorn" not in example["PROXY_NETWORK"]
+
     def test_example_subnet_is_narrow(self):
         value = _env_file(VPS / "compose.env.example")["PROXY_SUBNET"]
         assert "*" not in value and value not in ("0.0.0.0/0", "::/0")
@@ -665,6 +672,11 @@ class TestDeployWorkflow:
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 echo "$*" >> "$FAKE_LOG"
 case "$*" in
+  "network inspect -f {{range .IPAM.Config}}"*) echo "${FAKE_NET_SUBNET-10.250.0.0/24} "; exit 0 ;;
+  "network inspect -f {{range \$id"*) echo "${FAKE_NET_MEMBERS-caddyid}"; exit 0 ;;
+  "network inspect "*) [ "${FAKE_NET_EXISTS:-1}" = 1 ]; exit $? ;;
+  "inspect -f {{.Id}} "*) [ "${FAKE_CADDY:-1}" = 1 ] || exit 1; echo caddyid; exit 0 ;;
+  "inspect -f {{index .Config.Labels"*) case "${*: -1}" in stranger*) echo pinkpopcorn-feed ;; *) echo agentx ;; esac; exit 0 ;;
   *"com.docker.compose.service=scheduler"*) [ "${FAKE_SCHEDULER:-0}" = 1 ] && echo sched1; exit 0 ;;
   *"run --rm migrate"*) exit "${FAKE_MIGRATE_RC:-0}" ;;
   *" ps -q "*) echo "cid-${*: -1}"; exit 0 ;;
@@ -687,7 +699,9 @@ class TestDeployScript:
         docker.chmod(0o755)
         workdir = tmp_path / "opt"
         workdir.mkdir()
-        (workdir / "compose.env").write_text(f"AGENTX_IMAGE=ghcr.io/x/agentx-platform\nIMAGE_TAG={OLD}\n")
+        (workdir / "compose.env").write_text(
+            f"AGENTX_IMAGE=ghcr.io/x/agentx-platform\nIMAGE_TAG={OLD}\nPROXY_NETWORK=agentx_edge\n"
+            "PROXY_SUBNET=10.250.0.0/24\nCADDY_CONTAINER=pinkpopcorn-feed-caddy-1\n")
         log = tmp_path / "docker.log"
 
         def _run(tag=NEW, **env):
@@ -747,6 +761,47 @@ class TestDeployScript:
         assert result.returncode == 0, result.stderr
         assert self._index(calls, "up -d --no-deps api-2") < self._index(
             calls, "--profile scheduler up -d --no-deps scheduler")
+
+    # Proxy network (H29 answer, cycle 227): agentx_edge is shared by Caddy and AgentX only.
+    def test_creates_network_and_connects_caddy_before_anything_else(self, run):
+        result, calls, _ = run(FAKE_NET_EXISTS="0", FAKE_NET_MEMBERS="")
+        assert result.returncode == 0, result.stderr
+        create = self._index(calls, "network create --driver bridge --subnet 10.250.0.0/24 agentx_edge")
+        connect = self._index(calls, "network connect agentx_edge pinkpopcorn-feed-caddy-1")
+        assert create < connect < self._index(calls, "pull api-1")
+
+    def test_existing_network_with_caddy_is_left_alone(self, run):
+        result, calls, _ = run(FAKE_NET_MEMBERS="caddyid agentx-api-1 agentx-api-2")
+        assert result.returncode == 0, result.stderr
+        assert not any("network create" in c or "network connect" in c for c in calls)
+
+    def _refused(self, result, calls, env, words):
+        assert result.returncode != 0
+        assert "refusing to deploy" in result.stderr or "must set" in result.stderr
+        assert words in result.stderr
+        assert not any(" pull " in f" {c} " or " up " in f" {c} " or "migrate" in c for c in calls)
+        assert f"IMAGE_TAG={OLD}" in env
+
+    def test_refuses_when_another_container_is_on_the_network(self, run):
+        result, calls, env = run(FAKE_NET_MEMBERS="caddyid agentx-api-1 stranger-app")
+        self._refused(result, calls, env, "neither Caddy nor AgentX")
+
+    def test_refuses_when_network_range_differs_from_trusted_subnet(self, run):
+        result, calls, env = run(FAKE_NET_SUBNET="172.18.0.0/16")
+        self._refused(result, calls, env, "is not exactly 10.250.0.0/24")
+
+    def test_refuses_when_caddy_container_is_missing(self, run):
+        result, calls, env = run(FAKE_CADDY="0")
+        self._refused(result, calls, env, "Caddy container pinkpopcorn-feed-caddy-1 not found")
+
+    @pytest.mark.parametrize("name", ["PROXY_NETWORK", "PROXY_SUBNET", "CADDY_CONTAINER"])
+    def test_refuses_without_proxy_settings(self, run, tmp_path, name):
+        env_path = tmp_path / "opt" / "compose.env"
+        env_path.write_text("\n".join(
+            line for line in env_path.read_text().splitlines() if not line.startswith(f"{name}=")) + "\n")
+        result, calls, env = run()
+        self._refused(result, calls, env, "must set PROXY_NETWORK, PROXY_SUBNET and CADDY_CONTAINER")
+        assert calls == []
 
     def test_rollback_skips_migration(self, run):
         result, calls, env = run(OLD, SKIP_MIGRATE="1")

@@ -18,7 +18,7 @@ down as usual.
 - H37 (steps 1–2 now: ntfy app, UptimeRobot account; step 3, switching the alerts on, is on the day in the runbook).
 - H36 (prep now, runbook Part 1; the move itself is on the day in the runbook).
 - H30 (steps 1–8 now, they change nothing live; the first start, step 9, is on the day in the runbook).
-- H29 (Caddy facts for the VPS files; five minutes, read-only).
+- ~~H29~~ done 16 Oct (cycle 227 put the answer into the VPS files and H30).
 - H35 (read four numbers off your dashboards; read-only).
 - H24 (engine commit address, one minute; only matters for Vercel previews).
 - D13 (added 15 Oct, cycle 189): launch the 15 Oct state, or let Phase C work ride along switched off? One line; default applies if you say nothing.
@@ -340,7 +340,9 @@ down as usual.
     files to `/opt/agentx`, add two lines to `compose.env`, start the `db` container, add the
     nightly backup line to cron, and **scale Fly to zero** (production is down anyway, and
     otherwise Fly starts writing to Neon the moment Neon wakes on 1 Nov). Needs H30 steps 1–8
-    first. Nothing live changes.
+    first (step 5 now makes the `agentx_edge` network, which the `db` start in A4 expects to
+    exist, and its `compose.env` already holds the two A3 lines, so A3 is only a check).
+    Nothing live changes.
   - **On 1 Nov (§4 B1–B14):** `bash db_move.sh check`, `dump`, `restore <file>`, `verify`, then one
     line in `compose.env` switches the API to the VPS database, then the first deploy (H30 step 9),
     smoke test, scheduler on, first backup. Each row says what you must see and what to do if
@@ -484,8 +486,8 @@ down as usual.
   Everything here is for the Pink Popcorn VPS (2.25.235.174). Fly keeps serving everyone the whole
   time; the VPS gets its own test name `api-vps.agentx.social` first. Do the steps in order.
   Lines starting `# ` are comments, not commands. `<…>` means "replace with your value".
-  **0. Before you start:** H29 answered (the engine then writes the Caddy network name and subnet
-  into the example file) and the branch merged to `main` (the workflow only deploys code that is on
+  **0. Before you start:** H29 is answered (done 16 Oct; the values are in steps 5 and 6) and,
+  for step 9 only, the branch is merged to `main` (the workflow only deploys code that is on
   `main`). Nothing here puts a second scheduler on the VPS; the scheduler stays off until H23 cutover.
   **1. Make a `deploy` user (run on the VPS as root or with sudo).** This is the account GitHub logs
   in as. Being in the `docker` group is effectively root on that machine, which is why the key is
@@ -541,41 +543,82 @@ down as usual.
   ssh <your login>@2.25.235.174 "sudo awk -F= '/^JWT_SECRET=/{print length(\$2)}' /etc/agentx/api.env"
   ```
   If they differ, tell the engine (resume note) what both numbers were; do not paste the secret.
-  **5. The compose settings file on the VPS.** Run as the deploy user:
+  **5. The compose settings file and AgentX's own small network (on the VPS).** First the file,
+  as the deploy user:
   ```
   sudo -u deploy nano /opt/agentx/compose.env
   ```
-  Contents (use the network name and subnet from your H29 answer; the engine will put the real
-  values in `deploy/vps/compose.env.example` once you answer, so you can copy that file instead):
+  Contents (the same as `deploy/vps/compose.env.example`; only the first line needs your value):
   ```
   AGENTX_IMAGE=ghcr.io/<your GitHub user or organisation, all lowercase>/agentx-platform
   IMAGE_TAG=none
-  PROXY_NETWORK=<Caddy's Docker network name from H29>
-  PROXY_SUBNET=<that network's subnet, e.g. 172.20.0.0/16>
+  PROXY_NETWORK=agentx_edge
+  PROXY_SUBNET=10.250.0.0/24
+  CADDY_CONTAINER=pinkpopcorn-feed-caddy-1
+  AGENTX_SECRETS_FILE=/etc/agentx/api.env
+  AGENTX_DB_ENV=
+  AGENTX_DB_SECRETS_FILE=/etc/agentx/db.env
   ```
-  `PROXY_SUBNET` must be the network's real range, never `*` or `0.0.0.0/0`: the API refuses to
-  start with those (so strangers cannot pretend to be someone else's address).
-  **6. Give AgentX a name in Caddy.** Copy `deploy/vps/agentx.caddy` (it is in the repo; GitHub's
-  deploy copies the other files, not this one) to the folder holding Pink Popcorn's Caddyfile
-  (H29 tells which), add this one line at the end of that Caddyfile, and reload:
+  Then the network. Why: Pink Popcorn's Caddy shares its network with Pink Popcorn's app, and
+  the API believes "which address did the caller come from" from anything on its proxy network.
+  So AgentX does not join that network; Caddy joins a second, small one that only Caddy and
+  AgentX are on. Pink Popcorn is not affected (Caddy keeps its old network too; adding a network
+  to a running container does not restart it). First check the range is free (must print nothing):
   ```
-  import agentx.caddy
+  docker network ls -q | xargs docker network inspect -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}' | grep '10\.250\.'
+  ip route | grep '10\.250\.'
   ```
+  If either prints a line, do not go on; send it to the engine (it will pick another range).
+  Otherwise:
   ```
-  docker exec <caddy container name> caddy validate --config /etc/caddy/Caddyfile
-  docker exec <caddy container name> caddy reload --config /etc/caddy/Caddyfile
+  docker network create --driver bridge --subnet 10.250.0.0/24 agentx_edge
+  docker network connect agentx_edge pinkpopcorn-feed-caddy-1
+  docker network inspect agentx_edge --format '{{range .Containers}}{{.Name}} {{end}}'
   ```
-  Before the reload, one read-only check (added by the Sprint 16 security review): the file must
-  not already trust forwarded addresses for everyone. Run this; it must print nothing:
+  The last line must print only `pinkpopcorn-feed-caddy-1`. (Every AgentX deploy checks this again
+  and refuses to deploy if anything other than Caddy and AgentX is on `agentx_edge`, or if its
+  range is not `10.250.0.0/24`.)
+  **If Pink Popcorn's Caddy is ever recreated** (for example a `docker compose up` in
+  `/root/pinkpopcorn-feed` after changing its files), it comes back without `agentx_edge` and AgentX
+  answers 502 (the watchdog's `api` alert and UptimeRobot will say so). The fix is the
+  `docker network connect` line above, or any AgentX deploy, which reconnects it by itself.
+  **6. Give AgentX a name in Caddy.** Pink Popcorn's Caddyfile is
+  `/root/pinkpopcorn-feed/deploy/Caddyfile` and only that one file is mounted into the Caddy
+  container, so the AgentX block is added *to that file* (a separate `agentx.caddy` next to it
+  would be invisible inside the container). First one read-only check (added by the Sprint 16
+  security review): the file must not already trust forwarded addresses for everyone, and must
+  not already have the AgentX block. Both lines must print nothing:
   ```
-  grep -n trusted_proxies <path to Pink Popcorn's Caddyfile>
+  sudo grep -n trusted_proxies /root/pinkpopcorn-feed/deploy/Caddyfile
+  sudo grep -n agentx /root/pinkpopcorn-feed/deploy/Caddyfile
   ```
-  If it prints a line, do not add the `import`; send the engine that line (a wide `trusted_proxies`
-  would let any caller pick the address AgentX believes, and `smoke.sh` step 10 would fail on it).
-  If `validate` complains, do NOT reload; remove the `import` line again and send the message to the
-  engine. Caddy will only fetch a certificate for `api-vps.agentx.social` after step 7; the
-  `api.agentx.social` name keeps pointing at Fly, so its certificate is not obtainable yet and
-  Caddy will keep retrying quietly; that is expected until H23.
+  If the first prints a line, stop and send the engine that line (a wide `trusted_proxies` would
+  let any caller pick the address AgentX believes, and `smoke.sh` step 10 would fail on it). If
+  the second prints lines, the block is already there: skip to `validate` below.
+  Copy the block to the VPS (Mac Terminal, in the repo folder):
+  ```
+  scp deploy/vps/agentx.caddy <your login>@2.25.235.174:/tmp/agentx.caddy
+  ```
+  Then on the VPS: keep a copy of the current file, add the block to the end, and check it.
+  (`tee -a` adds to the same file; do not use an editor that saves a new file, or the running
+  container keeps seeing the old one.)
+  ```
+  sudo cp -p /root/pinkpopcorn-feed/deploy/Caddyfile /root/pinkpopcorn-feed/deploy/Caddyfile.before-agentx
+  { echo; cat /tmp/agentx.caddy; } | sudo tee -a /root/pinkpopcorn-feed/deploy/Caddyfile >/dev/null
+  docker exec pinkpopcorn-feed-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  ```
+  If `validate` ends with "Valid configuration", reload:
+  ```
+  docker exec pinkpopcorn-feed-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+  ```
+  If `validate` complains, do NOT reload; put the old file back and send the message to the engine:
+  ```
+  sudo cat /root/pinkpopcorn-feed/deploy/Caddyfile.before-agentx | sudo tee /root/pinkpopcorn-feed/deploy/Caddyfile >/dev/null
+  ```
+  Pink Popcorn's site keeps working throughout. Until step 9 AgentX's names answer 502 (nothing is
+  running behind them yet); that is expected. Caddy will only fetch a certificate for
+  `api-vps.agentx.social` after step 7; the `api.agentx.social` name keeps pointing at Fly, so its
+  certificate is not obtainable yet and Caddy will keep retrying quietly; that is expected until H23.
   **7. DNS (Hostinger → Domains → agentx.social → DNS records).** Add: type `A`, name `api-vps`,
   points to `2.25.235.174`, TTL `300`. Do not touch the `api` record.
   **8. GitHub settings (repo → Settings → Environments → `production`).** The environment already
@@ -616,7 +659,14 @@ down as usual.
   **12. Tell the engine** in a resume note: `H30 done` plus the last lines of `smoke.sh`.
   Unblocks: the cutover plan (H23, migration plan §9), which the engine writes up only when you ask.
 
-- [ ] **H29 — Two more read-only facts about the VPS's Caddy, plus the Upstash region (about five minutes; changes nothing).**
+- [x] **H29 — Two more read-only facts about the VPS's Caddy, plus the Upstash region (about five minutes; changes nothing).**
+  **Done 16 Oct (DrJ's note, used in cycle 227):** container `pinkpopcorn-feed-caddy-1` (`caddy:2`,
+  80/443), on `pinkpopcorn-feed_default` together with `pinkpopcorn-feed-app-1`; Caddyfile
+  `/root/pinkpopcorn-feed/deploy/Caddyfile` mounted as the single file `/etc/caddy/Caddyfile`.
+  Because Pink Popcorn's app shares that network, AgentX uses its own small network
+  `agentx_edge` (10.250.0.0/24) shared only by Caddy and AgentX; H30 steps 5 and 6 now say how.
+  Because only the Caddyfile itself is mounted, `import agentx.caddy` would not find the file,
+  so H30 step 6 now appends the AgentX block to the Caddyfile instead. Nothing more needed.
   **Cycle 164: the Upstash part (step 2 and the Upstash timing line) is no longer needed; AgentX
   runs without Redis now. Only the Caddy facts are still wanted.**
   Added cycle 141 (Sprint 16). Your H21 answer says Pink Popcorn's Caddy container already serves
@@ -1871,3 +1921,11 @@ down as usual.
   broker-free scheduler (Postgres advisory lock, same jobs, LLM budget in Postgres); every
   Redis use fails open; a test that API and scheduler run with `REDIS_URL=memory://`; the
   fly.toml change as a human action (H34); refresh the merge briefing. Done in cycle 164.
+
+- 2026-10-16 (via resume note, recorded cycle 227): H29. Caddy container `pinkpopcorn-feed-caddy-1`
+  (`caddy:2`, publishes 80/443 tcp+udp) on Docker network `pinkpopcorn-feed_default` (alias
+  `caddy`); Caddyfile `/root/pinkpopcorn-feed/deploy/Caddyfile` → `/etc/caddy/Caddyfile`; volumes
+  `pinkpopcorn-feed_caddy-data`, `pinkpopcorn-feed_caddy-config`. Also on that network:
+  `pinkpopcorn-feed-app-1`. Use the separate small network shared only by Caddy and AgentX (as
+  the S16 review proposed); update `deploy/vps` and the H30/H36 steps. Upstash part no longer
+  needed. → done cycle 227 (`agentx_edge`, 10.250.0.0/24; H29 ticked; H30 steps 5–6 rewritten).

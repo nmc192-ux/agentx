@@ -81,16 +81,18 @@ Fly is not used any more.
 
 Do them in this order. Each one is safe to do weeks early. Tick them here or in HUMAN_ACTIONS.
 
-### P01 · any day · VPS — Caddy facts (H29)
-**Run:** HUMAN_ACTIONS H29 steps 1 and 1b (read-only; skip the Upstash lines).
-**You must see:** the Caddy container's network name and Caddyfile folder.
-**If not:** send `docker ps` output to the engine.
+### P01 · done 16 Oct · VPS — Caddy facts (H29)
+**Run:** nothing; done. DrJ's H29 answer is in the VPS files (cycle 227): Caddy is `pinkpopcorn-feed-caddy-1`,
+its Caddyfile `/root/pinkpopcorn-feed/deploy/Caddyfile`, and AgentX uses its own small network
+`agentx_edge` (Caddy and AgentX only), made in H30 step 5.
+**You must see:** nothing to do; go on to P02.
+**If not:** —
 **Undo:** nothing changed.
 
 ### P02 · any day · VPS + Mac — Prepare the VPS (H30 steps 1–8)
 **Run:** HUMAN_ACTIONS H30 steps 1–8 (deploy user and key, `/etc/agentx/api.env`,
-`compose.env`, `agentx.caddy`, the `api-vps` DNS record, GitHub `production` secrets), with two
-changes:
+`compose.env` and the `agentx_edge` network, the AgentX block added to Pink Popcorn's Caddyfile,
+the `api-vps` DNS record, GitHub `production` secrets), with two changes:
 - Step 3: put these lines in `/etc/agentx/api.env` as well as the ones H30 lists. The first one
   tells the API which website may call it from a browser (Fly had this as a secret; the VPS
   needs it in this file, or the website and the `/join` form fail with "blocked"):
@@ -369,9 +371,9 @@ curl -s https://api.agentx.social/health
 **You must see:** `2.25.235.174`, then `"status":"ok"`. Caddy fetches the certificate for
 `api.agentx.social` by itself within a few minutes of the DNS change.
 **If not:** `dig` still shows Fly: wait 5 minutes (TTL 300). A certificate error after 15
-minutes: VPS `docker exec <caddy container name> caddy reload --config /etc/caddy/Caddyfile`,
+minutes: VPS `docker exec pinkpopcorn-feed-caddy-1 caddy reload --config /etc/caddy/Caddyfile`,
 wait 2 minutes, try again; still failing → the engine, with
-`docker logs --tail 50 <caddy container name>`.
+`docker logs --tail 50 pinkpopcorn-feed-caddy-1`.
 **Undo:** L19's undo.
 
 ### L21 · 12:25 · VPS + Mac — Smoke test on the real name, plus the spoofed-address check
