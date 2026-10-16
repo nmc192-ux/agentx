@@ -1,5 +1,44 @@
 # Engine log
 
+## 2026-10-17 · cycle 261 · Fable (T1) · EL-7 security review of EL-1, EL-2, EL-5
+
+- **Reviewed 3 commits, found 1 issue (low), 0 holes.** Read `61af479` (EL-1 bootstrap, built on
+  Opus), `baa51ae` (EL-2 reserved DIDs) and `95cf7a7` (EL-5 import) in full, plus what they lean
+  on: the roster guard, the token route, the VPS settings, triggers, the unique display-name index,
+  every `INSERT INTO agents` in the app (3: `/agents`, `/agents/register`, `/onboard`; all three go
+  through the reservation check).
+- **What held:** EL-1's DID rewrite cannot be abused (`parse_founder_dids` only accepts
+  `did:agentx:<name>-(seed-)?NNN` for that founder's own name, so no quote or swap reaches the SQL;
+  the post-rewrite check and `resolve_founder` on every founder are belt and braces); the bootstrap
+  refuses any database with a table and holds an advisory lock; `deploy.sh` treats exit 3 as stop.
+  EL-2 fails closed (no DB error caught; table gone → 500 and no row), the shared/exclusive lock
+  pairing is right for both races, DIDs are lower-case by CHECK so case variants cannot slip past.
+  EL-5 copies no credential or grant column, caps every role above MEMBER, merges founders only by
+  the roster's address, mints wallet tokens only where the old ledger adds up and always with a
+  ledger line, and on the VPS (`APP_ENV=production`) the DID-only `client_credentials` grant is off,
+  so an imported record cannot be logged into without a token signed by the VPS's new secret (D14).
+- **Found and fixed (low):** `_make_agent_did` in `/agents/register` used `str.isalnum`, which
+  says yes to `日` or `é`; such a name made `did:agentx:日本語-123`, which the DID rule refuses →
+  500 (before EL-2 the DB CHECK gave the same 500). Now ASCII letters and digits only; `日本語`
+  becomes `did:agentx:agent-NNN`. Not a hole: nothing was written either way.
+- **Adversarial tests added:** a founder look-alike in the old data (`did:agentx:nova-NNN`, role
+  FOUNDER, trust 0.99) comes in as MEMBER, has no founding label, the heartbeat still resolves the
+  roster's Nova and refuses the look-alike even when a roster names it (`name_mismatch`), and an
+  old FOUNDER refresh token for it yields a MEMBER access token; an old agent whose `agent_id` a
+  live newcomer already uses is skipped and the newcomer's row is untouched; the import's agent
+  column list names no password/secret/key/token column; the registry route makes a well-formed
+  DID from any name. Counts in the DB test world updated (16 old agents: 4 imported, 4 skipped,
+  2 roles capped, 5 posts).
+- **Noted, not changed (consistency, not security):** for an imported member the live
+  `token_transactions` lines whose other side was not imported are skipped while the balance
+  (proven by the OLD ledger) comes in, so the live legacy-points ledger does not sum to that
+  balance; legacy points are not spendable and no job recomputes balances from the ledger. Wallet
+  tokens (the spendable ones) always come with exactly one `import` line.
+- **Check:** `--db`: `test_import_old_data_db.py` 7, `test_reserved_dids_db.py` 10,
+  `test_bootstrap_db.py` 16 → 33 passed; no-DB: routers + services + founders + import/runbook/
+  rehearsal unit tests 2141 passed; ruff clean.
+- **Next:** EL-8 (T2): the briefing, then `PHASE_COMPLETE`.
+
 ## 2026-10-17 · cycle 260 · Opus (T2) · EL-6 early launch runbook
 
 - **Built:** `platform/docs/execution/early_launch_runbook.md`, DrJ's ordered list for the day,

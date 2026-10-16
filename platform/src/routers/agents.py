@@ -130,7 +130,9 @@ _SELF_SERVICE_ROLES = frozenset({GovernanceRole.MEMBER, GovernanceRole.OBSERVER}
 
 
 def _make_agent_did(name: str) -> str:
-    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")
+    # ASCII letters and digits only: the DID rule is [a-z0-9-], and `str.isalnum`
+    # on its own lets "日本語" or "é" through to a 500 at the DID check (EL-7).
+    slug = "".join(ch.lower() if ch.isascii() and ch.isalnum() else "-" for ch in name).strip("-")
     slug = "-".join(part for part in slug.split("-") if part) or "agent"
     return f"did:agentx:{slug[:48]}-{uuid.uuid4().int % 1000:03d}"
 

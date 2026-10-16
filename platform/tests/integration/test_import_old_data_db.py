@@ -7,7 +7,8 @@ dropped and alembic at 042) holds founders with other agent_ids, a veteran OPERA
 posts, a reply to a founder's post, likes, follows, trust history, WORK points and a wallet,
 a suspended oldtimer, and clashes on purpose: a DID a newcomer took, a display name in use,
 a DID registered and still reserved, a wallet whose ledger does not add up, a post in a
-collective, and a reply whose parent cannot come.
+collective, a reply whose parent cannot come, an agent_id a live newcomer already uses, and
+(EL-7) a founder look-alike: `did:agentx:nova-NNN` with the FOUNDER role.
 
 Proven: the dry run writes nothing and says what --apply does; --apply imports exactly the
 record (ids kept, role capped, counters recounted by the triggers, reservations released,
@@ -88,6 +89,15 @@ async def _seed_old(w: dict) -> None:
         await agent("samename", f"Samename {t}")                 # this display name is in use in the live DB
         await agent("badledger", f"Badledger {t}")               # wallet and points without a ledger
         await agent("regreserved", f"Regreserved {t}")           # registered in the live DB AND reserved
+        # EL-7: a founder look-alike (Nova's own DID pattern, FOUNDER role) that is NOT the roster's Nova.
+        nnn = f"{int(t, 16) % 998 + 2:03d}"                       # never 001 (the roster's nova-001)
+        await agent("fakefounder", f"Nova {t}", role="FOUNDER", trust=0.99, did=f"did:agentx:nova-{nnn}")
+        # EL-7: an old agent whose agent_id a live newcomer already uses (uuid clash on purpose).
+        w["idclash_id"] = uuid4()
+        row = await c.fetchrow(
+            "INSERT INTO agents (agent_id, agent_did, display_name, bio) VALUES ($1, $2, $3, 'bio of idclash') "
+            "RETURNING agent_id, agent_did, created_at", w["idclash_id"], f"did:agentx:idclash-{t}-001", f"Idclash {t}")
+        w["idclash"] = {"did": row["agent_did"], "id": row["agent_id"], "created_at": row["created_at"], "name": f"Idclash {t}"}
 
         async def post(key, author, title, parent=None, collective=None):
             pid = await c.fetchval(
@@ -107,6 +117,8 @@ async def _seed_old(w: dict) -> None:
             "INSERT INTO collectives (name, description, owner_did) VALUES ($1, 'd', $2) RETURNING collective_id",
             f"Coll {t}", w["veteran"]["did"])
         await post("PC", w["veteran"]["did"], f"Collective post {t}", collective=coll)
+        await post("PF", w["fakefounder"]["did"], f"Fake founder post {t}")
+        await post("PI", w["idclash"]["did"], f"Idclash post {t}")
 
         await c.execute("INSERT INTO post_likes (post_id, agent_did) VALUES ($1, $2), ($3, $4), ($5, $6)",
                         w["FA"], w["veteran"]["did"], w["P1"], ATLAS, w["P1"], w["taken"]["did"])
@@ -166,6 +178,8 @@ async def _seed_live(w: dict) -> None:
             "INSERT INTO agents (agent_did, display_name) VALUES ($1, $2) RETURNING agent_id",
             w["regreserved"]["did"], f"Odd {t}")
         await c.execute("INSERT INTO reserved_dids (agent_did, note) VALUES ($1, 'test')", w["regreserved"]["did"])
+        await c.execute("INSERT INTO agents (agent_id, agent_did, display_name) VALUES ($1, $2, $3)",
+                        w["idclash_id"], f"did:agentx:lucky-{t}-001", f"Lucky {t}")
         await reserve.apply_load(c, [w[k]["did"] for k in ("veteran", "oldtimer", "samename", "badledger")])
         w["atlas_live_id"] = await c.fetchval("SELECT agent_id FROM agents WHERE agent_did = $1", ATLAS)
     finally:
@@ -229,13 +243,15 @@ async def test_dry_run_reports_what_apply_will_do_and_writes_nothing(pool, world
     assert r.returncode == 0, r.stdout + r.stderr
     out = r.stdout
     assert "DRY RUN" in out
-    assert "14 in the old database" in out.split("agents:")[1].split("\n")[0]   # 8 founders + 6
-    assert "3 imported, 8 founders merged, 0 already imported, 3 skipped; 1 role(s) capped" in out
+    assert "16 in the old database" in out.split("agents:")[1].split("\n")[0]   # 8 founders + 8
+    assert "4 imported, 8 founders merged, 0 already imported, 4 skipped; 2 role(s) capped" in out
+    assert world["idclash"]["did"] in out and "agent_id already used by another DID" in out
+    assert f"{world['fakefounder']['did']} (FOUNDER)" in out and "role capped to MEMBER" in out
     assert world["taken"]["did"] in out and "belongs to another agent" in out
     assert world["samename"]["did"] in out and "display name already in use" in out
     assert world["regreserved"]["did"] in out and "registered AND still reserved" in out
     assert f"{world['veteran']['did']} (OPERATOR)" in out
-    assert "posts: 4 imported (1 replies), 3 skipped" in out        # FA P1 P2 P3; P4 (taken) P5 (parent) PC (collective)
+    assert "posts: 5 imported (1 replies), 4 skipped" in out        # FA P1 P2 P3 PF; P4 (taken) P5 (parent) PC (collective) PI
     assert "wallets 1 holding 500 token(s) (+1 skipped, 1 empty)" in out
     assert "reserved addresses released: 3" in out
     assert "NOT copied" in out and "collectives" in out    # init-db.sql seeds one, the test adds one
@@ -255,9 +271,9 @@ async def test_apply_imports_the_record_once(pool, http, world, tmp_path):
 
     r = run("--apply", "--report", str(report_file))
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "APPLIED" in r.stdout and "OK: imported 3 agent(s)" in r.stdout
+    assert "APPLIED" in r.stdout and "OK: imported 4 agent(s)" in r.stdout
     report = json.loads(report_file.read_text())
-    assert report["apply"] is True and report["counts"]["agents.imported"] == 3
+    assert report["apply"] is True and report["counts"]["agents.imported"] == 4
 
     # Agents: same ids, role capped, everything else as it was; clashes untouched.
     vet = await _agent(pool, world["veteran"]["did"])
@@ -273,6 +289,23 @@ async def test_apply_imports_the_record_once(pool, http, world, tmp_path):
     assert taken["posts_count"] == 0 and taken["followers_count"] == 0
     assert await _agent(pool, world["samename"]["did"]) is None
     assert (await _agent(pool, world["regreserved"]["did"]))["agent_id"] == world["regreserved_live_id"]
+    assert await _agent(pool, world["idclash"]["did"]) is None                       # the newcomer keeps the uuid
+    lucky = await _agent(pool, f"did:agentx:lucky-{world['tag']}-001")
+    assert lucky["agent_id"] == world["idclash_id"] and lucky["bio"] != "bio of idclash"
+
+    # EL-7: the founder look-alike came in as a plain MEMBER and is an outsider everywhere a founder is checked.
+    from src.founders.roster import FounderRefused, founder_roster, resolve_founder
+    fake = await _agent(pool, world["fakefounder"]["did"])
+    assert fake["governance_role"] == "MEMBER" and fake["status"] == "ACTIVE" and float(fake["trust_score"]) == 0.99
+    r = await http.get(f"/agents/{world['fakefounder']['did']}")
+    assert r.status_code == 200 and r.json().get("operator_label") is None
+    r = await http.get("/agents/did:agentx:nova-001")
+    assert r.status_code == 200 and r.json().get("operator_label") == "Founding agent, operated by AgentX"
+    async with pool.acquire() as c:
+        nova = await resolve_founder(c, "nova", founder_roster("", "development"))
+        assert nova.did == "did:agentx:nova-001" and nova.agent_id != fake["agent_id"]
+        with pytest.raises(FounderRefused, match="name_mismatch"):     # even a roster naming it: wrong display name
+            await resolve_founder(c, "nova", {"nova": world["fakefounder"]["did"]})
 
     # Posts: parents first, founder's post attached to the live founder, counters from the triggers.
     async with pool.acquire() as c:
@@ -281,6 +314,9 @@ async def test_apply_imports_the_record_once(pool, http, world, tmp_path):
             [world[k] for k in ("FA", "P1", "P2", "P3", "P4", "P5", "PC")])}
     assert set(posts) == {world["FA"], world["P1"], world["P2"], world["P3"]}
     assert posts[world["FA"]]["agent_id"] == world["atlas_live_id"] != world["old_atlas_id"]
+    async with pool.acquire() as c:
+        assert await c.fetchval("SELECT author_did FROM posts WHERE post_id = $1", world["PF"]) == world["fakefounder"]["did"]
+        assert await c.fetchval("SELECT 1 FROM posts WHERE post_id = $1", world["PI"]) is None
     assert posts[world["FA"]]["reply_count"] == 1 and posts[world["P2"]]["parent_post_id"] == world["FA"]
     assert posts[world["P1"]]["like_count"] == 1                     # Atlas's like; the taken agent's like skipped
     assert posts[world["FA"]]["like_count"] == 1
@@ -330,7 +366,7 @@ async def test_apply_imports_the_record_once(pool, http, world, tmp_path):
 
         audit = await c.fetchrow(
             "SELECT agent_did, details FROM audit_logs WHERE resource_type = 'import' ORDER BY created_at DESC LIMIT 1")
-        assert audit["agent_did"] == ATLAS and json.loads(audit["details"])["counts"]["agents.imported"] == 3
+        assert audit["agent_did"] == ATLAS and json.loads(audit["details"])["counts"]["agents.imported"] == 4
 
     # Logging in: the server's refresh token for an imported DID works, with the live (capped) role.
     old_token = create_refresh_token(v, role="OPERATOR", tier="ELITE")
@@ -342,6 +378,9 @@ async def test_apply_imports_the_record_once(pool, http, world, tmp_path):
                                              "refresh_token": create_refresh_token(o)})
     assert r.status_code == 403, r.text
     r = await http.post("/auth/token", data={"grant_type": "refresh_token",
+                                             "refresh_token": create_refresh_token(world["fakefounder"]["did"], role="FOUNDER")})
+    assert r.status_code == 200 and decode_token(r.json()["access_token"]).role == "MEMBER", r.text
+    r = await http.post("/auth/token", data={"grant_type": "refresh_token",
                                              "refresh_token": create_refresh_token(world["samename"]["did"])})
     assert r.status_code == 401, r.text
 
@@ -350,7 +389,7 @@ async def test_second_apply_imports_nothing(pool, world):
     before = await _counts(pool)
     r = run("--apply")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "0 imported, 8 founders merged, 3 already imported, 3 skipped" in r.stdout
+    assert "0 imported, 8 founders merged, 4 already imported, 4 skipped" in r.stdout
     assert "posts: 0 imported" in r.stdout and "wallets 0 holding 0" in r.stdout
     assert "reserved addresses released: 0" in r.stdout
     after = await _counts(pool)

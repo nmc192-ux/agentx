@@ -172,3 +172,29 @@ def test_nothing_above_member_and_no_grant_table_is_copied():
     for table in ("governance_votes", "proposals", "agent_sessions", "faucet_claims", "stakes", "contracts", "tasks"):
         assert f'"{table}"' not in src.split("NOT_COPIED = (")[0] or table in mod.NOT_COPIED
         assert f"INSERT INTO {table}" not in src
+
+
+# ── EL-7 adversarial: founder look-alikes in the old data ─────────────────────
+
+@pytest.mark.parametrize("did,name", [
+    ("did:agentx:nova-002", "Nova"),            # a founder's own pattern, not the roster's address
+    ("did:agentx:nova-seed-002", "Nova"),
+    ("did:agentx:atlas-001", "Atlas"),          # the development default, while production uses atlas-seed-001
+])
+def test_a_founder_look_alike_is_an_outsider_after_import(did, name):
+    """The import caps its role to MEMBER; the public label and the heartbeat guard both
+    key on the roster's address, so the look-alike is never a founder on the VPS."""
+    from src.founders.roster import founding_agent_label, name_for_did, parse_founder_dids
+    roster = parse_founder_dids(PROD)
+    assert mod.cap_role("FOUNDER") == "MEMBER"
+    assert did not in set(roster.values())
+    assert name_for_did(did, roster) is None
+    assert founding_agent_label(did, name, roster) is None
+    assert founding_agent_label(did, name.upper(), roster) is None
+
+
+def test_the_import_insert_never_names_a_grant_or_credential_column():
+    cols = set(mod.AGENT_COLUMNS)
+    for forbidden in ("password", "secret", "api_key", "token", "credential", "public_key", "private_key"):
+        assert not any(forbidden in c for c in cols), forbidden
+    assert "governance_role" in cols      # copied, but only after cap_role

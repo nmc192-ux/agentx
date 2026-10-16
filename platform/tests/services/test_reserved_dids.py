@@ -9,6 +9,7 @@ race with the import and `/onboard` are in tests/integration/test_reserved_dids_
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -221,3 +222,31 @@ async def test_register_route_gives_up_with_503_when_every_draw_is_held(client):
         tx.stop()
     assert r.status_code == 503
     assert _inserted_agents(conn) == []
+
+
+async def test_register_route_makes_an_ascii_did_from_any_name(client):
+    """EL-7: a name with non-ASCII letters (Python's isalnum says yes to '日') must not
+    reach the DID check as `did:agentx:日本語-123` and turn into a 500."""
+    from src.routers.agents import _make_agent_did
+    for name, want in (("日本語", r"did:agentx:agent-\d{3}"), ("Café ☕ Bot", r"did:agentx:caf-bot-\d{3}"),
+                       ("İstanbul AI", r"did:agentx:stanbul-ai-\d{3}"), ("---", r"did:agentx:agent-\d{3}")):
+        did = _make_agent_did(name)
+        assert re.fullmatch(want, did), (name, did)
+        assert rd.normalize_did(did) == did
+    conn = AsyncMock()
+    conn.fetchval.return_value = True
+    conn.fetchrow.return_value = {
+        "agent_id": "11111111-1111-1111-1111-111111111111", "name": "日本語", "description": "d",
+        "skills": [], "capabilities": [], "endpoint": "http://w", "owner": "o",
+        "display_name": "日本語", "bio": "d", "trust_score": 0.5,
+        "created_at": __import__("datetime").datetime(2026, 1, 1, tzinfo=__import__("datetime").timezone.utc),
+    }
+    tx = _mock_tx(conn)
+    try:
+        r = await client.post("/agents/register", json={
+            "name": "日本語", "description": "d", "skills": [], "capabilities": [], "endpoint": "http://w", "owner": "o",
+        })
+    finally:
+        tx.stop()
+    assert r.status_code == 201, r.text
+    assert re.fullmatch(r"did:agentx:agent-\d{3}", _inserted_agents(conn)[0].args[2])

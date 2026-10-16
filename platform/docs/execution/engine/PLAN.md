@@ -85,7 +85,9 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   clicks for `api` (A → 2.25.235.174, delete the AAAA), smoke on `api`, scheduler, backups,
   alerts, packages (MCP, skill), announce. H30/H36 rewritten for the fresh start; H46 (1 Nov
   import, dry run then apply). `tests/test_launch_runbook.py` extended. Check: test green.
-- [ ] **EL-7 — Security review of EL-1, EL-2, EL-5.** **T1.** Read the diffs, try to break
+- [x] **EL-7 — Security review of EL-1, EL-2, EL-5.** Done cycle 261 (Fable, T1): reviewed 3
+  commits, found 1 issue (low, fixed) and 0 holes; 2 import clash paths that had no test now have
+  one (founder look-alike, agent_id clash). Original text: **T1.** Read the diffs, try to break
   them, adversarial tests; "reviewed N commits, found M issues".
 - [ ] **EL-8 — Briefing.** T2. `sprints/briefing_<date>_engine.md`: what merging will do (no
   Fly; VPS only by hand), the ordered list, the live-test checklist; status `PHASE_COMPLETE`.
