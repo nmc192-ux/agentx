@@ -38,6 +38,9 @@ COPY --from=builder /root/.local /home/agentx/.local
 COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
+# Empty-database bootstrap (EL-1): `python scripts/bootstrap_db.py` in the migrate container
+COPY scripts/init-db.sql ./scripts/init-db.sql
+COPY scripts/bootstrap_db.py ./scripts/bootstrap_db.py
 
 # Fix ownership
 RUN chown -R agentx:agentx /app

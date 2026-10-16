@@ -10,6 +10,9 @@
 # revision already in the database and would fail. A bad migration is undone from the Neon
 # snapshot instead (plan §8).
 #
+# An empty database is never migrated: the bootstrap (scripts/bootstrap_db.py, EL-1) builds it
+# once with the founders' production addresses, and deploy.sh refuses until it has.
+#
 # Order is the safety property: if the migration fails, nothing is replaced and the running
 # version keeps serving. Each API container must report "healthy" before the next one is
 # replaced, so Caddy always has one to send traffic to. The scheduler is restarted only if it
@@ -112,6 +115,15 @@ dc pull api-1
 if [[ "${SKIP_MIGRATE:-0}" == 1 ]]; then
   echo "skipping migration (rollback)"
 else
+  # EL-1: alembic cannot build an empty database (the base schema and founders come from
+  # init-db.sql); it would half-build it and the bootstrap would then refuse. The check changes
+  # nothing: exit 0 = AgentX baseline present, 3 = empty, anything else = stop and look.
+  if ! dc --profile migrate run --rm migrate python scripts/bootstrap_db.py --check; then
+    echo "refusing to migrate: the database is empty or not an AgentX database. For a new one run" >&2
+    echo "  docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/bootstrap_db.py" >&2
+    echo "then deploy again. Nothing was replaced." >&2
+    exit 1
+  fi
   dc --profile migrate run --rm migrate
 fi
 

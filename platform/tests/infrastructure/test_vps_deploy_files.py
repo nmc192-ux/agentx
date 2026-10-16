@@ -678,6 +678,7 @@ case "$*" in
   "inspect -f {{.Id}} "*) [ "${FAKE_CADDY:-1}" = 1 ] || exit 1; echo caddyid; exit 0 ;;
   "inspect -f {{index .Config.Labels"*) case "${*: -1}" in stranger*) echo pinkpopcorn-feed ;; *) echo agentx ;; esac; exit 0 ;;
   *"com.docker.compose.service=scheduler"*) [ "${FAKE_SCHEDULER:-0}" = 1 ] && echo sched1; exit 0 ;;
+  *"run --rm migrate python scripts/bootstrap_db.py --check"*) exit "${FAKE_DB_CHECK_RC:-0}" ;;
   *"run --rm migrate"*) exit "${FAKE_MIGRATE_RC:-0}" ;;
   *" ps -q "*) echo "cid-${*: -1}"; exit 0 ;;
   "inspect "*) echo "${FAKE_HEALTH:-healthy}"; exit 0 ;;
@@ -748,6 +749,29 @@ class TestDeployScript:
         assert result.returncode != 0
         assert not any(" up " in f" {c} " for c in calls)
         assert f"IMAGE_TAG={OLD}" in env
+
+    def test_checks_for_a_bootstrapped_database_before_migrating(self, run):
+        result, calls, _ = run()
+        assert result.returncode == 0, result.stderr
+        check = self._index(calls, "run --rm migrate python scripts/bootstrap_db.py --check")
+        migrate = next(i for i, c in enumerate(calls) if c.endswith("run --rm migrate"))
+        assert self._index(calls, "pull api-1") < check < migrate
+
+    @pytest.mark.parametrize("rc", ["3", "1"])
+    def test_empty_or_foreign_database_is_never_migrated(self, run, rc):
+        """EL-1: alembic on an empty database half-builds it; deploy refuses and names the bootstrap."""
+        result, calls, env = run(FAKE_DB_CHECK_RC=rc)
+        assert result.returncode != 0
+        assert "refusing to migrate" in result.stderr and "scripts/bootstrap_db.py" in result.stderr
+        assert not any(c.endswith("run --rm migrate") for c in calls)
+        assert not any(" up " in f" {c} " for c in calls)
+        assert f"IMAGE_TAG={OLD}" in env
+
+    def test_bootstrap_is_never_run_by_deploy(self):
+        """Seeding founders is a deliberate one-time step, never part of a deploy."""
+        code = [line for line in DEPLOY_SH.read_text().splitlines()
+                if not line.strip().startswith(("#", "echo"))]
+        assert all("bootstrap_db.py" not in line or "--check" in line for line in code)
 
     def test_unhealthy_api_1_stops_before_api_2(self, run):
         result, calls, env = run(FAKE_HEALTH="unhealthy")

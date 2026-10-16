@@ -31,7 +31,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
 
 - [x] **EL-0 — Plan the early launch.** Done cycle 254. T2. This list; decisions in the log;
   **H45** (start VPS prep tonight) in `HUMAN_ACTIONS.md`.
-- [ ] **EL-1 — Empty-DB bootstrap with the production founder DIDs.** T2 (seeds rows into an
+- [x] **EL-1 — Empty-DB bootstrap with the production founder DIDs.** Done cycle 255 (`scripts/bootstrap_db.py`; deploy.sh refuses to migrate an empty DB). T2 (seeds rows into an
   empty database; changes no existing data; marked `SECURITY-REVIEW:` because it writes FOUNDER
   rows). Today an empty VPS Postgres gets only `alembic upgrade head`, but the base schema and the
   founders come from `scripts/init-db.sql` (migration 001 is a no-op), and that seeds

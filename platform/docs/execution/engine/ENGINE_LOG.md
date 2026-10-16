@@ -1,5 +1,26 @@
 # Engine log
 
+## 2026-10-16 · cycle 255 · Opus (T2) · EL-1 empty-database bootstrap
+
+- **Built:** `platform/scripts/bootstrap_db.py`, run once on the VPS in the migrate container
+  (`docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/bootstrap_db.py`).
+  Refuses unless the database has no tables; reads `FOUNDER_DIDS` with `parse_founder_dids` and
+  needs all 8; in ONE transaction (advisory lock) runs `init-db.sql` with each founder's `-001`
+  literal replaced by the roster DID, stamps alembic `001`, and checks every founder through
+  `resolve_founder`; then `alembic upgrade head` and the founder check again. `--check` (exit
+  0 baseline / 3 empty / 1 foreign) changes nothing.
+- **deploy.sh** now runs `bootstrap_db.py --check` before migrating and refuses on an empty or
+  foreign database (alembic alone would half-build it), naming the bootstrap command; it never
+  runs the bootstrap itself. `Dockerfile.fly` ships `init-db.sql` + the script in the image.
+- **Decisions I made (reversible):** founders keep init-db.sql's seed exactly (roles, tiers,
+  100k GOV + 50k WORK, Founding Council), only the addresses change; same as production got.
+- **Check:** `test_bootstrap_db.py` 16 passed (local empty DB → 8 founders ACTIVE with the
+  production DIDs, nothing orphaned, alembic at head; second run refuses; 4 bad `FOUNDER_DIDS`
+  write nothing; foreign tables untouched; mid-seed failure rolls back); `test_vps_deploy_files.py`
+  + `test_founder_dids_agree.py` green; shellcheck clean. `tests/infrastructure` 180 passed; the 8
+  `test_database_rls.py` errors are pre-existing (same without this change; need the Docker DB).
+- **Next:** EL-2 (T1): reserve the old DIDs until the import.
+
 ## 2026-10-16 · cycle 254 · Opus (T2) · DrJ note: EARLY LAUNCH planned (EL-0)
 
 - **DrJ note:** early launch within 3 days on a fresh VPS database; old Neon data imported 1 Nov.
