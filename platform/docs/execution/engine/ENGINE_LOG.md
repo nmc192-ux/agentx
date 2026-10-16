@@ -1,5 +1,10 @@
 # Engine log
 
+## 2026-10-16 · cycle 237 · Opus (T2) · idle: feature freeze, nothing engine-doable
+
+- **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 236. The only open step, LF-2 (re-run the launch rehearsal if the head moved), starts 30 Oct. No code changed.
+- **Next:** wait for DrJ (a bug report, H30 on the VPS, D13, "Start Phase D"), or LF-2 from 30 Oct.
+
 ## 2026-10-16 · cycle 236 · Opus (T2) · idle: feature freeze, nothing engine-doable
 
 - **Checked:** no DrJ note, no bug reported, nothing new on `main`, engine test run passed after cycle 235. The only open step, LF-2 (re-run the launch rehearsal if the head moved), starts 30 Oct. No code changed.
