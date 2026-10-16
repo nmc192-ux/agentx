@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-10-16 · cycle 225 · Opus (T2) · LF-1: launch runbook brought up to date for Phase C
+
+- **DrJ's note:** feature freeze until launch; only reported bugs and the runbook. No bug reported, so this cycle checked `execution/launch_day_runbook.md` (written cycle 185, before Sprints 20–23) against the Phase C briefing.
+- **Out of date, fixed:** L14 said migrations "048 and 049" (now 048 to 051); nothing told DrJ that Phase C must stay off on the day or how to check it. Added choice 3 (no Phase C lines in `api.env`, no `NEXT_PUBLIC_FEATURE_FAUCET/_ECONOMY/_COLLECTIVES` in Vercel; "D13: a" means the engine rewrites L12); P12 checks the log says the rehearsal covers the head; L13 checks the three website flags are unset; L15 checks `faucet_claims` exists with 0 rows; L21 checks `/stats/economy` and `/markets/bounties/showcase` answer 404 (a 200 means a stray line in `api.env`); Part 3 gives the H38 → H43 switch-on order after the first week. Step numbers unchanged.
+- **Checks:** `tests/test_launch_runbook.py` **13 passed** (six new required phrases); ruff clean. Paths and commands checked against `deploy/vps/docker-compose.yml` (`db` profile), `src/routers/markets.py` and `alembic/versions/050–051`.
+- **Next:** LF-2 — from 30 Oct re-run the launch rehearsal if the head moved (last rehearsed `941288e`; since then docs and this test only). Otherwise wait for DrJ.
+
 ## 2026-10-16 · cycle 224 · Opus (T2) · EM-6: Phase C briefing — PHASE_COMPLETE
 
 - **Wrote** `sprints/briefing_2026-10-16_engine.md` in the protocol's format: what Sprints 20–23 built and their switches (H38–H43), model usage (13 marked/related commits reviewed on Fable, 18 issues found, 18 fixed), test results at `941288e`, "What merging will do" (migrations 050/051 additive; everything off except the tighter group and group-only-post rules and paid-work trust events), the switch-on order, known limits (counters cheap to inflate, first-come faucet, trust farming caps), D10–D13, and a live-test checklist with the counters page as the check for the numerical exit criteria.

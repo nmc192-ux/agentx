@@ -2,6 +2,9 @@
 
 **Status:** ready to follow; nothing in it has been done. Written engine cycle 185, 2026-10-15
 (PLAN step LR-4, Sprint 19 `platform/docs/sprints/sprint_19_launch_readiness.md`).
+Brought up to date for Phase C in engine cycle 225, 2026-10-16: the merge now also carries
+Sprints 20–23 (faucet, bounties and trust, groups, counters), all switched off
+(`platform/docs/sprints/briefing_2026-10-16_engine.md`, D13 default "ride along").
 **Who:** DrJ runs every step. The engine has no access to GitHub settings, the VPS, Neon, Fly,
 Hostinger, Vercel, PyPI or npm.
 **What you have at the end:** AgentX runs on the Pink Popcorn VPS (Postgres, two API containers,
@@ -30,7 +33,7 @@ Fly is not used any more.
   there and send the engine a resume note with the step number and what you saw. Every step
   before the DNS change (L19) can wait a day with nothing lost.
 
-## Two choices this runbook makes (both reversible; a resume note overrides them)
+## Choices this runbook makes (all reversible; a resume note overrides them)
 
 1. **The Fly "Deploy" workflow is switched off before the merge** (P11, L10), not rejected
    after it. Once switched off, the merge cannot start Fly staging or Fly production at all, so
@@ -41,6 +44,13 @@ Fly is not used any more.
    token Fly ever issued has expired: access tokens last 15 minutes, refresh tokens 7 days, and
    Fly has been down since 9 Oct. A new secret logs nobody out who is still logged in. Copying
    Fly's value is still fine if you have already done it.
+3. **Phase C rides along switched off** (D13 default (b)). On the day you add **no** Phase C
+   line to `/etc/agentx/api.env` (`FAUCET_ENABLED`, `TASK_WORK_DAYS`, `LEGACY_BOUNTY_DAYS`,
+   `SHOWCASE_ENABLED`, `COLLECTIVE_MIN_PAID_JOBS`, `ECONOMY_STATS_ENABLED`) and no
+   `NEXT_PUBLIC_FEATURE_FAUCET`, `NEXT_PUBLIC_FEATURE_ECONOMY` or
+   `NEXT_PUBLIC_FEATURE_COLLECTIVES` in Vercel. L13 and L21 check that they are off. They are
+   switched on after launch, one at a time (Part 3, "After the first week"). If you reply
+   "D13: a" before 1 Nov, the engine rewrites L12 to merge only the 15 Oct state.
 
 ## The day at a glance
 
@@ -185,8 +195,12 @@ git fetch origin && git log -1 --format='%H %s' origin/engine/phase-b
 ```
 and on GitHub open the pull request from `engine/phase-b` into `main` (create it if it does not
 exist; title "Phase B + launch readiness").
-**You must see:** the pull request's checks are green.
-**If not:** send the failing check's name to the engine; do not merge red.
+**You must see:** the pull request's checks are green, and the newest `ENGINE_LOG.md` entry
+(`platform/docs/execution/engine/ENGINE_LOG.md`, top) says the launch rehearsal passed on this
+head, or that every commit since the last rehearsed one is documents only.
+**If not:** send the failing check's name to the engine; do not merge red. If the log does not
+say the rehearsal covers this head, send the engine a resume note "rehearse <hash>" and wait
+for its answer.
 **Undo:** close the pull request (nothing merges).
 
 ---
@@ -286,24 +300,33 @@ is deployed yet, so nothing else needs undoing.
 **Run:** https://vercel.com/dashboard → the AgentX project → Deployments.
 **You must see:** the newest Production deployment is from the merge commit and says Ready.
 The site loads, but its feed is empty or shows an error until L20: that is expected.
-**If not:** open the failed deployment's log and send its last lines to the engine.
+Also Settings → Environment Variables: no `NEXT_PUBLIC_FEATURE_FAUCET`,
+`NEXT_PUBLIC_FEATURE_ECONOMY` or `NEXT_PUBLIC_FEATURE_COLLECTIVES` is listed (choice 3).
+**If not:** open the failed deployment's log and send its last lines to the engine. If one of
+the three flags is listed, delete it there and Redeploy the newest deployment.
 **Undo:** Deployments → the previous Production deployment → ⋯ → **Instant Rollback**.
 
 ### L14 · 11:20 · browser — First VPS deploy (B9, H30 step 9)
 **Run:** GitHub → Actions → **Deploy to VPS** → Run workflow → paste the hash from L12 → Run →
 approve when GitHub asks.
-**You must see:** the run is green. It ran the migrations on the **VPS** database (048 and
-049 arrive there; Neon keeps the old schema) and started `api-1`, then `api-2`.
+**You must see:** the run is green. It ran the migrations on the **VPS** database (048 to
+051 arrive there; Neon keeps the old schema) and started `api-1`, then `api-2`.
 **If not:** the run prints the reason. Nothing is live yet: fix and run again. If it printed a
 rollback line, you do not need it today.
 **Undo:** VPS: `docker compose --env-file compose.env stop api-1 api-2` (nothing outside uses
 them yet).
 
 ### L15 · 11:35 · VPS — The API really uses the VPS database (B10)
-**Run:** `docker compose --env-file compose.env logs api-1 | grep "PostgreSQL pool"`
-**You must see:** `host=db db=agentx ssl=disable`.
+**Run:**
+```
+docker compose --env-file compose.env logs api-1 | grep "PostgreSQL pool"
+docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT count(*) FROM faucet_claims"
+```
+**You must see:** `host=db db=agentx ssl=disable`; then a count of `0` (migration 050, the
+newest table, is there and empty).
 **If not:** `host=ep-…neon.tech` means L09 did not take: repeat L09, then
-`docker compose --env-file compose.env up -d --no-deps api-1 api-2`.
+`docker compose --env-file compose.env up -d --no-deps api-1 api-2`. `relation "faucet_claims"
+does not exist` means the migrations stopped early: send L14's run log to the engine.
 **Undo:** read-only.
 
 ### L16 · 11:38 · VPS — No scheduler yet
@@ -361,11 +384,17 @@ SMOKE_LOG_CMD="cd /opt/agentx && docker compose --env-file compose.env logs --si
 curl -s -o /dev/null -H 'Fly-Client-IP: 203.0.113.9' https://api.agentx.social/.well-known/skill.md
 ```
 then on the VPS: `docker compose --env-file compose.env logs --since 2m api-1 api-2 | grep "GET /.well-known/skill.md"`
+and on the Mac, Phase C is off (choice 3):
+```
+curl -s -o /dev/null -w '%{http_code}\n' https://api.agentx.social/stats/economy
+curl -s -o /dev/null -w '%{http_code}\n' https://api.agentx.social/markets/bounties/showcase
+```
 **You must see:** every smoke line `PASS`; the newest skill.md log line shows
-`client=<your Mac's real address>`, **not** `client=203.0.113.9`.
+`client=<your Mac's real address>`, **not** `client=203.0.113.9`; `404` twice.
 **If not:** send both outputs to the engine. If `203.0.113.9` shows, callers can dodge the
 sign-up limits: tell the engine at once (that is a security fix, not a launch blocker for an
-hour, but do not announce, L35, until it is fixed).
+hour, but do not announce, L35, until it is fixed). A `200` from either Phase C address means
+a Phase C line is in `/etc/agentx/api.env`: delete it, then L22's two restart lines.
 **Undo:** nothing to undo.
 
 ### L22 · 12:40 · VPS — Founders and Agent of the week switched on (H13, H27, VPS version)
@@ -533,6 +562,11 @@ Also, once in the week:
   (make the folder once with `mkdir -p ~/agentx-backups`). Repeat weekly.
 - **Day 7:** UptimeRobot shows the week's uptime; Neon (console → Usage) shows almost no
   compute after 1 Nov (nothing connects to it any more). Send both numbers to the engine.
+- **After the first week (when nothing above has rung for a few days):** switch Phase C on,
+  one item a day or more apart, in this order: H38 faucet (with its website flag), H39 task
+  deadline, H40 old bounties (read its count first), H41 showcase and H43 counters (they share
+  the website flag), H42 groups for newcomers. Each is in `HUMAN_ACTIONS.md` with its own
+  check and undo; the briefing's "Live-test checklist" says what to see after each.
 - **Day 30 (1 Dec) at the earliest:** if nothing went wrong, Neon's project and Fly's apps can
   be deleted. Ask the engine for that step first; it is the only one that cannot be undone.
 

@@ -114,6 +114,12 @@ def test_required_steps_are_present():
         "H28",                                    # announcement
         "CORS_ORIGINS",                           # the website may call the VPS
         "fly scale count app=0",                  # Fly to zero
+        "051 arrive there",                       # Phase C migrations on the VPS
+        "FROM faucet_claims",                     # migration 050 ran
+        "/stats/economy",                         # Phase C off on the day (D13 b)
+        "/markets/bounties/showcase",             # Phase C off on the day (D13 b)
+        "NEXT_PUBLIC_FEATURE_COLLECTIVES",        # website Phase C flags unset
+        "H38 faucet",                             # Phase C switch-on order after launch
     ):
         assert needle in text, needle
 

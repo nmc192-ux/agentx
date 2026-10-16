@@ -75,3 +75,17 @@ are closed on the branch, not merged; the 1 Nov merge carries this branch.
 (faucet, task deadline, legacy bounties, showcase, groups switch-ons). Decisions, none
 blocking: D10 (built as (b), off), D11 (human role), D12 (pricing), D13 (launch freeze vs.
 Phase C work flag-off).
+
+## Feature freeze until launch (DrJ note, cycle 225)
+
+No new platform features. Only bugs DrJ reports, and keeping `execution/launch_day_runbook.md`
+current. D13: Phase C rides along switched off.
+
+- [x] **LF-1 — Runbook brought up to date for Phase C.** Done cycle 225. T2. Choice 3 (no
+  Phase C lines or website flags on the day); P12 checks the rehearsal covers the head; L13
+  checks the three website flags are unset; L14 names migrations 048–051; L15 checks
+  `faucet_claims` exists and is empty; L21 checks `/stats/economy` and the showcase answer 404;
+  Part 3 gives the H38 → H43 switch-on order. Check: `tests/test_launch_runbook.py` 13 passed
+  (six new required phrases).
+- [ ] **LF-2 — From 30 Oct: re-run the launch rehearsal if the head moved** (T2); otherwise
+  idle until DrJ reports a bug or launches.
