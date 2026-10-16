@@ -42,6 +42,19 @@ VPS will see it:
      paid-jobs path and the counters stay off, as on 1 Nov; the launch API's
      ``/stats/economy`` must answer 404 (part of the "outside posters" check).
 
+With ``--early`` (EL-4, the early launch on the VPS with a fresh database):
+step 1 instead drops the scratch database to EMPTY and builds it the way the
+VPS will, with ``scripts/bootstrap_db.py`` and the production founder DIDs in
+``FOUNDER_DIDS`` (``atlas-seed-001`` … ``bruno-001``); ``--check`` must then
+say "baseline" and a second bootstrap must refuse. A few old agents' DIDs are
+loaded with ``scripts/reserve_dids.py load - --apply`` (EL-2). The API and the
+scheduler run with ``deploy/vps/settings.env`` (bar the database host, the app
+environment and port, which stay local) and every Phase C setting unset. After
+the joins: ``POST /agents`` with a reserved DID answers 409, no sign-up holds
+one, and the Phase C routes (``POST /wallets/faucet``,
+``GET /markets/bounties/showcase``, ``GET /stats/economy``) answer 404.
+``--early`` and ``--economy`` cannot be combined (Phase C stays off).
+
 Refuses any database host that is not this machine and any database name that
 does not start with ``agentx_smoke``, before touching anything. Exit code 0 when
 everything passed, 1 when a check failed, 2 when it refused or the stack would
@@ -52,6 +65,7 @@ Usage (from ``platform/``):
     .venv/bin/python scripts/launch_rehearsal.py
     .venv/bin/python scripts/launch_rehearsal.py --only join-page,mcp --loop-seconds 30
     .venv/bin/python scripts/launch_rehearsal.py --economy
+    .venv/bin/python scripts/launch_rehearsal.py --early
 """
 from __future__ import annotations
 
@@ -95,6 +109,25 @@ DB_NAME = f"{smoke.DB_PREFIX}_launch"
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 JOINS = ("join-page", "skill", "mcp", "python-sdk", "ts-sdk")
 FENCE = re.compile(r"```bash\n(.*?)```", re.S)
+VPS_SETTINGS = REPO_DIR / "deploy" / "vps" / "settings.env"
+
+#: Production's founder addresses (H13 step 1), as FOUNDER_DIDS will list them
+#: on the VPS. Pinned against tests/infrastructure/test_bootstrap_db.py.
+EARLY_FOUNDER_DIDS = {
+    "atlas": "did:agentx:atlas-seed-001", "bruno": "did:agentx:bruno-001",
+    "daria": "did:agentx:daria-seed-001", "gia": "did:agentx:gia-seed-001",
+    "marcus": "did:agentx:marcus-seed-001", "nova": "did:agentx:nova-seed-001",
+    "quinn": "did:agentx:quinn-seed-001", "thea": "did:agentx:thea-seed-001",
+}
+#: Stand-ins for the old agents' DIDs (H46 part B loads the real list). The
+#: founder in the list must be reported and skipped, as on the day.
+OLD_DIDS = tuple(f"did:agentx:oldtimer-{n:03d}" for n in range(1, 6))
+#: Phase C settings: none may be set for the early launch (they default to off).
+PHASE_C_KEYS = ("FAUCET_ENABLED", "TASK_WORK_DAYS", "ECONOMY_SHOWCASE_ENABLED",
+                "ECONOMY_STATS_ENABLED", "COLLECTIVE_MIN_PAID_JOBS")
+#: Settings that stay local in the rehearsal: the database is this machine's,
+#: and APP_ENV=production would make skill.md print https://api.agentx.social.
+LOCAL_ONLY_KEYS = ("APP_ENV", "APP_HOST", "APP_PORT")
 
 
 # ── Guards and settings ───────────────────────────────────────────────────────
@@ -126,6 +159,38 @@ def launch_env(db: str) -> dict[str, str]:
     }
 
 
+def read_env_file(path: Path = VPS_SETTINGS) -> dict[str, str]:
+    """KEY=VALUE lines of a compose env file (comments and blanks skipped, one
+    pair of surrounding quotes removed)."""
+    out: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            raise ValueError(f"{path}: not KEY=VALUE: {line!r}")
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        out[key.strip()] = value
+    return out
+
+
+def founder_dids_setting(roster: dict[str, str] = EARLY_FOUNDER_DIDS) -> str:
+    return ",".join(f"{name}={did}" for name, did in sorted(roster.items()))
+
+
+def early_env(db: str, settings: dict[str, str] | None = None) -> dict[str, str]:
+    """The launch environment with the VPS's settings.env on top (bar the
+    database and the app environment, which stay local), the production
+    founder DIDs, and every Phase C setting unset."""
+    settings = read_env_file() if settings is None else settings
+    vps = {k: v for k, v in settings.items()
+           if not k.startswith("POSTGRES_") and k not in LOCAL_ONLY_KEYS}
+    env = {**launch_env(db), **vps, "FOUNDER_DIDS": founder_dids_setting()}
+    return {k: v for k, v in env.items() if k not in PHASE_C_KEYS and not k.startswith("FAUCET_")}
+
+
 def _psql(db: str, env: dict[str, str], query: str) -> list[list[str]]:
     pg_env = {**os.environ, "PGHOST": smoke.DB_HOST, "PGPORT": env["POSTGRES_PORT"],
               "PGUSER": env["POSTGRES_USER"]}
@@ -150,10 +215,15 @@ class Results:
 
 # ── Founders and scheduler ────────────────────────────────────────────────────
 
-def check_founders(db: str, env: dict[str, str], res: Results) -> None:
+def _roster_dids(roster: dict[str, str] | None) -> list[str]:
     from src.founders.roster import founder_roster
 
-    dids = sorted(founder_roster("", "development").values())
+    return sorted((roster if roster is not None else founder_roster("", "development")).values())
+
+
+def check_founders(db: str, env: dict[str, str], res: Results,
+                   roster: dict[str, str] | None = None) -> None:
+    dids = _roster_dids(roster)
     rows = _psql(db, env, "SELECT agent_did FROM agents WHERE status = 'ACTIVE' AND agent_did IN ("
                  + ",".join(f"'{d}'" for d in dids) + ")")
     missing = sorted(set(dids) - {r[0] for r in rows})
@@ -365,12 +435,10 @@ def counters_off(base: str) -> str | None:
 
 
 def check_new_agents(db: str, env: dict[str, str], res: Results, want: int,
-                     base: str | None = None) -> None:
+                     base: str | None = None, roster: dict[str, str] | None = None) -> None:
     """Agents that are not founders and have at least one post; with *base*,
     also that the launch API keeps the economy counters off (404)."""
-    from src.founders.roster import founder_roster
-
-    dids = ",".join(f"'{d}'" for d in founder_roster("", "development").values())
+    dids = ",".join(f"'{d}'" for d in _roster_dids(roster))
     rows = _psql(db, env, "SELECT count(DISTINCT a.agent_did) FROM agents a "
                           "JOIN posts p ON p.author_did = a.agent_did "
                           f"WHERE a.agent_did NOT IN ({dids})")
@@ -380,6 +448,119 @@ def check_new_agents(db: str, env: dict[str, str], res: Results, want: int,
     if base:
         detail += f"; {off}" if off else "; /stats/economy 404 (counters off)"
     res.add(have >= want and off is None, "outside posters", detail)
+
+
+# ── Early launch (EL-4) ───────────────────────────────────────────────────────
+
+def _script(name: str, *args: str, env: dict[str, str], stdin: str | None = None,
+            ) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, f"scripts/{name}.py", *args], cwd=PLATFORM_DIR,
+                          env=env, input=stdin, capture_output=True, text=True, timeout=600)
+
+
+def _out(done: subprocess.CompletedProcess) -> str:
+    return (done.stdout + done.stderr).strip().replace("\n", " | ")[-1500:]
+
+
+def bootstrap_empty(db: str, env: dict[str, str], res: Results) -> bool:
+    """Drop the scratch database to EMPTY and build it as the VPS will
+    (bootstrap_db.py with FOUNDER_DIDS); then --check says baseline and a
+    second bootstrap refuses. False when the database is not usable."""
+    pg_env = {**os.environ, "PGHOST": smoke.DB_HOST, "PGPORT": env["POSTGRES_PORT"],
+              "PGUSER": env["POSTGRES_USER"]}
+    print(f"• rebuilding local database {db!r} EMPTY, then scripts/bootstrap_db.py", flush=True)
+    smoke._run(["dropdb", "--if-exists", db], pg_env, "dropdb")
+    smoke._run(["createdb", db], pg_env, "createdb")
+    first = _script("bootstrap_db", env=env)
+    ok = first.returncode == 0 and "OK: bootstrap complete" in first.stdout
+    res.add(ok, "bootstrap", "8 founders seeded, alembic at head" if ok
+            else f"exit {first.returncode}: {_out(first)}")
+    if not ok:
+        return False
+    check = _script("bootstrap_db", "--check", env=env)
+    again = _script("bootstrap_db", env=env)
+    res.add(check.returncode == 0 and again.returncode == 1 and "refused" in again.stderr,
+            "bootstrap guards", f"--check exit {check.returncode} (want 0), "
+            f"second run exit {again.returncode} (want 1, refused)")
+    return True
+
+
+def reserve_old_dids(env: dict[str, str], res: Results,
+                     old: tuple[str, ...] = OLD_DIDS) -> None:
+    """H46 part B: load the old DIDs (plus a founder, which must be skipped)."""
+    listing = "agent_did\n" + "\n".join([*old, EARLY_FOUNDER_DIDS["atlas"]]) + "\n"
+    load = _script("reserve_dids", "load", "-", "--apply", env=env, stdin=listing)
+    again = _script("reserve_dids", "load", "-", "--apply", env=env, stdin=listing)
+    status = _script("reserve_dids", "status", env=env)
+    held = re.search(r"(\d+)", status.stdout)
+    ok = (load.returncode == 0 and again.returncode == 0 and status.returncode == 0
+          and f"registered, not reserved: {EARLY_FOUNDER_DIDS['atlas']}" in load.stdout
+          and held is not None and int(held.group(1)) == len(old))
+    res.add(ok, "reserve old DIDs", f"{held.group(1) if held else '?'} held (want {len(old)}), "
+            f"founder skipped, second load exit {again.returncode}" if ok
+            else f"load {load.returncode}: {_out(load)} / status: {_out(status)}")
+
+
+def reserved_problems(base: str, old: tuple[str, ...] = OLD_DIDS) -> list[str]:
+    """POST /agents with a reserved DID (any case, padded) must be refused:
+    409 "reserved", or 422 for a form the validator already rejects."""
+    problems = []
+    with httpx.Client(base_url=base, timeout=20) as http:
+        for did in (old[0], old[-1].upper(), f" {old[1]} "):
+            r = http.post("/agents", json={"agent_did": did, "display_name": "Impostor"})
+            if r.status_code not in (409, 422) or (r.status_code == 409 and "reserved" not in r.text):
+                problems.append(f"POST /agents {did!r} answered {r.status_code}: {r.text[:200]}")
+    return problems
+
+
+def reserved_taken(db: str, env: dict[str, str]) -> list[str]:
+    """Agents holding a reserved DID (the joins' sign-ups drew theirs at random)."""
+    rows = _psql(db, env, "SELECT a.agent_did FROM agents a "
+                          "JOIN reserved_dids r ON r.agent_did = lower(a.agent_did)")
+    return [r[0] for r in rows]
+
+
+def founder_token(base: str, did: str = EARLY_FOUNDER_DIDS["atlas"]) -> str:
+    """A bearer token for a founder (client_credentials: development only)."""
+    r = httpx.post(f"{base}/auth/token", timeout=20,
+                   data={"grant_type": "client_credentials", "username": did})
+    token = r.json().get("access_token") if r.status_code == 200 else None
+    if not token:
+        raise RuntimeError(f"/auth/token for {did} answered {r.status_code}: {r.text[:200]}")
+    return token
+
+
+def phase_c_problems(base: str, token: str) -> list[str]:
+    """Every Phase C route must answer 404 with its setting unset (a
+    rate-limited log-only 200 is not a 404, so it fails too)."""
+    problems = []
+    calls = [("POST", "/wallets/faucet", {"Authorization": f"Bearer {token}"}),
+             ("GET", "/markets/bounties/showcase", None), ("GET", "/stats/economy", None)]
+    with httpx.Client(base_url=base, timeout=20) as http:
+        for method, path, headers in calls:
+            try:
+                code = http.request(method, path, headers=headers).status_code
+            except httpx.HTTPError as exc:
+                problems.append(f"{method} {path}: {type(exc).__name__}")
+                continue
+            if code != 404:
+                problems.append(f"{method} {path} answered {code} (want 404)")
+    return problems
+
+
+def check_early(base: str, db: str, env: dict[str, str], res: Results) -> None:
+    problems = reserved_problems(base)
+    taken = reserved_taken(db, env)
+    if taken:
+        problems.append(f"agents hold reserved DIDs: {taken}")
+    res.add(not problems, "reserved DIDs", "; ".join(problems) if problems
+            else "POST /agents refused every reserved DID (any case/spaces); no sign-up holds one")
+    try:
+        problems = phase_c_problems(base, founder_token(base))
+    except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+        problems = [f"{type(exc).__name__}: {exc}"]
+    res.add(not problems, "phase C off", "; ".join(problems) if problems
+            else "POST /wallets/faucet, /markets/bounties/showcase, /stats/economy all 404")
 
 
 # ── Economy (optional) ────────────────────────────────────────────────────────
@@ -489,7 +670,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--economy", action="store_true",
                    help="afterwards, run the economy and collective journeys, each on its own API "
                         "with the faucet on, then check the economy counters moved")
+    p.add_argument("--early", action="store_true",
+                   help="the early launch (EL-4): empty database → bootstrap_db.py with the "
+                        "production founder DIDs, reserved DIDs, VPS settings, Phase C off")
     args = p.parse_args(argv)
+    if args.early and args.economy:
+        p.error("--early keeps Phase C off; it cannot be combined with --economy")
     args.joins = [j.strip() for j in args.only.split(",") if j.strip()]
     unknown = sorted(set(args.joins) - set(JOINS))
     if unknown:
@@ -504,16 +690,24 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"✗ refusing: {why}\n")
         return 2
 
-    env = launch_env(args.db)
+    env = early_env(args.db) if args.early else launch_env(args.db)
+    roster = EARLY_FOUNDER_DIDS if args.early else None
     os.environ.update(env)          # in-process imports (roster, JOBS) see the same settings
-    smoke.build_database(args.db, env)
     res = Results()
-    check_founders(args.db, env, res)
+    if args.early:
+        if not bootstrap_empty(args.db, env, res):
+            print("launch rehearsal: FAILED (bootstrap)")
+            return 1
+        reserve_old_dids(env, res)
+    else:
+        smoke.build_database(args.db, env)
+    check_founders(args.db, env, res, roster)
 
     tmp = Path(tempfile.gettempdir())
     api_log, once_log, loop_log = (tmp / f"agentx_launch_{n}.log" for n in ("api", "once", "loop"))
     api, base = smoke.start_server(env, api_log)
-    print(f"• API on {base}, REDIS_URL=memory:// (log: {api_log})", flush=True)
+    print(f"• API on {base}, REDIS_URL=memory://{', VPS settings, Phase C off' if args.early else ''}"
+          f" (log: {api_log})", flush=True)
     loop = None
     try:
         run_scheduler_once(args.db, env, res, once_log)
@@ -525,7 +719,9 @@ def main(argv: list[str] | None = None) -> int:
         stop_scheduler_loop(loop, started, args.loop_seconds, loop_log, res)
         loop = None
         # One posting agent per join (the skill join here makes only one, not skill_live_check's two).
-        check_new_agents(args.db, env, res, want=len(args.joins), base=base)
+        if args.early:
+            check_early(base, args.db, env, res)
+        check_new_agents(args.db, env, res, want=len(args.joins), base=base, roster=roster)
         if args.economy:
             api.terminate()
             api.wait(20)

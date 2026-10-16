@@ -58,7 +58,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   `AGENTX_DB_ENV=/etc/agentx/db.env` from the start; `secrets.env.example` without the Fly
   `JWT_SECRET` copy (a new random one; see decisions) and with `FOUNDER_DIDS`. Check:
   `test_vps_deploy_files.py` updated and green; `vps_rehearsal.py` green.
-- [ ] **EL-4 — Rehearse the early launch locally.** T2. `launch_rehearsal.py --early`: empty DB
+- [x] **EL-4 — Rehearse the early launch locally.** Done cycle 258 (`launch_rehearsal.py --early` 14/14). T2. `launch_rehearsal.py --early`: empty DB
   → EL-1 bootstrap with the production founder DIDs → API + scheduler with the VPS settings and
   Phase C unset → the five join journeys (`/join`, skill, MCP, Python SDK, TS SDK) → a reserved
   DID is refused (EL-2) → Phase C routes 404. Check: rehearsal green; its unit tests.

@@ -1,5 +1,32 @@
 # Engine log
 
+## 2026-10-16 · cycle 258 · Opus (T2) · EL-4 rehearse the early launch locally
+
+- **Built:** `scripts/launch_rehearsal.py --early`. Drops the scratch database to EMPTY and builds it
+  the VPS way: `bootstrap_db.py` with the production `FOUNDER_DIDS` (`atlas-seed-001` … `bruno-001`),
+  then `--check` must say baseline and a second bootstrap must refuse. Loads 5 stand-in old DIDs plus
+  a founder with `reserve_dids.py load - --apply` (founder reported and skipped, second load
+  idempotent, `status` = 5). API + scheduler run with `deploy/vps/settings.env` on top (database,
+  `APP_ENV`/host/port stay local) and every Phase C key stripped. After the five joins: `POST /agents`
+  with a reserved DID (exact, upper-case, padded) → 409 "reserved" (or 422); no agent holds a reserved
+  DID (DB join); `POST /wallets/faucet` (founder token), `/markets/bounties/showcase`, `/stats/economy`
+  all 404; founder and "outside posters" checks use the production roster. `--early --economy` is
+  refused (Phase C stays off).
+- **Decisions I made (reversible):** `APP_ENV` stays `development` in the rehearsal, because in
+  production skill.md prints `https://api.agentx.social` and the joins would leave this machine. No
+  extra `/onboard` for the reserved check: the five joins use up the 5/hour per-IP onboard limit, and
+  in the rehearsal's `RATE_LIMIT_MODE=log` a 6th call gets a fake 200 with no token (known since an
+  earlier cycle; the VPS runs the `enforce` default). Instead the check reads the DB for any sign-up
+  holding a reserved DID; the re-roll itself is covered by `test_reserved_dids_db.py`.
+- **Check:** `launch_rehearsal.py --early` PASSED 14/14 (bootstrap, guards, reserve, founders 8/8,
+  scheduler --once 4 jobs ok, 5 joins, scheduler loop 120 s, reserved DIDs, Phase C off, outside
+  posters 5). `tests/test_launch_rehearsal.py` 67 passed (new: production DIDs pinned to
+  `test_bootstrap_db.PROD_DIDS`, env file parsing, settings.env has no Phase C key, early env shape,
+  remote host refused before any script runs, every Phase C route answering 200/201/401/429 fails,
+  reserved 201/200 or a 409 without "reserved" fails). `tests/infrastructure` + launch tests 221
+  passed. ruff clean.
+- **Next:** EL-5 (T1): the 1 Nov import tool.
+
 ## 2026-10-16 · cycle 257 · Opus (T2) · EL-3 VPS settings for a fresh start
 
 - **Built:** `deploy/vps/settings.env` no longer names Neon or Upstash: `POSTGRES_HOST=db`,

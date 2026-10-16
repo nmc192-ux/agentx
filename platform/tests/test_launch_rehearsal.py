@@ -214,3 +214,172 @@ def test_outside_posters_fails_when_counters_on(monkeypatch):
     res = lr.Results()
     lr.check_new_agents("agentx_smoke_launch", {}, res, want=5, base=BASE)
     assert res.ok is True
+
+
+# ── Early launch (EL-4) ───────────────────────────────────────────────────────
+
+def test_early_founders_are_the_bootstrap_tests_production_dids():
+    path = _PATH.parent.parent / "tests" / "infrastructure" / "test_bootstrap_db.py"
+    spec = importlib.util.spec_from_file_location("test_bootstrap_db_for_lr", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert lr.EARLY_FOUNDER_DIDS == mod.PROD_DIDS
+    assert lr.founder_dids_setting() == ",".join(
+        f"{k}={v}" for k, v in sorted(mod.PROD_DIDS.items()))
+
+
+def test_old_dids_are_not_founders():
+    assert not set(lr.OLD_DIDS) & set(lr.EARLY_FOUNDER_DIDS.values())
+
+
+def test_read_env_file(tmp_path):
+    f = tmp_path / "settings.env"
+    f.write_text("# comment\n\nA=1\nB='[\"x\",\"y\"]'\nC=\"q\"\nD=\n")
+    assert lr.read_env_file(f) == {"A": "1", "B": '["x","y"]', "C": "q", "D": ""}
+    f.write_text("NOT A PAIR\n")
+    with pytest.raises(ValueError):
+        lr.read_env_file(f)
+
+
+def test_vps_settings_set_no_phase_c_key():
+    settings = lr.read_env_file()
+    assert settings["REDIS_URL"] == "memory://"
+    assert not [k for k in settings if k in lr.PHASE_C_KEYS or k.startswith("FAUCET_")]
+
+
+def test_early_env_is_vps_shaped_local_and_phase_c_off(monkeypatch):
+    for key in (*lr.PHASE_C_KEYS, "FAUCET_AMOUNT"):
+        monkeypatch.setenv(key, "1")
+    monkeypatch.setenv("POSTGRES_HOST", "db.neon.tech")
+    settings = {"APP_ENV": "production", "APP_PORT": "8000", "POSTGRES_HOST": "db",
+                "POSTGRES_SSL_MODE": "require", "REDIS_URL": "memory://",
+                "CORS_ORIGINS": '["https://agentx.social"]', "FAUCET_ENABLED": "true",
+                "TASK_WORK_DAYS": "7"}
+    env = lr.early_env("agentx_smoke_launch", settings)
+    assert env["POSTGRES_HOST"] == "localhost" and env["POSTGRES_DB"] == "agentx_smoke_launch"
+    assert env["POSTGRES_SSL_MODE"] == "disable"
+    assert env["APP_ENV"] == "development"          # skill.md must print this run's URL
+    assert env["CORS_ORIGINS"] == '["https://agentx.social"]'
+    assert env["REDIS_URL"] == "memory://"
+    assert env["FOUNDER_DIDS"] == lr.founder_dids_setting()
+    assert not [k for k in env if k in lr.PHASE_C_KEYS or k.startswith("FAUCET_")]
+
+
+def test_early_env_reads_the_real_settings_file():
+    env = lr.early_env("agentx_smoke_launch")
+    assert env["RATE_LIMIT_DEFAULT"] == lr.read_env_file()["RATE_LIMIT_DEFAULT"]
+    assert env["POSTGRES_HOST"] == "localhost"
+
+
+def test_early_and_economy_cannot_be_combined(no_database):
+    with pytest.raises(SystemExit) as exc:
+        lr.main(["--early", "--economy"])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("host", ["db.neon.tech", "db", "2.25.235.174"])
+def test_early_refuses_remote_host_before_anything(monkeypatch, no_database, host, capsys):
+    def boom(*a, **k):
+        raise AssertionError("ran a script")
+    monkeypatch.setattr(lr, "_script", boom)
+    monkeypatch.setattr(lr.smoke, "_run", boom)
+    assert lr.main(["--early", "--pg-host", host]) == 2
+    assert "is not this machine" in capsys.readouterr().err
+
+
+class _Client:
+    """httpx.Client stand-in: answers by (method, path)."""
+    def __init__(self, answers, seen):
+        self.answers, self.seen = answers, seen
+
+    def __call__(self, *a, **k):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def request(self, method, path, headers=None):
+        self.seen.append((method, path, headers))
+        return _Resp(self.answers[(method, path)])
+
+    def post(self, path, json=None):
+        self.seen.append(("POST", path, json))
+        r = _Resp(self.answers[("POST", path)])
+        r.text = "Agent DID is reserved" if r.status_code == 409 else "{}"
+        return r
+
+
+PHASE_C = {("POST", "/wallets/faucet"): 404, ("GET", "/markets/bounties/showcase"): 404,
+           ("GET", "/stats/economy"): 404}
+
+
+def test_phase_c_all_404_passes_and_faucet_is_authenticated(monkeypatch):
+    seen = []
+    monkeypatch.setattr(lr.httpx, "Client", _Client(PHASE_C, seen))
+    assert lr.phase_c_problems(BASE, "tok") == []
+    assert ("POST", "/wallets/faucet", {"Authorization": "Bearer tok"}) in seen
+
+
+@pytest.mark.parametrize("route", list(PHASE_C))
+@pytest.mark.parametrize("status", [200, 201, 401, 429])
+def test_phase_c_route_answering_fails(monkeypatch, route, status):
+    monkeypatch.setattr(lr.httpx, "Client", _Client({**PHASE_C, route: status}, []))
+    problems = lr.phase_c_problems(BASE, "tok")
+    assert len(problems) == 1 and route[1] in problems[0] and "want 404" in problems[0]
+
+
+@pytest.mark.parametrize("status,ok", [(409, True), (422, True), (201, False), (200, False)])
+def test_reserved_problems(monkeypatch, status, ok):
+    seen = []
+    monkeypatch.setattr(lr.httpx, "Client", _Client({("POST", "/agents"): status}, seen))
+    assert (lr.reserved_problems(BASE) == []) is ok
+    sent = [body["agent_did"] for _, _, body in seen]
+    assert sent == [lr.OLD_DIDS[0], lr.OLD_DIDS[-1].upper(), f" {lr.OLD_DIDS[1]} "]
+
+
+def test_reserved_409_without_reason_fails(monkeypatch):
+    client = _Client({("POST", "/agents"): 409}, [])
+    real_post = client.post
+
+    def post(path, json=None):
+        r = real_post(path, json)
+        r.text = "Agent DID already registered"
+        return r
+    client.post = post
+    monkeypatch.setattr(lr.httpx, "Client", client)
+    assert len(lr.reserved_problems(BASE)) == 3
+
+
+def test_check_early_reports_taken_reserved_did(monkeypatch):
+    monkeypatch.setattr(lr, "reserved_problems", lambda base: [])
+    monkeypatch.setattr(lr, "_psql", lambda *a, **k: [[lr.OLD_DIDS[0]]])
+    monkeypatch.setattr(lr, "founder_token", lambda base: "tok")
+    monkeypatch.setattr(lr, "phase_c_problems", lambda base, token: [])
+    res = lr.Results()
+    lr.check_early(BASE, "agentx_smoke_launch", {}, res)
+    assert res.rows[0][0] is False and lr.OLD_DIDS[0] in res.rows[0][2]
+    assert res.rows[1][0] is True
+
+
+def test_check_early_no_founder_token_fails(monkeypatch):
+    monkeypatch.setattr(lr, "reserved_problems", lambda base: [])
+    monkeypatch.setattr(lr, "reserved_taken", lambda db, env: [])
+    def no_token(base):
+        raise RuntimeError("/auth/token answered 403")
+    monkeypatch.setattr(lr, "founder_token", no_token)
+    res = lr.Results()
+    lr.check_early(BASE, "agentx_smoke_launch", {}, res)
+    assert [r[0] for r in res.rows] == [True, False] and "403" in res.rows[1][2]
+
+
+def test_founders_and_posters_use_the_given_roster(monkeypatch):
+    queries = []
+    monkeypatch.setattr(lr, "_psql", lambda db, env, q: queries.append(q) or [["0"]])
+    lr.check_founders("agentx_smoke_launch", {}, lr.Results(), lr.EARLY_FOUNDER_DIDS)
+    lr.check_new_agents("agentx_smoke_launch", {}, lr.Results(), want=0,
+                        roster=lr.EARLY_FOUNDER_DIDS)
+    for q in queries:
+        assert "atlas-seed-001" in q and "'did:agentx:atlas-001'" not in q
