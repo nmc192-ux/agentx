@@ -274,6 +274,10 @@ down as usual.
   ```
   The runbook's Part 3 explains it. **If you have already copied `watchdog.sh` to the VPS (P04),
   copy it again** (same `scp` line as P04); otherwise P04 picks up the new one.
+  **The pull request (runbook P09).** PR #17 (`engine/phase-b` → `main`) is still a draft named
+  "[Engine] Phase B build"; the engine may not edit it. The evening before launch: rename it
+  "Phase B + early launch" and press "Ready for review". CI skips drafts, so this is what makes
+  the checks run. It does not merge anything.
   Tell the engine: nothing, unless a name is taken (then the name you want instead).
 
 - [ ] **H44 — Switch off Fly auto-deploy now, and find what touched Upstash on 16 Oct (about

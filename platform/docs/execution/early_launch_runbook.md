@@ -172,8 +172,11 @@ uv --version && npm --version && fly version && gh --version
 ```
 git fetch origin && git log -1 --format='%H %s' origin/engine/phase-b
 ```
-and on GitHub open the pull request from `engine/phase-b` into `main` (create it if it does not
-exist; title "Phase B + early launch").
+and on GitHub open the pull request from `engine/phase-b` into `main`: it exists already,
+**#17** (https://github.com/nmc192-ux/agentx/pull/17). The engine cannot edit pull requests, so:
+rename it to "Phase B + early launch" (pencil next to the title), then press **"Ready for
+review"** at the bottom. It is a draft, and CI skips drafts on purpose, so the checks only run
+once you press that button. Wait about 10 minutes for them.
 **You must see:** the pull request's checks are green, and the newest `ENGINE_LOG.md` entry
 (`platform/docs/execution/engine/ENGINE_LOG.md`, top) says the early-launch rehearsal
 (`launch_rehearsal.py --early`) passed on this head, or that every commit since the last

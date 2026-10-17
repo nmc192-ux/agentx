@@ -1,5 +1,41 @@
 # Engine log
 
+## 2026-10-17 · cycle 263 · Opus (T2) · EL-9 package rename + Caddy edge check; EL-10 [human]
+
+- **DrJ's note, done (launch blocker under the freeze).** Checked PyPI/npm first: `agentx`,
+  `agentx-sdk` and **`agentx-mcp` (PyPI)** belong to other projects (the last is an MCP "security
+  shield", so `uvx agentx-mcp@0.1.0` on `/join` would have run someone else's code); `agentx-py`
+  and `agentx-client` are ours; `agentx-social`, `agentx-social-mcp`, `@agentx-social/*` are free.
+- **Renamed:** PyPI `agentx-py` → `agentx-social`; MCP `agentx-mcp` → `agentx-social-mcp`
+  (package and command; module `agentx_mcp` kept); npm `@agentx/sdk` → `@agentx-social/sdk`.
+  Python imports unchanged (`agentx`, `agentx_sdk`). `agentx-client` shim → `agentx-social>=0.4.0`.
+  Updated skill.md constants, agent card, `/join`, site SDK links, READMEs, samples, quickstart,
+  skill folder, CHANGELOGs, runbook P06/P07/L27–L29, HUMAN_ACTIONS H11/H12/H26/H31/H37, new H48.
+  History docs (old briefings, retros, `launch_day_runbook.md`, strategy docs) left as written.
+- **Secret names (asked for):** none. `publish-sdk.yml` uses Trusted Publishing; DrJ adds a
+  pending publisher for `agentx-social` (P07/H12). npm and MCP are published by hand.
+  `publish-sdk.yml` not edited (off-limits): it builds `sdk/`, so the new name publishes as is;
+  its cosmetic "View deployment" link is an optional H48 edit.
+- **Caddy resilience:** `watchdog.sh` check `edge` asks `https://api-vps.agentx.social/health`
+  through Caddy; on failure it inspects (never changes) Pink Popcorn's Caddy container and says
+  either "not on agentx_edge … Fix: docker network connect agentx_edge pinkpopcorn-feed-caddy-1"
+  (names from `compose.env`), "Caddy container not found", or "Caddy is on the network: check the
+  API copies / the AgentX block". Runbook Part 3 documents the one-command re-attach.
+- **Decisions I made (reversible):** (1) the MCP server stays a Python package named
+  `agentx-social-mcp` on PyPI; DrJ's `@agentx-social/mcp` is reserved by owning the npm org,
+  with nothing to publish (there is no TS MCP server). (2) Version numbers unchanged
+  (0.4.0 / 0.1.0 / 0.1.0): none was ever published under the new names. (3) No auto-re-attach in
+  the watchdog: it only alerts, so it never touches Pink Popcorn's container.
+- **EL-10 [human]:** PR #17 exists but is a draft; CI skips drafts and the engine guard refuses
+  `gh pr edit`. Ran CI's jobs locally on the head instead. DrJ renames + "Ready for review" (P09).
+- **Check:** `test_package_names.py` 5 (new; guards live files against the foreign names),
+  watchdog 29 (6 new edge cases), platform no-DB **4096 passed**; `--db` quickstart/samples/TS
+  live **16 passed**; sdk **531**; sdk/ts **171** + build; sdk/mcp **128**; examples/ts build;
+  UI lint + build OK; ruff clean; **`launch_rehearsal.py --early` PASSED 14/14 on this head**
+  (python-sdk joins from `agentx_social-0.4.0` wheel, ts-sdk from `agentx-social-sdk-0.1.0.tgz`,
+  MCP via `agentx-social-mcp`). Commit `cbb2c9c` (+ this docs commit).
+- **Next:** wait for DrJ (H48 → P09 → launch day). Status `PHASE_COMPLETE` stands.
+
 ## 2026-10-17 · cycle 262 · Opus (T2) · EL-8 briefing → PHASE_COMPLETE (early launch)
 
 - **Wrote:** `platform/docs/sprints/briefing_2026-10-17_engine.md` in the protocol's format. It
