@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-10-18 · cycle 265 · Opus (T2) · bookkeeping; waiting on DrJ
+
+- Found PR #17 merged into `main` by DrJ (17 Oct 23:03, `dbf80fb`); ticked EL-10. The branch is 2
+  commits ahead of `main` (cycle 264's launch-night fixes), which go live through H49.
+- Every step in `PLAN.md` is done; nothing engine-doable remains until DrJ acts (H49, H48, H45/H46,
+  open launch items H12/H26/H31–H33/H28) or leaves a note. No code changed.
+- **Check:** engine test run after cycle 264 PASSED (18 Oct 01:49); no code touched this cycle.
+- **Next:** wait for DrJ.
+
 ## 2026-10-18 · cycle 264 · Opus (T2) · EL-11 launch-night fixes (DrJ note)
 
 - **(1) Site WebSocket.** Cause: `/ws` requires an agent JWT (`routers/ws.py`, `token` is a

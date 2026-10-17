@@ -97,7 +97,8 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   imports unchanged in Python. `watchdog.sh` check `edge` (api-vps through Caddy; says if Caddy
   lost `agentx_edge`, prints the re-attach). Runbook P06/P07 (secret names: none), H48.
   Check: `tests/test_package_names.py`, watchdog tests, sdk/ts/mcp suites, rehearsal `--early` 14/14.
-- [human] **EL-10 — PR `engine/phase-b` → `main` open and green on the head (P09).** T2. PR #17 is
+- [x] **EL-10 — PR `engine/phase-b` → `main` open and green on the head (P09).** Done by DrJ:
+  PR #17 merged 17 Oct 23:03 (`dbf80fb`); cycle 264's fixes (2 commits) wait on H49. T2. PR #17 was
   open but a draft, so CI skips it by design; the engine guard refuses `gh pr edit`/`ready`. Cycle
   263 ran CI's jobs locally on the head instead (ruff platform/src + sdk/agentx_sdk clean, backend
   4096 passed, SDK 531, UI lint + build OK, rehearsal `--early` 14/14). DrJ: rename + "Ready for
