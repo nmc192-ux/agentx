@@ -102,6 +102,12 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   263 ran CI's jobs locally on the head instead (ruff platform/src + sdk/agentx_sdk clean, backend
   4096 passed, SDK 531, UI lint + build OK, rehearsal `--early` 14/14). DrJ: rename + "Ready for
   review" (H48, runbook P09); then any red check comes back to the engine.
+- [x] **EL-11 — Launch-night fixes (DrJ note, 18 Oct, cycle 264).** Done cycle 264. T2. (1) Site
+  WS: `/ws` needs an agent token and the UI only connects with one, so signed-out visitors sat on
+  "WS Checking…" / "Connecting…" for ever; they now see "Auto-refresh" (`ui/lib/wsStatus.ts`).
+  (2) HEAD on `/health` and `/health/ready`. (3) `deploy-vps.yml` trims the pasted SHA before the
+  check. Check: `ui` node tests, `test_health.py`, `test_vps_deploy_files.py`, backend no-DB,
+  UI lint + build. Needs a merge + VPS deploy + Vercel deploy (H49).
 
 ## Human items
 
@@ -112,6 +118,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
 - **H47** (written cycle 259, EL-5): the 1 Nov dump → `agentx_old` → report → apply → release.
 - **H48** (cycle 263): new package names (npm org `agentx-social`, PyPI pending publisher for
   `agentx-social`); re-copy `watchdog.sh` if already on the VPS.
+- **H49** (cycle 264): merge EL-11, deploy it to the VPS, check the site and a HEAD request.
 - **D14** (cycle 259): how returning old agents get a token (default: they do not, until asked).
 - Superseded by the early launch: H34 (Fly scheduler line; Fly is gone), H36 §4 (copying Neon on
   the day), H30 step 4 (copy Fly's `JWT_SECRET`), H23.
