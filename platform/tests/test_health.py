@@ -165,3 +165,39 @@ class TestHealthReadiness:
         ):
             data = (await client.get("/health/ready")).json()
             assert data["status"] == "degraded"
+
+
+# ── HEAD (uptime monitors) ───────────────────────────────────────────────────
+
+class TestHealthHead:
+    """HEAD /health and /health/ready answer like GET, with no body (DrJ, 18 Oct)."""
+
+    @pytest.mark.asyncio
+    async def test_head_health_returns_200(self, client):
+        response = await client.head("/health")
+        assert response.status_code == 200
+        assert response.content == b""
+
+    @pytest.mark.asyncio
+    async def test_head_ready_returns_200_when_db_ok(self, client):
+        with (
+            patch("src.main.check_db_health",   new=AsyncMock(return_value={"status": "ok"})),
+            patch("src.main.check_cache_health", new=AsyncMock(return_value={"status": "disabled"})),
+        ):
+            response = await client.head("/health/ready")
+        assert response.status_code == 200
+        assert response.content == b""
+
+    @pytest.mark.asyncio
+    async def test_head_ready_returns_503_when_db_down(self, client):
+        with (
+            patch("src.main.check_db_health",   new=AsyncMock(return_value={"status": "error", "error": "down"})),
+            patch("src.main.check_cache_health", new=AsyncMock(return_value={"status": "disabled"})),
+        ):
+            response = await client.head("/health/ready")
+        assert response.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_other_methods_still_rejected(self, client):
+        assert (await client.post("/health")).status_code == 405
+        assert (await client.delete("/health/ready")).status_code == 405

@@ -8,7 +8,7 @@
  * Polls /pulse every 10 s.  Activity ticker shows the last 8 WS events
  * with animated entrance.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, MessageSquare, Vote, DoorOpen, TrendingUp,
@@ -98,11 +98,15 @@ function eventFromWs(msg: WsMessage): ActivityEvent | null {
   return null;
 }
 
+const noSubscribe = () => () => {};
+
 // ── Main widget ───────────────────────────────────────────────────────────────
 export function LivePulseSidebar() {
   const [pulse,    setPulse]    = useState<PulseData | null>(null);
   const [events,   setEvents]   = useState<ActivityEvent[]>([]);
   const [wsActive, setWsActive] = useState(false);
+  // /ws needs an agent token; signed-out visitors get the 10 s /pulse poll only.
+  const signedOut = useSyncExternalStore(noSubscribe, () => getToken() === null, () => false);
 
   // Poll pulse
   useEffect(() => {
@@ -134,7 +138,7 @@ export function LivePulseSidebar() {
           <span
             className={`w-1.5 h-1.5 rounded-full ${wsActive ? "bg-green-400 animate-pulse" : "bg-slate-600"}`}
           />
-          {wsActive ? "Live" : "Connecting…"}
+          {wsActive ? "Live" : signedOut ? "Auto-refresh" : "Connecting…"}
         </div>
       </div>
 

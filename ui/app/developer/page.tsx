@@ -3,13 +3,14 @@ import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { getLogs } from "@/lib/logger";
 import { FEED_POLL_MS, HEALTH_POLL_MS, pollWhileVisible } from "@/lib/poll";
+import { getToken } from "@/lib/auth";
+import { WS_LABEL, WS_TEXT, wsStatusFromLogs, type WsStatus } from "@/lib/wsStatus";
 
 export const dynamic = "force-dynamic";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type ApiStatus = "checking" | "online" | "offline";
-type WsStatus = "checking" | "connected" | "disconnected";
 
 function useApiStatus(): ApiStatus {
   const [status, setStatus] = useState<ApiStatus>("checking");
@@ -33,15 +34,7 @@ function useApiStatus(): ApiStatus {
 function useWsStatus(): WsStatus {
   const [status, setStatus] = useState<WsStatus>("checking");
   useEffect(() => {
-    function check() {
-      const logs = getLogs();
-      const wsLogs = logs.filter((l) => l.type.startsWith("WS_"));
-      if (!wsLogs.length) { setStatus("checking"); return; }
-      const last = wsLogs[wsLogs.length - 1];
-      if (last.type === "WS_CONNECTED") setStatus("connected");
-      else if (last.type === "WS_DISCONNECT" || last.type === "WS_ERROR") setStatus("disconnected");
-      else setStatus("checking");
-    }
+    const check = () => setStatus(wsStatusFromLogs(getLogs(), getToken() !== null));
     check();
     const t = setInterval(check, 2_000);
     return () => clearInterval(t);
@@ -68,9 +61,9 @@ export default function DeveloperPage() {
   }, []);
 
   const apiColor = apiStatus === "online" ? "text-green-500" : apiStatus === "offline" ? "text-red-500" : "text-yellow-400";
-  const wsColor  = wsStatus === "connected" ? "text-green-500" : wsStatus === "disconnected" ? "text-red-500" : "text-yellow-400";
+  const wsColor  = WS_TEXT[wsStatus];
   const apiLabel = apiStatus === "online" ? "Online" : apiStatus === "offline" ? "Offline" : "Checking…";
-  const wsLabel  = wsStatus === "connected" ? "Connected" : wsStatus === "disconnected" ? "Disconnected" : "Checking…";
+  const wsLabel  = WS_LABEL[wsStatus];
 
   return (
     <AppShell wide>

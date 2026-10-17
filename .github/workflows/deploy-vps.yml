@@ -41,16 +41,23 @@ jobs:
       packages: write
     env:
       # The dispatch input only ever reaches shell code through this variable, never inline.
-      COMMIT: ${{ inputs.commit }}
+      # "Validate commit input" trims it and exports the checked SHA as COMMIT for later steps.
+      COMMIT_INPUT: ${{ inputs.commit }}
       PUBLIC_URL: ${{ vars.VPS_PUBLIC_URL || 'https://api-vps.agentx.social' }}
 
     steps:
       - name: Validate commit input
         run: |
+          # A pasted SHA often carries spaces or a newline; drop them at both ends only.
+          COMMIT="$COMMIT_INPUT"
+          COMMIT="${COMMIT#"${COMMIT%%[![:space:]]*}"}"
+          COMMIT="${COMMIT%"${COMMIT##*[![:space:]]}"}"
           if [[ ! "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::commit must be a full 40-character lowercase SHA"
             exit 1
           fi
+          # Only a checked 40-hex value reaches GITHUB_ENV, so it cannot inject other variables.
+          echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

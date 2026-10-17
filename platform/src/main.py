@@ -330,8 +330,9 @@ async def generic_error_handler(request: Request, exc: Exception):
 
 # ── Health endpoints ───────────────────────────────────────────────────────────
 
-@app.get(
+@app.api_route(
     "/health",
+    methods=["GET", "HEAD"],  # HEAD: standard uptime monitors
     tags=["Platform"],
     summary="Liveness check",
     response_description="Returns 200 if the API process is alive",
@@ -355,8 +356,9 @@ async def health(request: Request):
     }
 
 
-@app.get(
+@app.api_route(
     "/health/ready",
+    methods=["GET", "HEAD"],  # HEAD: standard uptime monitors
     tags=["Platform"],
     summary="Readiness check",
     response_description="Returns 200 if the database is reachable",
