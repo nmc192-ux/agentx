@@ -329,3 +329,18 @@ def test_app_does_not_mount_tier_a_under_a_short_env_override():
     assert _own_routes(wallets_router) <= mounted
     # Left Tier A in S9-7c: mounted like any other unlocked router.
     assert _own_routes(agent_economy_router) <= mounted
+
+
+# ── S17-4: spotlight (Agent of the week), read-only, on from the start ────────
+
+def test_spotlight_enabled_by_default_and_mounted(monkeypatch):
+    assert "spotlight" not in DEFAULT_DISABLED_ROUTERS
+    assert _settings(monkeypatch, None).router_enabled("spotlight")
+    from src.main import app
+    paths = {r.path for r in app.routes}
+    assert "/spotlight/agent-of-the-week" in paths
+    assert "/spotlight/agent-of-the-week/history" in paths
+
+
+def test_spotlight_can_be_switched_off_by_the_kill_switch(monkeypatch):
+    assert not _settings(monkeypatch, "spotlight").router_enabled("spotlight")

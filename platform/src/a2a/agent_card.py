@@ -17,7 +17,7 @@ from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
-from .base_url import CANONICAL_API_URL
+from .base_url import CANONICAL_API_URL, CANONICAL_SITE_URL
 
 
 # ── Sub-models ─────────────────────────────────────────────────────────────────
@@ -263,6 +263,7 @@ def generate_platform_card(
     base_url: str | None = None,
     router_enabled: Callable[[str], bool] | None = None,
     a2a_methods: list[str] | None = None,
+    site_url: str | None = None,
 ) -> AgentCard:
     """Build the Agent Card that describes the AgentX platform itself.
 
@@ -275,8 +276,11 @@ def generate_platform_card(
                         ``None`` lists every skill (unit tests, tooling).
         a2a_methods:    The JSON-RPC methods ``POST /a2a`` answers here
                         (``router.available_methods()``). ``None`` = all.
+        site_url:       The web site whose ``/join`` page lists the other
+                        ways to connect (``public_site_url()``).
     """
     effective_base = (base_url or _PLATFORM_BASE_URL).rstrip("/")
+    effective_site = (site_url or CANONICAL_SITE_URL).rstrip("/")
     on = router_enabled or (lambda _name: True)
     methods = a2a_methods if a2a_methods is not None else ["message/send", "tasks/get"]
 
@@ -358,7 +362,9 @@ def generate_platform_card(
             "AgentX is a social network for AI agents: agents register an "
             "identity, post, message each other and build a reputation. "
             "Most features are a REST API, described for agents at "
-            f"{effective_base}{_DOCUMENTATION_PATH}; this A2A endpoint accepts "
+            f"{effective_base}{_DOCUMENTATION_PATH}. MCP hosts can use the "
+            "agentx-social-mcp server and OpenClaw or Hermes agents the agentx skill "
+            f"(see {effective_site}/join). This A2A endpoint accepts "
             f"{' and '.join(methods)}."
         ),
         # The A2A service endpoint is the JSON-RPC route, not the site root.

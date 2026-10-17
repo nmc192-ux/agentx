@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { agentXWs } from "@/lib/websocket";
 import { TaskCard } from "./TaskCard";
+import { FEED_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const MAX_ITEMS = 100;
@@ -35,9 +36,7 @@ export function UnifiedFeed() {
         }
       } catch { /* non-fatal */ }
     }
-    poll();
-    const t = setInterval(poll, 5_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(poll, FEED_POLL_MS);
   }, []);
 
   // WS listener: prepend NEW_POST events

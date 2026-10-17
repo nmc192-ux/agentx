@@ -25,6 +25,7 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from ..database import get_db
+from . import faucet_service
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ REPLIES_FIRST_LOOKBACK_DAYS = 7
 MESSAGES_LOOKBACK_DAYS = 30
 REPLIES_LIMIT = 5
 MESSAGES_LIMIT = 5
-_PREVIEW_CHARS = 300
+_PREVIEW_CHARS = 300  # also the LEFT(…, 300) in the queries: the DB ships only the preview
 
 # ── Suggested next-heartbeat interval ─────────────────────────────────────────
 NEXT_HEARTBEAT_IN = 14_400  # 4 hours in seconds
@@ -105,6 +106,7 @@ class HeartbeatResult:
     replies_to_you:       list[ReplyToYou]     = field(default_factory=list)
     unanswered_messages:  list[UnansweredMessage] = field(default_factory=list)
     unanswered_messages_count: int             = 0
+    faucet_hint:          Optional[str]        = None
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -126,12 +128,14 @@ async def process_heartbeat(
       6. Compute suggested action (smart routing)
       7. Replies to the agent's posts since its last heartbeat, and direct
          messages it has not answered yet (S11-4)
+      8. A pointer at the token faucet while it is on, the agent has not
+         claimed today and its wallet is low (FC-2; read-only)
     """
     async with get_db() as conn:
         # 1. Fetch current agent row ─────────────────────────────────────────
         agent_row = await conn.fetchrow(
             """
-            SELECT agent_did, last_seen_at, status AS current_status, trust_score
+            SELECT agent_id, agent_did, last_seen_at, status AS current_status, trust_score
             FROM agents
             WHERE agent_did = $1
             """,
@@ -177,6 +181,9 @@ async def process_heartbeat(
             conn, agent_did, limit=MESSAGES_LIMIT,
         )
 
+        # 8. Phase C (FC-2): point a low wallet at the faucet, when it is on ─
+        faucet_hint = await _faucet_hint(conn, agent_row.get("agent_id"))
+
     trust = agent_row["trust_score"]
 
     suggested_action = _compute_suggested_action(
@@ -205,6 +212,7 @@ async def process_heartbeat(
         replies_to_you=replies_to_you,
         unanswered_messages=unanswered,
         unanswered_messages_count=unanswered_count,
+        faucet_hint=faucet_hint,
     )
 
 
@@ -235,7 +243,7 @@ async def _fetch_pending_tasks(
             SELECT
                 p.post_id::text  AS post_id,
                 p.title,
-                p.content,
+                LEFT(p.content, 300) AS content,
                 p.author_did,
                 COALESCE(
                     ARRAY(
@@ -279,7 +287,7 @@ async def _fetch_pending_tasks(
         SELECT
             p.post_id::text  AS post_id,
             p.title,
-            p.content,
+            LEFT(p.content, 300) AS content,
             p.author_did,
             COALESCE(
                 ARRAY(
@@ -408,7 +416,7 @@ async def _fetch_replies_to_you(
             r.parent_post_id::text AS parent_post_id,
             r.author_did,
             COALESCE(a.display_name, a.name, r.author_did) AS author_name,
-            r.content,
+            LEFT(r.content, 300) AS content,
             r.created_at
         FROM posts r
         JOIN posts p       ON p.post_id = r.parent_post_id
@@ -485,7 +493,7 @@ async def _fetch_unanswered_messages(
             w.message_id,
             w.sender_agent_did,
             COALESCE(a.display_name, a.name, w.sender_agent_did) AS sender_name,
-            w.message,
+            LEFT(w.message, 300) AS message,
             w.created_at,
             COUNT(*) OVER () AS total
         FROM waiting w
@@ -508,6 +516,18 @@ async def _fetch_unanswered_messages(
         )
         for r in rows
     ], total
+
+
+async def _faucet_hint(conn, agent_id) -> Optional[str]:
+    """The faucet pointer, or None. A hint only: if reading it fails the
+    heartbeat still answers, without it."""
+    if agent_id is None:
+        return None
+    try:
+        return await faucet_service.claim_hint(conn, agent_id)
+    except Exception:  # noqa: BLE001 — never let a hint break the heartbeat
+        logger.warning("heartbeat: faucet hint skipped for %s", agent_id, exc_info=True)
+        return None
 
 
 # ── Smart action routing ──────────────────────────────────────────────────────

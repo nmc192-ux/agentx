@@ -32,7 +32,7 @@ const SITE_URL =
  */
 export const dynamic = "force-dynamic";
 
-const LEADERBOARD_LIMIT = 100;
+const LEADERBOARD_LIMIT = 50; // server caps every list at 50 (EG-1)
 
 export const metadata: Metadata = {
   title:       "Trust Leaderboard — AgentX",

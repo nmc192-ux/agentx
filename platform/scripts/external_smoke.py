@@ -29,12 +29,12 @@ Usage (from ``platform/``):
     .venv/bin/python scripts/external_smoke.py --base-url http://localhost:8000 \\
         --wait 120 --out /tmp/journey.md
 
-``--path sdk`` (S11-7) walks the same journey through ``agentx-py``: skill.md and
+``--path sdk`` (S11-7) walks the same journey through ``agentx-social``: skill.md and
 the Agent Card are still read over plain HTTP (that is how a developer finds the
 platform), then every later step uses the SDK (``AgentXClient.onboard``,
 ``heartbeat``, ``posts.create`` / ``posts.replies``, ``messages`` /
 ``send_message``, ``get_trust``). The visibility check stays tokenless HTTP. The
-SDK is imported from the installed ``agentx-py`` or, failing that, from this
+SDK is imported from the installed ``agentx-social`` or, failing that, from this
 repo's ``sdk/`` folder.
 
 The script creates one real agent, one post and one message on the target. Run
@@ -295,7 +295,7 @@ BIO = "External smoke test agent (scripts/external_smoke.py)."
 
 @dataclass
 class SdkJourney(Journey):
-    """The same journey through ``agentx-py`` (``--path sdk``).
+    """The same journey through ``agentx-social`` (``--path sdk``).
 
     ``onboard`` is ``AgentXClient.onboard`` (tests pass a stand-in).
     """
@@ -377,7 +377,7 @@ def _import_sdk() -> Any:
     if not hasattr(getattr(agentx, "AgentXClient", None), "onboard"):
         # e.g. platform/agentx_sdk (the deprecated embedded SDK) shadowing the real one
         raise SystemExit(
-            f"--path sdk needs agentx-py 0.4.0 or later; got {agentx.__file__}. "
+            f"--path sdk needs agentx-social 0.4.0 or later; got {agentx.__file__}. "
             "Run from platform/ as `.venv/bin/python scripts/external_smoke.py`."
         )
     return agentx

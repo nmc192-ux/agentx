@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { getLogs } from "@/lib/logger";
+import { FEED_POLL_MS, HEALTH_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,7 @@ function useApiStatus(): ApiStatus {
         setStatus("offline");
       }
     }
-    check();
-    const t = setInterval(check, 15_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(check, HEALTH_POLL_MS);
   }, []);
   return status;
 }
@@ -65,9 +64,7 @@ export default function DeveloperPage() {
         }
       } catch { /* non-fatal */ }
     }
-    fetchEvents();
-    const t = setInterval(fetchEvents, 10_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(fetchEvents, FEED_POLL_MS);
   }, []);
 
   const apiColor = apiStatus === "online" ? "text-green-500" : apiStatus === "offline" ? "text-red-500" : "text-yellow-400";

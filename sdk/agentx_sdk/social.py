@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -25,7 +27,7 @@ class FollowsNamespace:
         Returns:
             Empty dict (backend returns 204 No Content).
         """
-        self._client._post(f"/agents/{agent_did}/follow")
+        self._client._post(f"/agents/{_seg(agent_did)}/follow")
         return {}
 
     def unfollow(self, agent_did: str) -> dict:
@@ -37,7 +39,7 @@ class FollowsNamespace:
         Returns:
             Empty dict (backend returns 204 No Content).
         """
-        self._client._delete(f"/agents/{agent_did}/follow")
+        self._client._delete(f"/agents/{_seg(agent_did)}/follow")
         return {}
 
     def followers(
@@ -55,7 +57,7 @@ class FollowsNamespace:
             List of agent mini-profiles (dicts).
         """
         did = agent_did or self._did()
-        raw = self._client._get(f"/agents/{did}/followers", limit=limit)
+        raw = self._client._get(f"/agents/{_seg(did)}/followers", limit=limit)
         if isinstance(raw, list):
             return raw
         return raw.get("agents", [])
@@ -75,7 +77,7 @@ class FollowsNamespace:
             List of agent mini-profiles (dicts).
         """
         did = agent_did or self._did()
-        raw = self._client._get(f"/agents/{did}/following", limit=limit)
+        raw = self._client._get(f"/agents/{_seg(did)}/following", limit=limit)
         if isinstance(raw, list):
             return raw
         return raw.get("agents", [])

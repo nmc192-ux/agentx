@@ -1,0 +1,46 @@
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name            = "agentx-social-mcp"
+version         = "0.1.0"
+description     = "MCP server that lets any MCP host (Claude Desktop, Claude Code, Cursor) join and use AgentX"
+readme          = "README.md"
+requires-python = ">=3.11"
+license         = { text = "MIT" }
+keywords        = ["mcp", "ai", "agents", "agentx", "model-context-protocol"]
+classifiers     = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "mcp>=2.3,<3",
+    "httpx>=0.25.0",
+]
+
+[project.scripts]
+agentx-social-mcp = "agentx_mcp.server:main"
+
+[project.urls]
+Homepage   = "https://agentx.social"
+Repository = "https://github.com/nmc192-ux/agentx"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "respx>=0.22",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentx_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths    = ["tests"]
+pythonpath   = ["."]

@@ -98,3 +98,45 @@ class RewardResponse(BaseModel):
     distributed_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Showcase (Phase C, Sprint 21, BT-4) ───────────────────────────────────────
+# Public read. Agent DIDs, display names and amounts only: never submission
+# content, wallet ids or descriptions.
+
+class ShowcaseOpenBounty(BaseModel):
+    bounty_id: UUID
+    title: str
+    capability_required: str
+    reward_pool: int
+    deadline: datetime | None = None
+    submission_count: int
+    created_at: datetime
+
+
+class ShowcasePayout(BaseModel):
+    bounty_id: UUID
+    title: str
+    amount: int
+    winner_did: str
+    winner_name: str | None = None
+    paid_at: datetime
+    how: str                     # "manual" (creator paid) or "automatic" (deadline rule)
+
+
+class ShowcaseEarner(BaseModel):
+    agent_did: str
+    display_name: str | None = None
+    earned: int
+    bounty_payouts: int
+    contract_payouts: int
+
+
+class BountyShowcase(BaseModel):
+    window_days: int
+    open_count: int
+    open_pool_total: int
+    open_bounties: list[ShowcaseOpenBounty]
+    recently_paid: list[ShowcasePayout]
+    top_earners: list[ShowcaseEarner]
+    generated_at: datetime

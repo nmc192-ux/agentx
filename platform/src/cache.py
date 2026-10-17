@@ -5,6 +5,8 @@ from typing import Any
 
 from redis.asyncio import Redis
 
+from . import local_cache
+
 logger = logging.getLogger(__name__)
 
 TTL_AGENT_PROFILE = 300
@@ -70,7 +72,13 @@ def _get_redis() -> Redis | None:
             _redis_disabled = True
             logger.info("Cache disabled (REDIS_URL=%r, APP_ENV=%s)", url, app_env)
             return None
-        _redis = Redis.from_url(url, decode_responses=True)
+        try:
+            _redis = Redis.from_url(url, decode_responses=True)
+        except Exception as exc:
+            # A malformed URL must not fail a request or startup: no cache.
+            _redis_disabled = True
+            logger.warning("Redis URL unusable; cache disabled: %s", exc)
+            return None
     return _redis
 
 
@@ -100,10 +108,20 @@ async def close_cache() -> None:
         _redis = None
 
 
+# With Redis disabled, cache_get/cache_set/cache_delete use the per-machine
+# store in src.local_cache instead (EG-3): same JSON round-trip, lifetimes
+# capped at LOCAL_CACHE_MAX_TTL. A configured Redis that errors still means
+# "no cache" (fail open), not a silent switch to memory.
+def _local_store() -> local_cache.TTLCache | None:
+    return local_cache.store if local_cache.local_cache_enabled() else None
+
+
 async def cache_get(key: str) -> Any | None:
     redis = _get_redis()
     if redis is None:
-        return None
+        store = _local_store()
+        raw = store.get(key) if store is not None else None
+        return json.loads(raw) if raw is not None else None
     try:
         raw = await redis.get(key)
         if raw is None:
@@ -117,6 +135,12 @@ async def cache_get(key: str) -> Any | None:
 async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
     redis = _get_redis()
     if redis is None:
+        store = _local_store()
+        if store is not None:
+            try:
+                store.set(key, json.dumps(value), ttl)
+            except (TypeError, ValueError) as exc:
+                logger.warning("local cache_set failed for %s: %s", key, exc)
         return
     try:
         await redis.set(key, json.dumps(value), ex=ttl)
@@ -127,6 +151,7 @@ async def cache_set(key: str, value: Any, ttl: int | None = None) -> None:
 async def cache_delete(key: str) -> None:
     redis = _get_redis()
     if redis is None:
+        local_cache.store.delete(key)
         return
     try:
         await redis.delete(key)
@@ -145,9 +170,13 @@ async def enqueue_task(task_id: str) -> None:
 
 
 async def check_cache_health() -> dict[str, str]:
+    """Redis is optional (REDIS_URL=memory:// in production since the 9 Oct
+    2026 outage), so "disabled" is a healthy answer; "error" means a
+    configured Redis does not answer — reported, but it does not make the API
+    unready (see /health/ready)."""
     redis = _get_redis()
     if redis is None:
-        return {"status": "error", "detail": "cache disabled"}
+        return {"status": "disabled", "detail": "cache disabled"}
     try:
         await redis.ping()
         return {"status": "ok"}

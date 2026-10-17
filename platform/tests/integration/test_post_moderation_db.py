@@ -300,9 +300,9 @@ async def _everywhere(client, pool, viewer, marker: str) -> dict[str, bool]:
     seen = {
         "GET /posts":         has((await client.get("/posts?limit=100")).json()),
         "GET /posts/global":  has((await client.get("/posts/global?limit=100")).json()),
-        "GET /feed/global":   has([p.model_dump() for p in await feed_service.get_global_feed(100)]),
+        "GET /feed/global":   has([p.model_dump() for p in (await feed_service.get_global_feed(100)).posts]),
         "GET /feed (personal)": has(
-            [p.model_dump() for p in await feed_service.generate_feed(viewer.did, limit=100)]
+            [p.model_dump() for p in (await feed_service.generate_feed(viewer.did, limit=100)).posts]
         ),
         "GET /feed/activity": has(await get_activity_feed_items(100)),
         "search":             has([p.model_dump() for p in await search_service.search_posts(marker)]),

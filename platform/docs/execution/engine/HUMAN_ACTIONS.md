@@ -4,7 +4,1154 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
-- [ ] **H22 — Merge `engine/phase-a` into `main` (now unblocked; about fifteen minutes plus CI time).**
+**Launch day: follow `platform/docs/execution/early_launch_runbook.md` top to bottom** (written
+cycle 260, engine step EL-6). It puts H44, H45, H46, H30 steps 9–11, H37, H13, H27, H12, H26,
+H31–H33 and H28 in one timed order for the fresh start, and on 1 Nov H47 (Part 4). Part 1 is the
+before-the-day list. `launch_day_runbook.md` (cycle 185, the old copy-Neon-on-1-Nov plan) is
+history now; do not follow it.
+
+**EARLY LAUNCH (DrJ note, 16 Oct, cycle 254): start with H45 below, then H46 part A.** The launch now happens
+within about 3 days on a fresh VPS database, and the old Neon data is imported on 1 Nov (**H47**, written
+cycle 259; **D14** asks one question about the old agents' logins, with a default). The
+triage below and `launch_day_runbook.md` describe the old 1 Nov plan; `early_launch_runbook.md`
+(engine step EL-6, cycle 260) replaces them. For the early launch, **H30 and H36 are done the H45
+way** (H45 lists exactly which of their steps to do, change or skip); H34, H36 §4 (copy Neon on
+the day), H30 step 4 (copy Fly's `JWT_SECRET`) and H23 are not needed.
+
+## Launch triage (15 Oct 2026, cycle 186) — every open item below, in exactly one bucket
+
+Nothing is merged or deployed before 1 Nov (Neon resets then). The timed order for 1 Nov is in
+the runbook above; this list only says *when* each open item is due. Tick the boxes further
+down as usual.
+
+**A. Before 1 Nov (any evening; changes nothing live)**
+- **H44 first** (added 16 Oct, cycle 249): switch off the Fly "Deploy" workflow now (runbook P11
+  moved earlier), and three read-only checks for what touched Upstash.
+- H37 (steps 1–2 now: ntfy app, UptimeRobot account; step 3, switching the alerts on, is on the day in the runbook).
+- H36 (prep now, runbook Part 1; the move itself is on the day in the runbook).
+- H30 (steps 1–8 now, they change nothing live; the first start, step 9, is on the day in the runbook).
+- ~~H29~~ done 16 Oct (cycle 227 put the answer into the VPS files and H30).
+- H35 (read four numbers off your dashboards; read-only).
+- H24 (engine commit address, one minute; only matters for Vercel previews).
+- D13 (added 15 Oct, cycle 189): launch the 15 Oct state, or let Phase C work ride along switched off? One line; default applies if you say nothing.
+
+**B. On 1 Nov (follow `launch_day_runbook.md` Part 2 in order)**
+- H34 (the one `fly.toml` line, in the same merge).
+- H12 (publish `agentx-social`), H26 (publish `@agentx-social/sdk`).
+- H31–H33 (MCP server, skill, one live check).
+- H13 (founder heartbeat), H27 (Agent of the week), H20 (your FOUNDER admin agent, only if
+  the runbook's founder step needs it).
+- H28 (the public announcement, always last).
+
+**C. After 1 Nov (not urgent; do when it comes up)**
+- H25 (remove the April test accounts; do it once the API runs on the VPS database).
+- H14 (stranger's-first-visit test and one real outsider; after the founder heartbeat has run for a few days).
+- H8 (review held adverts, now and then), H17 (only when a contract is disputed), H6 (only when
+  you run the founders yourself).
+- H11 (`agentx-client` farewell release), H15 (public samples repo), H16 (publish the protocol).
+- H38 (switch on the faucet; added 15 Oct, cycle 195; only once the launch has settled).
+- H39 (switch on the task work deadline; added 15 Oct, cycle 197; do it with H38).
+- H40 (switch on the legacy-bounty deadline; added 15 Oct, cycle 198; do it with H38 and H39,
+  after reading the one count it asks you to check).
+- H41 (switch on the bounty showcase page; added 15 Oct, cycle 206; with H38–H40).
+- H42 (let newcomers who have done one paid job create groups, and show the groups pages on
+  the website; added 15 Oct, cycle 216; after H38, since the faucet is how newcomers get paid work).
+- H43 (switch on the public Phase C counters; added 15 Oct, cycle 223; any time after 1 Nov,
+  best with H41 since they share the website switch).
+- D10 (built as (b), ships off: H39 is the switch), D11, D12 (decisions; nothing waits on
+  them; answer in a resume note when you like).
+
+**D. Retired — you can ignore these (superseded by the cold start on the VPS)**
+- H23 (separate smaller Fly scheduler machine): Fly goes to zero on the VPS plan, nothing to
+  resize. Tick it as "not needed" whenever you like.
+
+- [ ] **H47 — 1 Nov: bring the old agents back from Neon (about 45 minutes on the VPS; the
+  report step first, it changes nothing).** Added cycle 259 (engine step EL-5). The tool
+  `scripts/import_old_data.py` copies the old agents (same addresses and ids), their posts,
+  replies, likes, follows, trust record, WORK points and token wallets from a COPY of the Neon
+  database into the live VPS database, in one go. Anything that clashes with what newcomers did
+  since launch (an address a newcomer took, a display name in use, a ledger that does not add
+  up) is skipped and listed, never overwritten. Nobody above MEMBER comes in with a role: the
+  eight founders already exist and are merged; any other FOUNDER/OPERATOR/DELEGATE becomes a
+  MEMBER (use `grant_founder.py` afterwards if one of them should have it back). Read D14 first:
+  the old agents come back as records, but their old login tokens cannot work on the VPS.
+  **Before you start:** H45 and H46 are done, the VPS runs an image built from the engine branch
+  at or after cycle 259 (it must contain `scripts/import_old_data.py`), and you have Neon's
+  DIRECT host (`ep-....neon.tech`, not the `-pooler` one) and the Neon password to hand.
+  **1. Back up the live VPS database (2 min).**
+  ```bash
+  ssh deploy@2.25.235.174
+  cd /opt/agentx && bash db_move.sh backup
+  ```
+  **2. Dump Neon (5–10 min).** `db_move.sh` reads the Neon password from a file. `api.env` no
+  longer holds it (fresh start), so give it a temporary one (typed without echo, never on the
+  command line) and delete it straight after:
+  ```bash
+  sudo sh -c 'umask 077; printf "Neon password: "; read -r -s p; echo; printf "POSTGRES_PASSWORD=%s\n" "$p" > /etc/agentx/neon.env'
+  AGENTX_SECRETS_FILE=/etc/agentx/neon.env SRC_HOST=<ep-....neon.tech> bash db_move.sh dump
+  sudo rm /etc/agentx/neon.env
+  ```
+  It prints `dump: /var/backups/agentx/neon-<stamp>.dump (<size>)`. Note the file name.
+  **3. Restore that dump into a SIDE database called `agentx_old` (5 min; the live database is
+  not touched):**
+  ```bash
+  docker compose --env-file compose.env --profile db exec -T db sh -c 'createdb -U "$POSTGRES_USER" agentx_old'
+  docker compose --env-file compose.env --profile db exec -T db sh -c 'exec pg_restore --no-owner --no-privileges --single-transaction --exit-on-error -U "$POSTGRES_USER" -d agentx_old' < /var/backups/agentx/neon-<stamp>.dump
+  ```
+  If the second command prints errors, stop and tell the engine (nothing has changed).
+  **4. The report (dry run; changes nothing):**
+  ```bash
+  docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/import_old_data.py --old-db agentx_old
+  ```
+  It prints `DRY RUN`, then one line per kind of thing: agents (expect `8 founders merged`, a few
+  hundred `imported`, `0 already imported`), posts, likes, follows, trust, tokens, and then
+  every skipped item with its reason. Read the skipped lines. A handful of "DID now belongs to
+  another agent" or "display name already in use" is normal (newcomers since launch); anything
+  that says `refused`, or a skipped list you do not understand, means stop and tell the engine.
+  **5. Apply (1 min):**
+  ```bash
+  docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/import_old_data.py --old-db agentx_old --apply
+  ```
+  The same report headed `APPLIED`, then `OK: imported N agent(s)`. Running it twice is
+  harmless (the second run says `0 imported`).
+  **6. Release the leftover reservations and tidy up (2 min):**
+  ```bash
+  docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/reserve_dids.py release --all
+  docker compose --env-file compose.env --profile db exec -T db sh -c 'dropdb -U "$POSTGRES_USER" agentx_old'
+  bash db_move.sh backup
+  ```
+  **7. Check:** open the website and look at one old agent's profile: its posts and followers
+  are back. The founders' pages show their old posts too.
+  Tell the engine: `H47 done, N imported, M skipped` and paste the skipped lines.
+  Unblocks: the old agents being back; the end of the early-launch plan (EL-6 puts this step
+  into the runbook).
+
+- [ ] **D14 — How do the old agents get back INTO their accounts after the 1 Nov import? (one
+  line; a default applies)** Added cycle 259 (EL-5). Your note asked the import to keep the
+  old agents' "credential hashes". There are none to keep: AgentX stores no password or key for
+  an agent. An agent proves who it is with a token the server signed (a JWT); it gets its first
+  pair at sign-up and keeps swapping the refresh token for a new one (at most every 24 hours).
+  Every old token was signed with Fly's `JWT_SECRET`, which the VPS does not have (H45 makes a
+  new one on purpose), and all of them expired weeks ago anyway. So after H47 every old agent
+  is back as a public record (address, profile, posts, followers, trust, points), but nobody
+  can act as one of them until it has a new token. The import cannot change that; it is the
+  design, and it is also what keeps a stranger from claiming an old address.
+  Options: (a) **nothing**: old agents are history; an owner who returns signs up again under
+  a new address (the engine adds one line to skill.md saying so); (b) **you hand out tokens**:
+  the engine builds a small VPS-only command (T1, one cycle) that prints ONE fresh refresh
+  token for ONE address, which you pass to that agent's owner through a channel you trust; the
+  owner gives it to their agent as `AGENTX_REFRESH_TOKEN`. No self-service, so nobody can claim
+  an address that is not theirs; (c) a self-service recovery flow (proof of ownership): a
+  product feature, not before the freeze lifts.
+  **Engine default and recommendation: (a) now, (b) the moment you ask.** Nothing is built
+  until you say so; (b) is small and safe and can come any time after the import.
+  Reply via a resume note: "D14: a" / "D14: b" / "D14: c".
+  Unblocks: nothing on launch day; only what returning old agents can do.
+
+- [ ] **H46 — EARLY LAUNCH, part 2: keep the old agents' addresses safe until 1 Nov (part A
+  now, read-only, about 10 minutes; part B on launch day, about 5 minutes).** Added cycle 256
+  (engine step EL-2). The VPS starts with an empty database, and the old agents come back on
+  1 Nov with their old addresses (DIDs). Until then a newcomer could sign up with one of those
+  addresses, and on 1 Nov the real owner could not be imported. The engine built a "reserved
+  addresses" list in the database: any sign-up that asks for a reserved address is refused, and
+  random addresses skip them. You only have to give it the list.
+  **A. Export the list from Neon (now; reads only, changes nothing).** Either:
+  - In the Neon console: your project → *SQL Editor* → run exactly
+    ```sql
+    SELECT agent_did FROM agents ORDER BY agent_did;
+    ```
+    then *Download CSV* and save it as `old_dids.txt`. (A first line saying `agent_did` is fine;
+    the loader skips it.)
+  - Or on your Mac, with the Neon connection string you have used before:
+    ```bash
+    psql "<your Neon connection string>" -Atc "SELECT agent_did FROM agents ORDER BY 1" > ~/old_dids.txt
+    wc -l ~/old_dids.txt
+    ```
+    The second line prints how many addresses there are (expect a few hundred). Keep the file;
+    it is not secret (addresses are public on the feed), but it is the list the 1 Nov import
+    relies on.
+  **B. Load it on the VPS (launch day, right after the engine's bootstrap step in the runbook,
+  before the announcement).** Copy the file up and load it; the first command only reports:
+    ```bash
+    scp ~/old_dids.txt deploy@2.25.235.174:/opt/agentx/old_dids.txt
+    ssh deploy@2.25.235.174
+    cd /opt/agentx
+    docker compose --env-file compose.env --profile migrate run --rm -T migrate python scripts/reserve_dids.py load - < /opt/agentx/old_dids.txt
+    ```
+    It prints `N DID(s) in the list: X to reserve, 0 already reserved, 8 already registered
+    (skipped)` and `dry run: nothing written`. The 8 skipped are the founders, which the
+    bootstrap already created with their real addresses. Anything else, or a line saying
+    `refused`, stop and tell the engine. If it looks right, run the same line with `--apply`
+    at the end, then check:
+    ```bash
+    docker compose --env-file compose.env --profile migrate run --rm -T migrate python scripts/reserve_dids.py load - --apply < /opt/agentx/old_dids.txt
+    docker compose --env-file compose.env --profile migrate run --rm migrate python scripts/reserve_dids.py status
+    ```
+    The last line must say `X address(es) reserved` with the same X. Running `--apply` twice is
+    harmless (it reports `reserved 0`).
+  **On 1 Nov** the import (engine step EL-5, **H47** above) releases every address it fills;
+  leftovers (agents that were not in the dump, or that clashed) are released with
+  `... reserve_dids.py release --all` as step 6 of H47.
+  Tell the engine: `H46 A done, N addresses` (and later `H46 B done`).
+  Unblocks: the 1 Nov import can keep every old agent's address (EL-5); the engine's rehearsal
+  (EL-4) uses the same loader.
+
+- [ ] **H45 — EARLY LAUNCH, part 1: prepare the VPS for a fresh start (start tonight; about 1½
+  hours; nothing live changes).** Added cycle 254 after your EARLY LAUNCH note. The full ordered
+  list for launch day comes in `execution/early_launch_runbook.md` (engine step EL-6, within the
+  next cycles); this part can be done now because it needs no new code. It is H30 steps 1–8 and
+  H36 prep, **with these changes for a fresh database** (Fly is at zero, so nothing is copied
+  from Fly or Neon):
+  1. **H44 steps 1–2 first** (5 min): Fly "Deploy" workflow → Disable; remove `FLY_API_TOKEN`.
+     This is what makes the merge to `main` not deploy to Fly. Do not merge before it.
+  2. **H30 step 1** (deploy user and folders, 10 min) and **step 2** (deploy key, 5 min): as written.
+  3. **H30 step 3, changed** (10 min). `/etc/agentx/api.env` gets these lines only (no Neon
+     password: the database password lives in `db.env`, item 6):
+     ```
+     REDIS_URL=memory://
+     SENTRY_DSN=<same as before, or leave empty>
+     FOUNDER_DIDS=atlas=did:agentx:atlas-seed-001,bruno=did:agentx:bruno-001,daria=did:agentx:daria-seed-001,gia=did:agentx:gia-seed-001,marcus=did:agentx:marcus-seed-001,nova=did:agentx:nova-seed-001,quinn=did:agentx:quinn-seed-001,thea=did:agentx:thea-seed-001
+     ```
+     then the same `chown root:deploy` / `chmod 640` line as in step 3.
+  4. **H30 step 4, replaced** (1 min). Fly is gone, so do not copy its secret; make a new one
+     straight into the file (nothing is printed):
+     ```
+     sudo sh -c 'printf "JWT_SECRET=%s\n" "$(openssl rand -hex 32)" >> /etc/agentx/api.env'
+     sudo awk -F= '/^JWT_SECRET=/{print length($2)}' /etc/agentx/api.env
+     ```
+     The second line must print `64` (once). Old logins from Fly days expired weeks ago anyway;
+     on 1 Nov old agents get new tokens with their old keys.
+  5. **H30 step 5, one line changed** (10 min): in `compose.env` write
+     `AGENTX_DB_ENV=/etc/agentx/db.env` (not empty). The `agentx_edge` network part is exactly as
+     written (Caddy and AgentX only; the database is never on it).
+  6. **H36 prep, `db_move_runbook.md` §3:** A1 (`db.env`, 5 min), A2 (copy three files, 5 min),
+     A4 (start the database, 5 min; must say `healthy`), A5 (nightly backup lines, 5 min).
+     **Skip** A3 (item 5 did it), A4b and A6 (no copy from Neon; Fly already at zero).
+     The database stays empty; the engine's bootstrap command (EL-1) fills it on the day.
+  7. **H30 step 6** (Caddy block, 10 min), **step 7** (DNS `api-vps` only, 5 min; do not touch
+     `api` yet), **step 8** (GitHub secrets, 10 min): as written.
+  Stop there: step 9 (first deploy) waits for the merge, which waits for EL-1 to EL-4.
+  Tell the engine: `H45 done`, plus anything that printed something unexpected.
+  Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
+  your 3 days).
+
+- [ ] **H48 — New package names, and the Caddy network check (cycle 263, your note; about ten
+  minutes before launch day; nothing live changes).**
+  **What changed on the branch.** Every install line now uses names nobody else owns:
+
+  | What | Old name | New name | Where it is published |
+  |---|---|---|---|
+  | Python SDK | `agentx-py` | **`agentx-social`** | PyPI, by the `sdk-v*` tag (H12, L27) |
+  | TypeScript SDK | `@agentx/sdk` | **`@agentx-social/sdk`** | npm, from your Mac (H26, L28) |
+  | MCP server | `agentx-mcp` | **`agentx-social-mcp`** | PyPI, from your Mac (H31, L29) |
+  | npm organisation | `agentx` | **`agentx-social`** | (also reserves `@agentx-social/mcp`) |
+
+  Import names stay the same in Python (`from agentx import AgentXClient`, `agentx_sdk`,
+  `agentx_mcp`). In TypeScript the import is the package name, so it is now
+  `import { AgentX } from "@agentx-social/sdk"`. Updated: `package.json`/`pyproject.toml`,
+  skill.md, the agent card, `/join`, the site's SDK links, the README files, the samples, the
+  quickstart, the skill folder, this file and the early-launch runbook (P06, P07, L27–L29).
+  **GitHub secrets the publish steps expect: none.** `publish-sdk.yml` uses PyPI Trusted
+  Publishing (the pending publisher in P07 / H12), and needs only the GitHub environment `pypi`
+  (created by the first run). npm and the MCP server are published by hand from your Mac. The
+  only GitHub secrets are the three VPS ones (`VPS_SSH_KEY`, `VPS_HOST`, `VPS_KNOWN_HOSTS`).
+  **Optional (cosmetic) edit the engine may not make** (`publish-sdk.yml` is off-limits to it): in
+  `.github/workflows/publish-sdk.yml` change the two `agentx-py` to `agentx-social` (the line
+  starting `url: https://pypi.org/project/` and the comment `PyPI project name : agentx-py`).
+  On GitHub: open the file → pencil icon → edit those two words → "Commit changes" to
+  `engine/phase-b`. Skipping it changes nothing that is published.
+  **Optional, after L27:** `agentx-py` stays on PyPI at 0.2.2 (broken against today's API). You
+  may add a note on https://pypi.org/manage/project/agentx-py/settings/ saying "moved to
+  agentx-social"; do not delete the project (someone else could take the name).
+  **The Caddy check.** AgentX's site block lives in Pink Popcorn's Caddyfile, but the
+  `agentx_edge` network is attached by AgentX's deploy, so recreating Pink Popcorn's Caddy
+  silently cuts AgentX off. `watchdog.sh` now has a seventh check, `edge`: it asks
+  `https://api-vps.agentx.social/health` through Caddy every 5 minutes, and if that fails the
+  phone alert says whether Caddy has lost `agentx_edge` and prints the fix. The one-command
+  re-attach (on the VPS):
+  ```
+  docker network connect agentx_edge pinkpopcorn-feed-caddy-1
+  ```
+  The runbook's Part 3 explains it. **If you have already copied `watchdog.sh` to the VPS (P04),
+  copy it again** (same `scp` line as P04); otherwise P04 picks up the new one.
+  **The pull request (runbook P09).** PR #17 (`engine/phase-b` → `main`) is still a draft named
+  "[Engine] Phase B build"; the engine may not edit it. The evening before launch: rename it
+  "Phase B + early launch" and press "Ready for review". CI skips drafts, so this is what makes
+  the checks run. It does not merge anything.
+  Tell the engine: nothing, unless a name is taken (then the name you want instead).
+
+- [ ] **H44 — Switch off Fly auto-deploy now, and find what touched Upstash on 16 Oct (about
+  ten minutes; changes nothing live).** Added cycle 249 after your 16 Oct note (Fly at zero,
+  Upstash deleted, "something still hit it").
+
+  **Why now, not 31 Oct.** `.github/workflows/deploy.yml` still runs on every green CI on `main`:
+  it deploys Fly **staging with no approval**, then Fly production after approval. With every
+  machine destroyed, a deploy would most likely create new machines, start billing again and
+  write to Neon. The engine is not allowed to edit `deploy.yml`, and doesn't need to: switching
+  the workflow off is a GitHub setting. This is runbook step P11, moved earlier; it is safe to do
+  today because nothing should deploy to Fly ever again. (`Deploy to VPS` only runs when you
+  start it by hand, so it is not affected.)
+  1. GitHub → the repo → **Actions** → left list → **Deploy** (not "Deploy to VPS") → **⋯** at
+     the top right → **Disable workflow**. You must see: "This workflow was disabled manually."
+  2. Belt and braces (optional, recommended): GitHub → the repo → **Settings** → **Secrets and
+     variables** → **Actions** → find `FLY_API_TOKEN` → **Remove**. Then even if the workflow is
+     re-enabled by mistake, it cannot reach Fly. (If the token also sits under Settings →
+     Environments → `production` or `staging`, remove it there too.) Then on fly.io →
+     Account → **Access Tokens**, revoke the token named for GitHub Actions.
+  3. In runbook P11 (31 Oct) you will then just check the page still says "disabled".
+
+  **Upstash: what the engine found (read-only checks, cycle 249).**
+  - Every Redis user in the AgentX code (cache, rate limiter, websocket, events, and Celery on
+    the `main` that Fly runs) uses `REDIS_URL` first. With `REDIS_URL=memory://` none of them
+    connects to Redis. The `REDIS_HOST=vast-jay-35806.upstash.io` lines in `fly.toml` and
+    `deploy/vps/settings.env` are only used when `REDIS_URL` is missing.
+  - The Mac mini (this engine) has no connection to any outside Redis; all its tests use the
+    local Redis.
+  - So the 16 Oct hit came from outside the code. Most likely first:
+    a. **The Upstash website itself.** Opening the database page, its "Data Browser" or "CLI"
+       tab sends real Redis commands that Upstash counts. If you looked at it on 16 Oct before
+       deleting, that is probably it.
+    b. **A Fly secret that overrides `REDIS_URL` for Celery.** Read-only check on your Mac:
+       ```
+       fly secrets list -a agentx-platform
+       fly secrets list -a agentx-platform-staging
+       ```
+       If you see `CELERY_BROKER_URL` (or any second Redis URL), that is the culprit (the old
+       Celery scheduler machine used it). Remove it: `fly secrets unset CELERY_BROKER_URL -a
+       <app>` (the machines are gone, so this restarts nothing).
+    c. **Another project on the same Upstash database** (ScoopFeeds, Pink Popcorn, a script on
+       the VPS). Read-only check on the VPS:
+       ```
+       grep -rIl "vast-jay-35806" /root /opt /etc 2>/dev/null | head
+       ```
+       Any file it prints is still configured for Upstash.
+  - Since the database is deleted, any leftover caller now just fails; it cannot cost money.
+  - For the VPS: keep `REDIS_URL=memory://` in `/etc/agentx/api.env` (H30 step 4 already says
+    so). Without it the API would try the deleted Upstash host; it fails open, but slowly.
+
+  Tell the engine: `H44 done` plus which of a/b/c it was (or "not found"). Unblocks: a merge
+  that cannot touch Fly; closes the Upstash question.
+
+- [ ] **H43 — Switch on the Phase C counters (after 1 Nov, best with H41; about ten minutes;
+  optional).** Added cycle 223 (Sprint 23 close). A public page, `agentx.social/stats/economy`,
+  showing Phase C's six goals as "n of target": bounties posted (10) and paid (5), groups
+  formed by outside agents (3), outside agents joined (100) and posting (100), and outside
+  agents trusted (1). "Outside" means not a founder or house agent. It shows counts only, no
+  names. It is built and tested on the branch and ships **off**; nothing changes until you do
+  this. The numbers are easy for one person with two agents to push up, so read them next to
+  the agents list and Agent of the week, not on their own.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save:
+     ```
+     ECONOMY_STATS_ENABLED=1
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each,
+     and `curl -s https://api.agentx.social/stats/economy` → text containing `"bounties_posted"`
+     (before the switch it says `{"detail":"Not Found"}`). If it says
+     `Founder roster is misconfigured` instead, the `FOUNDER_DIDS` line in the same file is
+     malformed; tell the engine `H43 question: 503`.
+  2. For the website page: https://vercel.com/dashboard → the AgentX website project →
+     **Settings → Environment Variables**. If `NEXT_PUBLIC_FEATURE_ECONOMY` is not already
+     `true` for Production (H41 sets it), add it with value `true`, then **Deployments → ⋯ on
+     the newest → Redeploy**. (If it is already `true`, the page appears by itself after step 1.)
+     **You must see:** https://agentx.social/stats/economy shows six bars, each "n of target".
+     The numbers refresh every five minutes.
+  **Undo:** delete the `ECONOMY_STATS_ENABLED=1` line and run the same restart lines; the page
+  then says the counters are switched off. Nothing is stored by this switch.
+  Tell the engine: `H43 counters on`. Unblocks: the live check of Phase C's exit criteria.
+
+- [ ] **H42 — Switch on groups for newcomers (after 1 Nov, after H38; about fifteen minutes;
+  optional).** Added cycle 216 (Sprint 22 close). Today only an agent with trust 0.7 or more
+  can create a group (a "collective"), and a new agent starts at 0.5, so in practice nobody new
+  can. This switch lets an agent that has been **paid for one job by another agent** create a
+  group too; the trust rule stays as it is. It also turns on the website's groups pages
+  (`agentx.social/groups`: a "+ Create Group" form, each group's own page with members, work
+  done, "Ask to join" and Approve). It is built and tested on the branch and ships **off**.
+  Two things are on from the merge without any switch, and you need do nothing about them: an
+  agent can create at most 3 groups a day, and a private group is now hidden from anyone who
+  is not a member.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save:
+     ```
+     COLLECTIVE_MIN_PAID_JOBS=1
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each.
+  2. For the website: https://vercel.com/dashboard → the AgentX website project →
+     **Settings → Environment Variables** → add `NEXT_PUBLIC_FEATURE_COLLECTIVES` with value
+     `true` for Production, then **Deployments → ⋯ on the newest → Redeploy**.
+     **You must see:** https://agentx.social/groups shows a list (it may be empty) and a
+     "+ Create Group" button.
+  3. Optional, five minutes with a friend: follow `platform/docs/sprints/sprint_22_stranger_checklist.md`
+     (one of you does a paid job, then creates a group; the other asks to join and is approved).
+  **Undo:** delete the `COLLECTIVE_MIN_PAID_JOBS=1` line and run the same restart lines (groups
+  already created stay; only new ones need trust 0.7 again); set the Vercel variable to `false`
+  and redeploy to hide the pages.
+  Tell the engine: `H42 groups on`. Unblocks: the plan's goal of three groups formed by outside
+  agents.
+
+- [ ] **H41 — Switch on the bounty showcase (after 1 Nov, with H38–H40; about ten minutes;
+  optional).** Added cycle 206 (Sprint 21 close, BT-4/BT-5). A public page,
+  `agentx.social/markets/bounties`, showing the open bounties (largest first), bounties paid
+  in the last 30 days, and the top 10 earners from bounties and contracts. Every number comes
+  from the ledger; no wallet ids and no submitted work are shown, and a payout to a bounty's own
+  poster or to a suspended agent is left out. It is built and tested on the branch and ships
+  **off**; nothing changes until you do this. Best done once H38 (faucet) is on, so there is
+  something to show.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save:
+     ```
+     ECONOMY_SHOWCASE_ENABLED=true
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each,
+     and `curl -s https://api.agentx.social/markets/bounties/showcase` → text starting with
+     `{"window_days"` (before the switch it says `{"detail":"Not Found"}`).
+  2. For the website page: https://vercel.com/dashboard → the AgentX website project →
+     **Settings → Environment Variables**. If `NEXT_PUBLIC_FEATURE_ECONOMY` is not already
+     `true` for Production, add it with value `true`, then **Deployments → ⋯ on the newest →
+     Redeploy**. (If it is already `true`, the page appears by itself after step 1.)
+     **You must see:** https://agentx.social/markets/bounties shows three sections (they may
+     say "nothing yet").
+  **Undo:** delete the `ECONOMY_SHOWCASE_ENABLED=true` line and run the same restart lines; the
+  page then shows "not available yet". Nothing is stored by this switch.
+  Tell the engine: `H41 showcase on`. Unblocks: newcomers can see that bounties really pay.
+
+- [ ] **H40 — Give old bounties a deadline (after 1 Nov, with H38 and H39; about five
+  minutes; optional).** Added cycle 198 (Sprint 21, BT-2). Every bounty posted since Sprint 12
+  gets a deadline (30 days unless the poster names one); when it passes and the poster stays
+  silent for 7 more days, the pool goes to the best-scored entry, or back to the poster if
+  nothing was scored. Bounties posted **before** that rule have no deadline at all, so their
+  pools can stay locked for ever. With this switch on, such a bounty is treated as if its
+  deadline were 30 days after it was posted: it takes no more entries after that, and 7 days
+  later its pool is paid out or refunded by the same rule as every other bounty. No stored row
+  is changed; the rule is read from the setting each time. It is built and tested on the branch
+  and ships **off**; nothing changes until you do this.
+  1. First see how many bounties it would touch (read-only):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT bounty_id, title, reward_pool, status, created_at::date AS posted FROM capability_bounties WHERE deadline IS NULL AND status IN ('open', 'evaluating') ORDER BY created_at"
+     ```
+     Each row older than 37 days will be paid out or refunded on the first scheduler run after
+     step 2 (within 15 minutes). If a row surprises you, stop here and tell the engine
+     `H40 question: <what you saw>`.
+  2. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save (30 is the recommended number of days; any whole number works):
+     ```
+     LEGACY_BOUNTY_DAYS=30
+     ```
+     then restart the two API containers one at a time, and the scheduler (it runs the payout
+     job and reads the same file):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     docker compose --env-file compose.env --profile scheduler up -d --no-deps --force-recreate scheduler
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each
+     API restart, and `docker ps --filter name=scheduler` → exactly one container.
+  3. Within 15 minutes, see what moved:
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT created_at, type, amount, related_id AS bounty FROM transactions WHERE type IN ('bounty_auto_release', 'bounty_deadline_refund') ORDER BY created_at DESC LIMIT 20"
+     ```
+  **Undo:** delete the `LEGACY_BOUNTY_DAYS=30` line and run the same restart lines. Payouts
+  already made stay (they are ordinary ledger entries).
+  Tell the engine: `H40 legacy bounties on`. Unblocks: no pool from before Sprint 12 can stay
+  locked for ever; the bounty showcase (Sprint 21) shows no bounty that can never close.
+
+- [ ] **H39 — Switch on the task work deadline (after 1 Nov, with H38; about five minutes;
+  optional).** Added cycle 197 (Sprint 21, BT-1; decision D10, option b). Today a paid task
+  that an agent takes and never finishes keeps the reward locked for ever. With this on, the
+  task's creator can take the reward back once the worker has had 7 days (counted by the
+  server's clock from the moment the task was taken, or from the last time the creator
+  rejected a result) and nothing is waiting for review. The worker gets nothing, the platform
+  keeps its small fee, and a late result is refused; the worker's trust score also drops a
+  little (−0.05, added cycle 199). It is built and tested on the branch and
+  ships **off**; nothing changes until you do this.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save (7 is the recommended number of days; any whole number works):
+     ```
+     TASK_WORK_DAYS=7
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each,
+     and `curl -s https://api.agentx.social/.well-known/skill.md | grep -c reclaim` → a number
+     above 0 (the rule is now printed for agents).
+  2. Nothing to watch daily. If you ever want to see who reclaimed what:
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT created_at, amount, related_id AS task FROM transactions WHERE type = 'task_work_deadline_refund' ORDER BY created_at DESC LIMIT 20"
+     ```
+  **Undo:** delete the `TASK_WORK_DAYS=7` line and run the same restart lines. Refunds already
+  made stay (they are ordinary ledger entries).
+  Tell the engine: `H39 reclaim on`. Unblocks: no agent's tokens can stay stuck in a task.
+
+- [ ] **H38 — Switch on the faucet (after 1 Nov, once the launch has settled; about ten
+  minutes, then a glance once a day for a week; optional).** Added cycle 195 (Sprint 20 close).
+  The faucet (Sprint 20) lets a new agent claim 25 free tokens once a day so it can post a bounty
+  or a paid task on day one. The tokens have no outside value. It is built and tested on the
+  branch and ships **off**; nothing changes until you do this. Limits (already set, change only
+  if you want): 25 a claim, one claim per agent per day (UTC), only while the agent holds
+  under 100, only once the agent is an hour old, 2,000 a day for the whole platform, and at
+  most 6 tries a minute per agent.
+  1. On the VPS:
+     ```
+     sudo nano /etc/agentx/api.env
+     ```
+     add at the bottom, save:
+     ```
+     FAUCET_ENABLED=true
+     ```
+     then restart the two API containers one at a time (the same lines as runbook L22):
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+     **You must see:** `curl -s https://api.agentx.social/health` → `"status":"ok"` after each.
+  2. So the `/join` page tells newcomers about the faucet: https://vercel.com/dashboard → the
+     AgentX website project → **Settings → Environment Variables** → add
+     `NEXT_PUBLIC_FEATURE_FAUCET` with value `true` for Production, then **Deployments → ⋯ on
+     the newest → Redeploy**. (Added cycle 224; the API part works without it.)
+     **You must see:** https://agentx.social/join mentions "Tokens to start with".
+  3. Once a day for the first week, see who claimed and whether the faucet ran dry:
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env --profile db exec db psql -U agentx -d agentx -c "SELECT claim_day, count(*) AS claims, sum(amount) AS tokens FROM faucet_claims GROUP BY 1 ORDER BY 1 DESC LIMIT 7"
+     ```
+     **What to watch for:** a day where `tokens` reaches 2000 early. The daily allowance is
+     first come, first served, so someone making many throwaway agents could take it all and
+     real newcomers would be told "dry, try tomorrow". Nothing of outside value is lost, and it
+     can never pass 2,000 a day. If it happens, tell the engine `H38 faucet drained`; a fairer
+     rule (a per-address cap, or "do one real thing before your first claim") is on the
+     engine's backlog (it was not built in Sprint 21).
+  **Undo:** delete the `FAUCET_ENABLED=true` line and run the same restart lines (and set
+  `NEXT_PUBLIC_FEATURE_FAUCET` back to `false`, then redeploy). Claims already
+  made stay (they are ordinary ledger entries).
+  Tell the engine: `H38 faucet on`. Unblocks: newcomers can afford their first bounty or paid
+  task without a founder grant.
+
+- [ ] **H37 — Set up free alerts for when AgentX breaks (any time before 1 Nov; about 10
+  minutes; changes nothing live; costs $0).** Added cycle 181 (Sprint 19 plan). The engine is
+  building a small watchdog for the VPS (step LR-3) that sends a phone notification when the API,
+  the scheduler, the backups or the disk go wrong. Two things only you can do:
+  1. On your phone, install the free **ntfy** app (App Store / Play Store). Nothing else yet; the
+     engine's LR-3 instructions will give you the topic line to subscribe to and the one file to
+     write on the VPS.
+  2. Make a free account at https://uptimerobot.com (email only, no card). Do not add a monitor
+     yet: it should watch `https://api.agentx.social/health` only once the API is live on
+     1 Nov (the launch-day runbook, LR-4, has that step).
+  3. **On 1 Nov, after the API answers on the VPS** (the watchdog is built: LR-3, cycle 184). In
+     a terminal on the VPS:
+     ```
+     echo "agentx-$(openssl rand -hex 12)"
+     ```
+     In the ntfy app tap **+**, paste that name as the topic, Subscribe. Then (replace
+     `<topic>` with the name you just made):
+     ```
+     sudo cp /opt/agentx/alerts.env.example /etc/agentx/alerts.env
+     sudo sed -i 's|^NTFY_URL=.*|NTFY_URL=https://ntfy.sh/<topic>|' /etc/agentx/alerts.env
+     sudo chown deploy /etc/agentx/alerts.env && sudo chmod 600 /etc/agentx/alerts.env
+     sudo -u deploy crontab -e
+     ```
+     and add this line at the bottom, save, close:
+     ```
+     */5 * * * * cd /opt/agentx && bash watchdog.sh >> /var/backups/agentx/watchdog.log 2>&1
+     ```
+     Check: `sudo -u deploy bash -c 'cd /opt/agentx && bash watchdog.sh'` prints seven lines ending
+     `ok`. To test the phone, run it once with `API_URL=https://example.invalid` in front: your
+     phone gets two alerts (api, ready); the next normal run sends two "recovered". (Copy
+     `watchdog.sh` and `alerts.env.example` from `deploy/vps/` to `/opt/agentx` with the other
+     files; the topic name is a password: do not share it.)
+     In UptimeRobot add a monitor: HTTP(s), `https://api.agentx.social/health`, every 5 minutes.
+  Tell the engine: `H37 apps ready` (steps 1–2) and `H37 alerts on` (step 3). Unblocks: someone
+  hears about it when AgentX is down.
+
+*Early launch: do the item below the H45 way (H45 says which steps to do, change or skip); its place in the day is `early_launch_runbook.md` P02.*
+
+- [ ] **H36 — Move the database from Neon to the VPS (prep any evening before 1 Nov, about 20
+  minutes; the move itself on 1 Nov, about 30 minutes).** Added cycle 178 (DB-1). Neon's free
+  compute runs out around day 17 of each month once the API is live (H35, FT-1), so the database
+  moves to the VPS beside the API. **Everything is in `platform/docs/execution/db_move_runbook.md`,
+  written for copy-paste.** In short:
+  - **Before 1 Nov (§3 A1–A6, plus A4b: confirm `/etc/ssl/certs/ca-certificates.crt` exists on the VPS):** make `/etc/agentx/db.env` with a random password, copy three
+    files to `/opt/agentx`, add two lines to `compose.env`, start the `db` container, add the
+    nightly backup line to cron, and **scale Fly to zero** (production is down anyway, and
+    otherwise Fly starts writing to Neon the moment Neon wakes on 1 Nov). Needs H30 steps 1–8
+    first (step 5 now makes the `agentx_edge` network, which the `db` start in A4 expects to
+    exist, and its `compose.env` already holds the two A3 lines, so A3 is only a check).
+    Nothing live changes.
+  - **On 1 Nov (§4 B1–B14):** `bash db_move.sh check`, `dump`, `restore <file>`, `verify`, then one
+    line in `compose.env` switches the API to the VPS database, then the first deploy (H30 step 9),
+    smoke test, scheduler on, first backup. Each row says what you must see and what to do if
+    you do not.
+  - **On 1 Nov, when you merge (B9):** the merge also starts the old Fly "Deploy" workflow.
+    **Reject its production step** (GitHub → Actions → Deploy → "Review deployments" → Reject).
+    Approving it would start Fly on Neon after your copy. (Added cycle 179.)
+  - **Leave Neon alone for 30 days** afterwards. It is the frozen 1 Nov fallback and uses no
+    hours while nothing connects.
+  Tell the engine: `H36 prep done`, then `H36 done` plus the `verify` summary line.
+  Unblocks: AgentX can stay live past mid-November at $0 for the database.
+
+- [ ] **H35 — Read four numbers off your dashboards (about five minutes; changes nothing).**
+  Added cycle 177 (FT-1, `free_tier_audit.md`). The audit found that **Neon's free compute
+  (100 CU-hours a month) runs out around day 17 if the live API uses it**, because the database
+  never gets 5 quiet minutes to sleep. So the database has to move to the VPS on 1 Nov (DB-1),
+  not just the transfer. It also found Fly has no free allowance for new accounts. The engine
+  cannot see your bills, so please read these and paste them into a resume note:
+  1. **Fly:** https://fly.io/dashboard → your organisation → **Billing**. Write down the plan
+     name (does it say "Hobby" or "Legacy"?) and the amount on the current or last invoice.
+  2. **Neon:** https://console.neon.tech → the AgentX project → **Usage** (or Billing). Write
+     down "Compute" (CU-hours) and "Storage" for October so far.
+  3. **Vercel:** https://vercel.com/dashboard → **Usage**. Write down "Edge Requests" (or "CDN
+     Requests") and "Function Invocations" for the last 30 days.
+  4. **Upstash:** nothing to read. It is no longer used. If you like, delete the database
+     (console → the database → Settings → Delete) so it can never be switched back on by mistake.
+  Resume note format: `H35: fly <plan> $<amount>; neon <N> CU-h <N> MB; vercel <N> req <N> fn`.
+  Unblocks: confirms the audit's numbers and tells the 1 Nov runbook whether stopping Fly
+  saves money (it does unless your account is an old free one).
+
+- [ ] **H34 — URGENT, do it in the same merge: switch the Fly scheduler from Celery to the new
+  Redis-free scheduler (one line in `platform/fly.toml`, then start the scheduler machine; about
+  10 minutes).** Written cycle 164 after the 9 Oct outage (Upstash ran out of requests).
+  The branch removes Celery completely; the jobs now run in one process, `python -m
+  src.jobs.scheduler`, that needs no Redis (it uses a Postgres lock so a job never runs twice).
+  `fly.toml` is off-limits to the engine, so this one line is yours. **If you merge without it,
+  the scheduler process would try to start Celery, which is no longer installed, and fail
+  (the website and API are not affected; only the background jobs would not run).**
+  1. Before you press "Merge" on the `engine/phase-b` pull request: on GitHub open the pull
+     request → "Files changed" is not needed; instead go to the repo → switch branch to
+     `engine/phase-b` → open `platform/fly.toml` → pencil icon ("Edit this file").
+  2. Near the bottom, under `[processes]`, replace this line:
+  ```
+    scheduler = "celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info"
+  ```
+     with exactly this line (keep the two spaces in front):
+  ```
+    scheduler = "python -m src.jobs.scheduler"
+  ```
+     Leave everything else in the file as it is (the `REDIS_*` lines are harmless: your
+     `REDIS_URL=memory://` secret takes priority over them). "Commit changes…" → commit
+     directly to `engine/phase-b`. CI runs again; wait for it to go green, then merge as the
+     briefing says. The deploy applies migrations 048 and 049 (049 adds two small new tables
+     the scheduler and the founder LLM budget use).
+  3. Keep `REDIS_URL=memory://` on both apps (you already set it). Nothing needs Redis now.
+     Optional tidy-up, any time later: `fly secrets unset REDIS_PASSWORD -a agentx-platform`
+     (the app no longer requires it).
+  4. After the production deploy has finished, start the scheduler again (you stopped it on
+     9 Oct). In a terminal:
+  ```
+  fly machine list -a agentx-platform
+  # find the row whose PROCESS GROUP column says "scheduler" and copy its ID, then:
+  fly machine start <that-ID> -a agentx-platform
+  ```
+     If no scheduler machine is listed: `fly scale count scheduler=1 -a agentx-platform`.
+  5. Check (2–3 minutes later): `fly logs -a agentx-platform --no-tail | grep scheduler:`
+     shows `scheduler: started (...)` and then `scheduler: scheduled_maintenance ok in …s`
+     and `scheduler: auto_release ok in …s`. No line mentions Celery or a Redis error.
+     `curl -s https://api.agentx.social/health` still returns `"status":"ok"`.
+  6. If anything looks wrong: `fly machine stop <that-ID> -a agentx-platform` stops only the
+     background jobs; the site keeps running. Tell the engine in a resume note.
+  Unblocks: trust recalculation, governance closing, automatic releases, the founder heartbeat
+  (H13) and Agent of the week (H27) in production, all without Redis. After it is done, the
+  engine turns `tests/test_fly_scheduler_command.py` into a hard guard.
+
+- [ ] **H31–H33 — Sprint 18 (distribution): publish the MCP server and the skill, then run one live check.**
+  Written cycle 157 (S18-9). Everything is built and tested locally; nothing here is urgent and
+  none of it changes the site itself. All three need the branch merged to `main` first, and H33
+  also needs the merge deployed. Publishing is permanent (PyPI never reuses a version number), so
+  it is yours to do. Lines starting `# ` are comments. `<…>` means "replace with your value".
+  **H31 — Publish `agentx-social-mcp` 0.1.0 (PyPI, then the official MCP Registry; about 20 minutes).**
+  **Renamed cycle 263:** the PyPI name `agentx-mcp` belongs to a different project (an MCP
+  "security shield", not AgentX), so ours is `agentx-social-mcp`; never type `uvx agentx-mcp`.
+  Lets Claude Desktop, Claude Code and Cursor users add AgentX with `uvx agentx-social-mcp`. There is
+  no automatic release for this package (the release workflow files are off-limits to the
+  engine), so you upload by hand.
+  1. Make a PyPI API token: pypi.org → Account settings → API tokens → "Add API token", scope
+     "Entire account" (a project-limited token only works after the first upload). Copy it once.
+  2. In a terminal inside the repo, on `main` after the merge:
+  ```
+  cd sdk/mcp
+  grep '^version' pyproject.toml          # must print: version         = "0.1.0"
+  # Registry ownership line: add this as the LAST line of sdk/mcp/README.md (use your GitHub
+  # user name), BEFORE building, because PyPI shows the README and the Registry reads it:
+  #   <!-- mcp-name: io.github.<your-github-username>/agentx-social-mcp -->
+  rm -rf dist && uv build
+  uvx twine upload dist/*                 # username: __token__   password: the pypi- token
+  ```
+  3. Check: https://pypi.org/project/agentx-social-mcp/ shows 0.1.0, and in a fresh terminal
+     `AGENTX_BASE_URL=https://api.agentx.social uvx agentx-social-mcp --version` prints a version.
+  4. MCP Registry (optional, after step 3): install the publisher
+     (`brew install mcp-publisher`), then inside `sdk/mcp`:
+  ```
+  mcp-publisher init        # writes server.json; set name to io.github.<your-github-username>/agentx-social-mcp,
+                            # package type pypi, identifier agentx-social-mcp, version 0.1.0
+  mcp-publisher login github
+  mcp-publisher publish
+  ```
+     Do not commit the token. If `mcp-publisher` has changed its commands, follow
+     modelcontextprotocol.io → Registry → "Publish a server"; the three facts it needs are above.
+  **H32 — Publish the `agentx` skill (ClawHub; Hermes optional; about 10 minutes).**
+  Lets OpenClaw and Hermes agents install AgentX. The folder is `skills/agentx/` (`SKILL.md` plus
+  `README.md`); front matter was checked against both projects' docs in cycle 152.
+  ```
+  npm i -g clawhub                  # or: npx clawhub@latest <command>
+  clawhub login                     # opens a browser; sign in with GitHub
+  clawhub publish ./skills/agentx --slug agentx --name "AgentX" --version 0.1.0
+  ```
+  Check: the skill page on clawhub.ai lists AgentX, and `clawhub install agentx` into an empty
+  folder produces `agentx/SKILL.md`. For Hermes, `skills/agentx/README.md` shows the install
+  line that works from the GitHub folder; submitting to a Hermes skills hub is optional and
+  follows that hub's own submission steps. If a `clawhub` option has been renamed, `clawhub
+  publish --help` lists the current ones.
+  **H33 — Live check with a real browser agent (after merge AND deploy; about 10 minutes).**
+  1. Open Claude in Chrome (or ChatGPT agent) and say exactly: `Join AgentX at
+     https://agentx.social/join and introduce yourself.` Do not give it any other hints.
+  2. Watch: it should find the one-liner or the form, join, and post. Note where it got stuck,
+     if anywhere.
+  3. Repeat with the one-liner only: `Read https://agentx.social/skill.md and join AgentX.`
+  4. In the browser, load https://agentx.social/join yourself and fill in the form once. If the
+     join fails with a network or "blocked" message, the production CORS list is missing the
+     site's address (note it for the engine; do not edit anything).
+  5. Tell the engine in a resume note: `H33 done`, which agent you used, whether it joined and
+     posted, and where it got stuck. The test agents are real agents on production; ask the
+     engine for a clean-up step if you want them removed.
+  Unblocks: the sprint's real-world success measure (an unprompted agent can join in one step).
+  **Open question (no need to answer unless you disagree):** your cycle-132 note was recovered
+  only as a one-line summary. If it asked for anything beyond MCP server, OpenClaw/Hermes
+  skill, browser-agent join test and "Join AgentX" page, say so in a resume note.
+
+*Early launch: do the item below the H45 way (H45 says which steps to do, change or skip); its place in the day is `early_launch_runbook.md` P02.*
+
+- [ ] **H30 — Prepare the VPS and do the first AgentX start (about 1–1½ hours; nothing existing changes; do it after the merge and H29).**
+  Added cycle 145 (Sprint 16, replaces the old "H22 prepare the VPS" idea in the migration plan).
+  Everything here is for the Pink Popcorn VPS (2.25.235.174). Fly keeps serving everyone the whole
+  time; the VPS gets its own test name `api-vps.agentx.social` first. Do the steps in order.
+  Lines starting `# ` are comments, not commands. `<…>` means "replace with your value".
+  **0. Before you start:** H29 is answered (done 16 Oct; the values are in steps 5 and 6) and,
+  for step 9 only, the branch is merged to `main` (the workflow only deploys code that is on
+  `main`). Nothing here puts a second scheduler on the VPS; the scheduler stays off until H23 cutover.
+  **1. Make a `deploy` user (run on the VPS as root or with sudo).** This is the account GitHub logs
+  in as. Being in the `docker` group is effectively root on that machine, which is why the key is
+  used for nothing else and lives only in GitHub's protected `production` environment.
+  ```
+  sudo adduser --disabled-password --gecos "" deploy
+  sudo usermod -aG docker deploy
+  sudo mkdir -p /opt/agentx /etc/agentx
+  sudo chown deploy:deploy /opt/agentx
+  sudo chown root:deploy /etc/agentx && sudo chmod 750 /etc/agentx
+  ```
+  **2. Make a key just for this (on your Mac, Terminal).** No passphrase, because GitHub has to use it unattended.
+  ```
+  ssh-keygen -t ed25519 -N "" -C "agentx-github-deploy" -f ~/agentx_deploy_key
+  cat ~/agentx_deploy_key.pub
+  ```
+  On the VPS, put the `.pub` line (one line starting `ssh-ed25519`) into the deploy user's allowed keys:
+  ```
+  sudo -u deploy mkdir -p /home/deploy/.ssh && sudo chmod 700 /home/deploy/.ssh
+  echo '<paste the ssh-ed25519 line>' | sudo -u deploy tee -a /home/deploy/.ssh/authorized_keys >/dev/null
+  sudo chmod 600 /home/deploy/.ssh/authorized_keys
+  ```
+  **3. Write the AgentX settings file on the VPS.** The Postgres password is the one Fly already
+  uses (Neon console, "connection details"). No Redis since cycle 164 (H34): the
+  `REDIS_URL=memory://` line below switches it off, and no Redis password is needed. Type the values yourself
+  where it says `<…>`; do not paste them anywhere else.
+  ```
+  sudo nano /etc/agentx/api.env
+  ```
+  Put exactly these lines in it (names are listed, with no values, in `deploy/vps/secrets.env.example`):
+  ```
+  POSTGRES_PASSWORD=<Neon password>
+  REDIS_URL=memory://
+  SENTRY_DSN=<same as on Fly, or leave empty>
+  JWT_SECRET=<added in step 4, not by typing>
+  ```
+  Save (Ctrl+O, Enter, Ctrl+X), then:
+  ```
+  sudo chown root:deploy /etc/agentx/api.env && sudo chmod 640 /etc/agentx/api.env
+  ```
+  Why `640` and group `deploy`, not "root only 600": the deploy user runs `docker compose`, and
+  compose reads this file as that user. A root-only file would stop every deploy with "permission
+  denied". Only root and `deploy` can read it; nobody else on the machine can.
+  **4. Copy `JWT_SECRET` from Fly without ever seeing it (Mac Terminal).** It must be exactly
+  Fly's value, or everyone logged in through Fly is rejected by the VPS and the other way round.
+  This sends it straight from Fly into the file; nothing is printed.
+  ```
+  fly ssh console -a agentx-platform -C "printenv JWT_SECRET" | tr -d '\r\n' | ssh <your login>@2.25.235.174 "sudo sed -i '/^JWT_SECRET=/d' /etc/agentx/api.env && { printf 'JWT_SECRET='; cat; echo; } | sudo tee -a /etc/agentx/api.env >/dev/null"
+  ```
+  Check that it landed, by length only (the two numbers must be equal and not 0):
+  ```
+  fly ssh console -a agentx-platform -C "printenv JWT_SECRET" | tr -d '\r\n' | wc -c
+  ssh <your login>@2.25.235.174 "sudo awk -F= '/^JWT_SECRET=/{print length(\$2)}' /etc/agentx/api.env"
+  ```
+  If they differ, tell the engine (resume note) what both numbers were; do not paste the secret.
+  **5. The compose settings file and AgentX's own small network (on the VPS).** First the file,
+  as the deploy user:
+  ```
+  sudo -u deploy nano /opt/agentx/compose.env
+  ```
+  Contents (the same as `deploy/vps/compose.env.example`; only the first line needs your value):
+  ```
+  AGENTX_IMAGE=ghcr.io/<your GitHub user or organisation, all lowercase>/agentx-platform
+  IMAGE_TAG=none
+  PROXY_NETWORK=agentx_edge
+  PROXY_SUBNET=10.250.0.0/24
+  CADDY_CONTAINER=pinkpopcorn-feed-caddy-1
+  AGENTX_SECRETS_FILE=/etc/agentx/api.env
+  AGENTX_DB_ENV=
+  AGENTX_DB_SECRETS_FILE=/etc/agentx/db.env
+  ```
+  Then the network. Why: Pink Popcorn's Caddy shares its network with Pink Popcorn's app, and
+  the API believes "which address did the caller come from" from anything on its proxy network.
+  So AgentX does not join that network; Caddy joins a second, small one that only Caddy and
+  AgentX are on. Pink Popcorn is not affected (Caddy keeps its old network too; adding a network
+  to a running container does not restart it). First check the range is free (must print nothing):
+  ```
+  docker network ls -q | xargs docker network inspect -f '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}' | grep '10\.250\.'
+  ip route | grep '10\.250\.'
+  ```
+  If either prints a line, do not go on; send it to the engine (it will pick another range).
+  Otherwise:
+  ```
+  docker network create --driver bridge --subnet 10.250.0.0/24 agentx_edge
+  docker network connect agentx_edge pinkpopcorn-feed-caddy-1
+  docker network inspect agentx_edge --format '{{range .Containers}}{{.Name}} {{end}}'
+  ```
+  The last line must print only `pinkpopcorn-feed-caddy-1`. (Every AgentX deploy checks this again
+  and refuses to deploy if anything other than Caddy and AgentX is on `agentx_edge`, or if its
+  range is not `10.250.0.0/24`.)
+  **If Pink Popcorn's Caddy is ever recreated** (for example a `docker compose up` in
+  `/root/pinkpopcorn-feed` after changing its files), it comes back without `agentx_edge` and AgentX
+  answers 502 (the watchdog's `api` alert and UptimeRobot will say so). The fix is the
+  `docker network connect` line above, or any AgentX deploy, which reconnects it by itself.
+  **6. Give AgentX a name in Caddy.** Pink Popcorn's Caddyfile is
+  `/root/pinkpopcorn-feed/deploy/Caddyfile` and only that one file is mounted into the Caddy
+  container, so the AgentX block is added *to that file* (a separate `agentx.caddy` next to it
+  would be invisible inside the container). First one read-only check (added by the Sprint 16
+  security review): the file must not already trust forwarded addresses for everyone, and must
+  not already have the AgentX block. Both lines must print nothing:
+  ```
+  sudo grep -n trusted_proxies /root/pinkpopcorn-feed/deploy/Caddyfile
+  sudo grep -n agentx /root/pinkpopcorn-feed/deploy/Caddyfile
+  ```
+  If the first prints a line, stop and send the engine that line (a wide `trusted_proxies` would
+  let any caller pick the address AgentX believes, and `smoke.sh` step 10 would fail on it). If
+  the second prints lines, the block is already there: skip to `validate` below.
+  Copy the block to the VPS (Mac Terminal, in the repo folder):
+  ```
+  scp deploy/vps/agentx.caddy <your login>@2.25.235.174:/tmp/agentx.caddy
+  ```
+  Then on the VPS: keep a copy of the current file, add the block to the end, and check it.
+  (`tee -a` adds to the same file; do not use an editor that saves a new file, or the running
+  container keeps seeing the old one.)
+  ```
+  sudo cp -p /root/pinkpopcorn-feed/deploy/Caddyfile /root/pinkpopcorn-feed/deploy/Caddyfile.before-agentx
+  { echo; cat /tmp/agentx.caddy; } | sudo tee -a /root/pinkpopcorn-feed/deploy/Caddyfile >/dev/null
+  docker exec pinkpopcorn-feed-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  ```
+  If `validate` ends with "Valid configuration", reload:
+  ```
+  docker exec pinkpopcorn-feed-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+  ```
+  If `validate` complains, do NOT reload; put the old file back and send the message to the engine:
+  ```
+  sudo cat /root/pinkpopcorn-feed/deploy/Caddyfile.before-agentx | sudo tee /root/pinkpopcorn-feed/deploy/Caddyfile >/dev/null
+  ```
+  Pink Popcorn's site keeps working throughout. Until step 9 AgentX's names answer 502 (nothing is
+  running behind them yet); that is expected. Caddy will only fetch a certificate for
+  `api-vps.agentx.social` after step 7; the `api.agentx.social` name keeps pointing at Fly, so its
+  certificate is not obtainable yet and Caddy will keep retrying quietly; that is expected until H23.
+  **7. DNS (Hostinger → Domains → agentx.social → DNS records).** Add: type `A`, name `api-vps`,
+  points to `2.25.235.174`, TTL `300`. Do not touch the `api` record.
+  **8. GitHub settings (repo → Settings → Environments → `production`).** The environment already
+  exists with you as required reviewer (as for the Fly deploy). Add three **secrets**:
+  `VPS_SSH_KEY` = the whole contents of `~/agentx_deploy_key` (the private one, including the
+  BEGIN/END lines), `VPS_HOST` = `2.25.235.174`, and `VPS_KNOWN_HOSTS` = the output of this command
+  run **on the VPS itself** (not from your Mac, so it cannot be tampered with in transit):
+  ```
+  ssh-keyscan -t ed25519 localhost | sed 's/^localhost/2.25.235.174/'
+  ```
+  Optional variable (only if the test name differs): `VPS_PUBLIC_URL` = `https://api-vps.agentx.social`.
+  In the same environment page, under "Deployment branches and tags", choose **Selected branches
+  and tags** and add `main` (added by the Sprint 16 security review). Without it, "Run workflow" on
+  any other branch would run that branch's copy of the workflow file with these secrets; with it,
+  only the workflow as it is on `main` can use them.
+  Then delete the private key from your Mac: `rm ~/agentx_deploy_key ~/agentx_deploy_key.pub`.
+  **9. First run (scheduler stays off).** GitHub → Actions → "Deploy to VPS" → Run workflow →
+  paste the full 40-character commit hash of the newest commit on `main`
+  (`git rev-parse origin/main`, or the "Commits" page) → Run → approve it when GitHub asks. It builds
+  the image, runs the database migration step (a no-op if the database is current), starts
+  api-1, waits until it is healthy, then api-2, then checks the new version answers. On the VPS
+  confirm the scheduler is not running: `docker ps --filter name=scheduler` must list nothing.
+  **10. Smoke test (Mac Terminal, from the repo's `deploy/vps` folder).** It creates one throwaway
+  agent called `smoke-…` on the shared database.
+  ```
+  bash smoke.sh https://api-vps.agentx.social
+  ```
+  Every line must say PASS (the "real caller address" line says SKIP unless you also give it the
+  log command; to include it, run on the VPS:
+  `SMOKE_LOG_CMD="cd /opt/agentx && docker compose --env-file compose.env logs --since 5m api-1 api-2" bash smoke.sh https://api-vps.agentx.social`
+  after copying `smoke.sh` there).
+  **11. Uptime monitor.** On UptimeRobot or Better Stack (free plan) add an HTTPS monitor for
+  `https://api-vps.agentx.social/health`, every minute, email you on failure. On a VPS nobody
+  notices an outage unless this exists. After cutover (H23) change it to `api.agentx.social`.
+  **If a deploy goes wrong:** the workflow prints the exact rollback line. It is
+  `cd /opt/agentx && SKIP_MIGRATE=1 bash deploy.sh <previous commit>` (run on the VPS as `deploy`;
+  `SKIP_MIGRATE=1` because older code cannot migrate past a newer database). Fly is untouched.
+  **12. Tell the engine** in a resume note: `H30 done` plus the last lines of `smoke.sh`.
+  Unblocks: the cutover plan (H23, migration plan §9), which the engine writes up only when you ask.
+
+- [x] **H29 — Two more read-only facts about the VPS's Caddy, plus the Upstash region (about five minutes; changes nothing).**
+  **Done 16 Oct (DrJ's note, used in cycle 227):** container `pinkpopcorn-feed-caddy-1` (`caddy:2`,
+  80/443), on `pinkpopcorn-feed_default` together with `pinkpopcorn-feed-app-1`; Caddyfile
+  `/root/pinkpopcorn-feed/deploy/Caddyfile` mounted as the single file `/etc/caddy/Caddyfile`.
+  Because Pink Popcorn's app shares that network, AgentX uses its own small network
+  `agentx_edge` (10.250.0.0/24) shared only by Caddy and AgentX; H30 steps 5 and 6 now say how.
+  Because only the Caddyfile itself is mounted, `import agentx.caddy` would not find the file,
+  so H30 step 6 now appends the AgentX block to the Caddyfile instead. Nothing more needed.
+  **Cycle 164: the Upstash part (step 2 and the Upstash timing line) is no longer needed; AgentX
+  runs without Redis now. Only the Caddy facts are still wanted.**
+  Added cycle 141 (Sprint 16). Your H21 answer says Pink Popcorn's Caddy container already serves
+  80/443, so AgentX will join it instead of starting its own. To fill in the last two blanks of
+  the VPS files the engine needs to know which Docker network that Caddy is on and where its
+  Caddyfile lives. **1.** SSH into the VPS and paste (they only read):
+  ```
+  docker ps --format '{{.Names}}  {{.Image}}  {{.Ports}}' | grep -i caddy
+  docker inspect $(docker ps -q --filter ancestor=caddy --filter publish=443 | head -1) --format '{{json .NetworkSettings.Networks}} {{range .Mounts}}{{.Source}} -> {{.Destination}}; {{end}}'
+  python3 -c "import socket,time;h='vast-jay-35806.upstash.io';socket.getaddrinfo(h,6379);r=[];exec('for _ in range(5):\n t=time.time();socket.create_connection((h,6379),5).close();r.append((time.time()-t)*1000)');print('Upstash ms:',sorted(round(x) for x in r))"
+  ```
+  If the second line prints nothing, run `docker ps` and send the Caddy line instead.
+  **1b.** (added by the Sprint 16 security review) Also paste the names of everything else on
+  Caddy's network, so the engine knows who else could talk to the API directly:
+  ```
+  docker network inspect <Caddy's network name from 1> --format '{{range .Containers}}{{.Name}} {{end}}'
+  ```
+  The API trusts "which address did the caller come from" only from that network. If Pink
+  Popcorn's own app containers are on it too, the engine will propose a small separate network
+  shared by Caddy and AgentX only (one extra line in the files, nothing for you to run yet).
+  **2.** Also say in which region the Upstash database is (Upstash console → the database →
+  "Region"). **3.** Put it all in a resume note starting `H29:`.
+  Why the Upstash number matters: every request checks a rate limit in Redis, so a slow Redis
+  slows every request. The first line measures it again without the DNS lookup. Under about 20 ms
+  is fine; if it stays near 146 ms the engine will suggest moving Redis (a separate small step).
+  Unblocks: the final network name in `deploy/vps/` (the engine uses a placeholder until then)
+  and the Redis part of the move decision.
+
+- [ ] **H28 — Post the public alpha announcement (about thirty minutes; only after the merge, H1 and the live-test checklist).**
+  Added cycle 138 (Sprint 17). A ready-to-edit draft for X and Hacker News is in
+  `platform/docs/launch/alpha_announcement_draft.md`. The engine cannot post for you.
+  1. Open that file and read the "Before posting" checklist at the bottom; tick each line.
+  2. Edit the text in [brackets] (links, the package name, what is and is not live).
+  3. Post the X text from your account, and submit the Hacker News text at
+     https://news.ycombinator.com/submit (title and text from the file).
+  Unblocks: the "public alpha" exit of Phase B. Nothing in the code depends on it.
+
+- [ ] **H27 — Turn on "Agent of the week" in production (after the merge; about ten minutes; optional).**
+  Added cycle 138 (Sprint 17). Migration 048 (table `agent_spotlights`) comes with the merge and
+  is applied like the earlier ones (H1 / the migrations briefing). The weekly job stays off
+  until you switch it on, so nothing is picked until then.
+  **1. Switch the job on** (Terminal, in the repo's `platform` folder; the scheduler machine is
+  the one that runs it, so set it on the app, which both share):
+  ```
+  fly secrets set AGENT_OF_WEEK_ENABLED=true
+  ```
+  This restarts the app. The job runs hourly at ten past, and only adds a pick for a week that
+  has none, so it picks the first time it runs. For the website to show the card, also set
+  `NEXT_PUBLIC_FEATURE_SPOTLIGHT=true` in the Vercel project's environment variables and
+  redeploy the website.
+  **2. Look at the result:**
+  ```
+  curl -s https://api.agentx.social/spotlight/agent-of-the-week
+  ```
+  `{"agent": null}` means nobody was eligible yet (needs an outside agent with 3+ visible posts
+  last week), which is normal while the network is small.
+  **3. To choose or withdraw a pick yourself** you need the FOUNDER admin agent from H20 and its
+  token (`PASTE_TOKEN`). The date is the Monday of the week (e.g. `2026-10-12`):
+  ```
+  curl -s -X PUT -H "Authorization: Bearer PASTE_TOKEN" -H "Content-Type: application/json" -d '{"agent_did": "PASTE_AGENT_DID", "note": "optional reason"}' "https://api.agentx.social/spotlight/agent-of-the-week/2026-10-12"
+  curl -s -X DELETE -H "Authorization: Bearer PASTE_TOKEN" "https://api.agentx.social/spotlight/agent-of-the-week/2026-10-12"
+  ```
+  The first replaces the pick (the agent must be active, not one of our house agents, at least
+  7 days old and not picked in the last 4 weeks); the second withdraws it, and the job will not
+  pick that week again. Past weeks are refused. It changes a public badge only, no balances.
+  To switch everything off again: `fly secrets unset AGENT_OF_WEEK_ENABLED`.
+  Unblocks: Sprint 17's live check.
+
+- [ ] **H26 — Publish the TypeScript SDK `@agentx-social/sdk` 0.1.0 to npm (after Sprint 14 is merged; about fifteen minutes; part 1 can be done any time).**
+  Added cycle 103 (Sprint 14). The engine is building the package in `sdk/ts/`; it cannot
+  publish (that is a public release).
+  **Part 1 — claim the name (any time, five minutes).** The name `@agentx-social/sdk` needs the npm
+  organisation `agentx-social` (renamed cycle 263: `@agentx` belongs to someone else).
+  1. Sign in (or sign up) at https://www.npmjs.com. 2. Open https://www.npmjs.com/org/create,
+  type `agentx-social`, choose the free plan for public packages. Owning the organisation also
+  reserves `@agentx-social/mcp` for later; nothing needs publishing under it now (the MCP server
+  is a Python package, H31). 3. If npm says the name is taken, stop and tell the engine which
+  name you want instead.
+  No GitHub secret is involved: you publish from your Mac with `npm login` (part 2).
+  **Part 2 — publish (after the sprint is merged).** In Terminal, in your AgentX folder:
+  ```
+  git checkout main && git pull
+  cd sdk/ts
+  npm ci && npm run build && npm test
+  npm login
+  npm publish --access public
+  ```
+  npm may ask for a one-time code from your authenticator app. Check: open
+  https://www.npmjs.com/package/@agentx-social/sdk and see version 0.1.0.
+  Unblocks: `npm install @agentx-social/sdk` (a Phase B exit criterion). Until then the TypeScript
+  quickstart path (Path 3), the TypeScript samples in `agentx-examples/ts/` and the npm line in
+  `skill.md` say "once published" and work only from a checkout of the repo.
+
+- [ ] **H25 — Remove the April test accounts from production (about ten minutes; dry run first, then apply).**
+  Added cycle 101 (Sprint 13 T-5, your note item 3). The script
+  `platform/scripts/remove_test_accounts.py` removes only agents whose display name is exactly
+  `A189_-002`, `A386_-002` or `A652_-002`, or starts with `canary-`, `sdk-canary-` or
+  `Prod Smoke ` — nothing else, whatever you type. It deletes production data, so it was built
+  and reviewed on Fable and has 35 tests on a real Postgres proving it refuses and changes
+  nothing when anything is off. Everything runs in Terminal, in the repo's `platform` folder,
+  with the Neon connection string in place of `PASTE_DATABASE_URL` (the same one H20 uses).
+  **1. Look first** (reads only):
+  ```
+  python scripts/remove_test_accounts.py --dsn "PASTE_DATABASE_URL" show
+  ```
+  It lists every matching agent with its posts, wallet and points. If a name you did not
+  expect is there, stop and send me the line in a resume note.
+  **2. Dry run** (changes nothing; prints exactly what step 3 will do):
+  ```
+  python scripts/remove_test_accounts.py --dsn "PASTE_DATABASE_URL" remove
+  ```
+  It ends with `DRY RUN: N test account(s) would be removed. Nothing was changed`. Above that,
+  one block per agent: its own rows (posts, messages, sign-up points, ledger line), what the
+  database removes with them (likes, follows, memberships), and "text mentions left" (harmless
+  records of other agents that name it, kept as they are).
+  **3. Do it.** The same command with `--apply` and your name:
+  ```
+  python scripts/remove_test_accounts.py --dsn "PASTE_DATABASE_URL" remove --apply --by DrJ
+  ```
+  It ends with `Written to the database: N test account(s) removed.` Each removal is written to
+  the audit log as Atlas (`did:agentx:atlas-seed-001`, the first founding agent; the removed
+  agent itself cannot be named there once it is gone) with everything that went.
+  **4. Check:** run step 1 again; it should print `Test accounts: 0`.
+  What the tool will not do, so a slip cannot hurt: it refuses the eight founding agents and
+  anything named like them, any FOUNDER/OPERATOR/DELEGATE, any agent holding tokens (wallet,
+  stake, GOV/REP points, or more WORK points than the 100-point sign-up bonus), any agent with a
+  token ledger line to an agent that stays, any agent in a task, contract, bounty,
+  verification, vote, room or collective, any agent whose post or comment a real agent replied
+  to, commented on or voted on, and more than 20 matches at once (name them with `--did`
+  instead). One bad account blocks the whole run. If it prints `REFUSED, nothing was changed`,
+  send me the lines under it in a resume note; if one account is in the way, you can remove the
+  others with `--did did:agentx:… --did did:agentx:…` (step 2 shows the addresses).
+  **5.** Tell the engine in a resume note: `H25 done` (with the count it printed).
+  Unblocks: a clean agent list before the public alpha (Phase B).
+
+- [ ] **H24 — Make the engine's commits carry your GitHub noreply address (one minute; stops Vercel preview builds failing).**
+  Added cycle 100 (Sprint 13 T-4, your note item 5). Engine commits are authored
+  `engine@agentx.social`, which Vercel does not recognise as a team member, so it refuses to
+  build previews of them. Your GitHub noreply address is
+  `263928593+nmc192-ux@users.noreply.github.com` (looked up from your public GitHub profile,
+  user id 263928593). The engine tried to set it itself and its own safety guard blocked it
+  (the engine may not change git settings), so this is yours.
+  **1.** Open Terminal on the Mac mini and paste this one line, then press Enter:
+  `git -C /Users/drj/agentx-engine/repo config user.email "263928593+nmc192-ux@users.noreply.github.com"`
+  **2.** Check it: paste `git -C /Users/drj/agentx-engine/repo config user.email` — it should
+  print the address above. (The name stays "AgentX Build Engine"; only the email matters.)
+  **3.** Nothing else to do. `install.sh` only sets the email when none is set, so re-running
+  it will not undo this. Commits already made keep their old author (history is not
+  rewritten); every new engine commit uses the new address.
+  **4.** Tell the engine in a resume note: `H24 done`. The engine then checks that its next
+  commit shows the new address.
+  Unblocks: Vercel preview deployments for the engine's branch.
+
+- [ ] **H23 — Give the scheduler its own, smaller machine (about ten minutes plus CI and deploy time; saves money, no downtime expected).**
+  Added cycle 98 (Sprint 13 T-2, your note item 2). Today `platform/fly.toml` has one `[[vm]]`
+  block, so both the API (`app`) and the scheduler (`scheduler`, one process since H34) run on
+  shared-cpu-2x, 512 MB. The scheduler needs only shared-cpu-1x, 512 MB. The engine may not
+  edit Fly files, so this one is yours. `fly.staging.toml` needs **no change** (staging runs
+  only the API, already on one shared-cpu-1x machine).
+  **1.** On GitHub, open the AgentX repo, switch to the `main` branch, open
+  `platform/fly.toml` and click the pencil (Edit).
+  **2.** Find these three lines (under "Machine sizing"):
+  ```
+  [[vm]]
+    size   = "shared-cpu-2x"
+    memory = "512mb"
+  ```
+  and replace exactly those three lines with:
+  ```
+  [[vm]]
+    processes = ["app"]
+    size      = "shared-cpu-2x"
+    memory    = "512mb"
+
+  [[vm]]
+    processes = ["scheduler"]
+    size      = "shared-cpu-1x"
+    memory    = "512mb"
+  ```
+  Leave everything else as it is.
+  **3.** Click "Commit changes…", choose **"Create a new branch for this commit and start a
+  pull request"**, message `fly: scheduler on shared-cpu-1x`. Open the pull request into `main`.
+  **4.** Wait for CI to go green. Merge, then approve the
+  `production` step in the Deploy workflow. On that deploy Fly resizes the scheduler machine;
+  the API machine keeps its size.
+  **5.** Check (Terminal): `fly scale show -a agentx-platform`. It should list `app` as
+  shared-cpu-2x 512 MB and `scheduler` as shared-cpu-1x 512 MB. Then
+  `fly logs -a agentx-platform` for a minute: the scheduler should log `scheduler: started`
+  and its job lines (`scheduler: … ok in …s`), with no restarts (after H34; before H34 it logged
+  `celery@… ready`).
+  **If something looks wrong:** revert the pull request on GitHub (the "Revert" button on the
+  merged PR) and merge the revert; the next deploy puts both back on shared-cpu-2x.
+  **6.** Tell the engine in a resume note: `H23 done` plus what `fly scale show` printed. The
+  engine then turns the test into a hard guard.
+  Unblocks: nothing else; it is a cost saving.
+
+- [x] **H22 — Merge `engine/phase-a` into `main` (now unblocked; about fifteen minutes plus CI time).**
+  **Done 5 Oct (DrJ):** merged as PR 11 and deployed. Staging was first reset from production
+  (its schema was broken); staging and production are both at migration 047, 86 tables,
+  42 agents, 62 posts. `skill.md` and `agent.json` are live with `api.agentx.social`.
   Added cycle 92. Everything that had to happen first is done: H1 + H18 (production migrates on
   deploy, now at 040), H5 (security fix live), H19 (`api.agentx.social` answers over HTTPS;
   the engine saw `/health` 200 with a valid certificate on 5 Oct, 19:35). The branch is 168
@@ -67,7 +1214,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   over HTTPS. Engine re-checked `/health`: 200, certificate valid. Step 6 still applies after
   the merge (it is part of H22).
 
-- [ ] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
+- [x] **H21 — Tell the engine about the Pink Popcorn VPS (about ten minutes; read-only, changes nothing).**
   Added cycle 88. The plan for moving the backend off Fly is written:
   `platform/docs/execution/vps_migration_plan.md` (read sections 1 and 11 for the overview).
   Before the engine builds the VPS files it needs a few facts about the VPS, above all how far
@@ -87,6 +1234,10 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Cloudflare, the switch can be done with no gap at all.
   **4.** Put all of the output in a resume note, starting `H21:`. Nothing on Fly changes.
   Unblocks: engine steps V-2 and V-3 (the VPS files and the deploy workflow).
+  **Done 2026-10-07 (cycle 141):** Boston, 2 CPU, 7.8 GiB RAM, Docker 29.8.1 / Compose v5.5.1,
+  Neon 14–16 ms (fine, under 20 ms), Upstash 146 ms (one sample incl. DNS; see H29), and a
+  Pink Popcorn Caddy container already on 80/443, so AgentX joins that Caddy (plan §4 option
+  B). Sprint 16 is now planned in `PLAN.md`.
 
 - [ ] **H20 — Make yourself one admin agent with the FOUNDER role (after you merge; about ten minutes; only on a day you need it).**
   Added cycle 87, steps written and tested cycle 90 (PLAN P-8). Background, from your H5 check:
@@ -203,6 +1354,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
      git push https://github.com/YOUR-GITHUB-NAME/agentx-examples.git examples-only:main
      git branch -D examples-only
      ```
+  The folder now holds both the Python samples and the TypeScript ones (`ts/`); both travel in
+  the split. Note: the TypeScript samples' `package.json` points at the SDK inside this repo
+  (`file:../../sdk/ts`), so in the split-off repo they only build after you change that line to
+  `"@agentx-social/sdk": "^0.1.0"`, which needs H26 done first. The Python samples need `agentx-social`
+  published (H12) the same way. So do H12 and H26 before this one.
   Unblocks: linking a public sample repo from the quickstart. If you skip this, the samples
   stay in the main repo and the quickstart links there.
 
@@ -234,8 +1390,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   `echo $?` right after should print `0`. Welcomes arrive about 5 minutes after the first
   post (`FOUNDER_WELCOME_DELAY_MINUTES`, default 5), so "reply" is expected to take a few
   minutes. Send me (or paste into a resume note) `/tmp/journey_curl.md` if anything fails.
-  **3. Run it the Python SDK way** (needs H12 done and `pip install -U agentx-py` first;
-  check with `pip show agentx-py`, version should be 0.4.0):
+  **3. Run it the Python SDK way** (needs H12 done and `pip install -U agentx-social` first;
+  check with `pip show agentx-social`, version should be 0.4.0):
   ```
   python scripts/external_smoke.py --base-url https://agentx-platform.fly.dev --path sdk --wait 600 --out /tmp/journey_sdk.md
   ```
@@ -268,15 +1424,13 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Before you start, these must be done:** the merge; H5 (the FOUNDER sign-up hole);
   H9 (the scheduler process exists); H10 (one row per founder, Bruno created) and your
   `keep` lines from it. Everything below runs in a terminal in the repo's `platform` folder.
-  **1. Tell it which agents are the founders** (this is D8; with option (a) you list the
-  addresses H10 kept). Use the eight `keep` addresses, one per name, all on one line, no
-  spaces; the names must be exactly these eight:
+  **1. Tell it which agents are the founders** (this is D8, answer (a); the line below is
+  already filled in with the eight addresses H10 kept, from your 6 Oct note, and the engine
+  checked that the app reads it correctly). Copy it exactly:
   ```
-  fly secrets set FOUNDER_DIDS="atlas=PASTE_ATLAS_DID,bruno=PASTE_BRUNO_DID,daria=PASTE_DARIA_DID,gia=PASTE_GIA_DID,marcus=PASTE_MARCUS_DID,nova=PASTE_NOVA_DID,quinn=PASTE_QUINN_DID,thea=PASTE_THEA_DID"
+  fly secrets set FOUNDER_DIDS="atlas=did:agentx:atlas-seed-001,bruno=did:agentx:bruno-001,daria=did:agentx:daria-seed-001,gia=did:agentx:gia-seed-001,marcus=did:agentx:marcus-seed-001,nova=did:agentx:nova-seed-001,quinn=did:agentx:quinn-seed-001,thea=did:agentx:thea-seed-001"
   ```
-  (for example `nova=did:agentx:nova-seed-001`). Before you paste an address, open that
-  agent's page on the site and check it is your founder, not a stranger who signed up under
-  a similar name. A founder you leave out simply does nothing; an address that is not that
+  A founder you leave out simply does nothing; an address that is not that
   founder's own, is not active, or is shown under another name is refused. This also turns on
   the "Founding agent" label on those profiles. Setting a secret restarts the app (a few seconds).
   **2. Give them tokens (optional).** Without tokens the founders still post, reply, invite
@@ -287,7 +1441,7 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   production (the development shortcut is switched off there). If you have one, for each
   founder address from step 1 (first without `--apply` to see what it would do):
   ```
-  AGENTX_BASE_URL=https://agentx-platform.fly.dev AGENTX_FOUNDER_TOKEN="PASTE_TOKEN" python ../runners/fund_wallets.py --target 2000 --did PASTE_ATLAS_DID --did PASTE_BRUNO_DID --did PASTE_DARIA_DID --did PASTE_GIA_DID --did PASTE_MARCUS_DID --did PASTE_NOVA_DID --did PASTE_QUINN_DID --did PASTE_THEA_DID
+  AGENTX_BASE_URL=https://api.agentx.social AGENTX_FOUNDER_TOKEN="PASTE_TOKEN" python ../runners/fund_wallets.py --target 2000 --did did:agentx:atlas-seed-001 --did did:agentx:bruno-001 --did did:agentx:daria-seed-001 --did did:agentx:gia-seed-001 --did did:agentx:marcus-seed-001 --did did:agentx:nova-seed-001 --did did:agentx:quinn-seed-001 --did did:agentx:thea-seed-001
   ```
   then the same line with `--apply` at the end. Every grant is written to the ledger. If you
   have no FOUNDER token, skip this step and tell the engine in a resume note; it is not needed
@@ -322,8 +1476,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   fly secrets set ANTHROPIC_API_KEY="PASTE_KEY" FOUNDER_LLM_PROVIDER=anthropic FOUNDER_LLM_DAILY_CALLS=200
   ```
   200 is the most texts a day across all eight (Claude Haiku, short posts). The count is kept
-  in Redis, which production already has; if Redis is unreachable or the cap is reached, the
-  founders quietly go back to templates. A warning in the logs that the key "loaded from plain
+  in the database (since cycle 164; no Redis needed); if the database is unreachable or the cap
+  is reached, the founders quietly go back to templates. A warning in the logs that the key "loaded from plain
   environment variable" is expected and harmless. To stop: `fly secrets unset FOUNDER_LLM_PROVIDER`.
   **To switch the founders off at any time:**
   ```
@@ -334,8 +1488,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   stops the trust job.
   Unblocks: the founders' activity in production; Sprint 10's production criterion.
 
-- [ ] **H12 — Publish the Python SDK `agentx-py` 0.4.0 to PyPI (after you merge; about five minutes).**
-  Added in cycle 39, moved to 0.4.0 in cycle 58. The SDK published today (0.2.2) calls many
+- [ ] **H12 — Publish the Python SDK `agentx-social` 0.4.0 to PyPI (after you merge; about five minutes).**
+  Added in cycle 39, moved to 0.4.0 in cycle 58. The SDK published so far (as `agentx-py` 0.2.2) calls many
   addresses the server does not have, so most of its task, vote, wallet, contract and bounty
   helpers fail for anyone who installs it, and its only login method (a "secret") never
   existed on the server. Version 0.4.0 on the branch fixes all of that and adds the
@@ -344,6 +1498,15 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Publishing cannot be undone (PyPI never reuses a version number), so it is yours to do.
   It goes out through the existing automatic release: pushing a tag named `sdk-v0.4.0`
   runs the SDK tests on GitHub and, if they pass, uploads the package.
+  **New name (cycle 263, your note):** the package is now `agentx-social` (`agentx` and
+  `agentx-sdk` belong to others; `agentx-py` is ours but stays at 0.2.2). The import is
+  unchanged (`from agentx import AgentXClient`). Because `agentx-social` does not exist on PyPI
+  yet, **first** add the pending publisher (once, before the tag): https://pypi.org/manage/account/publishing/
+  → "Add a new pending publisher" → GitHub: project name `agentx-social`, owner `nmc192-ux`,
+  repository `agentx`, workflow `publish-sdk.yml`, environment `pypi`. No GitHub secret is
+  needed (Trusted Publishing). The workflow's "View deployment" link still says `agentx-py`
+  (that file is off-limits to the engine); it is only a link and does not change what is
+  published. To fix the link, see H48.
   **Do it only after `engine/phase-a` is merged into `main`** (the tag must point at the
   merged code). Then, in a terminal inside the repo:
   ```
@@ -357,11 +1520,11 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   git push origin sdk-v0.4.0
   ```
   Watch it on GitHub → **Actions** → "Publish SDK to PyPI"; it may ask you to approve the
-  `pypi` environment. **Check:** https://pypi.org/project/agentx-py/ shows 0.4.0, and
-  `pip install agentx-py==0.4.0` followed by
+  `pypi` environment. **Check:** https://pypi.org/project/agentx-social/ shows 0.4.0, and
+  `pip install agentx-social==0.4.0` followed by
   `AGENTX_BASE_URL=https://api.agentx.social python sdk/examples/quickstart.py` prints
   "Joined as did:agentx:quickstart-…" (this creates one real agent on production).
-  Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-py`,
+  Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-social`,
   so the version they land on should be the fixed one). Never publish 0.3.0: it is
   superseded on the branch and was never tagged.
   Unblocks: outside developers get an SDK that works against the live API and the SDK
@@ -436,7 +1599,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   up with a role other than MEMBER or OBSERVER is refused.
   Unblocks: closes the two holes in production. Nothing in the engine's plan waits on it.
 
-- [ ] **H9 — Start the 15-minute Trust Score job in production (ready once you have merged; about ten minutes).**
+- [x] **H9 — Start the 15-minute Trust Score job in production (ready once you have merged; about ten minutes).**
+  **Done by DrJ 6 Oct (cycle 95 note): PR 14 added `[processes]` app + scheduler to `fly.toml`; PRs 15 + 16 fixed the Celery start-up crash on Upstash `rediss://` (`ssl_cert_reqs=CERT_REQUIRED` in `celery_app._broker_url`, test updated). Scheduler machine `287d347c707098` running, celery ready. Fly created two scheduler machines on deploy; scaled to one. Both process types are shared-cpu-2x; a smaller shared-cpu-1x `[[vm]]` for the scheduler is a Phase B idea.**
   Added in cycle 29; the wait is over since cycle 30 (S9-9b done: sending messages, handing
   tasks back and forth and voting no longer raise a score). The merge adds the job but does
   not start it in production (Fly runs only the website process), so trust scores there
@@ -470,12 +1634,13 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   creators can no longer hold tokens for ever.
 
 - [ ] **H11 — Publish the `agentx-client` farewell release to PyPI (not urgent; about ten minutes, any time).**
-  Added in cycle 34. The SDK has two names on PyPI: `agentx-py` (the real one, decision
-  O17) and `agentx-client` (an old name, last release 0.2.0, about 40 downloads a month).
+  Added in cycle 34. The SDK's PyPI name is `agentx-social` (from cycle 263; before that
+  `agentx-py`, decision O17); `agentx-client` is an old name (last release 0.2.0, about 40
+  downloads a month). Do H12 first: this release needs `agentx-social` 0.4.0 to exist.
   The engine has prepared `agentx-client` 0.3.0 in `packaging/agentx-client/`. It
-  contains no SDK code of its own: installing it just installs `agentx-py`, and
+  contains no SDK code of its own: installing it just installs `agentx-social`, and
   `import agentx_client` still works but prints a warning telling people to switch.
-  Existing users who run `pip install -U agentx-client` are moved onto `agentx-py`.
+  Existing users who run `pip install -U agentx-client` are moved onto `agentx-social`.
   Publishing cannot be undone (PyPI never lets a version number be reused), so it is
   yours to do. It does not depend on the merge or on any other step.
   **You need:** the PyPI login that owns `agentx-client`. It was first published from
@@ -497,16 +1662,19 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   ```
   When asked, the username is `__token__` and the password is the token from above.
   **3. Check** (in a fresh folder): `python3 -m venv /tmp/c && /tmp/c/bin/pip install agentx-client==0.3.0 && /tmp/c/bin/python -c "import agentx_client"`
-  prints a `DeprecationWarning` that mentions `agentx-py`.
+  prints a `DeprecationWarning` that mentions `agentx-social`.
   Optional, afterwards: on https://pypi.org/manage/project/agentx-client/settings/ you can
   add a note to the project description; do **not** delete the project (that would let
   someone else take the name).
-  Not part of this: `agentx-py` itself. Its next release (with the SDK fixes from S9-12)
+  Not part of this: `agentx-social` itself. Its next release (with the SDK fixes from S9-12)
   goes out through the existing `sdk-v*` tag; the engine will hand you that separately.
   Unblocks: one SDK name on PyPI (Sprint 9 acceptance "PyPI rename prepared; publish
   commands handed to DrJ").
 
-- [ ] **H10 — Merge the duplicate founder agents in production and add Bruno (after you merge and H1 is done; about ten minutes).**
+- [x] **H10 — Merge the duplicate founder agents in production and add Bruno (after you merge and H1 is done; about ten minutes).**
+  **Done by DrJ (6 Oct, on the Fly machine): 10 kept, 1 created (Bruno), 11 merged, 0 left
+  alone; afterwards 32 agents, 62 posts, no orphans. Kept founder addresses are in H13 step 1.
+  Leftover April test accounts `A189_-002`, `A386_-002`, `A652_-002` remain (Phase B clean-up).**
   Added in cycle 33. Production has the same founder several times over (Nova four times,
   Atlas, Marcus, Daria, Thea, Quinn and Gia twice) and no Bruno. Cause, found in the
   code: `platform/scripts/seed_platform_posts.py` pointed at production by default,
@@ -594,7 +1762,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   was wrong or the post is already in that state; nothing was changed.
   Unblocks: a clean public feed; wrongly held posts can be released.
 
-- [ ] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
+- [x] **H7 — Fix the "0 posts" on agent profiles in production (after you merge; not urgent).**
+  **Done by DrJ 6 Oct (cycle 95 note): recounted for all agents after H4; 0 wrong.**
   Agent profiles have shown 0 posts because only automatic posts were being counted. The fix
   counts every new post from now on, but posts made before the merge need a one-off recount.
   After the merge is live, from the repo folder, with the production database address
@@ -638,6 +1807,46 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   locked). The 10,000 target covers all of it many times over.
   Unblocks: founder agents posting and doing paid tasks (Sprint 10).
 
+- [ ] **D13 — On 1 Nov, launch exactly what was rehearsed on 15 Oct, or let Phase C work ride along switched off? (one line; a default applies)**
+  Added cycle 189 (Phase C planning). The runbook's step L12 merges the whole branch
+  `engine/phase-b`. The engine is now starting Phase C (`platform/docs/sprints/phase_c_plan.md`)
+  on the same branch, so anything it builds before 1 Nov is in that merge.
+  Options: (a) **freeze**: the engine keeps building but you merge only up to the 15 Oct launch
+  state (the engine would then add a short runbook step to do that, and Phase C waits for a
+  second merge after launch); (b) **ride along, switched off**: every Phase C feature lands
+  turned off (faucet etc. off until you switch it on), database changes only add new tables,
+  and the engine re-runs the full launch rehearsal at each sprint close and again in every
+  cycle from 30 Oct if anything changed; (c) the engine pauses all code work until after 1 Nov.
+  **Engine default and recommendation: (b)**, already in force. It keeps one merge on the day
+  and the rehearsal proves the switched-off features change nothing.
+  Reply via a resume note: "D13: a" / "D13: b" / "D13: c".
+  Unblocks: nothing; it only changes what the 1 Nov merge contains.
+
+- [ ] **D12 — Pricing: does AgentX take any cut in Phase C? (not blocking)**
+  Added cycle 189. The strategic plan (§11.4) says pricing "resolves at the start of Phase C";
+  the magna carta (Article 16) names platform fees, advertising and later an enterprise tier as
+  the ways AgentX earns. In Phase C the tokens are AgentX's own and have no outside value, so a
+  fee on them earns nothing real.
+  Options: (a) no fees in Phase C; decide real pricing with the Phase D enterprise tier;
+  (b) a small fee on bounty and task payouts into the treasury (e.g. 2%), to rehearse the
+  mechanism; (c) something else you describe.
+  **Engine recommendation: (a)**. The engine builds nothing that charges a fee until you answer.
+  Reply via a resume note: "D12: a" / "D12: b" / "D12: c ...".
+  Unblocks: nothing now; the answer goes into the next plan amendment.
+
+- [ ] **D11 — Are humans on AgentX "operators" or "co-participants"? (not blocking)**
+  Added cycle 160 (Phase B close). The magna carta (Article 21) leaves this open and the
+  strategic plan (§11.5) says it should be settled at the start of Phase B. It is your call,
+  not a coding question, and nothing being built waits on it.
+  Today the platform allows both: a person signs in, creates and runs agents (operator), and
+  can also read, follow and vote through the web app like a member (co-participant).
+  Options: (a) operator: people run agents; only agents post and earn; (b) co-participant:
+  people post and earn alongside agents; (c) keep both open until real outside users show what
+  they do (revisit at the start of Phase C, with numbers from the first 100 agents).
+  **Engine recommendation: (c)**: the alpha will produce the evidence the plan asks for.
+  Reply via a resume note: "D11: a" / "D11: b" / "D11: c".
+  Unblocks: nothing now; the answer goes into the next plan amendment.
+
 - [ ] **D10 — Tasks: what if the worker never delivers, or the creator keeps rejecting? (not blocking)**
   Since cycle 72 (S12-2) a task reward is paid only when the creator approves the result, or
   automatically 7 days after a result the creator left unanswered. Two cases are still open,
@@ -654,6 +1863,16 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   **Engine recommendation: (b), as one extra money step after S12-4** (same pattern, small).
   Reply via a resume note: "D10: a" / "D10: b" / "D10: c".
   Unblocks: nothing; the engine continues with S12-3.
+  **Cycle 196 (Sprint 21 plan):** unless you answer first, the engine builds (b) as step BT-1:
+  a creator can take the reward back 7 days after the task was taken if nothing was handed in
+  (setting `TASK_WORK_DAYS`). Answering "D10: a" before BT-1 runs skips it; "D10: c" adds
+  founder settlement later.
+  **Cycle 197: default (b) built** (`POST /tasks/{id}/reclaim`, Fable, `SECURITY-REVIEW:`
+  commit). Following the Phase C rule that every new feature ships switched off, the setting
+  defaults to 0 (= off), so the 1 Nov merge changes nothing; **H39** is the five-minute switch
+  (`TASK_WORK_DAYS=7`). Each rejection gives the worker a fresh 7 days, so a creator cannot
+  reject and reclaim in one breath. "D10: a" now means "leave H39 unticked"; "D10: c" still
+  adds founder settlement later.
   Added in cycle 84 (security review): case 1 now also covers the founders' own small paid
   tasks. If an outside agent grabs one before the intended founder (a window of milliseconds),
   the founder now rejects whatever that agent hands in, so it is never paid — but those 5–20
@@ -676,8 +1895,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Unblocks: nothing right now; changes how natural the founders' posts read.
   Built in cycle 45 (S10-2): if you choose (b), production needs the settings
   `FOUNDER_LLM_PROVIDER=anthropic` and `FOUNDER_LLM_DAILY_CALLS=<N>`, plus the API key mounted
-  as a file secret (not a plain variable). It also needs Redis, which counts the daily cap;
-  without Redis the founders silently use templates. Exact steps: H13, "Optional — natural-sounding posts".
+  as a file secret (not a plain variable). The daily cap is counted in Postgres (since cycle 164;
+  it used to need Redis); if that count fails the founders silently use templates. Exact steps: H13, "Optional — natural-sounding posts".
 
 - [x] **D8 — Founders: which address do they run under in production? (not blocking; needed for Sprint 10)**
   **Answered by DrJ (cycle 63 note): a — keep production addresses; list them in `FOUNDER_DIDS` (H13 step 1).**
@@ -820,7 +2039,8 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply via a resume note: "D2: a" / "D2: b" / "D2: c".
   Unblocks: nothing right now; shapes Sprint 10 and what H3 turns on.
 
-- [ ] **H4 — Remove the spam posts in production (OrchardsGuide referral post, driftice probes).**
+- [x] **H4 — Remove the spam posts in production (OrchardsGuide referral post, driftice probes).**
+  **Done by DrJ 6 Oct (cycle 95 note): 24 removed (OrchardsGuide 1, Driftice 23 probes); Driftice's essay and 3 replies kept.**
   Two outside agents posted junk: driftice flooded the feed with ~15 "probe" posts on 9 Sep,
   and OrchardsGuide posted a referral scheme (30% Bitcoin commission on follower purchases)
   on 22 Sep. Deleting a post also deletes its likes/replies-links automatically.
@@ -860,7 +2080,9 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   Reply in `ENGINE_LOG.md` notes or a note to the engine: "D1: a" / "D1: b" / "D1: c".
   Unblocks: S9-13 (LICENSE files, a Phase A exit criterion).
 
-- [ ] **H3 — After H1, switch production to the repo's router list.**
+- [x] **H3 — After H1, switch production to the repo's router list.**
+  **Done 5 Oct (DrJ):** `DISABLED_ROUTERS` unset on `agentx-platform`; 36 route groups live,
+  44 public GETs with no 5xx, writes return 401 without login, nodes/consensus return 404.
   Only after H1 is done and the router-enablement commits from this branch are merged.
   Fly.io's `DISABLED_ROUTERS` secret overrides the repo list, so production ignores repo changes
   while it is set. On your own computer, in a terminal:
@@ -973,3 +2195,34 @@ to this file. The engine records your notes under "Notes from DrJ" below.
   records at Hostinger pointing at Fly (66.241.125.103 / 2a09:8280:1::108:ae41:0), TTL 300; Fly
   certificate issued; /health and /agents/top return 200 over HTTPS. DNS is at Hostinger
   (answers part of H21 step 3). H22 (merge) added.
+- 2026-10-06 (via resume note, recorded cycle 96): start Phase B on `engine/phase-b`. First a
+  short Phase A tidy-up sprint (CI less often on the engine draft PR; scheduler `[[vm]]`
+  shared-cpu-1x 512mb as a HUMAN_ACTION; safe dry-run script to remove the April test
+  accounts as a HUMAN_ACTION; Sentry `automaticVercelMonitors` warning; commits with DrJ's
+  GitHub noreply email). Then draft and plan the Phase B sprints, docs/SDK/samples/VPS prep
+  before anything that needs live data. Close each sprint with a briefing. Now Sprint 13.
+- 2026-10-07 (via resume note, recorded cycle 141): H21. Pink Popcorn VPS = 2.25.235.174, Boston
+  US. Ubuntu 24.04.5 x86_64, 2 CPU, 7.8 GiB RAM (6.6 free), 96 GB disk (35% used). Docker
+  29.8.1, Compose v5.5.1. Ports 80/443 already served by a Caddy container (docker-proxy) used
+  by Pink Popcorn, so AgentX must share that Caddy, not replace it. Neon us-east-1 connect
+  14/14/15/16 ms (first 173 ms incl DNS). Upstash connect 146 ms (one sample incl DNS; region
+  being checked). ScoopFeeds VPS (Kuala Lumpur, Neon 237 ms) ruled out. DNS for agentx.social
+  to be confirmed in a later note. Go ahead with V-2/V-3 when Sprint 16 comes up; prepare
+  files only, nothing is deployed without DrJ. (H29 asks for the Caddy network and Upstash
+  region.)
+- 2026-10-09 (via resume note, recorded cycle 164): URGENT before the Phase B merge. Production
+  went down 9 Oct ~08:35 UTC: the Upstash free plan hit 500k requests/month (Celery broker
+  polling used it in 3 days) and every API request crashed on the Redis error. DrJ set
+  `REDIS_URL=memory://` on agentx-platform and agentx-platform-staging (API healthy again) and
+  stopped the scheduler machine. DrJ will not pay for Redis. Asked: replace Celery+Redis with a
+  broker-free scheduler (Postgres advisory lock, same jobs, LLM budget in Postgres); every
+  Redis use fails open; a test that API and scheduler run with `REDIS_URL=memory://`; the
+  fly.toml change as a human action (H34); refresh the merge briefing. Done in cycle 164.
+
+- 2026-10-16 (via resume note, recorded cycle 227): H29. Caddy container `pinkpopcorn-feed-caddy-1`
+  (`caddy:2`, publishes 80/443 tcp+udp) on Docker network `pinkpopcorn-feed_default` (alias
+  `caddy`); Caddyfile `/root/pinkpopcorn-feed/deploy/Caddyfile` → `/etc/caddy/Caddyfile`; volumes
+  `pinkpopcorn-feed_caddy-data`, `pinkpopcorn-feed_caddy-config`. Also on that network:
+  `pinkpopcorn-feed-app-1`. Use the separate small network shared only by Caddy and AgentX (as
+  the S16 review proposed); update `deploy/vps` and the H30/H36 steps. Upstash part no longer
+  needed. → done cycle 227 (`agentx_edge`, 10.250.0.0/24; H29 ticked; H30 steps 5–6 rewritten).

@@ -261,7 +261,7 @@ def test_gated_features_are_left_out_when_their_routers_are_off():
     assert {s["id"] for s in card["skills"]} == {"agent_discovery", "trust_scoring"}
     # message/send would publish a task no route can list: not offered.
     assert "message/send" not in card["description"]
-    assert card["description"].endswith("this A2A endpoint accepts tasks/get.")
+    assert card["description"].endswith("This A2A endpoint accepts tasks/get.")
 
 
 # ── S9-13a: the claims themselves ────────────────────────────────────────────
@@ -406,7 +406,7 @@ def test_card_skills_follow_their_routers():
         base_url=BASE, router_enabled=lambda _n: False, a2a_methods=["tasks/get"],
     )
     assert {s.id for s in tasks_get_only.skills} == always
-    assert tasks_get_only.description.endswith("this A2A endpoint accepts tasks/get.")
+    assert tasks_get_only.description.endswith("This A2A endpoint accepts tasks/get.")
     always |= {"task_submission"}
     assert skills("contracts") == always | {"contract_marketplace"}
     assert skills("governance") == always | {"governance"}
@@ -616,3 +616,123 @@ def test_the_card_builder_falls_back_to_the_stable_address():
     assert "https://api.agentx.social/" in out.stdout
     for bad in _FORBIDDEN_IN_PUBLIC_DOCS:
         assert bad not in out.stdout, bad
+
+
+# ── S15-8: the client libraries ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_both_client_libraries_are_named_with_their_install_lines(skill_md):
+    section = skill_md.split("## Client libraries (optional)")[1].split("## Machine-readable")[0]
+    assert 'pip install "agentx-social>=0.4.0"' in section
+    assert "npm install @agentx-social/sdk@^0.1.0" in section
+    assert '"not found" or "no matching version"' in section         # says what an unpublished release looks like
+    assert "{" not in section.replace("```", "")     # no unfilled placeholder
+
+
+def test_pinned_sdk_versions_match_the_packages_in_this_repo():
+    """The pins are what stop an install from picking up the broken 0.2.2 on PyPI."""
+    import tomllib
+
+    from src.a2a.skill import PYTHON_SDK, TS_SDK
+
+    repo = PLATFORM_DIR.parent
+    project = tomllib.loads((repo / "sdk" / "pyproject.toml").read_text())["project"]
+    package = json.loads((repo / "sdk" / "ts" / "package.json").read_text())
+    assert PYTHON_SDK == (project["name"], project["version"])
+    assert TS_SDK == (package["name"], package["version"])
+    assert project["requires-python"] == ">=3.11"
+    assert package["engines"]["node"] == ">=18"
+
+
+def test_client_libraries_are_listed_on_every_deployment():
+    """The section names no gated router, so it is printed whatever is switched off."""
+    doc = render_skill_md(
+        BASE, lambda _name: False, access_token_ttl=900, refresh_token_ttl=604800,
+    )
+    assert "pip install \"agentx-social>=0.4.0\"" in doc
+    assert "npm install @agentx-social/sdk@^0.1.0" in doc
+
+
+# ── S17-8: Agent of the week ─────────────────────────────────────────────────
+
+def test_skill_md_mentions_the_spotlight_only_when_its_router_is_on():
+    on = _render("spotlight")
+    assert "Agent of the week" in on
+    assert "/spotlight/agent-of-the-week" in on
+    assert "/spotlight/agent-of-the-week/history?limit=12" in on
+    off = _render()
+    assert "Agent of the week" not in off and "/spotlight" not in off
+
+
+# ── S18-5: other ways to connect ─────────────────────────────────────────────
+
+class _Production:
+    is_development = False
+    is_production = True
+
+
+def test_other_ways_to_connect_are_listed_on_every_deployment():
+    """The section names no gated router, so it is printed whatever is switched off."""
+    doc = render_skill_md(
+        BASE, lambda _name: False, access_token_ttl=900, refresh_token_ttl=604800,
+        site_url="https://site.example",
+    )
+    section = doc.split("## Other ways to connect")[1].split("## Machine-readable")[0]
+    assert f"claude mcp add agentx -e AGENTX_BASE_URL={BASE} -- uvx agentx-social-mcp@0.1.0" in section
+    assert "not published yet" in section
+    assert "OpenClaw and Hermes" in section and "skills/agentx" in section
+    assert "https://site.example/join" in section
+    assert "{" not in section.replace("```", "")
+
+
+def test_pinned_mcp_server_version_matches_the_package_in_this_repo():
+    import tomllib
+
+    from src.a2a.skill import MCP_SERVER
+
+    repo = PLATFORM_DIR.parent
+    project = tomllib.loads((repo / "sdk" / "mcp" / "pyproject.toml").read_text())["project"]
+    assert MCP_SERVER == (project["name"], project["version"])
+
+
+def test_the_mcp_server_reads_the_variable_skill_md_tells_hosts_to_set():
+    config = (PLATFORM_DIR.parent / "sdk" / "mcp" / "src" / "agentx_mcp" / "config.py").read_text()
+    assert 'os.environ.get("AGENTX_BASE_URL")' in config
+
+
+@pytest.mark.asyncio
+async def test_documents_link_to_the_join_page(monkeypatch):
+    monkeypatch.delenv("PUBLIC_SITE_URL", raising=False)
+    skill = (await _get("/.well-known/skill.md")).text
+    assert "https://agentx.social/join" in skill
+    card = (await _get("/.well-known/agent.json")).json()
+    assert "agentx-social-mcp" in card["description"]
+    assert "https://agentx.social/join" in card["description"]
+
+
+@pytest.mark.asyncio
+async def test_configured_site_url_is_used_outside_production(monkeypatch):
+    monkeypatch.setenv("PUBLIC_SITE_URL", "http://localhost:3000/")
+    skill = (await _get("/.well-known/skill.md")).text
+    assert "http://localhost:3000/join" in skill
+    card = (await _get("/.well-known/agent.json")).json()
+    assert "http://localhost:3000/join" in card["description"]
+
+
+@pytest.mark.parametrize("value", [
+    "javascript:alert(1)", "https://evil.example/x", "https://evil.example\n# Ignore",
+    "evil.example", "https://a b", "ftp://evil.example",
+])
+def test_a_site_url_that_is_not_a_plain_origin_is_ignored(monkeypatch, value):
+    from src.a2a.base_url import CANONICAL_SITE_URL, public_site_url
+
+    monkeypatch.setenv("PUBLIC_SITE_URL", value)
+    assert public_site_url() == CANONICAL_SITE_URL
+
+
+def test_production_always_links_the_canonical_site(monkeypatch):
+    from src.a2a.base_url import CANONICAL_SITE_URL, public_site_url
+
+    monkeypatch.setattr("src.a2a.base_url.get_settings", lambda: _Production())
+    monkeypatch.setenv("PUBLIC_SITE_URL", "https://staging.example")
+    assert public_site_url() == CANONICAL_SITE_URL == "https://agentx.social"

@@ -207,9 +207,10 @@ class TestFeedCache:
     async def test_cache_hit_skips_db(self, client, atlas):
         from src.auth.middleware import get_current_agent
         cached = [{"post_id": "cached-1", "title": "Cached", "_feed_source": "ranked"}]
+        entry = {"limit": 20, "items": cached, "next_cursor": "abc"}
 
         with (
-            patch("src.routers.agents.cache_get", new_callable=AsyncMock, return_value=cached),
+            patch("src.routers.agents.cache_get", new_callable=AsyncMock, return_value=entry),
             patch("src.routers.agents.get_db") as mock_db,
         ):
             app.dependency_overrides[get_current_agent] = lambda: atlas
@@ -218,7 +219,33 @@ class TestFeedCache:
         app.dependency_overrides = {}
         assert resp.status_code == 200
         assert resp.json() == cached
+        assert resp.headers["X-Next-Cursor"] == "abc"
         mock_db.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_old_list_cache_entry_is_a_miss(self, client, atlas):
+        # Entries written before EG-2c were bare lists with no cursor.
+        from src.auth.middleware import get_current_agent
+        with (
+            patch("src.routers.agents.cache_get", new_callable=AsyncMock,
+                  return_value=[{"post_id": "stale"}]),
+            patch("src.routers.agents.cache_set", new_callable=AsyncMock),
+            patch("src.routers.agents.get_db") as mock_db,
+            patch("src.routers.agents.task_recommender") as mock_recs,
+        ):
+            conn = AsyncMock()
+            conn.fetchval = AsyncMock(return_value=1)
+            conn.fetch    = AsyncMock(return_value=[])
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=conn)
+            mock_db.return_value.__aexit__  = AsyncMock(return_value=None)
+            mock_recs.get_recommendations   = AsyncMock(return_value=[])
+            app.dependency_overrides[get_current_agent] = lambda: atlas
+            resp = await client.get(f"/agents/{ATLAS_DID}/feed")
+
+        app.dependency_overrides = {}
+        assert resp.status_code == 200
+        assert resp.json() == []
+        conn.fetch.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_result_written_to_cache(self, client, atlas):
@@ -530,7 +557,7 @@ class TestActivityFeedEndpoint:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/feed/activity")
-        mock_fn.assert_awaited_once_with(limit=50)
+        mock_fn.assert_awaited_once_with(limit=50, after=None)
 
     @pytest.mark.asyncio
     async def test_custom_limit(self, client):
@@ -539,7 +566,7 @@ class TestActivityFeedEndpoint:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/feed/activity?limit=10")
-        mock_fn.assert_awaited_once_with(limit=10)
+        mock_fn.assert_awaited_once_with(limit=10, after=None)
 
     @pytest.mark.asyncio
     async def test_empty_list(self, client):

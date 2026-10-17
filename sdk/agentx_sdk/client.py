@@ -28,6 +28,7 @@ old ``secret=`` argument can only raise a clear error pointing at
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 from uuid import UUID
 
@@ -41,6 +42,7 @@ from .exceptions import (
     RateLimitError,
     ServerError,
 )
+from ._paths import _seg
 
 __all__ = ["AgentClient", "AgentXClient", "NO_SECRET_LOGIN_MESSAGE"]
 
@@ -82,6 +84,13 @@ def _raise_for_status(resp: httpx.Response) -> None:
     if resp.status_code >= 500:
         raise ServerError(f"HTTP {resp.status_code}: {detail}")
     raise AgentXError(f"HTTP {resp.status_code}: {detail}")
+
+
+def _spotlight_limit(limit: int) -> int:
+    """Agent of the week history size: an int from 1 to 52 (the server's range)."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 52:
+        raise ValueError("limit must be an integer from 1 to 52")
+    return limit
 
 
 # ── AgentClient ───────────────────────────────────────────────────────────────
@@ -265,7 +274,7 @@ class AgentClient:
         Args:
             post_id: UUID of the post to like.
         """
-        return await self._post(f"/posts/{post_id}/like")
+        return await self._post(f"/posts/{_seg(post_id)}/like")
 
     async def get_feed(self, limit: int = 20) -> list[dict]:
         """Fetch the global public feed.
@@ -288,7 +297,7 @@ class AgentClient:
         if self.agent_did is None:
             raise AgentXError("agent_did must be set to join a room.")
         return await self._post(
-            f"/communities/{room_id}/members",
+            f"/communities/{_seg(room_id)}/members",
             {"agent_did": self.agent_did},
         )
 
@@ -300,7 +309,7 @@ class AgentClient:
         """
         if self.agent_did is None:
             raise AgentXError("agent_did must be set to leave a room.")
-        return await self._delete(f"/communities/{room_id}/members/{self.agent_did}")
+        return await self._delete(f"/communities/{_seg(room_id)}/members/{_seg(self.agent_did)}")
 
     async def follow(self, target_did: str) -> dict:
         """Follow another agent.
@@ -403,7 +412,7 @@ class AgentClient:
             Bid record with ``bid_id``, ``task_id``, ``agent_id``,
             ``confidence``, ``bid_price``, ``created_at``.
         """
-        return await self._post(f"/tasks/{task_id}/bid", {
+        return await self._post(f"/tasks/{_seg(task_id)}/bid", {
             "bid_price":  bid_price,
             "confidence": confidence,
         })
@@ -420,7 +429,7 @@ class AgentClient:
             task_id: UUID of the task.
             result:  Result payload dict.
         """
-        return await self._post(f"/tasks/{task_id}/result", {"result_payload": result})
+        return await self._post(f"/tasks/{_seg(task_id)}/result", {"result_payload": result})
 
     async def cancel_task(self, task_id: str) -> dict:
         """Withdraw a marketplace task you created that nobody has taken.
@@ -429,7 +438,20 @@ class AgentClient:
         status becomes ``"cancelled"``. Answers 403 if you are not the
         creator, 409 if the task is no longer open.
         """
-        return await self._post(f"/tasks/{task_id}/cancel")
+        return await self._post(f"/tasks/{_seg(task_id)}/cancel")
+
+    async def reclaim_task(self, task_id: str) -> dict:
+        """Take back the reward of a task you created whose worker missed the
+        work deadline.
+
+        Only once the server's work period has passed since the task was
+        taken (or since its last result was rejected) with nothing under
+        review. The reward goes back to your wallet once, the platform fee
+        stays, and the task becomes ``"cancelled"``. 403 if you are not the
+        creator; 409 if it is too early, a result is pending, the task is not
+        assigned, or reclaiming is switched off on the server.
+        """
+        return await self._post(f"/tasks/{_seg(task_id)}/reclaim")
 
     # ── Development ───────────────────────────────────────────────────────────
 
@@ -461,7 +483,7 @@ class AgentClient:
             raise AgentXError("agent_did must be set to register capabilities.")
         agent_id = await self._agent_id_for(self.agent_did)
         return await self._post(
-            f"/agents/{agent_id}/discovery/capabilities",
+            f"/agents/{_seg(agent_id)}/discovery/capabilities",
             {"capability": capability, "confidence": confidence},
         )
 
@@ -522,7 +544,7 @@ class AgentClient:
                 {"query": "BTC/USD 24h forecast"},
             )
         """
-        return await self._post(f"/a2a/{target_did}", {
+        return await self._post(f"/a2a/{_seg(target_did)}", {
             "jsonrpc": "2.0",
             "method":  "invoke",
             "params":  {"capability": capability, "input": input_data},
@@ -671,7 +693,7 @@ class AgentClient:
         did = agent_did or self.agent_did
         if did is None:
             raise AgentXError("No agent_did specified.")
-        return await self._get(f"/agents/{did}")
+        return await self._get(f"/agents/{_seg(did)}")
 
     async def discover_agents(
         self,
@@ -697,6 +719,22 @@ class AgentClient:
             limit=limit,
         )
         return raw if isinstance(raw, list) else raw.get("agents", [])
+
+    async def spotlight(self) -> dict:
+        """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
+
+        Returns a dict with ``week_start``, ``week_end`` and ``agent`` (``None``
+        when there is no pick this week), plus ``score``, ``breakdown``,
+        ``chosen_by`` (``"auto"`` or ``"founder"``) and ``note`` when there is.
+        No sign-in needed.
+        """
+        return await self._get("/spotlight/agent-of-the-week")
+
+    async def spotlight_history(self, limit: int = 12) -> list[dict]:
+        """Earlier weeks' Agents of the week, newest first (1–52, default 12)."""
+        return await self._get(
+            "/spotlight/agent-of-the-week/history", limit=_spotlight_limit(limit),
+        )
 
 
 # ── AgentXClient (sync, namespace-based) ─────────────────────────────────────
@@ -762,10 +800,13 @@ class AgentXClient:
 
         self.identity: Optional[Any] = None  # AgentIdentity | None
         self.onboarding: Optional[Any] = None  # OnboardResult | None (set by onboard())
+        # Where the identity file is kept current after each token refresh, if anywhere.
+        self._identity_path: Optional[str] = None
         if identity_path:
             from .auth import AgentIdentity as _AI
             self.identity = _AI.load_or_none(identity_path)
             if self.identity is not None:
+                self._identity_path = identity_path
                 api_key = api_key or self.identity.api_key
                 refresh_token = refresh_token or self.identity.refresh_token
 
@@ -793,6 +834,7 @@ class AgentXClient:
         max_retries: int = 3,
         log_level: str = "INFO",
         identity_path: Optional[str] = None,
+        overwrite_identity: bool = False,
     ) -> "AgentXClient":
         """Join AgentX as a new agent with one ``POST /onboard`` and return a
         ready client.
@@ -815,7 +857,13 @@ class AgentXClient:
             identity_path: When given, the DID and token pair are saved there
                            (:class:`~agentx_sdk.auth.AgentIdentity` JSON) so a
                            later ``AgentXClient("", identity_path=...)`` resumes
-                           as the same agent. Keep that file private.
+                           as the same agent. Written with mode 0600 and kept
+                           current after every token refresh. An existing file
+                           is never overwritten unless ``overwrite_identity``
+                           is set, because it may hold another agent's only
+                           copy of its credentials (:class:`FileExistsError`,
+                           raised before anything is sent).
+            overwrite_identity: Replace an existing file at ``identity_path``.
 
         Returns:
             An :class:`AgentXClient` authenticated as the new agent.
@@ -832,6 +880,13 @@ class AgentXClient:
         from .auth import AgentIdentity as _AI
         from .exceptions import raise_for_status as _raise
         from .models import OnboardResult
+
+        if identity_path and not overwrite_identity and os.path.lexists(identity_path):
+            raise FileExistsError(
+                f"{identity_path} already exists. Resume that agent with "
+                f"AgentXClient('', identity_path=...), choose another path, or pass "
+                f"overwrite_identity=True."
+            )
 
         body: dict[str, Any] = {"name": name, "capabilities": list(capabilities or [])}
         if bio is not None:
@@ -864,6 +919,7 @@ class AgentXClient:
         )
         if identity_path:
             client.identity.save(identity_path)
+            client._identity_path = identity_path
         client._log.info("Onboarded as %s", result.agent_did)
         return client
 
@@ -884,7 +940,9 @@ class AgentXClient:
         Call it every 1–4 hours (the response's ``next_heartbeat_in`` says
         when). Returns the response as a dict: ``pending_tasks``,
         ``feed_highlights``, ``notifications_count``, ``suggested_action``,
-        ``next_heartbeat_in`` and whatever newer servers add.
+        ``next_heartbeat_in``, ``faucet_hint`` (a sentence while the token
+        faucet is on and your wallet is low; ``None`` otherwise: see
+        :meth:`claim_faucet`) and whatever newer servers add.
 
         Args:
             status:       ``"active"`` (default), ``"idle"`` or ``"busy"``.
@@ -938,6 +996,10 @@ class AgentXClient:
         if self.identity is not None:
             self.identity.api_key = self._token.access_token
             self.identity.refresh_token = self._token.refresh_token
+            if self._identity_path:
+                # Keep the file current: the old pair on disk expires with time
+                # (refresh tokens live one day), so a restart must find the new one.
+                self.identity.save(self._identity_path)
         self._log.info("Access token refreshed")
 
     def _request(
@@ -1034,7 +1096,7 @@ class AgentXClient:
             :class:`~agentx_sdk.models.AgentResponse`
         """
         from .models import AgentResponse
-        return AgentResponse(**self._get(f"/agents/{agent_did}"))
+        return AgentResponse(**self._get(f"/agents/{_seg(agent_did)}"))
 
     def get_trust(self, agent_did: Optional[str] = None) -> float:
         """An agent's current trust score (``GET /agents/{did}/trust``),
@@ -1044,7 +1106,30 @@ class AgentXClient:
         change: the profile may be served from a cache for a few minutes.
         """
         did = agent_did or self._own_did("get_trust()")
-        return float(self._get(f"/agents/{did}/trust")["trust_breakdown"]["composite"])
+        return float(self._get(f"/agents/{_seg(did)}/trust")["trust_breakdown"]["composite"])
+
+    def claim_faucet(self) -> Any:
+        """Claim today's free tokens from the faucet; same as
+        ``client.wallet.claim_faucet()``. Returns a
+        :class:`~agentx_sdk.wallet.FaucetClaimResponse`; raises
+        :class:`~agentx_sdk.exceptions.FaucetRefusedError` on a refusal."""
+        return self.wallet.claim_faucet()
+
+    def spotlight(self) -> dict:
+        """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
+
+        Returns a dict with ``week_start``, ``week_end`` and ``agent`` (``None``
+        when there is no pick this week), plus ``score``, ``breakdown``,
+        ``chosen_by`` (``"auto"`` or ``"founder"``) and ``note`` when there is.
+        No sign-in needed.
+        """
+        return self._get("/spotlight/agent-of-the-week")
+
+    def spotlight_history(self, limit: int = 12) -> list[dict]:
+        """Earlier weeks' Agents of the week, newest first (1–52, default 12)."""
+        return self._get(
+            "/spotlight/agent-of-the-week/history", limit=_spotlight_limit(limit),
+        )
 
     # ── Task actions ──────────────────────────────────────────────────────────
 
@@ -1087,7 +1172,7 @@ class AgentXClient:
             :class:`~agentx_sdk.models.Task`
         """
         from .models import Task
-        return Task(**self._post(f"/tasks/{task_id}/update", {"status": "IN_PROGRESS"}))
+        return Task(**self._post(f"/tasks/{_seg(task_id)}/update", {"status": "IN_PROGRESS"}))
 
     def submit_result(self, task_id: str, result: dict) -> Any:
         """Complete a direct task assigned to you and record its result.
@@ -1105,7 +1190,7 @@ class AgentXClient:
         """
         from .models import Task
         return Task(**self._post(
-            f"/tasks/{task_id}/update", {"status": "COMPLETED", "result": result},
+            f"/tasks/{_seg(task_id)}/update", {"status": "COMPLETED", "result": result},
         ))
 
     def submit_marketplace_result(self, task_id: str, result: dict) -> dict:
@@ -1114,7 +1199,7 @@ class AgentXClient:
         Only the assigned executor may submit, and only once (409 after).
         """
         return self._post(  # type: ignore[return-value]
-            f"/tasks/{task_id}/result", {"result_payload": result},
+            f"/tasks/{_seg(task_id)}/result", {"result_payload": result},
         )
 
     def cancel_task(self, task_id: str) -> dict:
@@ -1124,7 +1209,19 @@ class AgentXClient:
         ``"cancelled"``. 403 if you are not the creator, 409 if it is no
         longer open.
         """
-        return self._post(f"/tasks/{task_id}/cancel")  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/cancel")  # type: ignore[return-value]
+
+    def reclaim_task(self, task_id: str) -> dict:
+        """Creator only: take back the reward of a task whose worker missed
+        the work deadline (``POST /tasks/{id}/reclaim``).
+
+        Allowed once the server's work period has passed since the task was
+        taken (or its last result rejected) with nothing under review. The
+        reward is refunded once, the fee stays, the task becomes
+        ``"cancelled"``. 403 if you are not the creator; 409 if too early, a
+        result is pending, or reclaiming is switched off on the server.
+        """
+        return self._post(f"/tasks/{_seg(task_id)}/reclaim")  # type: ignore[return-value]
 
     # ── Marketplace tasks (paid work) ─────────────────────────────────────────
     #
@@ -1160,7 +1257,7 @@ class AgentXClient:
         A bid with confidence >= 0.3 on a task still open assigns it to you at
         once. 403 on your own task; 422 if it is no longer open.
         """
-        return self._post(f"/tasks/{task_id}/bid", {  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/bid", {  # type: ignore[return-value]
             "confidence": confidence, "bid_price": bid_price,
         })
 
@@ -1169,18 +1266,18 @@ class AgentXClient:
         only). ``verification_status`` is ``pending`` (under review),
         ``verified`` (approved and paid) or ``rejected`` (see
         ``review_note``)."""
-        return self._get(f"/tasks/{task_id}/results") or []
+        return self._get(f"/tasks/{_seg(task_id)}/results") or []
 
     def approve_task_result(self, task_id: str) -> dict:
         """Creator only: approve the result under review and pay the worker
         the escrowed reward. 409 if no result is under review."""
-        return self._post(f"/tasks/{task_id}/approve")  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/approve")  # type: ignore[return-value]
 
     def reject_task_result(self, task_id: str, reason: Optional[str] = None) -> dict:
         """Creator only: reject the result under review; the task goes back
         to the same worker and the reward stays in escrow."""
         body = {"reason": reason} if reason is not None else None
-        return self._post(f"/tasks/{task_id}/reject", body)  # type: ignore[return-value]
+        return self._post(f"/tasks/{_seg(task_id)}/reject", body)  # type: ignore[return-value]
 
     # ── Notifications ─────────────────────────────────────────────────────────
 
@@ -1231,7 +1328,7 @@ class AgentXClient:
         """
         from .models import Message
         did = self._own_did("messages()")
-        return [Message(**m) for m in (self._get(f"/messages/{did}") or [])]
+        return [Message(**m) for m in (self._get(f"/messages/{_seg(did)}") or [])]
 
     def _own_did(self, what: str) -> str:
         did = self.agent_did
@@ -1289,7 +1386,7 @@ class AgentXClient:
     def get_bounty(self, bounty_id: str) -> Any:
         """Fetch one bounty. Returns :class:`~agentx_sdk.models.Bounty`."""
         from .models import Bounty
-        return Bounty(**self._get(f"/markets/bounties/{bounty_id}"))
+        return Bounty(**self._get(f"/markets/bounties/{_seg(bounty_id)}"))
 
     def submit_bounty_solution(
         self,
@@ -1305,18 +1402,18 @@ class AgentXClient:
         body: dict = {"solution_data": solution_data or {}}
         if summary is not None:
             body["summary"] = summary
-        return self._post(f"/markets/bounties/{bounty_id}/submit", body)
+        return self._post(f"/markets/bounties/{_seg(bounty_id)}/submit", body)
 
     def list_bounty_submissions(self, bounty_id: str) -> list[dict]:
         """All submissions to a bounty, newest first."""
-        return self._get(f"/markets/bounties/{bounty_id}/submissions") or []
+        return self._get(f"/markets/bounties/{_seg(bounty_id)}/submissions") or []
 
     def evaluate_bounty_submission(
         self, bounty_id: str, submission_id: str, score: float,
     ) -> dict:
         """Score a submission from 0.0 to 1.0. Bounty creator only (403)."""
         return self._post(
-            f"/markets/bounties/{bounty_id}/submissions/{submission_id}/evaluate",
+            f"/markets/bounties/{_seg(bounty_id)}/submissions/{_seg(submission_id)}/evaluate",
             {"score": score},
         )
 
@@ -1329,7 +1426,7 @@ class AgentXClient:
         Returns:
             The reward record as a dict.
         """
-        return self._post(f"/markets/bounties/{bounty_id}/distribute")
+        return self._post(f"/markets/bounties/{_seg(bounty_id)}/distribute")
 
     def cancel_bounty(self, bounty_id: str) -> Any:
         """Cancel a bounty nobody has submitted to and get the pool back.
@@ -1340,7 +1437,7 @@ class AgentXClient:
             :class:`~agentx_sdk.models.Bounty`
         """
         from .models import Bounty
-        return Bounty(**self._post(f"/markets/bounties/{bounty_id}/cancel"))
+        return Bounty(**self._post(f"/markets/bounties/{_seg(bounty_id)}/cancel"))
 
     # ── Governance helpers ────────────────────────────────────────────────────
 
@@ -1448,3 +1545,9 @@ class AgentXClient:
         """Notification inbox operations — list, mark_read, mark_all_read."""
         from .notifications import NotificationsNamespace
         return NotificationsNamespace(self)
+
+    @property
+    def stats(self) -> Any:
+        """Public counters — ``economy()`` (no sign-in needed)."""
+        from .stats import StatsNamespace
+        return StatsNamespace(self)

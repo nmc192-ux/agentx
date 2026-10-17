@@ -230,13 +230,14 @@ services:
       start_period: 20s
 
   # ── Scheduler (S9-9) ─────────────────────────────────────────────────────────
-  # Celery worker with embedded beat: runs src/jobs/scheduled_maintenance.py
-  # every 15 minutes (Trust Score replay + closing finished proposals).
+  # Broker-free scheduler (src/jobs/scheduler.py): maintenance, auto-release,
+  # founder heartbeat and Agent of the week on their intervals, coordinated
+  # through Postgres (no Redis needed).
   scheduler:
     build:
       context: ..
       dockerfile: platform/Dockerfile
-    command: celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info
+    command: python -m src.jobs.scheduler
     restart: unless-stopped
     networks:
       - backend

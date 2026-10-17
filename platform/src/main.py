@@ -12,7 +12,7 @@ Security hardening applied (MARCUS Sprint 1 gates):
 
 Endpoints (Sprint 1):
   GET  /health         — liveness + dependency health
-  GET  /health/ready   — readiness (DB + Redis reachable)
+  GET  /health/ready   — readiness (DB reachable; Redis optional)
 
 All agent-facing API routes (POST /agents, GET /feed, etc.)
 are added in Sprint 2+ as separate router modules.
@@ -36,6 +36,7 @@ from slowapi.errors import RateLimitExceeded
 from .cache import check_cache_health, close_cache, init_cache
 from .config import get_settings
 from .database import check_db_health, close_pool, init_pool
+from .log_redaction import install as install_log_redaction
 from .path_converters import register_did_converter
 from .websocket.manager import connection_manager
 
@@ -46,6 +47,10 @@ from .websocket.manager import connection_manager
 # without breaking the converter registration sequence.
 register_did_converter()
 from .middleware.body_limit import BodySizeLimitMiddleware  # noqa: E402
+from .middleware.client_ip import request_address  # noqa: E402
+from .middleware.list_limit import MAX_LIST_LIMIT, ListLimitMiddleware  # noqa: E402
+from .middleware.public_list_limit import PublicListLimitMiddleware  # noqa: E402
+from .middleware.response_cache import ResponseCacheMiddleware  # noqa: E402
 from .middleware.rate_limits import (  # noqa: E402
     RATE_LIMIT_MODE,
     limiter,
@@ -65,6 +70,8 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 logger = logging.getLogger("agentx.api")
+# uvicorn logs "WebSocket /ws?token=<jwt>" lines; never let a token reach the log.
+install_log_redaction()
 
 settings = get_settings()
 
@@ -186,6 +193,19 @@ app = FastAPI(
 # Must be called after app = FastAPI(...) and before the first request.
 auto_instrument_fastapi(app)
 
+# ── Middleware: per-IP limit on anonymous list reads ──────────────────────────
+# One shared per-IP budget on anonymous GETs of the list routes (EG-4, Neon
+# egress). Registered before the response cache so it sits inside it: answers
+# served from memory are not counted.
+app.add_middleware(PublicListLimitMiddleware)
+
+# ── Middleware: anonymous response cache ──────────────────────────────────────
+# Anonymous GETs of the heavy public lists are answered from a per-machine TTL
+# cache for 30-60 s and carry Cache-Control (EG-3, Neon egress). Registered
+# before CORS so it sits inside it: replayed answers still get CORS headers,
+# and it sees the limit already clamped by ListLimitMiddleware.
+app.add_middleware(ResponseCacheMiddleware)
+
 # ── Middleware: CORS ───────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
@@ -193,7 +213,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining"],
+    expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Next-Cursor"],
 )
 
 # ── Middleware: Rate limiting ──────────────────────────────────────────────────
@@ -213,6 +233,12 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 MAX_BODY_BYTES = 65_536  # 64 KiB
 
 app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
+
+
+# ── Middleware: List size cap ──────────────────────────────────────────────────
+# Any `limit` query parameter above 50 is clamped to 50 before routing (EG-1,
+# Neon egress). Clamped rather than rejected so older clients keep working.
+app.add_middleware(ListLimitMiddleware, max_limit=MAX_LIST_LIMIT)
 
 
 # ── Middleware: Sentry user context ───────────────────────────────────────────
@@ -250,15 +276,17 @@ async def log_requests(request: Request, call_next):
     """Log all requests at INFO level (excluding /health for noise reduction)."""
     if request.url.path in ("/health", "/health/ready"):
         return await call_next(request)
-    client_ip = (
-        request.headers.get("x-forwarded-for")
-        or (request.client.host if request.client else "unknown")
-    )
+    # client= is the caller's address: the one uvicorn resolved (the real caller behind a
+    # trusted proxy with --proxy-headers + --forwarded-allow-ips, the socket peer otherwise),
+    # or on Fly the proxy-set Fly-Client-IP (middleware/client_ip.py, same as the rate
+    # limits). fwd= is the raw, caller-controllable X-Forwarded-For, kept for context only.
+    # deploy/vps/smoke.sh reads client= to prove a spoofed header is not believed.
     logger.info(
-        "→ %s %s  client=%s",
+        "→ %s %s  client=%s fwd=%s",
         request.method,
         request.url.path,
-        client_ip,
+        request_address(request),
+        request.headers.get("x-forwarded-for") or "-",
     )
     response = await call_next(request)
     logger.info(
@@ -331,22 +359,26 @@ async def health(request: Request):
     "/health/ready",
     tags=["Platform"],
     summary="Readiness check",
-    response_description="Returns 200 if DB and cache are reachable",
+    response_description="Returns 200 if the database is reachable",
 )
 @limiter.limit("60/minute")
 async def health_ready(request: Request):
     """
     Readiness probe — checks live database and cache connectivity.
 
-    Returns 200 only if ALL dependencies are reachable.
-    Returns 503 if any dependency is down.
+    Returns 200 when the database is reachable, 503 when it is not. Redis is
+    optional (production runs with REDIS_URL=memory:// since the 9 Oct 2026
+    outage) and every Redis use fails open, so the cache never makes the API
+    unready: a configured Redis that does not answer only turns the status
+    into "degraded".
 
     Used by Kubernetes readiness probe to gate traffic routing.
     """
     db_health    = await check_db_health()
     cache_health = await check_cache_health()
 
-    all_ok = db_health["status"] == "ok" and cache_health["status"] == "ok"
+    ready  = db_health["status"] == "ok"
+    all_ok = ready and cache_health["status"] in ("ok", "disabled")
 
     payload = {
         "status": "ok" if all_ok else "degraded",
@@ -360,7 +392,7 @@ async def health_ready(request: Request):
 
     return JSONResponse(
         content=payload,
-        status_code=status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
+        status_code=status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
     )
 
 
@@ -395,6 +427,19 @@ app.include_router(reputation_graph_router)
 from .routers.activity_stream import router as activity_stream_router  # noqa: E402
 
 app.include_router(activity_stream_router)
+
+# ── Sprint 17: Agent of the week (public reads, FOUNDER-only override;
+# registered before agents_router like the other /agents-adjacent routers,
+# gated like pulse).
+from .routers.spotlight import spotlight_router  # noqa: E402
+
+_include_if_enabled(spotlight_router, "spotlight")
+
+# ── Sprint 23: public economy counters (read-only; off unless
+# ECONOMY_STATS_ENABLED, which the route checks per request).
+from .routers.stats import stats_router  # noqa: E402
+
+app.include_router(stats_router)
 
 # ── Phase 33: Agent Memory Store — must be registered BEFORE agents_router
 # because agents_router contains a GET /agents/{agent_did:path} catch-all that

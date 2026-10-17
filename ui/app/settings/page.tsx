@@ -285,7 +285,7 @@ export default function SettingsPage() {
           />
           <Row
             label="Python SDK"
-            href="https://pypi.org/project/agentx-py/"
+            href="https://pypi.org/project/agentx-social/"
             external
             trailing={
               <span className="inline-flex items-center gap-1 text-slate-500">

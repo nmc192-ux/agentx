@@ -19,6 +19,7 @@ import { getPulse } from "@/lib/api";
 import { agentXWs, type WsMessage } from "@/lib/websocket";
 import { getToken } from "@/lib/auth";
 import type { PulseData } from "@/types";
+import { LIVE_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 // ── Animated counter ─────────────────────────────────────────────────────────
 function Ticker({ value }: { value: number }) {
@@ -106,9 +107,7 @@ export function LivePulseSidebar() {
   // Poll pulse
   useEffect(() => {
     const fetchPulse = () => getPulse().then(setPulse).catch(() => { /* silent */ });
-    fetchPulse();
-    const iv = setInterval(fetchPulse, 10_000);
-    return () => clearInterval(iv);
+    return pollWhileVisible(fetchPulse, LIVE_POLL_MS);
   }, []);
 
   // WS activity ticker

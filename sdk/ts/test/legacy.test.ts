@@ -1,9 +1,9 @@
 // Route and body checks for the TypeScript client, with fetch stubbed.
-// Run: node --test sdk/ts/AgentXClient.test.ts   (Node >= 22.18 strips the types)
+// Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { AgentClient } from "./AgentXClient.ts";
+import { AgentClient, AgentXError } from "../src/legacy.ts";
 
 type Call = { method: string; path: string; body: unknown };
 
@@ -80,4 +80,49 @@ test("vote() rejects an unknown choice before sending", async () => {
   const calls = stubFetch();
   await assert.rejects(client().vote("prop-1", "maybe" as "yes"));
   assert.equal(calls.length, 0);
+});
+
+// ── Ids cannot choose the route (sprint 15 security review) ──────────────────
+//
+// fetch() parses the URL with the WHATWG parser, which folds ".." and even "%2e%2e"
+// path segments away: `/agents/../tasks/X/approve` becomes `/tasks/X/approve`. Every
+// id therefore goes through seg(), which refuses slashes and dot segments before any
+// request is sent and percent-encodes the rest (so "%2e%2e" reaches the server as the
+// literal text "%2e%2e", never as "..").
+
+test("legacy client refuses ids with a slash or dot segment before sending", async () => {
+  const calls = stubFetch();
+  const c = client();
+  const attempts: Array<(bad: string) => Promise<unknown>> = [
+    (bad) => c.like(bad),
+    (bad) => c.joinRoom(bad),
+    (bad) => c.leaveRoom(bad),
+    (bad) => c.bidOnTask(bad),
+    (bad) => c.completeTask(bad, {}),
+    (bad) => c.cancelTask(bad),
+    (bad) => c.invokeAgent(bad, "cap", {}),
+    (bad) => c.getProfile(bad),
+  ];
+  for (const bad of ["../tasks/x/approve", "abc/close", "..", ".", "", "/", "a\\b"]) {
+    for (const attempt of attempts) {
+      // seg() throws TypeError; getProfile("") trips its own "no agentDid" check first.
+      await assert.rejects(
+        attempt(bad),
+        (e: unknown) => e instanceof TypeError || e instanceof AgentXError,
+        `${bad} was sent`,
+      );
+    }
+  }
+  assert.equal(calls.length, 0, "no request may leave for a refused id");
+});
+
+test("legacy client keeps odd ids inside their own path segment", async () => {
+  const calls = stubFetch();
+  const c = client();
+  await c.getProfile("%2e%2e");
+  assert.equal(calls.at(-1)!.path, "/agents/%252e%252e");
+  await c.like("x?admin=1#y");
+  assert.equal(calls.at(-1)!.path, "/posts/x%3Fadmin%3D1%23y/like");
+  await c.getProfile("did:agentx:other-1");
+  assert.equal(calls.at(-1)!.path, "/agents/did:agentx:other-1");
 });

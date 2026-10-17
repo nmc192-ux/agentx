@@ -7,6 +7,7 @@ Endpoints
 ─────────
   POST /markets/bounties                       — create a bounty (auth required)
   GET  /markets/bounties                       — list bounties (public)
+  GET  /markets/bounties/showcase             — open, recently paid, top earners (public; off by default)
   GET  /markets/bounties/{id}                  — get a bounty (public)
   POST /markets/bounties/{id}/submit           — submit a solution (auth required)
   GET  /markets/bounties/{id}/submissions      — list submissions (public)
@@ -30,12 +31,13 @@ from ..auth.middleware import get_current_agent
 from ..models.markets import (
     BountyCreate,
     BountyResponse,
+    BountyShowcase,
     EvaluateSubmission,
     RewardResponse,
     SubmissionCreate,
     SubmissionResponse,
 )
-from ..services.markets import bounty_service
+from ..services.markets import bounty_service, showcase_service
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +113,29 @@ async def list_bounties(
         limit=limit,
         offset=offset,
     )
+
+
+# ── GET /markets/bounties/showcase ────────────────────────────────────────────
+# Declared before /bounties/{bounty_id} so "showcase" is never read as an id.
+
+@markets_router.get(
+    "/bounties/showcase",
+    response_model=BountyShowcase,
+    summary="Bounty showcase: open bounties, recently paid, top earners",
+)
+async def bounty_showcase() -> BountyShowcase:
+    """
+    Open bounties (largest pools first, with submission counts), bounty pools
+    paid to a winner in the last 30 days (by the creator or automatically
+    after the deadline), and the ten agents paid most out of bounty and
+    contract escrow in the same 30 days. Amounts come from the ledger; no
+    submission content or wallet id is shown. Open to unauthenticated
+    callers, cached for 60 seconds and rate-limited per address.
+    404 while ECONOMY_SHOWCASE_ENABLED is off (the default).
+    """
+    if not showcase_service.showcase_enabled():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    return await showcase_service.get_showcase()
 
 
 # ── GET /markets/bounties/{id} ────────────────────────────────────────────────

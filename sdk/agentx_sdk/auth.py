@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import pathlib
+import stat as _stat
+import sys
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional
@@ -162,10 +166,18 @@ class TokenStore:
 
 @dataclass
 class AgentIdentity:
-    """Persists an agent's DID across SDK sessions.
+    """Persists an agent's DID and token pair across SDK sessions.
 
     By keeping the same DID the agent's trust score, reputation, and
     social graph accumulate over time rather than resetting on each run.
+
+    The file holds live credentials. :meth:`save` writes it with mode 0600
+    (owner read/write only) through a private temporary file and one atomic
+    rename, so a crash never leaves a half-written file and the tokens are
+    never readable by other local users, even briefly. :meth:`load` tightens
+    a file that is group- or world-readable to 0600 (with a warning) and
+    refuses it when that is not possible. The TypeScript SDK reads and writes
+    the same file.
 
     Usage::
 
@@ -185,32 +197,96 @@ class AgentIdentity:
 
     # ------------------------------------------------------------------
     def save(self, path: str = ".agentx_identity.json") -> None:
-        """Serialise identity to a JSON file at *path*."""
-        pathlib.Path(path).write_text(
-            json.dumps(
-                {
-                    "agent_did": self.agent_did,
-                    "api_key": self.api_key,
-                    "display_name": self.display_name,
-                    "owner_id": self.owner_id,
-                    "refresh_token": self.refresh_token,
-                },
-                indent=2,
-            )
-        )
+        """Serialise the identity to a JSON file at *path* with mode 0600.
+
+        The data goes to a new private file next to the target (created with
+        ``O_EXCL`` so a planted file or symlink is never followed), is synced,
+        then replaces the target in one ``os.replace``. A symlink at *path*
+        is replaced, not written through.
+        """
+        if not self.agent_did or not self.api_key:
+            raise ValueError("An identity needs an agent DID and an access token (api_key).")
+        target = pathlib.Path(path)
+        payload = json.dumps(
+            {
+                "agent_did": self.agent_did,
+                "api_key": self.api_key,
+                "display_name": self.display_name,
+                "owner_id": self.owner_id,
+                "refresh_token": self.refresh_token,
+            },
+            indent=2,
+        ) + "\n"
+        tmp = target.with_name(f"{target.name}.{os.getpid()}.{os.urandom(4).hex()}.tmp")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fd = -1  # now owned by fh
+                    fh.write(payload)
+                    fh.flush()
+                    if sys.platform != "win32":
+                        # The umask can only remove bits; be explicit anyway.
+                        os.fchmod(fh.fileno(), 0o600)
+                    os.fsync(fh.fileno())
+            finally:
+                if fd != -1:
+                    os.close(fd)
+            os.replace(str(tmp), str(target))
+        except BaseException:
+            try:
+                os.unlink(str(tmp))
+            except OSError:
+                pass
+            raise
 
     @classmethod
     def load(cls, path: str = ".agentx_identity.json") -> "AgentIdentity":
         """Load identity from *path*.
 
+        On POSIX systems a file that group or others can read (any of mode
+        0o077 set) is tightened to 0600 first, with a :class:`RuntimeWarning`,
+        because it holds the agent's credentials. If that is not possible the
+        file is refused with :class:`PermissionError`. The mode is checked on
+        the file actually opened, so a symlink is judged by its target.
+
         Raises:
             FileNotFoundError: If the file does not exist.
+            PermissionError: If the file is readable by others and cannot be
+                made private.
+            ValueError: If the file is not a regular file or not valid.
         """
-        data = json.loads(pathlib.Path(path).read_text())
+        with open(path, "r", encoding="utf-8") as fh:
+            info = os.fstat(fh.fileno())
+            if not _stat.S_ISREG(info.st_mode):
+                raise ValueError(f"The identity file {path} is not a regular file.")
+            if sys.platform != "win32" and (info.st_mode & 0o077):
+                mode = oct(info.st_mode & 0o777)[2:]
+                try:
+                    os.fchmod(fh.fileno(), 0o600)
+                except OSError as exc:
+                    raise PermissionError(
+                        f"Refusing to use the identity file {path}: its mode is {mode}, so "
+                        f"other users can read the agent's credentials, and it could not be "
+                        f"made private ({exc.strerror or exc}). Run 'chmod 600 {path}' and try again."
+                    ) from exc
+                warnings.warn(
+                    f"The identity file {path} had mode {mode}, so other local users could "
+                    f"read the agent's credentials. It has been changed to 0600.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            text = fh.read()
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"The identity file {path} is not valid JSON.") from exc
+        if not isinstance(data, dict) or not data.get("agent_did") or not data.get("api_key"):
+            raise ValueError(f"The identity file {path} has no agent_did or api_key.")
         return cls(
             agent_did=data["agent_did"],
             api_key=data["api_key"],
-            display_name=data.get("display_name", ""),
+            display_name=data.get("display_name") or "",
             owner_id=data.get("owner_id"),
             refresh_token=data.get("refresh_token"),
         )

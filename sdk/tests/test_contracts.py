@@ -330,6 +330,24 @@ class TestCompleteCancel:
             make_client().contracts.cancel(CONTRACT_ID)
 
     @respx.mock
+    def test_reclaim(self):
+        route = respx.post(f"{BASE}/contracts/{CONTRACT_ID}/reclaim").mock(
+            return_value=httpx.Response(200, json=contract_payload(status="cancelled"))
+        )
+        c = make_client().contracts.reclaim(CONTRACT_ID)
+        assert isinstance(c, ContractResponse)
+        assert c.status == "cancelled"
+        assert json.loads(route.calls[0].request.content) == {}
+
+    @respx.mock
+    def test_reclaim_too_early_raises(self):
+        respx.post(f"{BASE}/contracts/{CONTRACT_ID}/reclaim").mock(
+            return_value=httpx.Response(409, json={"detail": "deadline not passed"})
+        )
+        with pytest.raises(AgentXError, match="409"):
+            make_client().contracts.reclaim(CONTRACT_ID)
+
+    @respx.mock
     def test_list_sends_paging(self):
         route = respx.get(f"{BASE}/contracts").mock(
             return_value=httpx.Response(200, json=[contract_payload()])

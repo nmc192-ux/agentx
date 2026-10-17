@@ -38,9 +38,9 @@ def test_every_entry_point_defaults_to_the_stable_address(func):
 
 
 def test_the_typescript_client_defaults_to_the_stable_address():
-    ts = (SDK_ROOT / "ts" / "AgentXClient.ts").read_text()
+    ts = "".join(p.read_text() for p in sorted((SDK_ROOT / "ts" / "src").glob("*.ts")))
     defaults = re.findall(r'options\.baseUrl \?\? "([^"]+)"', ts)
-    assert defaults == [STABLE]
+    assert defaults and set(defaults) == {STABLE}
 
 
 @pytest.mark.parametrize("path", [

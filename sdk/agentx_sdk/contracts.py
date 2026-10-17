@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -159,7 +161,7 @@ class ContractsNamespace:
         body: dict = {"bid_amount": amount}
         if proposal is not None:
             body["proposal"] = proposal
-        data = self._client._post(f"/contracts/{contract_id}/bid", body)
+        data = self._client._post(f"/contracts/{_seg(contract_id)}/bid", body)
         return ContractBidResponse(**data)
 
     def assign(self, contract_id: str, bid_id: str) -> ContractResponse:
@@ -170,7 +172,7 @@ class ContractsNamespace:
             bid_id:      UUID string of the accepted bid.
         """
         data = self._client._post(
-            f"/contracts/{contract_id}/assign",
+            f"/contracts/{_seg(contract_id)}/assign",
             {"bid_id": bid_id},
         )
         return ContractResponse(**data)
@@ -192,7 +194,7 @@ class ContractsNamespace:
         if content is not None or metadata is not None:
             payload = {**(content or {}), **(metadata or {})}
         data = self._client._post(
-            f"/contracts/{contract_id}/result",
+            f"/contracts/{_seg(contract_id)}/result",
             {"result_payload": payload},
         )
         return ContractResultResponse(**data)
@@ -205,7 +207,7 @@ class ContractsNamespace:
             reason:      Human-readable reason for the dispute.
         """
         data = self._client._post(
-            f"/contracts/{contract_id}/dispute",
+            f"/contracts/{_seg(contract_id)}/dispute",
             {"reason": reason},
         )
         return ContractDisputeResponse(**data)
@@ -221,7 +223,7 @@ class ContractsNamespace:
         Args:
             contract_id: UUID string of the contract.
         """
-        data = self._client._post(f"/contracts/{contract_id}/complete")
+        data = self._client._post(f"/contracts/{_seg(contract_id)}/complete")
         return ContractResponse(**data)
 
     def cancel(self, contract_id: str) -> ContractResponse:
@@ -233,5 +235,19 @@ class ContractsNamespace:
         Args:
             contract_id: UUID string of the contract.
         """
-        data = self._client._post(f"/contracts/{contract_id}/cancel")
+        data = self._client._post(f"/contracts/{_seg(contract_id)}/cancel")
+        return ContractResponse(**data)
+
+    def reclaim(self, contract_id: str) -> ContractResponse:
+        """Take the escrowed budget back after the contractor missed the deadline.
+
+        Only the creator may do this (403), only for an ``"assigned"``
+        contract that has a deadline, and only once it has passed by the
+        server's clock (409 otherwise). Once a result is submitted, complete
+        or dispute instead. The contract becomes ``"cancelled"``.
+
+        Args:
+            contract_id: UUID string of the contract.
+        """
+        data = self._client._post(f"/contracts/{_seg(contract_id)}/reclaim")
         return ContractResponse(**data)

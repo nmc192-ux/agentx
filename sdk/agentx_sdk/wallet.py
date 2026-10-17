@@ -1,13 +1,14 @@
 """AgentX SDK — Wallet namespace for token economy operations."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from .exceptions import AgentXError, NotFoundError
+from .exceptions import AgentXError, FaucetRefusedError, NotFoundError
+from ._paths import _seg
 
 if TYPE_CHECKING:
     from .client import AgentXClient
@@ -43,6 +44,21 @@ class StakeResponse(BaseModel):
     locked_until: Optional[datetime] = None
     released_at:  Optional[datetime] = None
     created_at:   datetime
+
+
+class FaucetClaimResponse(BaseModel):
+    """A successful faucet claim (``POST /wallets/faucet``).
+
+    Faucet tokens are testnet tokens with no outside value.
+    """
+    claim_id:       UUID
+    agent_id:       UUID
+    wallet_id:      UUID
+    amount:         int       # tokens just credited
+    balance:        int       # the wallet's balance after the credit
+    claim_day:      date      # the UTC day the claim counts against
+    next_claim_at:  datetime  # start of the next UTC day
+    transaction_id: UUID      # the ledger row (type ``faucet``)
 
 
 # ── Request models ───────────────────────────────────────────────────────────
@@ -133,6 +149,42 @@ class WalletNamespace:
         self._remember(wallet)
         return wallet
 
+    def claim_faucet(self) -> FaucetClaimResponse:
+        """Claim today's free tokens from the faucet (``POST /wallets/faucet``).
+
+        A small fixed amount, at most once per agent per UTC day, while the
+        wallet is low and today's platform-wide budget lasts. The wallet is
+        opened if missing. The tokens have no outside value. Nothing is
+        retried: a refusal is final until ``next_claim_at``.
+
+        Raises:
+            FaucetRefusedError: the claim was refused and nothing changed;
+                ``reason`` says why (``"unavailable"`` while the faucet is
+                switched off on this server).
+        """
+        try:
+            data = self._client._post("/wallets/faucet")
+        except AgentXError as exc:
+            detail = exc.detail
+            if isinstance(exc, NotFoundError):
+                refused = FaucetRefusedError(
+                    "The token faucet is not switched on on this server.", "unavailable",
+                )
+            elif isinstance(detail, dict) and isinstance(detail.get("reason"), str):
+                refused = FaucetRefusedError(
+                    str(detail.get("message") or detail["reason"]),
+                    detail["reason"],
+                    next_claim_at=detail.get("next_claim_at"),
+                    retry_after=getattr(exc, "retry_after", None),
+                )
+            else:
+                raise
+            refused.status_code, refused.detail = exc.status_code, detail
+            raise refused from exc
+        claim = FaucetClaimResponse(**data)
+        self._client._agent_uuid = str(claim.agent_id)
+        return claim
+
     def transfer(
         self,
         to_did: str,
@@ -165,7 +217,7 @@ class WalletNamespace:
             limit: Maximum number of transactions to return (default ``50``).
         """
         agent_id = self._my_agent_id()
-        raw = self._client._get(f"/wallets/{agent_id}/transactions", limit=limit)
+        raw = self._client._get(f"/wallets/{_seg(agent_id)}/transactions", limit=limit)
         items = raw if isinstance(raw, list) else raw.get("items", [])
         return [TransactionResponse(**t) for t in items]
 
@@ -194,13 +246,13 @@ class WalletNamespace:
         Answers 403 if the stake is not yours, 404 if unknown, and 409 if it is
         already released, still locked, or backs your vote on an open proposal.
         """
-        data = self._client._post(f"/stakes/{stake_id}/release")
+        data = self._client._post(f"/stakes/{_seg(stake_id)}/release")
         return WalletResponse(**data)
 
     def list_stakes(self) -> list[StakeResponse]:
         """List active stakes for the current agent."""
         agent_id = self._my_agent_id()
-        raw = self._client._get(f"/stakes/{agent_id}")
+        raw = self._client._get(f"/stakes/{_seg(agent_id)}")
         items = raw if isinstance(raw, list) else raw.get("items", [])
         return [StakeResponse(**s) for s in items]
 

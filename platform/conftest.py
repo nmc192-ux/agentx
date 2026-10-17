@@ -58,10 +58,25 @@ def _reset_rate_limiters():
     count against every later test that calls the same route (e.g. the shared
     sign-up budget on POST /agents, S9-8a2).
     """
+    from src.middleware import public_list_limit
     from src.middleware.rate_limits import limiter, limiter_did
     for lim in (limiter, limiter_did):
         lim.reset()
+    public_list_limit.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_local_caches():
+    """Empty the per-machine caches (EG-3) so one test's answers never leak
+    into the next."""
+    from src import local_cache
+    from src.middleware import response_cache
+    local_cache.store.clear()
+    response_cache.clear()
+    yield
+    local_cache.store.clear()
+    response_cache.clear()
 
 
 def pytest_addoption(parser):

@@ -8,7 +8,7 @@ What is proven (no network: the Anthropic client is always a stand-in):
   • selection: flag off → templates; flag on without a key → templates;
     flag on with a client → the Anthropic generator
   • the Anthropic generator falls back to the template when the daily cap is
-    reached, when Redis is missing or failing, on API errors and timeouts, on
+    reached, when the budget's database is failing, on API errors and timeouts, on
     a refusal or truncated answer, on an unusable answer and on a repeat
   • a good answer is used, trimmed to the limits; the budget is taken before
     the call and is per UTC day
@@ -38,20 +38,37 @@ CTX = PostContext(
 )
 
 
-class FakeRedis:
+class FakeBudgetDB:
+    """Stands in for founder_llm_calls: the same upsert semantics (count up
+    while below the cap, else no row) without Postgres. The real query is
+    proven in tests/integration/test_founder_llm_budget_db.py."""
+
     def __init__(self, fail: bool = False):
-        self.store: dict[str, int] = {}
-        self.expiries: dict[str, int] = {}
+        self.days: dict = {}
         self.fail = fail
+        self.sql: list[str] = []
 
-    async def incr(self, key):
+    async def fetchval(self, sql, day, limit):
+        self.sql.append(sql)
         if self.fail:
-            raise ConnectionError("redis down")
-        self.store[key] = self.store.get(key, 0) + 1
-        return self.store[key]
+            raise ConnectionError("database down")
+        used = self.days.get(day, 0)
+        if used >= limit:
+            return None
+        self.days[day] = used + 1
+        return used + 1
 
-    async def expire(self, key, seconds):
-        self.expiries[key] = seconds
+    def __call__(self):
+        db = self
+
+        class _Conn:
+            async def __aenter__(self):
+                return db
+
+            async def __aexit__(self, *exc):
+                return False
+
+        return _Conn()
 
 
 class FakeMessages:
@@ -74,8 +91,8 @@ def client(**kw):
     return SimpleNamespace(messages=FakeMessages(**kw))
 
 
-def llm(c, limit=5, redis=None):
-    return AnthropicGenerator(c, "claude-haiku-4-5", DailyCallBudget(redis or FakeRedis(), limit))
+def llm(c, limit=5, db=None):
+    return AnthropicGenerator(c, "claude-haiku-4-5", DailyCallBudget(limit, db or FakeBudgetDB()))
 
 
 def settings(**kw) -> Settings:
@@ -151,20 +168,20 @@ async def test_template_stamps_when_every_draw_repeats():
 # ── selection ────────────────────────────────────────────────────────────────
 
 def test_flag_off_selects_templates_even_with_a_client():
-    assert isinstance(select_generator(settings(), redis=FakeRedis(), client=client()),
+    assert isinstance(select_generator(settings(), db=FakeBudgetDB(), client=client()),
                       TemplateGenerator)
 
 
 def test_flag_on_without_key_selects_templates(monkeypatch):
     monkeypatch.setattr(gen, "_anthropic_key", lambda: "")
     assert isinstance(select_generator(settings(founder_llm_provider="anthropic"),
-                                       redis=FakeRedis()), TemplateGenerator)
+                                       db=FakeBudgetDB()), TemplateGenerator)
 
 
 def test_flag_on_with_key_builds_a_bounded_client(monkeypatch):
     monkeypatch.setattr(gen, "_anthropic_key", lambda: "test-key-not-real")
     g = select_generator(settings(founder_llm_provider=" Anthropic ", founder_llm_daily_calls=3,
-                                  founder_llm_timeout_seconds=7), redis=FakeRedis())
+                                  founder_llm_timeout_seconds=7), db=FakeBudgetDB())
     assert isinstance(g, AnthropicGenerator)
     assert isinstance(g.client, anthropic.AsyncAnthropic)
     assert g.client.max_retries == 0 and g.client.timeout == 7
@@ -199,26 +216,36 @@ async def test_long_answer_is_trimmed():
 
 
 async def test_cap_reached_falls_back_without_calling():
-    c, redis = client(), FakeRedis()
-    g = llm(c, limit=2, redis=redis)
+    c, db = client(), FakeBudgetDB()
+    g = llm(c, limit=2, db=db)
     sources = [(await g.generate(PERSONAS["gia"], CTX, random.Random(i), NOW)).source
                for i in range(4)]
     assert sources == ["anthropic", "anthropic", "template", "template"]
     assert len(c.messages.calls) == 2
-    assert redis.expiries == {"founders:llm_calls:2026-10-03": 172_800}
+    assert db.days == {NOW.date(): 2}
 
 
 async def test_budget_is_per_utc_day():
-    budget = DailyCallBudget(FakeRedis(), 1)
+    budget = DailyCallBudget(1, FakeBudgetDB())
     assert await budget.try_spend(NOW) is True
     assert await budget.try_spend(NOW) is False
     assert await budget.try_spend(NOW.replace(day=4)) is True
 
 
-@pytest.mark.parametrize("redis", [None, FakeRedis(fail=True)])
-async def test_no_redis_means_no_calls(redis):
+async def test_budget_treats_a_naive_time_as_utc():
+    """RF-2: a naive datetime must count on its UTC day, not the machine's
+    local day (astimezone on a naive value reads it as local time)."""
+    db = FakeBudgetDB()
+    budget = DailyCallBudget(1, db)
+    naive = datetime(2026, 10, 3, 23, 30)
+    assert await budget.try_spend(naive) is True
+    assert list(db.days) == [naive.date()]
+    assert await budget.try_spend(naive.replace(tzinfo=timezone.utc)) is False
+
+
+async def test_budget_database_down_means_no_calls():
     c = client()
-    g = AnthropicGenerator(c, "m", DailyCallBudget(redis, 100))
+    g = AnthropicGenerator(c, "m", DailyCallBudget(100, FakeBudgetDB(fail=True)))
     assert (await g.generate(PERSONAS["nova"], CTX, random.Random(1), NOW)).source == "template"
     assert c.messages.calls == []
 
@@ -240,10 +267,10 @@ def _req():
     lambda: RuntimeError("anything else"),
 ])
 async def test_api_errors_fall_back_and_still_count(error):
-    c, redis = client(error=error()), FakeRedis()
-    post = await llm(c, redis=redis).generate(PERSONAS["marcus"], CTX, random.Random(1), NOW)
+    c, db = client(error=error()), FakeBudgetDB()
+    post = await llm(c, db=db).generate(PERSONAS["marcus"], CTX, random.Random(1), NOW)
     assert post.source == "template"
-    assert redis.store["founders:llm_calls:2026-10-03"] == 1
+    assert db.days == {NOW.date(): 1}
 
 
 @pytest.mark.parametrize("kw", [

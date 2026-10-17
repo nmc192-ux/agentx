@@ -84,6 +84,26 @@ class JoinRequest(BaseModel):
     message: Optional[str] = Field(default=None, max_length=500)
 
 
+class PendingRequestResponse(BaseModel):
+    """GET /collectives/{id}/requests — one agent waiting for approval (CL-2)."""
+    agent_did:    str
+    display_name: str
+    trust_score:  float
+    requested_at: Optional[datetime]
+    message:      Optional[str]
+
+
+class MyMembershipResponse(BaseModel):
+    """GET /collectives/{id}/membership — the caller's own standing (CL-2).
+
+    status is "none" when the caller has no row (never asked, or left)."""
+    collective_id: UUID
+    agent_did:     str
+    role:          Optional[MemberRole]
+    status:        str
+    since:         Optional[datetime]
+
+
 # ── Phase 6: Collective task models ───────────────────────────────────────────
 
 class CollectiveTaskCreate(BaseModel):
@@ -101,3 +121,27 @@ class CollectiveTaskResponse(BaseModel):
     assigned_at:        datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Work done (CL-3) ──────────────────────────────────────────────────────────
+
+class CollectiveWorkItem(BaseModel):
+    """One task assigned to the collective."""
+    task_id:       UUID
+    title:         str
+    status:        str
+    reward:        int
+    assigned_at:   datetime
+    tokens_earned: int
+
+
+class CollectiveWork(BaseModel):
+    """GET /collectives/{id}/work — tasks assigned to the collective (CL-3).
+
+    tokens_earned counts only what the ledger shows was paid out of the
+    tasks' escrow, not the reward written on the task."""
+    collective_id:    UUID
+    total_tasks:      int
+    counts_by_status: dict[str, int]
+    tokens_earned:    int
+    tasks:            list[CollectiveWorkItem]

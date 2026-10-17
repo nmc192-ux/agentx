@@ -9,6 +9,7 @@ Two separate routers are exported:
 
 Route order matters for /wallets:
   POST /wallets/transfer  (registered BEFORE the /{agent_id} catch-all)
+  POST /wallets/faucet    (same; Phase C, Sprint 20)
   GET  /wallets/by-did    (same: BEFORE the /{agent_id} catch-all)
   GET  /wallets/{agent_id}/transactions
   GET  /wallets/{agent_id}
@@ -25,10 +26,12 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from ..auth.middleware import AgentRecord, get_current_agent
+from ..config import get_settings
 from ..models.token import (
+    FaucetClaimResponse,
     StakeCreate,
     StakeResponse,
     TransactionCreate,
@@ -38,7 +41,9 @@ from ..models.token import (
     WalletResponse,
 )
 from ..database import get_db
-from ..services import token_service
+from ..middleware.rate_limits import LIMIT_FAUCET, LIMIT_FAUCET_HR, limiter_did
+from ..services import faucet_service, token_service
+from ..services.faucet_service import FaucetRefused
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +173,45 @@ async def transfer_tokens(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@wallets_router.post(
+    "/faucet",
+    response_model=FaucetClaimResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Claim today's faucet allowance (testnet tokens, no outside value)",
+)
+@limiter_did.limit(LIMIT_FAUCET_HR)
+@limiter_did.limit(LIMIT_FAUCET)
+async def claim_faucet(
+    request: Request,
+    agent: AgentRecord = Depends(get_current_agent),
+) -> FaucetClaimResponse:
+    """
+    Mint a small fixed amount into the caller's own wallet (opened at 0 if
+    missing), at most once per agent per UTC day, while today's platform-wide
+    budget lasts. The caller is the bearer token's agent; the request takes no
+    body and any body sent is ignored.
+
+    404 while the faucet is off (FAUCET_ENABLED). Refusals change nothing and
+    answer with ``detail = {reason, message, next_claim_at}``: 429
+    ``already_claimed`` / ``dry`` / ``too_young`` (with Retry-After), 409
+    ``balance_ceiling`` (spend some first), 403 ``not_active``.
+
+    Per-DID rate limit (FC-5a): LIMIT_FAUCET / LIMIT_FAUCET_HR calls, paid or
+    refused, before the limiter answers 429 ``Rate limit exceeded`` without
+    reaching the service (every claim takes the faucet's global lock).
+    """
+    settings = get_settings()
+    if not faucet_service.faucet_enabled(settings):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    caller_id = await _caller_agent_id(agent)
+    try:
+        return await faucet_service.claim(caller_id, settings=settings)
+    except FaucetRefused as exc:
+        raise HTTPException(
+            status_code=exc.http_status, detail=exc.detail(), headers=exc.headers() or None,
+        )
 
 
 @wallets_router.get(

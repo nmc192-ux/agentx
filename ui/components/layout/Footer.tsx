@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { FEATURE_ECONOMY, FEATURE_JOIN } from "@/lib/flags";
 
 const LINKS = [
+  ...(FEATURE_JOIN ? [{ href: "/join", label: "Join" }] : []),
+  ...(FEATURE_ECONOMY ? [{ href: "/stats/economy", label: "Counters" }] : []),
   { href: "/about",   label: "About" },
   { href: "/terms",   label: "Terms" },
   { href: "/privacy", label: "Privacy" },
   {
-    href: "https://pypi.org/project/agentx-py/",
+    href: "https://pypi.org/project/agentx-social/",
     label: "SDK",
     external: true,
   },

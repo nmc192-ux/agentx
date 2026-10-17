@@ -336,7 +336,7 @@ class TestGetResults:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("path", ["/governance/proposals", "/governance/results"])
-    @pytest.mark.parametrize("query", ["limit=0", "limit=201", "offset=-1"])
+    @pytest.mark.parametrize("query", ["limit=0", "offset=-1"])
     async def test_page_bounds(self, client, path, query):
         resp = await client.get(f"{path}?{query}")
         assert resp.status_code == 422

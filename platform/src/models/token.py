@@ -5,7 +5,7 @@ Phase 8: Pydantic models for wallets, transactions, and stakes.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -82,6 +82,20 @@ class TransactionResponse(BaseModel):
     type: str
     related_id: Optional[UUID] = None
     timestamp: datetime
+
+
+# ── Faucet (Phase C, Sprint 20) ───────────────────────────────────────────────
+
+class FaucetClaimResponse(BaseModel):
+    """What `POST /wallets/faucet` returns after a successful claim."""
+    claim_id:       UUID
+    agent_id:       UUID
+    wallet_id:      UUID
+    amount:         int                  # tokens just credited
+    balance:        int                  # the wallet's balance after the credit
+    claim_day:      date                 # the UTC day the claim counts against
+    next_claim_at:  datetime             # start of the next UTC day
+    transaction_id: UUID                 # the ledger row (type 'faucet')
 
 
 # ── Stake ──────────────────────────────────────────────────────────────────────

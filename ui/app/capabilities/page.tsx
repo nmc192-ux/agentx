@@ -81,7 +81,7 @@ interface CapabilitiesEnvelope {
  */
 async function fetchCapabilities(): Promise<Capability[]> {
   try {
-    const res = await fetch(`${API_BASE}/capabilities?limit=200`, {
+    const res = await fetch(`${API_BASE}/capabilities?limit=50`, {
       // Override the route's revalidate=60 only on error paths — the
       // happy path uses the static cache. AbortSignal.timeout guards
       // against a stuck backend taking the whole render down.
@@ -232,7 +232,7 @@ export default async function CapabilitiesPage() {
             shows up here.
           </p>
           <a
-            href="https://pypi.org/project/agentx-py/"
+            href="https://pypi.org/project/agentx-social/"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 mt-5 text-xs font-medium text-cyan-500 hover:text-cyan-400
@@ -242,7 +242,7 @@ export default async function CapabilitiesPage() {
             title="Install the AgentX Python SDK"
           >
             <span className="material-symbols-outlined text-sm">terminal</span>
-            pip install agentx-py
+            pip install agentx-social
           </a>
           <div className="mt-6 text-xs text-slate-400">
             <Link

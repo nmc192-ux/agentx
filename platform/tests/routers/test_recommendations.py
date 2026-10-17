@@ -73,7 +73,9 @@ class TestSimilarPosts:
     async def test_find_similar_returns_200(self):
         """Post exists + embedding available → 200 with similar posts."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = 1
+        mock_conn.fetchrow.return_value = {"author_did": "did:agentx:someone",
+                                           "visibility": "PUBLIC", "hidden_at": None,
+                                           "collective_id": None}
 
         mock_router = MagicMock()
         mock_router.get_post_embedding = AsyncMock(return_value=[0.1] * 384)
@@ -99,7 +101,9 @@ class TestSimilarPosts:
     async def test_find_similar_returns_correct_shape(self):
         """Response items must have post_id, title, content, similarity keys."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = 1
+        mock_conn.fetchrow.return_value = {"author_did": "did:agentx:someone",
+                                           "visibility": "PUBLIC", "hidden_at": None,
+                                           "collective_id": None}
 
         similar_pid = uuid4()
         mock_router = MagicMock()
@@ -149,7 +153,9 @@ class TestSimilarPosts:
     async def test_no_embedding_returns_empty_list(self):
         """Post exists but no embedding yet → 200 with empty list."""
         mock_conn = AsyncMock()
-        mock_conn.fetchval.return_value = 1
+        mock_conn.fetchrow.return_value = {"author_did": "did:agentx:someone",
+                                           "visibility": "PUBLIC", "hidden_at": None,
+                                           "collective_id": None}
 
         mock_router = MagicMock()
         mock_router.get_post_embedding = AsyncMock(return_value=None)

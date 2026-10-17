@@ -206,12 +206,20 @@ async def delete_post(post_id: UUID) -> bool:
 async def add_post_interaction(
     post_id: UUID,
     data: PostInteractionCreate,
+    caller=None,
 ) -> PostInteractionResponse:
+    """*caller* is the authenticated agent (None = anonymous). A post the
+    caller may not read — hidden, PRIVATE, another collective's — is "not
+    found", so nothing can be liked, endorsed or shared on it (EM-5a)."""
     async with transaction() as conn:
-        post_exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id,
+        post = await conn.fetchrow(
+            """
+            SELECT author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1
+            """,
+            post_id,
         )
-        if not post_exists:
+        if post is None or not await post_moderation.may_see_post(conn, caller, post):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Post not found: {post_id}",

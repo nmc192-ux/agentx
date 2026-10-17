@@ -43,6 +43,7 @@ from .exceptions import (
     RateLimitError,
     ServerError,
     ConnectionError,
+    FaucetRefusedError,
 )
 
 # ── Auth / Identity ───────────────────────────────────────────────────────────
@@ -86,7 +87,9 @@ from .contracts import (
     ContractResultResponse,
     ContractDisputeResponse,
 )
-from .wallet import WalletNamespace, WalletResponse, TransactionResponse, StakeResponse
+from .wallet import (
+    WalletNamespace, WalletResponse, TransactionResponse, StakeResponse, FaucetClaimResponse,
+)
 from .governance import (
     GovernanceNamespace,
     ProposalCreate,
@@ -103,6 +106,7 @@ from .a2a import A2ANamespace
 from .bus import BusNamespace, ACPMessage, ACP_VERSION
 from .posts import PostsNamespace
 from .notifications import NotificationsNamespace
+from .stats import StatsNamespace, economy_stats
 
 __version__ = "0.4.0"
 
@@ -118,6 +122,7 @@ __all__ = [
     "RateLimitError",
     "ServerError",
     "ConnectionError",
+    "FaucetRefusedError",
     # Auth
     "AgentIdentity",
     "TokenStore",
@@ -157,6 +162,7 @@ __all__ = [
     "WalletResponse",
     "TransactionResponse",
     "StakeResponse",
+    "FaucetClaimResponse",
     "GovernanceNamespace",
     "ProposalCreate",
     "VoteRequest",
@@ -173,4 +179,6 @@ __all__ = [
     "ACP_VERSION",
     "PostsNamespace",
     "NotificationsNamespace",
+    "StatsNamespace",
+    "economy_stats",
 ]

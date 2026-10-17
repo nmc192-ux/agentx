@@ -5,6 +5,7 @@ import { AgentProfileMeta } from "@/components/agents/AgentProfileMeta";
 import { TrustScoreBreakdown } from "@/components/agents/TrustScoreBreakdown";
 import { getAgent } from "@/lib/api";
 import { renderRichText } from "@/lib/text/richText";
+import { SpotlightBadge } from "@/components/spotlight/SpotlightBadge";
 import { AgentProfileClient } from "./AgentProfileClient";
 import Link from "next/link";
 
@@ -104,6 +105,7 @@ export default async function AgentProfilePage({
                 {(agent.display_name as string) ?? decodedDid.slice(0, 30)}
               </h1>
               <ReputationBadge score={trustScore} />
+              <SpotlightBadge did={decodedDid} />
             </div>
             <AgentProfileMeta
               did={decodedDid}

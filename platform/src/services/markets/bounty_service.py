@@ -44,9 +44,15 @@ Design notes
   route) pays it to the top-scored submission — the same pick as
   ``distribute_rewards`` — or, if nothing payable was scored, back to the
   creator. Both rules compare the DATABASE clock with the stored deadline
-  under the bounty row lock; no caller supplies a time. A bounty stored
-  with no deadline (created before this rule) is never released
-  automatically.
+  under the bounty row lock; no caller supplies a time.
+• Legacy bounties (Phase C, Sprint 21, BT-2). A bounty stored with no
+  deadline (created before the rule above) is never closed or released
+  automatically while the setting LEGACY_BOUNTY_DAYS is 0 (the default).
+  With it set to N, every rule here reads the bounty's deadline as
+  ``COALESCE(deadline, created_at + N days)``: submissions close then, and
+  AUTO_RELEASE_DAYS later the pool is released by the rule above. The
+  stored ``deadline`` is never written; ``get``/``list`` report the
+  effective one. DEFAULT_BOUNTY_DAYS is a setting too (30 unless changed).
 • Every state change locks the bounty row (``SELECT … FOR UPDATE``) before it
   reads the status, so concurrent calls are serialised: the second caller sees
   the first one's committed status and is refused. Status change and payout
@@ -66,6 +72,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from ...config import get_settings
 from ...database import get_db, transaction
 from ...events.publisher import publish_event
 from ...events.types import EventType
@@ -77,6 +84,7 @@ from ...models.markets import (
     SubmissionResponse,
 )
 from ..auto_release import AUTO_RELEASE_DAYS
+from ..reputation import record_bounty_won
 from ..token_service import _record_transaction
 
 logger = logging.getLogger(__name__)
@@ -100,11 +108,57 @@ _SUBMISSION_COLS = """
 # The reward pool is held in escrow while the bounty is in one of these states.
 _ESCROW_HELD_STATUSES = ("open", "evaluating")
 
-# The deadline a bounty gets when its creator names none, counted from creation.
+# The deadline a bounty gets when its creator names none, counted from
+# creation: the built-in value, used when the setting DEFAULT_BOUNTY_DAYS is
+# missing or under 1 (see ``default_bounty_days``).
 DEFAULT_BOUNTY_DAYS = 30
 
-# The database clock against the stored deadline; never a caller's time.
-_DEADLINE_PASSED = "COALESCE(deadline <= CURRENT_TIMESTAMP, FALSE)"
+
+def default_bounty_days() -> int:
+    """The DEFAULT_BOUNTY_DAYS setting, or the built-in 30 when it is under 1
+    (a 0 would make every new bounty closed from the start)."""
+    try:
+        days = int(get_settings().default_bounty_days or 0)
+    except (TypeError, ValueError):
+        days = 0
+    if days < 1:
+        logger.warning(
+            "bounty_service: DEFAULT_BOUNTY_DAYS is not a positive number; using %d",
+            DEFAULT_BOUNTY_DAYS,
+        )
+        return DEFAULT_BOUNTY_DAYS
+    return days
+
+
+def legacy_bounty_days() -> int | None:
+    """The LEGACY_BOUNTY_DAYS setting as the number of days after its
+    creation that a bounty stored with no deadline is taken to close, or
+    None (the default, and any value under 1) when such bounties keep
+    today's behaviour: open for submissions, never released automatically.
+    Fails closed: anything unrecognised means None."""
+    try:
+        days = int(get_settings().legacy_bounty_days or 0)
+    except (TypeError, ValueError):
+        return None
+    return days if days >= 1 else None
+
+
+def _effective_deadline_sql(days_param: int) -> str:
+    """SQL for the deadline every rule uses: the stored one, or for a bounty
+    stored with none, ``created_at`` plus the LEGACY_BOUNTY_DAYS parameter
+    ``$<days_param>`` (NULL while that setting is off, so the result stays
+    NULL and every comparison on it is FALSE)."""
+    return f"COALESCE(deadline, created_at + make_interval(days => ${days_param}))"
+
+
+def _deadline_passed_sql(days_param: int) -> str:
+    """The database clock against the effective deadline; never a caller's
+    time. FALSE for a bounty with no (effective) deadline."""
+    return f"COALESCE({_effective_deadline_sql(days_param)} <= CURRENT_TIMESTAMP, FALSE)"
+
+
+# At creation the stored deadline is never NULL (see ``create_bounty``).
+_STORED_DEADLINE_PASSED = "COALESCE(deadline <= CURRENT_TIMESTAMP, FALSE)"
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -113,11 +167,14 @@ async def _lock_bounty(conn, bounty_id: UUID):
     """Fetch the bounty row and hold its row lock until the transaction ends.
 
     ``deadline_passed`` is the database's own answer (its clock against the
-    stored deadline); it is FALSE for a bounty with no deadline."""
+    effective deadline); it is FALSE for a bounty with no deadline while
+    LEGACY_BOUNTY_DAYS is off. ``effective_deadline`` is the deadline used."""
     row = await conn.fetchrow(
-        f"SELECT {_BOUNTY_COLS}, {_DEADLINE_PASSED} AS deadline_passed "
+        f"SELECT {_BOUNTY_COLS}, {_deadline_passed_sql(2)} AS deadline_passed, "
+        f"{_effective_deadline_sql(2)} AS effective_deadline "
         "FROM capability_bounties WHERE bounty_id = $1 FOR UPDATE",
         bounty_id,
+        legacy_bounty_days(),
     )
     if row is None:
         raise ValueError(f"Bounty not found: {bounty_id}")
@@ -266,6 +323,12 @@ async def _publish(event_type: EventType, payload: dict, caller_did: str) -> Non
 # ── Row converters ─────────────────────────────────────────────────────────────
 
 def _row_to_bounty(row: Any) -> BountyResponse:
+    """``deadline`` is the effective one when the query computed it (get,
+    list, lock): a bounty stored with none shows ``created_at`` +
+    LEGACY_BOUNTY_DAYS while that setting is on, else null."""
+    deadline = row.get("deadline")
+    if deadline is None and "effective_deadline" in row.keys():
+        deadline = row["effective_deadline"]
     return BountyResponse(
         bounty_id=row["bounty_id"],
         creator_did=row["creator_did"],
@@ -275,7 +338,7 @@ def _row_to_bounty(row: Any) -> BountyResponse:
         capability_required=row["capability_required"],
         reward_pool=row["reward_pool"],
         status=row["status"],
-        deadline=row.get("deadline"),
+        deadline=deadline,
         winner_submission_id=row.get("winner_submission_id"),
         created_at=row["created_at"],
         closed_at=row.get("closed_at"),
@@ -319,8 +382,8 @@ async def create_bounty(
         caller_did: DID of the authenticated caller (bounty creator).
         data:       Validated BountyCreate payload.
 
-    The deadline is the one given, or DEFAULT_BOUNTY_DAYS from now (database
-    clock) when none is given. One that is not in the future is refused: the
+    The deadline is the one given, or DEFAULT_BOUNTY_DAYS (the setting; 30
+    unless changed) from now (database clock) when none is given. One that is not in the future is refused: the
     bounty would be closed to submissions from the start.
 
     Returns:
@@ -375,7 +438,7 @@ async def create_bounty(
                  capability_required, reward_pool, deadline)
             VALUES ($1, $2, $3, $4, $5, $6,
                     COALESCE($7::timestamptz, CURRENT_TIMESTAMP + make_interval(days => $8)))
-            RETURNING {_BOUNTY_COLS}, {_DEADLINE_PASSED} AS deadline_passed
+            RETURNING {_BOUNTY_COLS}, {_STORED_DEADLINE_PASSED} AS deadline_passed
             """,
             caller_did,
             creator_id,
@@ -384,7 +447,7 @@ async def create_bounty(
             data.capability_required,
             data.reward_pool,
             data.deadline,
-            DEFAULT_BOUNTY_DAYS,
+            default_bounty_days(),
         )
         if row["deadline_passed"] is not False:
             # Raising rolls the escrow debit and the row back.
@@ -451,13 +514,14 @@ async def list_bounties(
         conditions.append(f"capability_required = ${len(params)}")
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    params.extend([limit, offset])
+    params.extend([limit, offset, legacy_bounty_days()])
 
     async with get_db() as conn:
         rows = await conn.fetch(
             f"""
-            SELECT {_BOUNTY_COLS} FROM capability_bounties {where_clause}
-            ORDER BY created_at DESC LIMIT ${len(params) - 1} OFFSET ${len(params)}
+            SELECT {_BOUNTY_COLS}, {_effective_deadline_sql(len(params))} AS effective_deadline
+            FROM capability_bounties {where_clause}
+            ORDER BY created_at DESC LIMIT ${len(params) - 2} OFFSET ${len(params) - 1}
             """,
             *params,
         )
@@ -474,8 +538,10 @@ async def get_bounty(bounty_id: UUID) -> BountyResponse:
     """
     async with get_db() as conn:
         row = await conn.fetchrow(
-            f"SELECT {_BOUNTY_COLS} FROM capability_bounties WHERE bounty_id = $1",
+            f"SELECT {_BOUNTY_COLS}, {_effective_deadline_sql(2)} AS effective_deadline "
+            "FROM capability_bounties WHERE bounty_id = $1",
             bounty_id,
+            legacy_bounty_days(),
         )
     if row is None:
         raise ValueError(f"Bounty not found: {bounty_id}")
@@ -705,6 +771,9 @@ async def distribute_rewards(
         distributed_at=reward_row["distributed_at"],
     )
 
+    # BT-3: after commit, so a trust failure cannot undo the payment.
+    await record_bounty_won(bounty_id, source="creator")
+
     await _publish(
         EventType.BOUNTY_REWARD_DISTRIBUTED,
         {
@@ -811,9 +880,12 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
 
     For the scheduled job only — no route calls this and it takes no caller
     and no time: with the bounty row locked, the DATABASE clock is compared
-    with the stored deadline. A bounty that no longer holds its pool, has no
-    deadline, or is not yet due is refused and nothing moves; so is one with
-    nothing scored whose creator no longer exists (no payee is guessed).
+    with the stored deadline, or for a bounty stored with none, with
+    ``created_at`` + LEGACY_BOUNTY_DAYS (BT-2; while that setting is 0, the
+    default, such a bounty has no deadline). A bounty that no longer holds
+    its pool, has no deadline, or is not yet due is refused and nothing
+    moves; so is one with nothing scored whose creator no longer exists (no
+    payee is guessed).
 
     Raises:
         ValueError:          bounty not found.
@@ -824,8 +896,10 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
         bounty = await conn.fetchrow(
             f"""
             SELECT {_BOUNTY_COLS},
+                   {_effective_deadline_sql(3)} AS effective_deadline,
                    COALESCE(
-                       deadline <= CURRENT_TIMESTAMP - make_interval(days => $2),
+                       {_effective_deadline_sql(3)}
+                           <= CURRENT_TIMESTAMP - make_interval(days => $2),
                        FALSE
                    ) AS due
             FROM capability_bounties WHERE bounty_id = $1
@@ -833,6 +907,7 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
             """,
             bounty_id,
             AUTO_RELEASE_DAYS,
+            legacy_bounty_days(),
         )
         if bounty is None:
             raise ValueError(f"Bounty not found: {bounty_id}")
@@ -840,9 +915,10 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
             raise BountyConflictError(
                 f"Bounty holds no reward pool to release (status={bounty['status']})"
             )
-        if bounty["deadline"] is None:
+        if bounty["effective_deadline"] is None:
             raise BountyConflictError(
-                "Bounty has no deadline and is not released automatically"
+                "Bounty has no deadline and is not released automatically "
+                "(LEGACY_BOUNTY_DAYS is off)"
             )
         if bounty["due"] is not True:
             raise BountyConflictError(
@@ -899,6 +975,7 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
             )
 
     if reward_row is not None:
+        await record_bounty_won(bounty_id, source="auto_release")
         await _publish(
             EventType.BOUNTY_REWARD_DISTRIBUTED,
             {
@@ -915,8 +992,10 @@ async def release_overdue_bounty(bounty_id: UUID) -> tuple[str, int]:
 
     logger.info(
         "bounty_service: bounty %s released automatically %d days after its "
-        "deadline (%s: %d to %s)",
-        bounty_id, AUTO_RELEASE_DAYS, outcome, amount, payee_did,
+        "deadline %s%s (%s: %d to %s)",
+        bounty_id, AUTO_RELEASE_DAYS, bounty["effective_deadline"],
+        "" if bounty["deadline"] is not None else " (none stored; LEGACY_BOUNTY_DAYS)",
+        outcome, amount, payee_did,
     )
     return outcome, amount
 

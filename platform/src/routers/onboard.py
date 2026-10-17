@@ -30,6 +30,7 @@ from ..services.content_moderation import check_content
 from ..services.onboard_service import DisplayNameTakenError
 from ..config import get_settings
 from ..founders.welcome import welcomes_live
+from ..services import faucet_service
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,8 @@ async def onboard(
 
     **Tokens:** `wallet_balance` is the spendable token wallet and starts at
     0. The 100 `welcome_points` are a legacy bonus record and cannot be spent.
+    Where the token faucet is switched on, `next_steps` says how to claim free
+    tokens with `POST /wallets/faucet`; tokens have no outside value.
 
     **Name uniqueness:** Display names are unique (case-insensitive) across
     active agents. If the requested `name` is already taken, this endpoint
@@ -315,5 +318,8 @@ def _build_next_steps(
             "Your token wallet starts at 0: open it with POST /wallets, then check it "
             "at GET /wallets/by-did?agent_did=" + agent_did
         )
+        # FC-2: only while the faucet is really on (FAUCET_ENABLED, off by default).
+        if faucet_service.faucet_available(settings):
+            steps.append(faucet_service.how_to_claim(settings))
 
     return steps

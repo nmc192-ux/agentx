@@ -116,11 +116,13 @@ async def get_agent_activity_stream(
     agent_did: str,
     limit: int = 50,
     public_only: bool = True,
+    after: tuple | None = None,
 ) -> list[ActivityEvent]:
     """Return the activity stream for a single agent, newest first.
 
     ``public_only`` (the default, so a new caller fails closed) keeps only
     PUBLIC entries; pass False only when the reader is the agent itself.
+    ``after`` is a decoded (created_at, stream_id) cursor: rows older than it.
     """
     async with get_db() as conn:
         rows = await conn.fetch(
@@ -133,16 +135,23 @@ async def get_agent_activity_stream(
             FROM activity_stream
             WHERE agent_did = $1
               AND (NOT $3 OR visibility = 'PUBLIC')
-            ORDER BY created_at DESC
+              AND ($4::timestamptz IS NULL OR (created_at, stream_id) < ($4, $5::uuid))
+            ORDER BY created_at DESC, stream_id DESC
             LIMIT $2
             """,
-            agent_did, limit, public_only,
+            agent_did, limit, public_only, *(after or (None, None)),
         )
     return [_event_from_row(dict(r)) for r in rows]
 
 
-async def get_global_activity_stream(limit: int = 50) -> list[ActivityEvent]:
-    """Return all PUBLIC activity events, newest first."""
+async def get_global_activity_stream(
+    limit: int = 50,
+    after: tuple | None = None,
+) -> list[ActivityEvent]:
+    """Return all PUBLIC activity events, newest first.
+
+    ``after`` is a decoded (created_at, stream_id) cursor: rows older than it.
+    """
     async with get_db() as conn:
         rows = await conn.fetch(
             """
@@ -153,18 +162,20 @@ async def get_global_activity_stream(limit: int = 50) -> list[ActivityEvent]:
                 content, visibility, metadata, created_at
             FROM activity_stream
             WHERE visibility = 'PUBLIC'
-            ORDER BY created_at DESC
+              AND ($2::timestamptz IS NULL OR (created_at, stream_id) < ($2, $3::uuid))
+            ORDER BY created_at DESC, stream_id DESC
             LIMIT $1
             """,
-            limit,
+            limit, *(after or (None, None)),
         )
     return [_event_from_row(dict(r)) for r in rows]
 
 
-async def get_activity_feed_items(limit: int = 50) -> list[dict]:
+async def get_activity_feed_items(limit: int = 50, after: tuple | None = None) -> list[dict]:
     """
     Merge PUBLIC activity events with ACHIEVEMENT/MILESTONE posts,
-    sorted newest-first, sliced to *limit*.
+    sorted newest-first, sliced to *limit*.  ``after`` is a decoded
+    (created_at, id) cursor: items older than it.
 
     Returns a list of dicts with unified shape:
       { id, item_type, agent_did, stream_type, ref_entity_id,
@@ -185,6 +196,7 @@ async def get_activity_feed_items(limit: int = 50) -> list[dict]:
                 created_at
             FROM activity_stream
             WHERE visibility = 'PUBLIC'
+              AND ($2::timestamptz IS NULL OR (created_at, stream_id) < ($2, $3::uuid))
 
             UNION ALL
 
@@ -202,11 +214,12 @@ async def get_activity_feed_items(limit: int = 50) -> list[dict]:
             WHERE status = 'ACTIVE'
               AND visibility IN ('PUBLIC', 'SYSTEM')
               AND hidden_at IS NULL
+              AND ($2::timestamptz IS NULL OR (created_at, post_id) < ($2, $3::uuid))
 
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, id DESC
             LIMIT $1
             """,
-            limit,
+            limit, *(after or (None, None)),
         )
     return [dict(row) for row in rows]
 

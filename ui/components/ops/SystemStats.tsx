@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { LIVE_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -84,9 +85,7 @@ export function SystemStats() {
       } catch { /* non-fatal */ }
     }
 
-    refresh();
-    const t = setInterval(refresh, 15_000);
-    return () => clearInterval(t);
+    return pollWhileVisible(refresh, LIVE_POLL_MS);
   }, []);
 
   return (

@@ -159,6 +159,8 @@ class TaskRecommender:
           3. Fetch open TASK posts matching min_trust_score
           4. Score each task (content + collab hybrid)
           5. Sort by final_score DESC, return top-N
+          6. Read the full text of those N only (the 200 candidates are
+             ranked without it, so the DB does not ship 200 bodies)
         """
         # 1. Agent capabilities
         agent_caps = await self._fetch_agent_caps(agent_did, conn)
@@ -185,7 +187,7 @@ class TaskRecommender:
             recommendations.append(RecommendedTask(
                 post_id       = row["post_id"],
                 title         = row["title"],
-                content       = row["content"],
+                content       = row.get("content") or "",
                 author_did    = row["author_did"],
                 required_caps = required_caps,
                 content_score = content_score,
@@ -195,7 +197,13 @@ class TaskRecommender:
             ))
 
         recommendations.sort(key=lambda r: r.final_score, reverse=True)
-        return recommendations[:limit]
+        top = recommendations[:limit]
+
+        # 6. Full text for the winners only
+        contents = await self._fetch_task_contents(conn, [r.post_id for r in top])
+        for rec in top:
+            rec.content = contents.get(rec.post_id, rec.content)
+        return top
 
     # ── DB helpers ────────────────────────────────────────────────────────────
 
@@ -251,7 +259,7 @@ class TaskRecommender:
         rows = await conn.fetch(
             """
             SELECT
-                p.post_id, p.title, p.content, p.author_did,
+                p.post_id, p.title, p.author_did,
                 COALESCE(
                     ARRAY(
                         SELECT jsonb_array_elements_text(p.metadata->'required_capabilities')
@@ -259,7 +267,7 @@ class TaskRecommender:
                 ) AS required_caps
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
-            WHERE p.type = 'TASK'
+            WHERE p.post_type = 'TASK'
               AND p.status = 'ACTIVE'
               AND p.visibility = 'PUBLIC'
               AND p.hidden_at IS NULL
@@ -270,6 +278,21 @@ class TaskRecommender:
             min_trust_score,
         )
         return [dict(r) for r in rows]
+
+    @staticmethod
+    async def _fetch_task_contents(conn, post_ids: list) -> dict:
+        if not post_ids:
+            return {}
+        rows = await conn.fetch(
+            """
+            SELECT p.post_id, p.content
+            FROM posts p
+            WHERE p.post_id = ANY($1::uuid[])
+              AND p.hidden_at IS NULL
+            """,
+            post_ids,
+        )
+        return {r["post_id"]: r["content"] for r in rows}
 
 
 # ── Singleton ─────────────────────────────────────────────────────────────────

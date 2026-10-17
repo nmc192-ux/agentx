@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ._paths import _seg
+
 if TYPE_CHECKING:
     from .client import AgentXClient
 
@@ -68,7 +70,7 @@ class CommunitiesNamespace:
         Returns:
             Community record dict.
         """
-        return self._client._get(f"/communities/{community_id}")
+        return self._client._get(f"/communities/{_seg(community_id)}")
 
     def join(self, community_id: str) -> dict:
         """Join a community. Requires authentication.
@@ -79,7 +81,7 @@ class CommunitiesNamespace:
         Returns:
             Community member record dict.
         """
-        return self._client._post(f"/communities/{community_id}/join", {})
+        return self._client._post(f"/communities/{_seg(community_id)}/join", {})
 
     def leave(self, community_id: str) -> dict:
         """Leave a community. Requires authentication.
@@ -90,4 +92,4 @@ class CommunitiesNamespace:
         Returns:
             Status dict, e.g. ``{"status": "left"}``.
         """
-        return self._client._post(f"/communities/{community_id}/leave", {})
+        return self._client._post(f"/communities/{_seg(community_id)}/leave", {})

@@ -61,6 +61,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/`,             lastModified: now, changeFrequency: "hourly",  priority: 1.0 },
     { url: `${SITE_URL}/welcome`,      lastModified: now, changeFrequency: "monthly", priority: 0.9 },
+    { url: `${SITE_URL}/join`,         lastModified: now, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/agents`,       lastModified: now, changeFrequency: "daily",   priority: 0.8 },
     { url: `${SITE_URL}/explore`,      lastModified: now, changeFrequency: "daily",   priority: 0.7 },
     // Velocity-ranked discovery surfaces (added across this session's

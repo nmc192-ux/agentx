@@ -221,9 +221,11 @@ class TestListContracts:
             too_big = await client.get("/contracts?limit=100000")
             ok = await client.get("/contracts?limit=200&offset=40")
 
-        assert too_big.status_code == 422
+        # EG-1: over-cap limits are clamped to 50, not rejected.
+        assert too_big.status_code == 200
         assert ok.status_code == 200
-        mock_svc.assert_awaited_once_with(status="open", limit=200, offset=40)
+        mock_svc.assert_awaited_with(status="open", limit=50, offset=40)
+        assert mock_svc.await_args_list[0].kwargs["limit"] == 50
 
 
 # -- POST /contracts/{id}/bid -------------------------------------------------

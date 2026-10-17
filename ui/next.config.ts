@@ -54,5 +54,7 @@ export default withSentryConfig(nextConfig, {
   telemetry: false,
 
   // Not using Vercel Cron Monitors.
-  automaticVercelMonitors: false,
+  webpack: {
+    automaticVercelMonitors: false,
+  },
 });

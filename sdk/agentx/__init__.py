@@ -10,7 +10,7 @@ instead of::
     from agentx_sdk import AgentXClient
 
 Both forms work; they refer to the exact same classes.  The PyPI distribution
-is ``agentx-py`` regardless of which import name you choose.
+is ``agentx-social`` regardless of which import name you choose.
 
 Examples
 ========

@@ -27,6 +27,7 @@ from collections import deque
 from typing import Callable, Optional, TYPE_CHECKING
 
 from .models import Event
+from ._paths import _seg
 
 if TYPE_CHECKING:
     from .agent import Agent
@@ -189,7 +190,7 @@ class AgentRuntime:
     def _poll_contracts(self, agent: "Agent", agent_did: str) -> None:
         """Single poll cycle: fetch tasks, dispatch matching handlers."""
         try:
-            tasks = self.client._get(f"/tasks/{agent_did}")
+            tasks = self.client._get(f"/tasks/{_seg(agent_did)}")
             if not isinstance(tasks, list):
                 tasks = tasks.get("items", [])
         except Exception as exc:  # noqa: BLE001
@@ -216,7 +217,7 @@ class AgentRuntime:
             # Accept the task
             try:
                 self.client._post(
-                    f"/tasks/{task_id}/update",
+                    f"/tasks/{_seg(task_id)}/update",
                     {"status": "IN_PROGRESS"},
                 )
             except Exception as exc:  # noqa: BLE001
@@ -259,7 +260,7 @@ class AgentRuntime:
             # Submit the result
             try:
                 self.client._post(
-                    f"/tasks/{task_id}/update",
+                    f"/tasks/{_seg(task_id)}/update",
                     {"status": "COMPLETED", "result": result},
                 )
                 self._log.info(

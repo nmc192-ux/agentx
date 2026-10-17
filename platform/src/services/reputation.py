@@ -58,6 +58,10 @@ EVENT_WEIGHTS = {
     "message_replied": 0.01,
     "spam_flag": -0.20,
     "system_penalty": -0.25,
+    # Sprint 21 (BT-3): paid work outside plain tasks, and missed deadlines.
+    "bounty_won": 0.05,
+    "contract_completed": 0.05,
+    "deadline_missed": -0.05,
 }
 
 # The other side of a positive event must be an account at least this old
@@ -382,6 +386,196 @@ async def record_message_reply(sender_did: str, receiver_did: str, message_id: A
     except Exception:
         logger.exception("reputation: recording reply %s failed", message_id)
         return "error"
+
+
+# Ledger types that mean "the escrow paid the worker for this" (manual or
+# automatic). A dispute ruled for the contractor is not one: it is a FOUNDER's
+# decision, not the creator's acceptance or silence.
+_BOUNTY_PAYOUT_TYPES = ("bounty_reward", "bounty_auto_release")
+_CONTRACT_PAYOUT_TYPES = ("contract_release", "contract_auto_release")
+
+
+async def record_bounty_won(bounty_id: Any, *, source: str = "creator") -> str:
+    """
+    One ``bounty_won`` for the winner of a bounty whose pool was really paid
+    out of escrow to them (by the creator or by the deadline rule). A bounty
+    refunded to its creator, or paid nothing, earns nobody anything. The
+    counterparty is the bounty's creator, so a creator who wins their own
+    bounty, or a creator account under a day old, gives no credit.
+
+    Keyed on the bounty: the manual and automatic payouts can both report it,
+    and only one event is ever written.
+    """
+    bounty_uuid = _as_uuid(bounty_id)
+    if bounty_uuid is None:
+        return "unknown_bounty"
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT
+                    b.status,
+                    b.creator_did,
+                    r.recipient_did,
+                    (
+                        SELECT COALESCE(SUM(tx.amount), 0)
+                        FROM transactions tx
+                        JOIN wallets w ON w.wallet_id = tx.to_wallet
+                        JOIN agents payee ON payee.agent_id = w.agent_id
+                        WHERE tx.related_id = b.bounty_id
+                          AND tx.type = ANY($2::text[])
+                          AND payee.agent_did = r.recipient_did
+                    ) AS paid
+                FROM capability_bounties b
+                JOIN bounty_rewards r ON r.bounty_id = b.bounty_id
+                WHERE b.bounty_id = $1
+                """,
+                bounty_uuid,
+                list(_BOUNTY_PAYOUT_TYPES),
+            )
+        if row is None or not row["recipient_did"]:
+            return "not_rewarded"
+        if row["status"] != "rewarded":
+            return "not_rewarded"
+        if not row["paid"]:
+            return "unfunded"
+        outcome = await record_event(
+            row["recipient_did"],
+            "bounty_won",
+            {"bounty_id": str(bounty_uuid), "reward_paid": int(row["paid"]), "source": source},
+            dedupe_key=f"bounty_won:{bounty_uuid}",
+            counterparty_did=row["creator_did"],
+        )
+    except Exception:
+        logger.exception("reputation: recording win of bounty %s failed", bounty_id)
+        return "error"
+    logger.info("reputation: bounty %s won (%s) -> %s", bounty_uuid, source, outcome)
+    return outcome
+
+
+async def record_contract_completed(contract_id: Any, *, source: str = "creator") -> str:
+    """
+    One ``contract_completed`` for the contractor of a completed contract
+    whose escrow was paid to them on the creator's approval or by the
+    auto-release of an unanswered delivery. Nothing for a reclaimed or
+    cancelled contract, a dispute ruling, or a contract that paid nothing.
+    Counterparty: the creator. Keyed on the contract.
+    """
+    contract_uuid = _as_uuid(contract_id)
+    if contract_uuid is None:
+        return "unknown_contract"
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT
+                    c.status,
+                    c.creator_did,
+                    c.contractor_did,
+                    (
+                        SELECT COALESCE(SUM(tx.amount), 0)
+                        FROM transactions tx
+                        JOIN wallets w ON w.wallet_id = tx.to_wallet
+                        JOIN agents payee ON payee.agent_id = w.agent_id
+                        WHERE tx.related_id = c.contract_id
+                          AND tx.type = ANY($2::text[])
+                          AND payee.agent_did = c.contractor_did
+                    ) AS paid
+                FROM contracts c
+                WHERE c.contract_id = $1
+                """,
+                contract_uuid,
+                list(_CONTRACT_PAYOUT_TYPES),
+            )
+        if row is None or not row["contractor_did"]:
+            return "unknown_contract"
+        if row["status"] != "completed":
+            return "not_completed"
+        if not row["paid"]:
+            return "unfunded"
+        outcome = await record_event(
+            row["contractor_did"],
+            "contract_completed",
+            {"contract_id": str(contract_uuid), "paid": int(row["paid"]), "source": source},
+            dedupe_key=f"contract_completed:{contract_uuid}",
+            counterparty_did=row["creator_did"],
+        )
+    except Exception:
+        logger.exception("reputation: recording completion of contract %s failed", contract_id)
+        return "error"
+    logger.info("reputation: contract %s completed (%s) -> %s", contract_uuid, source, outcome)
+    return outcome
+
+
+# kind → (query for the worker, the creator and the refund that proves the
+# reclaim happened). The refund ledger row is the evidence: only the reclaim
+# paths write these types, and only after their own deadline checks passed.
+_DEADLINE_MISSED_QUERIES = {
+    "task": """
+        SELECT
+            t.status,
+            COALESCE(t.executor_agent_did, ex.agent_did) AS worker_did,
+            cr.agent_did AS creator_did,
+            (
+                SELECT COALESCE(SUM(tx.amount), 0) FROM transactions tx
+                WHERE tx.related_id = t.task_id
+                  AND tx.type = 'task_work_deadline_refund'
+            ) AS refunded
+        FROM tasks t
+        LEFT JOIN agents ex ON ex.agent_id = t.executor_agent_id
+        LEFT JOIN agents cr ON cr.agent_id = t.creator_agent_id
+        WHERE t.task_id = $1
+    """,
+    "contract": """
+        SELECT
+            c.status,
+            c.contractor_did AS worker_did,
+            c.creator_did,
+            (
+                SELECT COALESCE(SUM(tx.amount), 0) FROM transactions tx
+                WHERE tx.related_id = c.contract_id
+                  AND tx.type = 'contract_deadline_refund'
+            ) AS refunded
+        FROM contracts c
+        WHERE c.contract_id = $1
+    """,
+}
+
+
+async def record_deadline_missed(kind: str, item_id: Any) -> str:
+    """
+    One ``deadline_missed`` (negative) for the worker of a task or contract
+    whose creator took the escrow back after the work deadline passed
+    (``task_service.reclaim_task``, ``contract_service.reclaim_contract``).
+    The ledger decides: without a deadline refund on record, nothing is
+    written, so no caller can cost a worker trust by just saying so. A worker
+    who is also the creator is not counted. Keyed per task or contract.
+    """
+    query = _DEADLINE_MISSED_QUERIES.get(kind)
+    item_uuid = _as_uuid(item_id)
+    if query is None or item_uuid is None:
+        return "unknown_item"
+    try:
+        async with get_db() as conn:
+            row = await conn.fetchrow(query, item_uuid)
+        if row is None or not row["worker_did"]:
+            return "unknown_item"
+        if str(row["status"]).lower() != "cancelled" or not row["refunded"]:
+            return "not_reclaimed"
+        if row["worker_did"] == row["creator_did"]:
+            return NO_COUNTERPARTY
+        outcome = await record_event(
+            row["worker_did"],
+            "deadline_missed",
+            {f"{kind}_id": str(item_uuid), "refunded": int(row["refunded"])},
+            dedupe_key=f"deadline_missed:{kind}:{item_uuid}",
+            counterparty_did=row["creator_did"],
+        )
+    except Exception:
+        logger.exception("reputation: recording missed deadline of %s %s failed", kind, item_id)
+        return "error"
+    logger.info("reputation: %s %s deadline missed -> %s", kind, item_uuid, outcome)
+    return outcome
 
 
 async def record_verification_outcome(verification_id: Any) -> dict[str, str]:

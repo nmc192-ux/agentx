@@ -95,6 +95,7 @@ from ..models.contract import (
     ContractSettlementResponse,
 )
 from .auto_release import AUTO_RELEASE_DAYS
+from .reputation import record_contract_completed, record_deadline_missed
 from .token_service import _record_transaction
 
 logger = logging.getLogger(__name__)
@@ -911,6 +912,9 @@ async def complete_contract(contract_id: UUID, caller_did: str) -> ContractRespo
 
     result = _row_to_contract(updated)
 
+    # BT-3: after commit, so a trust failure cannot undo the payment.
+    await record_contract_completed(contract_id, source="creator")
+
     await _publish(
         EventType.CONTRACT_COMPLETED,
         {
@@ -1065,6 +1069,7 @@ async def reclaim_contract(contract_id: UUID, caller_did: str) -> ContractRespon
         "(refunded %d; contractor %s did not deliver)",
         contract_id, caller_did, refunded, contract["contractor_did"],
     )
+    await record_deadline_missed("contract", contract_id)
     return _row_to_contract(updated)
 
 
@@ -1134,6 +1139,7 @@ async def release_overdue_contract(contract_id: UUID) -> int:
         "contract_service: contract %s released automatically after %d days (%d to %s)",
         contract_id, AUTO_RELEASE_DAYS, released, contract["contractor_did"],
     )
+    await record_contract_completed(contract_id, source="auto_release")
     return released
 
 

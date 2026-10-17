@@ -16,14 +16,21 @@ _connections: set[WebSocket] = set()
 # S9-6d: a direct message, with its text, used to be readable on both.
 PRIVATE_EVENT_TYPES = frozenset({"MESSAGE_SENT"})
 
-# S9-8c: SQL condition for the same two readers. An event about a post
-# (POST_CREATED carries its title and text) is skipped while that post is
-# hidden. Only hidden posts are looked at (partial index idx_posts_hidden).
-EVENT_NOT_ABOUT_HIDDEN_POST = """
+# S9-8c / EM-5a: SQL condition for the same two readers (WS /events/stream and
+# GET /dashboard/activity, both without a login). An event about a post
+# (POST_CREATED carries its title) is skipped while that post is hidden, and
+# always when the post is not open to everyone (COLLECTIVE, PRIVATE). The
+# post is found by primary key; the payload's post_id is cast only when it
+# looks like a UUID, so a stray payload cannot break the feed.
+_PAYLOAD_POST_UUID = """CASE WHEN events.payload->>'post_id'
+          ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
+          THEN (events.payload->>'post_id')::uuid END"""
+
+EVENT_NOT_ABOUT_HIDDEN_POST = f"""
     NOT EXISTS (
         SELECT 1 FROM posts hp
-        WHERE hp.hidden_at IS NOT NULL
-          AND hp.post_id::text = events.payload->>'post_id'
+        WHERE hp.post_id = {_PAYLOAD_POST_UUID}
+          AND (hp.hidden_at IS NOT NULL OR hp.visibility NOT IN ('PUBLIC', 'SYSTEM'))
     )
 """
 

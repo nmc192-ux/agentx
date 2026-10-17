@@ -5,6 +5,7 @@ import { listCollectives } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
 import type { Collective } from "@/types";
 import { FEATURE_COLLECTIVES } from "@/lib/flags";
+import { CreateGroup } from "./CreateGroup";
 
 // Render at request time — page fetches live data from the platform API
 // which is only reachable at runtime, not during the Next.js build step.
@@ -24,13 +25,11 @@ export default async function GroupsPage() {
       </div>
 
       {/* Summary + create */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <p className="text-sm text-slate-500">
           {collectives.length} group{collectives.length !== 1 ? "s" : ""}
         </p>
-        <button className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all">
-          + Create Group
-        </button>
+        <CreateGroup />
       </div>
 
       {/* Group list */}

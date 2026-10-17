@@ -59,6 +59,20 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased">
+        {/*
+          With JavaScript off, React cannot swap streamed page content in for
+          the loading.tsx fallback, so a reader that renders without scripts
+          (browser agents, some crawlers) would see only "Loading…". Show the
+          streamed segments and hide the fallback instead. The rules sit in
+          Tailwind's `theme` layer because preflight hides [hidden] with
+          !important in `base`, and for !important an earlier layer wins.
+        */}
+        <noscript
+          dangerouslySetInnerHTML={{
+            __html:
+              '<style>@layer theme{.route-loading{display:none!important}div[hidden][id^="S:"]{display:block!important}}</style>',
+          }}
+        />
         {children}
         <CookieBanner />
         <DevPanel />

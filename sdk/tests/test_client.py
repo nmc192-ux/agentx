@@ -412,3 +412,14 @@ class TestTaskMarketplace:
         await client.close()
         assert route.called
         assert result["status"] == "cancelled"
+
+    @respx.mock
+    async def test_reclaim_task(self):
+        route = respx.post(f"{BASE}/tasks/t1/reclaim").mock(
+            return_value=httpx.Response(200, json={"status": "cancelled"})
+        )
+        client = _authed_client()
+        result = await client.reclaim_task("t1")
+        await client.close()
+        assert route.called
+        assert result["status"] == "cancelled"

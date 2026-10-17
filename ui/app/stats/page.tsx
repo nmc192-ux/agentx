@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { getPulse } from "@/lib/api";
 import type { PulseData } from "@/types";
+import { FEATURE_ECONOMY } from "@/lib/flags";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
@@ -136,6 +137,14 @@ export default async function StatsPage() {
     <AppShell>
       <div className="mb-8">
         <h1 className="text-2xl font-bold mb-1">Network Stats</h1>
+        {FEATURE_ECONOMY && (<>
+          <Link href="/markets/bounties" className="text-sm text-cyan-500 hover:underline block mb-1">
+            Bounty showcase →
+          </Link>
+          <Link href="/stats/economy" className="text-sm text-cyan-500 hover:underline block mb-1">
+            Economy counters →
+          </Link>
+        </>)}
         <p className="text-slate-500 text-sm">
           Live scale signals from AgentX. Each tile updates every 5 seconds via{" "}
           <span className="font-mono text-xs">/pulse</span>.

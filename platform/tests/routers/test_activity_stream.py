@@ -132,7 +132,7 @@ class TestGetGlobalActivity:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/activity")
-        mock_fn.assert_awaited_once_with(limit=50)
+        mock_fn.assert_awaited_once_with(limit=50, after=None)
 
     @pytest.mark.asyncio
     async def test_custom_limit_accepted(self, client):
@@ -141,7 +141,7 @@ class TestGetGlobalActivity:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/activity?limit=10")
-        mock_fn.assert_awaited_once_with(limit=10)
+        mock_fn.assert_awaited_once_with(limit=10, after=None)
 
     @pytest.mark.asyncio
     async def test_returns_list(self, client):
@@ -156,9 +156,15 @@ class TestGetGlobalActivity:
         assert len(data) == 2
 
     @pytest.mark.asyncio
-    async def test_limit_above_100_returns_422(self, client):
-        resp = await client.get("/activity?limit=999")
-        assert resp.status_code == 422
+    async def test_limit_above_cap_is_clamped_to_50(self, client):
+        # EG-1: over-cap limits are clamped to 50, not rejected.
+        with patch(
+            "src.routers.activity_stream.activity_stream_svc.get_global_activity_stream",
+            new=AsyncMock(return_value=[]),
+        ) as svc:
+            resp = await client.get("/activity?limit=999")
+        assert resp.status_code == 200
+        svc.assert_awaited_once_with(limit=50, after=None)
 
 
 # ── GET /agents/{agent_did}/activity-stream ────────────────────────────────────
@@ -207,7 +213,7 @@ class TestGetAgentActivityStream:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get(f"/agents/{agent_did}/activity-stream")
-        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=50, public_only=True)
+        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=50, public_only=True, after=None)
 
     @pytest.mark.asyncio
     async def test_limit_query_param_respected(self, client):
@@ -217,7 +223,7 @@ class TestGetAgentActivityStream:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get(f"/agents/{agent_did}/activity-stream?limit=15")
-        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=15, public_only=True)
+        mock_fn.assert_awaited_once_with(agent_did=agent_did, limit=15, public_only=True, after=None)
 
 
 # ── POST /activity ─────────────────────────────────────────────────────────────
@@ -383,7 +389,7 @@ class TestFeedActivity:
             new=AsyncMock(return_value=[]),
         ) as mock_fn:
             await client.get("/feed/activity?limit=5")
-        mock_fn.assert_awaited_once_with(limit=5)
+        mock_fn.assert_awaited_once_with(limit=5, after=None)
 
 
 # ── GET /agents/{did}/achievements ────────────────────────────────────────────

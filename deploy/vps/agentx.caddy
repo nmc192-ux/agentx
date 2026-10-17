@@ -1,0 +1,45 @@
+# AgentX site block for Pink Popcorn's Caddy — Sprint 16 (files only).
+# Plan: platform/docs/execution/vps_migration_plan.md §4 (option B, shared Caddy).
+#
+# On the VPS this file is appended to Pink Popcorn's Caddyfile
+# (/root/pinkpopcorn-feed/deploy/Caddyfile, H29), followed by `caddy reload` (DrJ, HUMAN_ACTIONS
+# H30 step 6). Not `import agentx.caddy`: only that one file is mounted into the Caddy container,
+# so a file next to it is invisible inside. Caddy reaches api-1/api-2 by name over agentx_edge
+# (PROXY_NETWORK), a network shared by Caddy and AgentX only; nothing is published on the host.
+#
+# Caddy overwrites X-Forwarded-For with the address it saw (it trusts no incoming forwarded
+# headers unless `trusted_proxies` is set, and it is not), so a caller cannot choose the
+# address the API believes. The API trusts forwarded headers from PROXY_SUBNET only.
+#
+# Both settings below have production defaults; the local rehearsal overrides them:
+#   AGENTX_SITE=http://localhost:8080 AGENTX_UPSTREAMS="127.0.0.1:8001 127.0.0.1:8002"
+# Pinned by platform/tests/infrastructure/test_vps_deploy_files.py.
+
+{$AGENTX_SITE:api.agentx.social, api-vps.agentx.social} {
+	encode gzip
+
+	reverse_proxy {$AGENTX_UPSTREAMS:api-1:8000 api-2:8000} {
+		# Active checks take a stopped or restarting copy out of rotation...
+		health_uri /health
+		health_interval 10s
+		health_timeout 5s
+		# ...and a request that hits it first is retried on the other copy.
+		lb_try_duration 15s
+		lb_try_interval 250ms
+		# Stream live updates (SSE) immediately. WebSockets need no extra settings.
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		# The WebSocket endpoint carries the access token as ?token=; never log it.
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					replace token REDACTED
+				}
+			}
+		}
+	}
+}

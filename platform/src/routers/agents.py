@@ -9,6 +9,9 @@ Endpoints:
 
 Both sign-up routes share one per-IP budget (5/hr, 20/day, same as /onboard);
 a FOUNDER token gets its own bucket (100/hr, 500/day) for seeding (S9-8a2).
+Neither may take a DID held in `reserved_dids` (early launch, EL-2: the old
+agents' addresses until the 1 Nov import): POST /agents answers 409, the
+registry route re-rolls its random address (services/reserved_dids.py).
   GET    /agents                    — List agents (public, paginated)
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
@@ -21,10 +24,12 @@ SOURCE: agentx_api_v1.yaml /agents paths — ATLAS Phase 1
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from uuid import UUID
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from ..auth.jwt import create_token_pair
 from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
@@ -51,8 +56,11 @@ from ..models.agent_registry import AgentResponse as RegistryAgentResponse
 from ..models.post import PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
+from ..services.reserved_dids import DidReservedError, assert_not_reserved, pick_free_did
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
+from ..middleware.list_limit import MAX_LIST_LIMIT
+from ..pagination import NEXT_CURSOR_HEADER, decode_cursor, encode_cursor, next_cursor
 from ..services.agent_directory import (
     search_agents_by_capability,
     search_agents_by_reputation,
@@ -63,6 +71,11 @@ from ..ml.task_recommender import task_recommender  # Sprint 4 — module-level 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agents", tags=["Agents"])
+
+# EG-2c keyset cursors: /agents (trust_score, created_at, agent_did) and the
+# ranked /agents/{did}/feed (as_of clock, score, created_at, post_id).
+AGENT_LIST_CURSOR_KINDS = (float, datetime, str)
+AGENT_FEED_CURSOR_KINDS = (datetime, float, datetime, UUID)
 
 
 # ── Helper: row → AgentResponse ───────────────────────────────────────────────
@@ -117,7 +130,9 @@ _SELF_SERVICE_ROLES = frozenset({GovernanceRole.MEMBER, GovernanceRole.OBSERVER}
 
 
 def _make_agent_did(name: str) -> str:
-    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")
+    # ASCII letters and digits only: the DID rule is [a-z0-9-], and `str.isalnum`
+    # on its own lets "日本語" or "é" through to a 500 at the DID check (EL-7).
+    slug = "".join(ch.lower() if ch.isascii() and ch.isalnum() else "-" for ch in name).strip("-")
     slug = "-".join(part for part in slug.split("-") if part) or "agent"
     return f"did:agentx:{slug[:48]}-{uuid.uuid4().int % 1000:03d}"
 
@@ -135,9 +150,17 @@ async def register_agent(
     request: Request,
 ):
     agent_id = uuid.uuid4()
-    agent_did = _make_agent_did(body.name)
 
     async with transaction() as conn:
+        # EL-2: never an address that is registered or reserved (shared lock
+        # until commit; see services/reserved_dids.py).
+        try:
+            agent_did = await pick_free_did(conn, lambda: _make_agent_did(body.name))
+        except RuntimeError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not generate a unique agent identity. Please try again.",
+            )
         await conn.execute(
             """
             INSERT INTO agents (
@@ -264,22 +287,42 @@ async def create_agent(
                 detail=f"Agent DID already registered: {body.agent_did}",
             )
 
-        # Insert agent
-        await conn.execute(
-            """
-            INSERT INTO agents (
-                agent_did, display_name, agent_type, governance_role,
-                tier, status, bio, specialization
+        # EL-2: the old agents' addresses are held until the 1 Nov import.
+        # Fails closed: a missing/unreadable table is an error, not a pass.
+        try:
+            await assert_not_reserved(conn, body.agent_did)
+        except DidReservedError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Agent DID is reserved: {body.agent_did}. This address belongs to "
+                    "an agent returning to AgentX; choose a different one."
+                ),
             )
-            VALUES ($1, $2, $3, $4, 'BOOTSTRAP', 'ACTIVE', $5, $6)
-            """,
-            body.agent_did,
-            body.display_name,
-            body.agent_type.value,
-            body.governance_role.value,
-            body.bio,
-            body.specialization,
-        )
+
+        # Insert agent. The primary key is the last word: an import that
+        # committed this DID between the check and here answers 409, not 500.
+        try:
+            await conn.execute(
+                """
+                INSERT INTO agents (
+                    agent_did, display_name, agent_type, governance_role,
+                    tier, status, bio, specialization
+                )
+                VALUES ($1, $2, $3, $4, 'BOOTSTRAP', 'ACTIVE', $5, $6)
+                """,
+                body.agent_did,
+                body.display_name,
+                body.agent_type.value,
+                body.governance_role.value,
+                body.bio,
+                body.specialization,
+            )
+        except asyncpg.UniqueViolationError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Agent DID already registered: {body.agent_did}",
+            )
 
         # Seed initial trust breakdown (bootstrap values)
         await conn.execute(
@@ -343,6 +386,7 @@ async def list_agents(
     did:     Optional[str] = Query(default=None, description="Filter by exact agent DID"),
     page:    int = Query(default=1, ge=1),
     limit:   int = Query(default=20, ge=1, le=100),
+    cursor:  Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
     """
     Return a paginated list of agents.
@@ -352,8 +396,12 @@ async def list_agents(
       - role:    FOUNDER | OPERATOR | DELEGATE | MEMBER | OBSERVER
       - status:  ACTIVE | SUSPENDED | DEACTIVATED | PENDING_REVIEW
       - did:     exact agent DID (did:agentx:...)
+
+    Pass the previous response's `next_cursor` as `cursor` for the next page
+    (keyset on trust_score, created_at, agent_did; `page` is ignored then).
     """
-    offset = (page - 1) * limit
+    after = decode_cursor(cursor, AGENT_LIST_CURSOR_KINDS) if cursor else None
+    offset = 0 if after else (page - 1) * limit
 
     # Build dynamic WHERE clause
     conditions = ["a.status != 'DEACTIVATED'"]
@@ -373,11 +421,22 @@ async def list_agents(
         conditions.append(f"a.agent_did = ${len(params)}")
 
     where = " AND ".join(conditions)
+    keyset = ""
+    if after:
+        # trust_score is NUMERIC(4,2); compare as float8 so the cursor's float
+        # matches the row it came from exactly.
+        params.extend(after)
+        n = len(params)
+        keyset = (
+            f" AND (a.trust_score::float8 < ${n-2}::float8"
+            f" OR (a.trust_score::float8 = ${n-2}::float8"
+            f" AND (a.created_at, a.agent_did) > (${n-1}::timestamptz, ${n}::text)))"
+        )
 
     async with get_db() as conn:
         total = await conn.fetchval(
             f"SELECT count(*) FROM agents a WHERE {where}",
-            *params,
+            *params[:len(params) - (3 if after else 0)],
         )
         rows = await conn.fetch(
             f"""
@@ -391,21 +450,26 @@ async def list_agents(
                 COALESCE(verifications_passed, 0) AS verifications_passed,
                 COALESCE(eco_influence_score, 0.0) AS eco_influence_score
             FROM agents a
-            WHERE {where}
-            ORDER BY trust_score DESC, created_at ASC
+            WHERE {where}{keyset}
+            ORDER BY trust_score DESC, created_at ASC, agent_did ASC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
             *params, limit, offset,
         )
 
     agents = [_row_to_response(dict(r)) for r in rows]
+    cur = None
+    if len(rows) == limit:
+        last = rows[-1]
+        cur = encode_cursor(float(last["trust_score"]), last["created_at"], last["agent_did"])
 
     return AgentListResponse(
         agents=agents,
         total=total,
         page=page,
         limit=limit,
-        has_more=(page * limit) < total,
+        has_more=(page * limit) < total if not after else len(rows) == limit,
+        next_cursor=cur,
     )
 
 
@@ -457,7 +521,8 @@ async def search_agents(
             rep_ids = {a.agent_did for a in rep_results}
             filtered = [a for a in filtered if a.agent_did in rep_ids]
 
-    return sorted(filtered or [], key=lambda a: a.trust_score, reverse=True)
+    # EG-1: never more than 50 agents in one response (Neon egress).
+    return sorted(filtered or [], key=lambda a: a.trust_score, reverse=True)[:MAX_LIST_LIMIT]
 
 
 @router.get(
@@ -657,7 +722,9 @@ async def get_agent_feed(
     limit:       int            = Query(default=20, ge=1, le=100),
     post_type:   Optional[str]  = Query(default=None, description="Filter by post type (REQUEST, OFFER, TASK, …)"),
     include_tasks: bool         = Query(default=True, description="Blend ML-recommended tasks into the feed"),
+    cursor:      Optional[str]  = Query(default=None, description="X-Next-Cursor from the previous page"),
     request:     Request        = None,
+    response:    Response       = None,
     caller:      AgentRecord    = Depends(get_current_agent),
 ):
     """
@@ -672,6 +739,10 @@ async def get_agent_feed(
     are surfaced at the top of the feed, regardless of `post_type` filter.
 
     Results are cached for 2 minutes per agent (TTL_FEED).
+
+    The next page's cursor (if any) is in the X-Next-Cursor response header.
+    It carries the clock the first page was ranked by, so later pages use the
+    same recency terms; ML tasks are only blended into the first page.
     """
     # ── Auth: caller can only view their own feed (or FOUNDER/OPERATOR can view any) ──
     if caller.did != agent_did and not caller.has_role("FOUNDER", "OPERATOR"):
@@ -690,10 +761,20 @@ async def get_agent_feed(
             )
         post_type = parsed_type
 
+    after = decode_cursor(cursor, AGENT_FEED_CURSOR_KINDS) if cursor else None
+    cacheable = not post_type and include_tasks and after is None
+
     # ── Cache check ────────────────────────────────────────────────────────────
-    cache_hit = await cache_get(feed_key(agent_did))
-    if cache_hit and not post_type and include_tasks:
-        return cache_hit
+    # Entries from before EG-2c were bare lists without a cursor, and one built
+    # for a smaller page cannot serve a bigger one: both are a miss.
+    cache_hit = await cache_get(feed_key(agent_did)) if cacheable else None
+    if isinstance(cache_hit, dict) and cache_hit.get("limit") == limit:
+        _set_feed_cursor(response, cache_hit.get("next_cursor"))
+        return cache_hit["items"]
+
+    as_of, after_score, after_at, after_id = after or (
+        datetime.now(timezone.utc), None, None, None,
+    )
 
     async with get_db() as conn:
         # Verify agent is active
@@ -716,34 +797,39 @@ async def get_agent_feed(
             conditions.append(f"p.post_type = ${len(params)}")
 
         where = " AND ".join(conditions)
+        n = len(params)
 
-        # Rank by: author trust (40%) + recency (60%), capped at 100 posts
+        # Rank by: author trust (40%) + recency (60%, decays over 7 days from
+        # as_of), keyset on (score, created_at, post_id).  Only `limit` rows
+        # are read (was a fixed 100).
         rows = await conn.fetch(
             f"""
-            SELECT
-                p.post_id, p.author_did, p.post_type, p.title, p.content,
-                p.tags, p.visibility, p.status, p.metadata,
-                p.collective_id, p.parent_post_id, p.created_at,
-                a.trust_score AS author_trust,
-                (SELECT count(*) FROM posts r
-                  WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
-                -- Recency score: decays over 7 days
-                EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 86400.0 AS age_days
-            FROM posts p
-            JOIN agents a ON a.agent_did = p.author_did
-            WHERE p.hidden_at IS NULL AND {where}
-            ORDER BY
-                (a.trust_score * 0.4) +
-                (GREATEST(0, 1 - (EXTRACT(EPOCH FROM (NOW() - p.created_at)) / (7 * 86400.0))) * 0.6) DESC,
-                p.created_at DESC
-            LIMIT 100
+            SELECT * FROM (
+                SELECT
+                    p.post_id, p.author_did, p.post_type, p.title, p.content,
+                    p.tags, p.visibility, p.status, p.metadata,
+                    p.collective_id, p.parent_post_id, p.created_at,
+                    a.trust_score AS author_trust,
+                    (SELECT count(*) FROM posts r
+                      WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
+                    ((a.trust_score * 0.4) +
+                     (GREATEST(0, 1 - (EXTRACT(EPOCH FROM (${n+1}::timestamptz - p.created_at))
+                                       / (7 * 86400.0))) * 0.6))::float8 AS feed_score
+                FROM posts p
+                JOIN agents a ON a.agent_did = p.author_did
+                WHERE p.hidden_at IS NULL AND {where}
+            ) ranked
+            WHERE ${n+2}::float8 IS NULL
+               OR (feed_score, created_at, post_id) < (${n+2}, ${n+3}::timestamptz, ${n+4}::uuid)
+            ORDER BY feed_score DESC, created_at DESC, post_id DESC
+            LIMIT ${n+5}
             """,
-            *params,
+            *params, as_of, after_score, after_at, after_id, limit,
         )
 
         # ── ML-recommended tasks (blended at top when requested) ───────────────
         task_recs: list[dict] = []
-        if include_tasks and not post_type:
+        if include_tasks and not post_type and after is None:
             try:
                 recommendations = await task_recommender.get_recommendations(
                     agent_did=agent_did,
@@ -775,8 +861,12 @@ async def get_agent_feed(
     # ── Serialise regular posts ────────────────────────────────────────────────
     seen_ids: set[str] = {r["post_id"] for r in task_recs}
     feed_items: list[dict] = list(task_recs)
+    last_row = None   # last ranked row consumed: the next page starts after it
 
     for row in rows:
+        if len(feed_items) >= limit:
+            break
+        last_row = row
         post_id_str = str(row["post_id"])
         if post_id_str in seen_ids:
             continue  # de-duplicate ML picks that also appear in main feed
@@ -809,14 +899,26 @@ async def get_agent_feed(
             "_score":         None,
         })
 
-        if len(feed_items) >= limit:
-            break
+    # More may follow if the page is full or ranked rows were left unread.
+    cur = None
+    if last_row is not None and (len(rows) == limit or last_row is not rows[-1]):
+        cur = encode_cursor(as_of, last_row["feed_score"], last_row["created_at"], last_row["post_id"])
+    _set_feed_cursor(response, cur)
 
-    # ── Cache the full unfiltered result ────────────────────────────────────────
-    if not post_type and include_tasks:
-        await cache_set(feed_key(agent_did), feed_items, ttl=TTL_FEED)
+    # ── Cache the uncursored, unfiltered first page ─────────────────────────────
+    if cacheable:
+        await cache_set(
+            feed_key(agent_did),
+            {"limit": limit, "items": feed_items, "next_cursor": cur},
+            ttl=TTL_FEED,
+        )
 
     return feed_items
+
+
+def _set_feed_cursor(response: Optional[Response], cursor: Optional[str]) -> None:
+    if cursor and response is not None:
+        response.headers[NEXT_CURSOR_HEADER] = cursor
 
 
 
@@ -829,13 +931,17 @@ async def get_agent_feed(
 )
 async def agent_activity_timeline(
     agent_did: str,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = Query(default=None, description="X-Next-Cursor from the previous page"),
     request: Request = None,
 ):
     """
     Public economic + social activity timeline for an agent.
-    No authentication required.
+    No authentication required.  The next page's cursor (if any) is in the
+    X-Next-Cursor response header.
     """
+    after = tuple(decode_cursor(cursor, (datetime, UUID))) if cursor else None
     from ..services import activity_stream as activity_stream_svc
 
     async with get_db() as conn:
@@ -849,7 +955,10 @@ async def agent_activity_timeline(
             detail=f"Agent not found: {agent_did}",
         )
 
-    events = await activity_stream_svc.get_agent_activity_stream(agent_did, limit=limit)
+    events = await activity_stream_svc.get_agent_activity_stream(agent_did, limit=limit, after=after)
+    cur = next_cursor(events, limit, "created_at", "stream_id")
+    if cur:
+        response.headers[NEXT_CURSOR_HEADER] = cur
     return [e.model_dump(mode="json") for e in events]
 
 

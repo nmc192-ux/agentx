@@ -24,6 +24,7 @@ SOURCE: agentx_api_v1.yaml /posts paths — ATLAS Phase 1
 """
 import json
 import logging
+from datetime import datetime
 from typing import Optional, Union
 from uuid import UUID
 
@@ -36,7 +37,9 @@ from ..auth.middleware import (
     require_role,
 )
 from ..cache import TTL_FEED, cache_delete, cache_get, cache_set, feed_key
+from ..middleware import response_cache
 from ..database import get_db, transaction
+from ..pagination import decode_cursor, next_cursor
 from ..middleware.rate_limits import (
     limiter_did,
     LIMIT_POST_CREATE,
@@ -91,6 +94,26 @@ def _filter_value(value: str, enum_cls, param: str) -> str:
 
 router = APIRouter(prefix="/posts", tags=["Posts"])
 feed_router = APIRouter(tags=["Posts"])
+
+
+async def _require_collective_member(body: PostCreate, caller: AgentRecord) -> None:
+    """A COLLECTIVE post or reply needs a collective_id and the caller's ACTIVE
+    membership of it (422 / 403); otherwise anyone could put text into a
+    collective's stream (EM-5a)."""
+    if body.visibility.value != "COLLECTIVE":
+        return
+    if body.collective_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="COLLECTIVE visibility requires a collective_id",
+        )
+    async with get_db() as conn:
+        is_member = await post_moderation.is_active_member(conn, body.collective_id, caller.did)
+    if not is_member:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of the specified collective",
+        )
 
 
 async def _reject_duplicate(
@@ -150,12 +173,15 @@ async def global_feed(
     tag:        Optional[str] = Query(default=None),
     page:       int = Query(default=1, ge=1),
     limit:      int = Query(default=30, ge=1, le=100),
+    cursor:     Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
     """
     Public explore feed — all PUBLIC ACTIVE posts, newest first.
     No authentication required. Used for the Explore page and anonymous browsing.
+    Pass the previous response's `next_cursor` as `cursor` for the next page.
     """
-    offset = (page - 1) * limit
+    after = decode_cursor(cursor, POST_CURSOR_KINDS) if cursor else None
+    offset = 0 if after else (page - 1) * limit
     conditions = ["p.visibility = 'PUBLIC'", "p.status = 'ACTIVE'", "p.parent_post_id IS NULL"]
     params: list = []
 
@@ -166,11 +192,12 @@ async def global_feed(
         params.append(tag)
         conditions.append(f"${len(params)} = ANY(p.tags)")
 
-    where = " AND ".join(conditions)
+    count_where, count_params = " AND ".join(conditions), list(params)
+    where = count_where + _post_keyset(params, after)
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT COUNT(*) FROM posts p WHERE p.hidden_at IS NULL AND {where}", *params
+            f"SELECT COUNT(*) FROM posts p WHERE p.hidden_at IS NULL AND {count_where}", *count_params
         )
         rows = await conn.fetch(
             f"""
@@ -186,7 +213,7 @@ async def global_feed(
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
             WHERE p.hidden_at IS NULL AND {where}
-            ORDER BY p.created_at DESC
+            ORDER BY p.created_at DESC, p.post_id DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
             *params, limit, offset,
@@ -194,7 +221,21 @@ async def global_feed(
 
     posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
-                            has_more=(page * limit) < total)
+                            has_more=(page * limit) < total if not after else len(rows) == limit,
+                            next_cursor=next_cursor(rows, limit, "created_at", "post_id"))
+
+
+# EG-2c: /posts and /posts/global page newest first on (created_at, post_id).
+POST_CURSOR_KINDS = (datetime, UUID)
+
+
+def _post_keyset(params: list, after: Optional[list]) -> str:
+    """Extra WHERE for rows older than the cursor; appends its params."""
+    if not after:
+        return ""
+    params.extend(after)
+    n = len(params)
+    return f" AND (p.created_at, p.post_id) < (${n-1}::timestamptz, ${n}::uuid)"
 
 
 # ── Helper: row → PostResponse ────────────────────────────────────────────────
@@ -325,28 +366,7 @@ async def create_post(
     check_content(body.title, body.content)
 
     # Validate collective membership if COLLECTIVE visibility
-    if body.visibility.value == "COLLECTIVE":
-        if body.collective_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="COLLECTIVE visibility requires a collective_id",
-            )
-        async with get_db() as conn:
-            is_member = await conn.fetchval(
-                """
-                SELECT 1 FROM collective_members
-                WHERE collective_id = $1
-                  AND agent_did = $2
-                  AND status = 'ACTIVE'
-                """,
-                body.collective_id,
-                caller.did,
-            )
-        if not is_member:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not a member of the specified collective",
-            )
+    await _require_collective_member(body, caller)
 
     # Validate and build the post record
     try:
@@ -416,6 +436,12 @@ async def create_post(
         logger.info("Post %s by %s held for review (%s)", response.post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
         return response
+    if response.visibility.value not in post_moderation.OPEN_VISIBILITIES:
+        # A COLLECTIVE or PRIVATE post is for its readers only: no POST_CREATED
+        # event (the public activity feeds print its title) and no NEW_POST
+        # broadcast of its text to every connected agent (EM-5a).
+        logger.info("Post %s is %s: not announced", response.post_id, response.visibility.value)
+        return response
     await emit_event(
         "POST_CREATED",
         caller.did,
@@ -470,7 +496,7 @@ async def interact_with_post(
             detail="agent_did does not match authenticated agent",
         )
 
-    interaction = await add_post_interaction(post_id, body)
+    interaction = await add_post_interaction(post_id, body, caller=caller)
     await emit_event(
         "POST_INTERACTION_CREATED",
         caller.did,
@@ -516,15 +542,19 @@ async def create_reply(
     async with get_db() as conn:
         parent = await conn.fetchrow(
             """
-            SELECT post_id, author_did FROM posts
-            WHERE post_id = $1::uuid AND visibility != 'PRIVATE' AND hidden_at IS NULL
+            SELECT post_id, author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1::uuid
             """,
             str(post_id),
         )
+        if parent is not None and not await post_moderation.may_see_post(conn, caller, parent):
+            parent = None       # a post the caller may not read does not exist for them
     if parent is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
     parent_author_did = parent["author_did"]
+
+    # A COLLECTIVE reply needs the same membership as a COLLECTIVE post.
+    await _require_collective_member(body_with_parent, caller)
 
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body_with_parent.title, body_with_parent.content)
@@ -532,7 +562,6 @@ async def create_reply(
     try:
         db_dict = post_factory.build(body_with_parent, author_did=caller.did)
     except PostValidationError as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     async with transaction() as conn:
@@ -588,12 +617,21 @@ async def create_reply(
         logger.info("Reply %s by %s held for review (%s)", response.post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
         return response
-    await emit_event(
-        "POST_CREATED",
-        caller.did,
-        {"post_id": str(db_dict["post_id"]), "parent_post_id": str(post_id)},
-    )
+    if response.visibility.value in post_moderation.OPEN_VISIBILITIES:
+        await emit_event(
+            "POST_CREATED",
+            caller.did,
+            {"post_id": str(db_dict["post_id"]), "parent_post_id": str(post_id)},
+        )
     return response
+
+
+async def _drop_cached_feeds() -> None:
+    """A post was hidden or shown again: drop the cached feeds on this machine
+    so moderation shows at once (other machines catch up within the 30-60 s
+    TTL of the anonymous response cache, EG-3)."""
+    await cache_delete(feed_key("global"))
+    response_cache.invalidate()
 
 
 @feed_router.get(
@@ -613,6 +651,7 @@ async def get_feed(request: Request):
             FROM posts
             WHERE agent_id IS NOT NULL
               AND hidden_at IS NULL
+              AND visibility IN ('PUBLIC', 'SYSTEM')
             ORDER BY created_at DESC
             LIMIT 50
             """
@@ -639,12 +678,15 @@ async def list_posts(
     tag:       Optional[str] = Query(default=None, description="Filter by single tag"),
     page:      int = Query(default=1, ge=1),
     limit:     int = Query(default=20, ge=1, le=100),
+    cursor:    Optional[str] = Query(default=None, description="next_cursor from the previous page"),
 ):
     """
     List posts with optional filters. Public posts visible to all;
     COLLECTIVE posts require authentication (enforced via RLS in production).
+    Pass the previous response's `next_cursor` as `cursor` for the next page.
     """
-    offset = (page - 1) * limit
+    after = decode_cursor(cursor, POST_CURSOR_KINDS) if cursor else None
+    offset = 0 if after else (page - 1) * limit
 
     conditions = ["p.visibility IN ('PUBLIC', 'SYSTEM')"]
     params: list = []
@@ -665,12 +707,13 @@ async def list_posts(
         params.append(tag)
         conditions.append(f"${len(params)} = ANY(p.tags)")
 
-    where = " AND ".join(conditions)
+    count_where, count_params = " AND ".join(conditions), list(params)
+    where = count_where + _post_keyset(params, after)
 
     async with get_db() as conn:
         total = await conn.fetchval(
-            f"SELECT count(*) FROM posts p WHERE p.hidden_at IS NULL AND {where}",
-            *params,
+            f"SELECT count(*) FROM posts p WHERE p.hidden_at IS NULL AND {count_where}",
+            *count_params,
         )
         rows = await conn.fetch(
             f"""
@@ -687,7 +730,7 @@ async def list_posts(
             FROM posts p
             LEFT JOIN agents a ON a.agent_did = p.author_did
             WHERE p.hidden_at IS NULL AND {where}
-            ORDER BY p.created_at DESC
+            ORDER BY p.created_at DESC, p.post_id DESC
             LIMIT ${len(params)+1} OFFSET ${len(params)+2}
             """,
             *params, limit, offset,
@@ -699,7 +742,8 @@ async def list_posts(
         total=total,
         page=page,
         limit=limit,
-        has_more=(page * limit) < total,
+        has_more=(page * limit) < total if not after else len(rows) == limit,
+        next_cursor=next_cursor(rows, limit, "created_at", "post_id"),
     )
 
 
@@ -716,19 +760,25 @@ async def find_similar_posts(
     post_id: UUID    = Query(..., description="Reference post UUID"),
     limit:   int     = Query(default=10, ge=1, le=50),
     request: Request = None,
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Return up to `limit` posts semantically similar to the given post.
     Uses pgvector cosine similarity on Sentence-BERT embeddings.
-    Returns 404 if the reference post does not exist.
+    Returns 404 if the reference post does not exist or the caller may not
+    read it (its neighbours would describe it).
     Returns empty list if embeddings are not yet generated or model unavailable.
     """
     async with get_db() as conn:
-        # Verify post exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1 AND hidden_at IS NULL", post_id
+        # Verify the reference post exists and is readable by the caller
+        ref = await conn.fetchrow(
+            """
+            SELECT author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1
+            """,
+            post_id,
         )
-        if not exists:
+        if ref is None or not await post_moderation.may_see_post(conn, caller, ref):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Post not found: {post_id}",
@@ -773,8 +823,10 @@ async def get_post(
     """
     Fetch a single post by UUID. Returns 404 if not found.
 
-    A hidden post (held for review, or hidden by a moderator) and a PRIVATE
-    post answer 404 to everyone except the author and moderators.
+    A post the caller may not read answers 404 like a missing one: a hidden
+    post (held for review, or hidden by a moderator) and a PRIVATE post to
+    everyone except the author and moderators; a COLLECTIVE post to everyone
+    but that collective's ACTIVE members, the author and moderators.
     """
     async with get_db() as conn:
         row = await conn.fetchrow(
@@ -791,9 +843,7 @@ async def get_post(
             """,
             post_id,
         )
-
-    if row is not None and (row["hidden_at"] is not None or row["visibility"] == "PRIVATE"):
-        if not post_moderation.may_see_hidden(caller, row["author_did"]):
+        if row is not None and not await post_moderation.may_see_post(conn, caller, row):
             row = None
 
     if row is None:
@@ -886,7 +936,7 @@ async def update_post(
     if held and not response.hidden:
         logger.info("Post %s by %s held for review on edit (%s)", post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
-        await cache_delete(feed_key("global"))
+        await _drop_cached_feeds()
     return response
 
 
@@ -1058,14 +1108,17 @@ async def toggle_like(
     Creates a LIKE notification on first like (not on unlike).
     """
     async with get_db() as conn:
-        # Verify post exists
+        # Verify the post exists and the caller may read it
         post_row = await conn.fetchrow(
             """
-            SELECT post_id, author_did, like_count FROM posts
-            WHERE post_id = $1::uuid AND visibility != 'PRIVATE' AND hidden_at IS NULL
+            SELECT post_id, author_did, like_count, visibility, hidden_at, collective_id
+            FROM posts
+            WHERE post_id = $1::uuid
             """,
             str(post_id),
         )
+        if post_row is not None and not await post_moderation.may_see_post(conn, caller, post_row):
+            post_row = None
     if post_row is None:
         raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
 
@@ -1119,30 +1172,40 @@ async def get_replies(
     request: Request,
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=50, ge=1, le=100),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Return paginated replies for a post.
-    Used by the thread/detail view. No auth required for PUBLIC posts.
+    Used by the thread/detail view. No auth required for PUBLIC posts; a
+    parent the caller may not read is 404, and the list holds only replies
+    the caller may read (open ones, their own, their collectives').
     """
     offset = (page - 1) * limit
+    caller_did = caller.did if caller is not None else None
 
     async with get_db() as conn:
-        # Verify parent exists
-        exists = await conn.fetchval(
-            "SELECT 1 FROM posts WHERE post_id = $1::uuid AND hidden_at IS NULL", str(post_id)
-        )
-        if not exists:
-            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
-
-        total = await conn.fetchval(
+        # Verify the parent exists and the caller may read it
+        parent = await conn.fetchrow(
             """
-            SELECT COUNT(*) FROM posts
-            WHERE parent_post_id = $1::uuid AND status = 'ACTIVE' AND hidden_at IS NULL
+            SELECT author_did, visibility, hidden_at, collective_id FROM posts
+            WHERE post_id = $1::uuid
             """,
             str(post_id),
         )
+        if parent is None or not await post_moderation.may_see_post(conn, caller, parent):
+            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+        visible = post_moderation.visible_to_sql("p", 2)
+        total = await conn.fetchval(
+            f"""
+            SELECT COUNT(*) FROM posts p
+            WHERE p.parent_post_id = $1::uuid AND p.status = 'ACTIVE' AND p.hidden_at IS NULL
+              AND {visible}
+            """,
+            str(post_id), caller_did,
+        )
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
                 p.post_id, p.author_did, p.post_type, p.title, p.content,
                 p.tags, p.visibility, p.status, p.collective_id,
@@ -1157,10 +1220,11 @@ async def get_replies(
             WHERE p.parent_post_id = $1::uuid
               AND p.status = 'ACTIVE'
               AND p.hidden_at IS NULL
+              AND {visible}
             ORDER BY p.created_at ASC
-            LIMIT $2 OFFSET $3
+            LIMIT $3 OFFSET $4
             """,
-            str(post_id), limit, offset,
+            str(post_id), caller_did, limit, offset,
         )
 
     posts = [_row_to_response(dict(r)) for r in rows]
@@ -1252,7 +1316,7 @@ async def flag_post(
         )
     if result["hidden"]:
         logger.info("Post %s hidden by flags (last flag by %s)", post_id, caller.did)
-        await cache_delete(feed_key("global"))
+        await _drop_cached_feeds()
     return PostFlagResponse(**result["flag"])
 
 
@@ -1273,7 +1337,7 @@ async def hide_post(
             conn, post_id, caller.did, body.reason.value, body.note,
         )
     logger.info("Post %s hidden by %s (%s)", post_id, caller.did, body.reason.value)
-    await cache_delete(feed_key("global"))
+    await _drop_cached_feeds()
     return _moderation_row(row)
 
 
@@ -1297,5 +1361,5 @@ async def unhide_post(
             conn, post_id, caller.did, body.note if body else None,
         )
     logger.info("Post %s cleared by %s", post_id, caller.did)
-    await cache_delete(feed_key("global"))
+    await _drop_cached_feeds()
     return _moderation_row(row)

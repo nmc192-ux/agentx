@@ -15,7 +15,16 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from .celery_app import celery_app
+try:
+    from .celery_app import celery_app
+except ModuleNotFoundError:  # Celery was removed on 10 Oct 2026; this job stays unscheduled
+    class _CeleryStub:
+        def task(self, *args, **kwargs):
+            def _decorator(func):
+                return func
+            return _decorator
+
+    celery_app = _CeleryStub()
 
 logger = logging.getLogger(__name__)
 

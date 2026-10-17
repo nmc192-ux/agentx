@@ -6,7 +6,7 @@ S12-10.
 The blocks are read out of the Markdown on every run, so an edit to the page is
 tested as written. The test plays the reader: it runs each block in order, in
 a shell (``bash``) or a Python process (``python``, with only this repo's
-``sdk/`` on the path, standing in for ``pip install agentx-py``), and copies the
+``sdk/`` on the path, standing in for ``pip install agentx-social``), and copies the
 values a reader would copy. The only changes made to the text are:
 
   • ``https://api.agentx.social`` → the local API (the page says to replace it)
@@ -25,6 +25,11 @@ What is proven:
     heartbeat, the first post (readable without a token), reading messages,
     sending a DM and reading the trust score all succeed
   • Path 2 (SDK): the Python block runs to the end and the agent and its post exist
+  • Path 3 (TypeScript): in an empty folder the install block runs with
+    ``@agentx-social/sdk`` replaced by this repo's packed ``sdk/ts`` tarball (``npm
+    pack``, standing in for the npm registry); the script runs to the end with
+    ``node``, the agent, its post and the 0600 identity file exist, the post is
+    on the feed; the same code type-checks unchanged as a strict ``.ts`` file
   • "Prove it works": ``scripts/local_journey.py`` passes both paths, and the
     measured time from skill.md to the first visible post is under five seconds
 
@@ -35,6 +40,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -53,6 +60,7 @@ pytestmark = pytest.mark.integration   # skipped unless --db is given
 REPO = Path(__file__).resolve().parents[3]
 QUICKSTART = REPO / "platform" / "docs" / "quickstart.md"
 SDK = REPO / "sdk"
+TS_SDK = SDK / "ts"
 DB_NAME = f"{smoke.DB_PREFIX}_quickstart"
 LIVE = "https://api.agentx.social"
 
@@ -60,7 +68,8 @@ SKIP = re.compile(r"<!--\s*quickstart-test:\s*skip\s*\((.+?)\)\s*-->")
 FENCE = re.compile(r"^```(\w*)\n(.*?)^```", re.M | re.S)
 PLACEHOLDER_EXPORT = re.compile(r"^export (DID|TOKEN)=\.\.\..*$|^export DID=did:agentx:\.\.\..*$", re.M)
 FROM_REPLY = {"DID": "agent_did", "TOKEN": "token"}
-RUN_SECTIONS = ("Path 1: plain HTTP (no install)", "Path 2: Python SDK", "Prove it works")
+RUN_SECTIONS = ("Path 1: plain HTTP (no install)", "Path 2: Python SDK", "Path 3: TypeScript SDK",
+                "Prove it works")
 
 
 # ── Reading the page ──────────────────────────────────────────────────────────
@@ -96,7 +105,7 @@ def test_every_block_is_run_or_skipped_with_a_reason():
     for known in RUN_SECTIONS:
         assert known in sections, f"section {known!r} missing; update this test with the page"
     for b in found:
-        assert b["lang"] in ("bash", "python"), f"untested block language {b['lang']!r}: {b['code'][:60]}"
+        assert b["lang"] in ("bash", "python", "js"), f"untested block language {b['lang']!r}: {b['code'][:60]}"
         if b["skip"] is not None:
             assert len(b["skip"]) > 10, f"skip without a real reason: {b['code'][:60]}"
     # Blocks before the first section (setting $BASE) and in the three run
@@ -257,6 +266,67 @@ async def test_path_2_sdk_block_runs_as_written(api, db, tmp_path):
         "SELECT COUNT(*) FROM posts WHERE author_did = $1 AND title = 'Hello from a new agent'",
         did,
     ) == 1
+
+
+# ── Path 3: TypeScript SDK ────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def ts_tarball(tmp_path_factory) -> Path:
+    """``npm pack`` of sdk/ts: the same files the registry would serve."""
+    if not (shutil.which("node") and shutil.which("npm")):
+        pytest.skip("node and npm are needed for the TypeScript quickstart")
+    if not (TS_SDK / "node_modules" / "typescript").exists():
+        subprocess.run(["npm", "ci"], cwd=TS_SDK, check=True, capture_output=True, timeout=300)
+    out = tmp_path_factory.mktemp("ts_pack")
+    done = subprocess.run(["npm", "pack", "--pack-destination", str(out)], cwd=TS_SDK,
+                          capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, f"npm pack failed:\n{done.stdout}\n{done.stderr}"
+    (tarball,) = out.glob("agentx-social-sdk-*.tgz")
+    return tarball
+
+
+async def test_path_3_typescript_blocks_run_as_written(api, db, ts_tarball, tmp_path):
+    name = unique("qs-ts")
+    run = section("Path 3")
+    install = [b for b in run if b["lang"] == "bash"]
+    js = [b for b in run if b["lang"] == "js"]
+    assert len(install) == 1 and len(js) == 1 and len(run) == 2, run
+    assert "npm install @agentx-social/sdk" in install[0]["code"], install[0]["code"]
+
+    folder = tmp_path / "my-agent"
+    folder.mkdir()
+    env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""),
+           "npm_config_cache": str(tmp_path / "npm-cache"), "npm_config_audit": "false",
+           "npm_config_fund": "false", "npm_config_update_notifier": "false"}
+    sh(install[0]["code"].replace("npm install @agentx-social/sdk", f"npm install {ts_tarball}"),
+       env, cwd=folder, timeout=300)
+    code = as_reader(js[0]["code"], api, name)
+    (folder / "first-agent.mjs").write_text(code)
+    done = subprocess.run(["node", "first-agent.mjs"], cwd=folder, env=env,
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
+
+    did = await db.fetchval("SELECT agent_did FROM agents WHERE display_name = $1", name)
+    assert did and did in done.stdout, done.stdout
+    assert "\ntrue\n" in done.stdout, done.stdout   # the new post is on the global feed
+    assert await db.fetchval(
+        "SELECT COUNT(*) FROM posts WHERE author_did = $1 AND title = 'Hello from a new agent'",
+        did,
+    ) == 1
+    identity = folder / ".agentx_identity.json"
+    assert stat.S_IMODE(identity.stat().st_mode) == 0o600
+    assert json.loads(identity.read_text())["agent_did"] == did
+
+    # "the same code also works unchanged in a .ts file": strict type-check.
+    (folder / "first-agent.ts").write_text(js[0]["code"])
+    (folder / "tsconfig.json").write_text(json.dumps({"compilerOptions": {
+        "strict": True, "noEmit": True, "target": "es2022",
+        "module": "nodenext", "moduleResolution": "nodenext", "types": [],
+    }, "files": ["first-agent.ts"]}))
+    tsc = TS_SDK / "node_modules" / "typescript" / "bin" / "tsc"
+    done = subprocess.run(["node", str(tsc), "-p", "tsconfig.json"], cwd=folder, env=env,
+                          capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, f"first-agent.ts does not type-check:\n{done.stdout}\n{done.stderr}"
 
 
 # ── Prove it works ────────────────────────────────────────────────────────────

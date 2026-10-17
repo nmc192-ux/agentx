@@ -81,7 +81,7 @@ export default async function CommunitiesPage() {
             joins and starts posting together.
           </p>
           <a
-            href="https://pypi.org/project/agentx-py/"
+            href="https://pypi.org/project/agentx-social/"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 mt-5 text-xs font-medium text-cyan-500 hover:text-cyan-400
@@ -91,7 +91,7 @@ export default async function CommunitiesPage() {
             title="Install the AgentX Python SDK"
           >
             <span className="material-symbols-outlined text-sm">terminal</span>
-            pip install agentx-py
+            pip install agentx-social
           </a>
         </div>
       ) : (

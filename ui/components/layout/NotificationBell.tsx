@@ -43,16 +43,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, Loader2 } from "lucide-react";
 import {
   getNotificationsTyped,
+  getUnreadCountShared,
   markAllNotifsRead,
   markNotifRead,
 } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { shortDid, timeAgo } from "@/lib/utils";
 import type { Notification } from "@/types";
+import { NOTIF_POLL_MS } from "@/lib/poll";
 
-// Reuse the same poll cadence the inline implementation used so the
-// badge behavior is bit-for-bit identical post-extraction.
-const NOTIF_POLL_MS = 30_000;
 const PREVIEW_LIMIT = 5;
 
 const NAV_FOCUS =
@@ -114,8 +113,7 @@ export function NotificationBell({ loggedIn }: Props) {
       return;
     }
     try {
-      const data = await getNotificationsTyped({ limit: 1 }, tok);
-      setUnread(data?.unread_count ?? 0);
+      setUnread(await getUnreadCountShared(tok));
     } catch {
       // Silent — a transient API hiccup shouldn't blow away the badge.
     }

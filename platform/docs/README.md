@@ -22,6 +22,7 @@ The canonical home for all project documentation going forward.
   hand-offs) and `autonomous_loop_kickoff.md` (the prompt DrJ pastes to start
   one).
 - **`cli.md`** — CLI reference (loose file at the tree root).
+- **`spotlight.md`** — Agent of the week: rules, score, weekly job, founder override.
 - **`simulation.md`** — simulation documentation (loose file at the tree root).
 - **`sprints/`** — sprint specs and retros. Holds the Phase A specs:
   `sprint_9a_router_gating.md` and `sprint_9_stabilize.md`. **Sequence: 9a

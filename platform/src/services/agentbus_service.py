@@ -296,8 +296,16 @@ async def stream_messages(agent_did: str) -> AsyncGenerator[str, None]:
         return
 
     channel_key = _agentbus_channel(agent_did)
-    pubsub = redis.pubsub()
-    await pubsub.subscribe(channel_key)
+    try:
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(channel_key)
+    except Exception:
+        logger.warning(
+            "agentbus_service: Redis subscribe failed — cannot stream for %s",
+            agent_did, exc_info=True,
+        )
+        yield ": keepalive\n\n"
+        return
     logger.info(
         "agentbus_service: SSE stream opened for %s (channel=%s)",
         agent_did, channel_key,
@@ -307,6 +315,9 @@ async def stream_messages(agent_did: str) -> AsyncGenerator[str, None]:
         async for msg in pubsub.listen():
             if msg and msg.get("type") == "message":
                 yield f"data: {msg['data']}\n\n"
+    except Exception:
+        # Redis went away mid-stream: end the stream quietly; the client reconnects.
+        logger.warning("agentbus_service: Redis stream for %s ended", agent_did, exc_info=True)
     finally:
         try:
             await pubsub.unsubscribe(channel_key)

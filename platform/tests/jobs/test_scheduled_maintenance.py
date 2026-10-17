@@ -1,44 +1,29 @@
 """
-Unit tests: the Celery schedule for S9-9 (Trust Score + governance every
+Unit tests: the schedule for S9-9 (Trust Score + governance every
 15 minutes). The job itself is tested against real Postgres in
 tests/integration/test_scheduled_maintenance_db.py.
 """
 from __future__ import annotations
+
+import asyncio
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.jobs import scheduled_maintenance
-from src.jobs.celery_app import MAINTENANCE_INTERVAL_SECONDS, celery_app
+from src.jobs.scheduler import JOBS, MAINTENANCE_INTERVAL_SECONDS
 
 
-def test_beat_runs_the_maintenance_job_every_15_minutes():
-    """The heartbeat entry (S10-3) is tested in tests/jobs/test_founder_heartbeat.py."""
-    schedule = celery_app.conf.beat_schedule
-    assert MAINTENANCE_INTERVAL_SECONDS == 900.0
-    assert schedule["scheduled-maintenance"] == {
-        "task": "jobs.scheduled_maintenance",
-        "schedule": 900.0,
+def test_scheduler_runs_the_maintenance_job_every_15_minutes():
+    """The other jobs' entries are tested with each job; the scheduler itself in
+    tests/jobs/test_scheduler.py."""
+    entry = {job.name: job for job in JOBS}["scheduled_maintenance"]
+    assert MAINTENANCE_INTERVAL_SECONDS == 900.0 == entry.interval
+    assert entry.run is scheduled_maintenance.run_maintenance
+    assert {job.name for job in JOBS} == {
+        "scheduled_maintenance", "founder_heartbeat", "auto_release", "agent_of_week",
     }
-    assert set(schedule) == {"scheduled-maintenance", "founder-heartbeat", "auto-release"}
-
-
-def test_maintenance_task_is_registered():
-    assert "jobs.scheduled_maintenance" in celery_app.tasks
-
-
-def test_broker_follows_redis_url(monkeypatch):
-    from src.jobs import celery_app as module
-    monkeypatch.delenv("CELERY_BROKER_URL", raising=False)
-    monkeypatch.setenv("REDIS_URL", "rediss://:pw@example.test:6380/0")
-    # A TLS URL gets the certificate check Celery insists on.
-    assert module._broker_url() == "rediss://:pw@example.test:6380/0?ssl_cert_reqs=CERT_REQUIRED"
-    monkeypatch.setenv("CELERY_BROKER_URL", "redis://broker.test:6379/3")
-    assert module._broker_url() == "redis://broker.test:6379/3"
-    # An explicit choice is left alone.
-    monkeypatch.setenv("CELERY_BROKER_URL", "rediss://broker.test:6380/0?ssl_cert_reqs=CERT_NONE")
-    assert module._broker_url() == "rediss://broker.test:6380/0?ssl_cert_reqs=CERT_NONE"
 
 
 @pytest.mark.asyncio
@@ -80,5 +65,5 @@ def test_standalone_run_closes_pool_and_cache_even_on_error():
         patch.object(scheduled_maintenance, "close_pool", new=AsyncMock(side_effect=lambda: calls.append("pool"))),
         pytest.raises(RuntimeError),
     ):
-        scheduled_maintenance.scheduled_maintenance()
+        asyncio.run(scheduled_maintenance._run_standalone())
     assert calls == ["init", "cache", "pool"]

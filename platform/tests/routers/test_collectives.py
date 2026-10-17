@@ -57,7 +57,8 @@ class TestCreateCollective:
 
         with patch("src.routers.collectives.transaction") as mock_tx:
             mock_conn = AsyncMock()
-            mock_conn.fetchrow.return_value = _collective_row()
+            # CL-1: the creation-limit read comes first, then the insert.
+            mock_conn.fetchrow.side_effect = [{"made": 0, "wait": None}, _collective_row()]
             mock_conn.execute.return_value  = None
             mock_tx.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_tx.return_value.__aexit__  = AsyncMock(return_value=False)
@@ -138,8 +139,10 @@ class TestGetCollective:
         col_id = uuid.uuid4()
         with patch("src.routers.collectives.get_db") as mock_db:
             mock_conn = AsyncMock()
-            # first fetchrow = collective, second fetch = members
-            mock_conn.fetchrow.return_value = _collective_row(col_id=col_id)
+            # first fetchrow = visibility (CL-8a), second = collective, fetch = members
+            mock_conn.fetchrow.side_effect = [
+                {"is_public": True, "active": False}, _collective_row(col_id=col_id),
+            ]
             mock_conn.fetch.return_value    = []  # no members
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
@@ -171,7 +174,8 @@ class TestJoinCollective:
             patch("src.routers.collectives.transaction") as mock_tx,
         ):
             mock_conn = AsyncMock()
-            mock_conn.fetchval.return_value = 1  # collective exists
+            # collective exists, caller has no row in it
+            mock_conn.fetchrow.return_value = {"collective_id": col_id, "status": None}
             mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
             mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
 
@@ -245,8 +249,20 @@ class TestApproveMember:
 
 # ── Phase 6: New endpoint tests ───────────────────────────────────────────────
 
+def _visible(is_public=True, active=False, missing=False):
+    """Patch get_db so the CL-8a visibility read answers for the collective."""
+    ctx = patch("src.routers.collectives.get_db")
+    mock_db = ctx.start()
+    conn = AsyncMock()
+    conn.fetchrow.return_value = None if missing else {"is_public": is_public, "active": active}
+    mock_db.return_value.__aenter__ = AsyncMock(return_value=conn)
+    mock_db.return_value.__aexit__  = AsyncMock(return_value=False)
+    return ctx
+
+
 class TestListMembers:
-    """GET /collectives/{id}/members — delegates to collective_service.get_members"""
+    """GET /collectives/{id}/members — delegates to collective_service.get_members
+    once the collective is visible to the caller (public, or ACTIVE member)."""
 
     @pytest.mark.asyncio
     async def test_returns_200_with_members(self, client):
@@ -262,11 +278,13 @@ class TestListMembers:
         from src.models.collective import CollectiveMemberResponse
         member_model = CollectiveMemberResponse(**member)
 
+        ctx = _visible()
         with patch(
             "src.routers.collectives.collective_service.get_members",
             new=AsyncMock(return_value=[member_model]),
         ):
             response = await client.get(f"/collectives/{col_id}/members")
+        ctx.stop()
 
         assert response.status_code == 200
         data = response.json()
@@ -278,11 +296,13 @@ class TestListMembers:
     async def test_returns_empty_list_for_new_collective(self, client):
         col_id = uuid.uuid4()
 
+        ctx = _visible()
         with patch(
             "src.routers.collectives.collective_service.get_members",
             new=AsyncMock(return_value=[]),
         ):
             response = await client.get(f"/collectives/{col_id}/members")
+        ctx.stop()
 
         assert response.status_code == 200
         assert response.json() == []
@@ -291,11 +311,13 @@ class TestListMembers:
     async def test_returns_404_for_missing_collective(self, client):
         col_id = uuid.uuid4()
 
+        ctx = _visible(missing=True)
         with patch(
             "src.routers.collectives.collective_service.get_members",
             new=AsyncMock(side_effect=ValueError("Collective not found")),
         ):
             response = await client.get(f"/collectives/{col_id}/members")
+        ctx.stop()
 
         assert response.status_code == 404
 

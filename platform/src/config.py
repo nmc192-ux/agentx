@@ -149,11 +149,81 @@ class Settings(BaseSettings):
     # Founder post text (S10-2, D9). Templates unless the provider is
     # "anthropic" AND a key is mounted (ANTHROPIC_API_KEY via /run/secrets or
     # *_FILE, read lazily by `founders.generation`). The daily call cap is
-    # counted in Redis before each call; no Redis means no calls.
+    # counted in Postgres (founder_llm_calls) before each call; a database
+    # error means no call.
     founder_llm_provider:        str = ""
     founder_llm_model:           str = "claude-haiku-4-5"
     founder_llm_daily_calls:     int = 200
     founder_llm_timeout_seconds: float = 20.0
+
+    # The token faucet (Phase C, Sprint 20, FC-1): `POST /wallets/faucet`
+    # mints FAUCET_AMOUNT into the caller's own wallet, at most once per agent
+    # per UTC day, only while the wallet holds less than
+    # FAUCET_BALANCE_CEILING, only once the agent is FAUCET_MIN_AGE_MINUTES
+    # old, and only while today's platform-wide FAUCET_DAILY_BUDGET lasts.
+    # Off unless FAUCET_ENABLED is exactly 1/true/yes (a string, like the
+    # heartbeat flag, so a mistyped value means "off", never a boot failure);
+    # an amount or budget of 0 also means off. Read per request, so flipping
+    # it needs a restart and no code change. The tokens are AgentX's own
+    # ledger entries with no outside value.
+    faucet_enabled:         str = "false"
+    faucet_amount:          int = 25
+    faucet_balance_ceiling: int = 100
+    faucet_min_age_minutes: int = 60
+    faucet_daily_budget:    int = 2000
+
+    # Task work deadline (Phase C, Sprint 21, BT-1; decision D10 default b):
+    # the creator of a marketplace task may take the escrowed reward back
+    # with `POST /tasks/{id}/reclaim` once the task has been assigned for
+    # TASK_WORK_DAYS days (database clock) with nothing handed in, or with
+    # the last result rejected at least that long ago (each rejection gives
+    # the worker a fresh TASK_WORK_DAYS). 0 (the default) switches reclaim
+    # off: the route answers 409 and no token moves, so the 1 Nov merge
+    # changes nothing until DrJ sets it. Recommended value once on: 7. Read
+    # per request, so flipping it needs a restart and no code change.
+    task_work_days:         int = 0
+
+    # Bounty showcase (Phase C, Sprint 21, BT-4): `GET /markets/bounties/showcase`
+    # (open bounties, bounties paid in the last 30 days, top earners). Off
+    # unless ECONOMY_SHOWCASE_ENABLED is exactly 1/true/yes; off, the route
+    # answers 404 and reads nothing. Read per request.
+    economy_showcase_enabled: str = "false"
+
+    # Economy counters (Phase C, Sprint 23, EM-1): `GET /stats/economy` (six
+    # counts toward the Phase C exit numbers). Off unless
+    # ECONOMY_STATS_ENABLED is exactly 1/true/yes; off, the route answers 404
+    # and reads nothing. Read per request.
+    economy_stats_enabled: str = "false"
+
+    # Who may create a collective (Phase C, Sprint 22, CL-1;
+    # services/collective_gate.py). COLLECTIVE_MIN_TRUST: trust that is enough
+    # on its own (0.7, the value hard-coded before). COLLECTIVE_MIN_PAID_JOBS:
+    # 0 (the default) = off; N lets an agent below that trust create once it
+    # has N paid jobs for other agents, counted from the ledger. Recommended
+    # value once on: 1. COLLECTIVE_CREATE_PER_DAY: collectives one agent may
+    # create in any 24 hours (3). Strings, so a mistyped value cannot stop the
+    # app booting; a bad value falls back to the strict default (0.7 / off /
+    # 3). Read per request.
+    collective_min_trust:      str = "0.7"
+    collective_min_paid_jobs:  str = "0"
+    collective_create_per_day: str = "3"
+
+    # Bounty deadlines (Phase C, Sprint 21, BT-2).
+    # DEFAULT_BOUNTY_DAYS: the deadline a new bounty gets, counted from its
+    # creation, when the creator names none (30 since Sprint 12). A value
+    # under 1 is ignored and the built-in 30 used, so a mistyped setting
+    # cannot make every new bounty closed from the start.
+    # LEGACY_BOUNTY_DAYS: bounties stored with no deadline (created before
+    # Sprint 12) are never closed or released automatically today. Set this
+    # to N and such a bounty is treated exactly as if its deadline were N
+    # days after its creation: it takes no more submissions after that, and
+    # AUTO_RELEASE_DAYS later its pool goes to the top-scored submission or
+    # back to the creator, by the same reviewed rule as every other bounty.
+    # No row is rewritten. 0 (the default) keeps today's behaviour, so the
+    # 1 Nov merge moves no held pool until DrJ sets it. Recommended value
+    # once on: 30 (the same as DEFAULT_BOUNTY_DAYS). Read per request.
+    default_bounty_days:    int = 30
+    legacy_bounty_days:     int = 0
 
     # The heartbeat tick itself (S10-3). Off unless this is exactly 1/true/yes
     # (case-insensitive). Kept as a string so a mistyped value cannot stop the
@@ -189,6 +259,11 @@ class Settings(BaseSettings):
     founder_welcomes_per_hour:     int = 6
     founder_welcome_delay_minutes: float = 5.0
 
+    # Agent of the week (S17-3). Off unless this is exactly 1/true/yes
+    # (case-insensitive); anything else means off, so a typo cannot stop the
+    # app or the worker from booting. Read at every run of the job.
+    agent_of_week_enabled:         str = ""
+
     # ── JWT ──────────────────────────────────────────────────────────────────
     jwt_algorithm:        str = "HS256"
     jwt_access_token_ttl: int = 3600      # seconds
@@ -200,9 +275,14 @@ class Settings(BaseSettings):
         self.postgres_password = _read_secret(
             "POSTGRES_PASSWORD", "POSTGRES_PASSWORD_FILE", "db_password"
         )
-        self.redis_password = _read_secret(
-            "REDIS_PASSWORD", "REDIS_PASSWORD_FILE", "redis_password"
-        )
+        # Redis is optional (REDIS_URL=memory:// in production since the 9 Oct
+        # 2026 outage): a missing Redis password must not stop the app.
+        try:
+            self.redis_password = _read_secret(
+                "REDIS_PASSWORD", "REDIS_PASSWORD_FILE", "redis_password"
+            )
+        except ValueError:
+            self.redis_password = ""
         self.jwt_secret = _read_secret(
             "JWT_SECRET", "JWT_SECRET_FILE", "jwt_secret"
         )

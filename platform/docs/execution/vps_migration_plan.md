@@ -4,6 +4,10 @@
 cutover**, and for at least 7 days after it.
 **Written:** engine cycle 88, 2026-10-04 (PLAN step P-7). **Before this:** H19 (the address
 `api.agentx.social`, pointing at Fly) and the merge of `engine/phase-a`.
+**Update cycle 178 (DB-1):** the database now moves too. Neon's free compute cannot carry the live
+API (`engine/free_tier_audit.md`), so a `db` container joins the VPS stack and Neon becomes a
+frozen fallback. Where this plan says "Neon does not move" or keeps Fly as a warm standby on the
+shared database, `db_move_runbook.md` takes precedence.
 
 ## 1. The idea in one paragraph
 
@@ -47,13 +51,23 @@ What each line decides:
 
 ## 3. Docker: what runs on the VPS
 
-Four containers, one `docker compose` file, kept in the repo at `deploy/vps/` (engine step
-V-2 writes them; nothing exists yet):
+**Updated cycle 145 (option B, as built).** The files exist in `deploy/vps/`: `docker-compose.yml`,
+`settings.env` (Fly's `[env]` values), `secrets.env.example` (names only), `compose.env.example`,
+`agentx.caddy`, `deploy.sh`, `smoke.sh`. Pink Popcorn's own Caddy already serves 80/443 (H21), so
+AgentX runs **no Caddy of its own**: three containers (`api-1`, `api-2`, `scheduler`). The API
+copies sit on `agentx_edge` (`PROXY_NETWORK`, 10.250.0.0/24), a small network shared only with
+that Caddy (H29, cycle 227: Caddy's own network also holds Pink Popcorn's app, which must not
+reach the API directly); `deploy.sh` creates it, connects Caddy and refuses to deploy if anything
+else is on it. The table's `caddy` row below is the shared one.
+Secrets file `/etc/agentx/api.env` is `root:deploy`, mode `640` (compose reads it as the
+`deploy` user), not root-only. DrJ's step-by-step is `HUMAN_ACTIONS.md` H30.
+
+Four containers, one `docker compose` file, kept in the repo at `deploy/vps/`:
 
 | Container | Image | Command | Exposed to the internet? |
 |---|---|---|---|
 | `api-1`, `api-2` | the existing `platform/Dockerfile.fly` image, tagged with the git commit | `uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=<caddy's fixed private address>` | **No.** Only Caddy can reach them, on a private Docker network. |
-| `scheduler` | same image | `celery -A src.jobs.celery_app worker --beat --concurrency 1 --loglevel info` (exactly what H9 would run on Fly) | No. It only talks out to Neon and Upstash. |
+| `scheduler` | same image | `python -m src.jobs.scheduler` (the Redis-free scheduler since cycle 164; the same line H34 puts in `fly.toml`) | No. It only talks out to Neon. |
 | `caddy` | `caddy:2` | reads `deploy/vps/Caddyfile` | Yes, ports 80 and 443 only. |
 
 Points that are easy to get wrong:
@@ -107,7 +121,12 @@ api.agentx.social, api-vps.agentx.social {
 
 Caddy requests and renews Let's Encrypt certificates by itself. WebSockets pass through `reverse_proxy` with no extra settings.
 
-**Option B: Pink Popcorn already runs a proxy on 80/443.** We add the same site block to it
+**Option B (chosen, H21): Pink Popcorn already runs a proxy on 80/443. As built:** the site block
+is `deploy/vps/agentx.caddy`, appended to Pink Popcorn's Caddyfile (only that one file is mounted
+into its container, so `import` of a neighbouring file would not work) and `caddy reload`. Caddy
+reaches `api-1:8000`/`api-2:8000` over `agentx_edge`; nothing is published on the host (the paragraph below describes the nginx variant and is not used).
+
+**Option B, general description:** We add the same site block to it
 (for Caddy, an `import` line; for nginx, a `server` block with `proxy_pass`,
 `proxy_http_version 1.1`, the `Upgrade`/`Connection` headers for WebSockets, and
 `X-Forwarded-For`). The `api-1`/`api-2` containers are then published on `127.0.0.1:8001`/`8002` only, never on
@@ -265,9 +284,9 @@ switch-off Wednesday 18 November 2026, later if `fly.dev` still gets callers.
 | H19 | DrJ | `api.agentx.social` → Fly (DNS + Fly certificate) | nothing |
 | H21 | DrJ | VPS facts (§2), read-only | nothing |
 | V-1 | engine (T2) | Website points at `api.agentx.social`, CSP updated, tests | nothing (merge after H19) |
-| V-2 | engine (T2) | `deploy/vps/`: compose file, Caddyfile (option A or B), `api.env.example`, `smoke.sh`; checked by starting the stack locally against local Postgres/Redis and running the smoke script | H21 |
-| V-3 | engine (T2) | `.github/workflows/deploy-vps.yml`, manual trigger only, `production` environment approval; `NEEDS-DELIBERATE-MERGE:` | V-2 |
-| H22 | DrJ | Prepare the VPS: Docker, firewall, `deploy` user and key, `/etc/agentx/api.env` (with Fly's `JWT_SECRET` copied over unseen), `api-vps` DNS record, first deploy, uptime monitor | merge of V-1..V-3, H21 |
+| V-2 ✔ | engine (T2) | (done, Sprint 16) `deploy/vps/`: compose file, Caddyfile (option A or B), `api.env.example`, `smoke.sh`; checked by starting the stack locally against local Postgres/Redis and running the smoke script | H21 |
+| V-3 ✔ | engine (T2) | (done, Sprint 16) `.github/workflows/deploy-vps.yml`, manual trigger only, `production` environment approval; `NEEDS-DELIBERATE-MERGE:` | V-2 |
+| H22→H30 | DrJ | (now `HUMAN_ACTIONS.md` H30, written cycle 145) Prepare the VPS: Docker, firewall, `deploy` user and key, `/etc/agentx/api.env` (with Fly's `JWT_SECRET` copied over unseen), `api-vps` DNS record, first deploy, uptime monitor | merge of V-1..V-3, H21 |
 | H23 | DrJ | Cutover day (§9) | H22, Neon latency OK |
 | H24 | DrJ | D + 7: downsize Fly | H23 |
 | H25 | DrJ | D + 30 or later: Fly off | H24, 7 quiet days |

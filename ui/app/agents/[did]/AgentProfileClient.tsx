@@ -13,6 +13,7 @@ import {
   unfollowAgent,
   getFollowers,
   getFollowing,
+  getFollowStatus,
   listPosts,
   getAgentCapabilities,
   getAgentServices,
@@ -151,23 +152,20 @@ export function AgentProfileClient({
   }, []);
 
   // Followers: fetch once on mount. Doubles as the source for (a) the
-  // follower-count badge, (b) the initial follow-state of the viewer, and
-  // (c) the data that backs the Followers tab when the user selects it.
+  // follower-count badge and (b) the data that backs the Followers tab
+  // when the user selects it. The viewer's own follow-state comes from
+  // getFollowStatus below (right past the first 50 followers).
   useEffect(() => {
     let active = true;
     (async () => {
       setFollowerLoading(true);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getFollowers(did, { limit: 200 }, token);
+        const resp = await getFollowers(did, { limit: 50 }, token);
         if (!active) return;
         setFollowerList(resp.agents ?? []);
         setFollowerTotal(resp.total ?? resp.agents?.length ?? 0);
         setFollowerCount(resp.total ?? resp.agents?.length ?? 0);
-        if (loggedIn && selfDid && selfDid !== did) {
-          const isFollowing = resp.agents?.some((a) => a.agent_did === selfDid) ?? false;
-          setFollowing(isFollowing);
-        }
       } catch {
         if (active) {
           setFollowerList([]);
@@ -177,6 +175,20 @@ export function AgentProfileClient({
         if (active) setFollowerLoading(false);
       }
     })();
+    return () => {
+      active = false;
+    };
+  }, [did]);
+
+  // Does the viewer follow this agent? One cheap lookup (EG-6).
+  useEffect(() => {
+    if (!loggedIn || !selfDid || selfDid === did) return;
+    const token = getToken();
+    if (!token) return;
+    let active = true;
+    getFollowStatus([did], token)
+      .then((set) => { if (active) setFollowing(set.has(did)); })
+      .catch(() => { /* silent — button defaults to "Follow" */ });
     return () => {
       active = false;
     };
@@ -192,7 +204,7 @@ export function AgentProfileClient({
       setFollowingLoading(true);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getFollowing(did, { limit: 200 }, token);
+        const resp = await getFollowing(did, { limit: 50 }, token);
         if (!active) return;
         setFollowingList(resp.agents ?? []);
         setFollowingTotal(resp.total ?? resp.agents?.length ?? 0);
@@ -211,30 +223,33 @@ export function AgentProfileClient({
   }, [did]);
 
   // Build the viewer's "who I follow" set so Follow/Unfollow buttons inside
-  // the rows render correctly. Only fetched when the viewer is logged in
-  // and looking at someone else's profile (on their own profile, the
-  // following list IS their own following set).
+  // the rows render correctly. On their own profile the following list IS
+  // that set; elsewhere, ask only about the agents in the two lists shown
+  // (getFollowStatus, EG-6) instead of downloading the viewer's own
+  // following list, which also missed anyone past its first 50.
   useEffect(() => {
     if (!loggedIn || !selfDid) return;
-    if (selfDid === did && followingList) {
-      setViewerFollowingSet(new Set(followingList.map((a) => a.agent_did)));
+    if (selfDid === did) {
+      if (followingList) {
+        setViewerFollowingSet(new Set(followingList.map((a) => a.agent_did)));
+      }
       return;
     }
+    if (!followerList || !followingList) return;
+    const token = getToken();
+    if (!token) return;
+    const shown = [...followerList, ...followingList]
+      .map((a) => a.agent_did)
+      .filter((d) => d !== selfDid);
+    if (shown.length === 0) return;
     let active = true;
-    (async () => {
-      try {
-        const token = getToken() ?? undefined;
-        const resp = await getFollowing(selfDid, { limit: 500 }, token);
-        if (!active) return;
-        setViewerFollowingSet(new Set((resp.agents ?? []).map((a) => a.agent_did)));
-      } catch {
-        /* silent — buttons just default to "Follow" */
-      }
-    })();
+    getFollowStatus(shown, token)
+      .then((set) => { if (active) setViewerFollowingSet(set); })
+      .catch(() => { /* silent — buttons just default to "Follow" */ });
     return () => {
       active = false;
     };
-  }, [loggedIn, selfDid, did, followingList]);
+  }, [loggedIn, selfDid, did, followerList, followingList]);
 
   // Load agent's posts
   useEffect(() => {

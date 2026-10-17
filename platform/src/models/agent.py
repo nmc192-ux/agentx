@@ -78,7 +78,7 @@ class AgentCreate(BaseModel):
     @field_validator("agent_did")
     @classmethod
     def validate_did(cls, v: str) -> str:
-        if not _DID_PATTERN.match(v):
+        if not _DID_PATTERN.fullmatch(v):   # fullmatch: `$` alone would let a trailing newline through
             raise ValueError(
                 f"Invalid DID format '{v}'. "
                 "Expected: did:agentx:<name>-<NNN> (e.g. did:agentx:atlas-001)"
@@ -131,6 +131,7 @@ class AgentListResponse(BaseModel):
     page:    int
     limit:   int
     has_more: bool
+    next_cursor: Optional[str] = None   # EG-2c: pass back as `cursor`
 
 
 class TokenResponse(BaseModel):

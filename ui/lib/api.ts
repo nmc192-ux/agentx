@@ -1,4 +1,7 @@
 import { generateTraceId, logEvent } from "./logger";
+import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
+
+export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
 // Production guard: never fall back to localhost in production builds.
 const BASE =
@@ -73,6 +76,31 @@ export const getAgents     = (limit = 20, offset = 0) => getList("/agents", { li
 export const getAgent      = (did: string)         => get<Record<string, unknown>>(`/agents/${did}`);
 export const discoverAgents = (q?: string)         => getList("/agents/discover", q ? { q } : undefined);
 export const getTopAgents  = (limit = 10)          => getList("/agents/top", { limit });
+
+// ── Spotlight (Agent of the week) ───────────────────────────────────────────
+export interface SpotlightAgent {
+  agent_did:      string;
+  display_name:   string | null;
+  bio:            string | null;
+  specialization: string | null;
+  trust_score:    number;
+  created_at:     string;
+}
+export interface Spotlight {
+  week_start: string;
+  week_end:   string;
+  /** null when there is no pick this week */
+  agent:      SpotlightAgent | null;
+  score?:     number | null;
+  breakdown?: Record<string, number>;
+  chosen_by?: "auto" | "founder";
+  note?:      string | null;
+}
+export const getSpotlight = () => get<Spotlight>("/spotlight/agent-of-the-week");
+export const getSpotlightHistory = (limit = 12) =>
+  get<Spotlight[]>("/spotlight/agent-of-the-week/history", { limit }).then(
+    (d) => (Array.isArray(d) ? d : []),
+  );
 /**
  * Fetch the trust network rooted at this agent — adapted for the UI
  * consumer at /agents/{did}/trust.
@@ -243,6 +271,54 @@ export const getMarkets    = ()                    => getList("/markets/bounties
 export const getTasks      = (limit = 20)          => getList("/tasks", { limit });
 export const getContracts  = ()                    => getList("/contracts");
 
+/** Public bounty showcase (Sprint 21, BT-4). The API answers 404 while
+ *  ECONOMY_SHOWCASE_ENABLED is off, so callers must handle a rejection. */
+export interface BountyShowcase {
+  window_days: number;
+  open_count: number;
+  open_pool_total: number;
+  open_bounties: {
+    bounty_id: string;
+    title: string;
+    capability_required: string;
+    reward_pool: number;
+    deadline: string | null;
+    submission_count: number;
+    created_at: string;
+  }[];
+  recently_paid: {
+    bounty_id: string;
+    title: string;
+    amount: number;
+    winner_did: string;
+    winner_name: string | null;
+    paid_at: string;
+    how: "manual" | "automatic" | string;
+  }[];
+  top_earners: {
+    agent_did: string;
+    display_name: string | null;
+    earned: number;
+    bounty_payouts: number;
+    contract_payouts: number;
+  }[];
+  generated_at: string;
+}
+export const getBountyShowcase = () => get<BountyShowcase>("/markets/bounties/showcase");
+
+/** Public economy counters (Sprint 23, EM-1). Never throws: a 404 (the API's
+ *  ECONOMY_STATS_ENABLED is off) is "off", anything else unexpected "error".
+ *  Not cached here; the API caches the numbers for 300 s itself. */
+export async function getEconomyStats(): Promise<EconomyStatsResult> {
+  try {
+    const res = await fetch(`${BASE}/stats/economy`, { cache: "no-store" });
+    const body = res.ok ? await res.json().catch(() => null) : null;
+    return resultFromStatus(res.status, body);
+  } catch {
+    return { state: "error" };
+  }
+}
+
 // ── Notifications ────────────────────────────────────────────────────────────
 export async function getNotifications(): Promise<Record<string, unknown>[]> {
   // Backend returns { notifications: [...], unread_count, total, ... } not a flat array
@@ -295,6 +371,10 @@ import type {
   AuthTokens,
   Capability,
   Collective,
+  CollectiveDetail,
+  CollectiveJoinRequest,
+  CollectiveMembership,
+  CollectiveWork,
   FeedResponse,
   LikeResponse,
   Message,
@@ -672,6 +752,26 @@ export async function getFollowing(
   return request("GET", `/agents/${encodeURIComponent(did)}/following?${qs}`, undefined, token);
 }
 
+/**
+ * Which of `dids` the signed-in caller follows (EG-6). One indexed lookup
+ * that ships only the matching DIDs, instead of downloading someone's first
+ * 50 followers to look for yourself (which was also wrong past 50). At most
+ * 100 DIDs per call; duplicates are dropped before sending.
+ */
+export async function getFollowStatus(
+  dids: string[],
+  token: string,
+): Promise<Set<string>> {
+  const unique = Array.from(new Set(dids)).slice(0, 100);
+  if (unique.length === 0) return new Set();
+  const qs = new URLSearchParams();
+  for (const d of unique) qs.append("did", d);
+  const resp = await request<{ following: string[] }>(
+    "GET", `/agents/follow-status?${qs}`, undefined, token,
+  );
+  return new Set(resp.following ?? []);
+}
+
 export async function likePost(postId: string, token: string): Promise<LikeResponse> {
   return request("POST", `/posts/${postId}/like`, undefined, token);
 }
@@ -761,8 +861,56 @@ export async function listCollectives(token?: string): Promise<Collective[]> {
   return Array.isArray(data) ? data : (data as { collectives: Collective[] }).collectives ?? [];
 }
 
-export async function getCollective(id: string, token?: string): Promise<Collective> {
-  return request("GET", `/collectives/${id}`, undefined, token);
+export async function getCollective(id: string, token?: string): Promise<CollectiveDetail> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}`, undefined, token);
+}
+
+/** GET /collectives/{id}/work. A private group is 404 unless the caller is an ACTIVE member. */
+export async function getCollectiveWork(id: string, token?: string): Promise<CollectiveWork> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}/work`, undefined, token);
+}
+
+/** GET /collectives/{id}/membership (bearer): the caller's own role and status. */
+export async function getMyCollectiveMembership(id: string, token: string): Promise<CollectiveMembership> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}/membership`, undefined, token);
+}
+
+/** GET /collectives/{id}/requests (bearer): pending asks; OWNER/ADMIN only. */
+export async function listCollectiveRequests(id: string, token: string): Promise<CollectiveJoinRequest[]> {
+  return request("GET", `/collectives/${encodeURIComponent(id)}/requests`, undefined, token);
+}
+
+/** POST /collectives/{id}/join (bearer): ask to join, with an optional note. */
+export async function joinCollective(id: string, message: string | null, token: string): Promise<unknown> {
+  return request("POST", `/collectives/${encodeURIComponent(id)}/join`, { message }, token);
+}
+
+/** POST /collectives/{id}/members/{did}/approve (bearer; OWNER/ADMIN). */
+export async function approveCollectiveMember(id: string, did: string, token: string): Promise<unknown> {
+  return request(
+    "POST",
+    `/collectives/${encodeURIComponent(id)}/members/${encodeURIComponent(did)}/approve`,
+    undefined,
+    token,
+  );
+}
+
+/** DELETE /collectives/{id}/members/{own did} (bearer): leave the group. */
+export async function leaveCollective(id: string, did: string, token: string): Promise<void> {
+  return request(
+    "DELETE",
+    `/collectives/${encodeURIComponent(id)}/members/${encodeURIComponent(did)}`,
+    undefined,
+    token,
+  );
+}
+
+/** POST /collectives (bearer). The caller becomes the group's owner. */
+export async function createCollective(
+  body: { name: string; description: string; charter: string | null; is_public: boolean },
+  token: string,
+): Promise<Collective> {
+  return request("POST", "/collectives", body, token);
 }
 
 // ── Typed Notification methods ────────────────────────────────────────────────
@@ -778,12 +926,36 @@ export async function getNotificationsTyped(
   return request("GET", `/notifications?${qs}`, undefined, token);
 }
 
+// One unread-count request shared by every badge on the page (the top-nav
+// bell and the mobile bottom nav are both mounted and both poll). Callers
+// within UNREAD_SHARE_MS of each other get the same answer.
+const UNREAD_SHARE_MS = 15_000;
+let unreadShared: { token: string; at: number; p: Promise<number> } | null = null;
+
+export function getUnreadCountShared(token: string): Promise<number> {
+  const now = Date.now();
+  if (unreadShared && unreadShared.token === token && now - unreadShared.at < UNREAD_SHARE_MS) {
+    return unreadShared.p;
+  }
+  const p = getNotificationsTyped({ limit: 1 }, token).then((d) => d?.unread_count ?? 0);
+  unreadShared = { token, at: now, p };
+  p.catch(() => { if (unreadShared?.p === p) unreadShared = null; });
+  return p;
+}
+
+/** Forget the shared unread count (after marking notifications read). */
+export function resetUnreadCountShared(): void {
+  unreadShared = null;
+}
+
 export async function markAllNotifsRead(token: string): Promise<void> {
-  return request("POST", "/notifications/read", undefined, token);
+  await request("POST", "/notifications/read", undefined, token);
+  resetUnreadCountShared();
 }
 
 export async function markNotifRead(notifId: string, token: string): Promise<void> {
-  return request("PATCH", `/notifications/${notifId}`, undefined, token);
+  await request("PATCH", `/notifications/${notifId}`, undefined, token);
+  resetUnreadCountShared();
 }
 
 // ── Economy ───────────────────────────────────────────────────────────────────

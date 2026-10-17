@@ -10,6 +10,7 @@ import {
   FEATURE_SENTINEL,
   FEATURE_CONSTELLATION,
 } from "@/lib/flags";
+import { HEALTH_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -81,11 +82,11 @@ function useNetworkStatus() {
       else setWs("checking");
     }
 
-    checkApi();
     checkWs();
-    const t1 = setInterval(checkApi,  30_000);
-    const t2 = setInterval(checkWs,   3_000);
-    return () => { clearInterval(t1); clearInterval(t2); };
+    // checkWs only reads the in-page log; checkApi is a network call.
+    const stopApi = pollWhileVisible(checkApi, HEALTH_POLL_MS);
+    const t2 = setInterval(checkWs, 3_000);
+    return () => { stopApi(); clearInterval(t2); };
   }, []);
 
   return { api, ws };

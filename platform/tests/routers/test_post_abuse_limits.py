@@ -133,7 +133,8 @@ class TestPostRateLimit:
              patch("src.routers.posts.emit_event", new=AsyncMock()):
             _mock_tx(tx)
             read = AsyncMock()
-            read.fetchrow.return_value = {"post_id": parent, "author_did": "did:agentx:other"}
+            read.fetchrow.return_value = {"post_id": parent, "author_did": "did:agentx:other",
+                                         "visibility": "PUBLIC", "hidden_at": None, "collective_id": None}
             gdb.return_value.__aenter__ = AsyncMock(return_value=read)
             gdb.return_value.__aexit__ = AsyncMock(return_value=False)
             codes = [
@@ -206,7 +207,8 @@ class TestDuplicate:
              patch("src.routers.posts.emit_event", new=AsyncMock()):
             conn = _mock_tx(tx, fetchval=[uuid.uuid4(), True])
             read = AsyncMock()
-            read.fetchrow.return_value = {"post_id": parent, "author_did": "did:agentx:other"}
+            read.fetchrow.return_value = {"post_id": parent, "author_did": "did:agentx:other",
+                                         "visibility": "PUBLIC", "hidden_at": None, "collective_id": None}
             gdb.return_value.__aenter__ = AsyncMock(return_value=read)
             gdb.return_value.__aexit__ = AsyncMock(return_value=False)
             resp = await client.post(f"/posts/{parent}/replies", json=_update())
