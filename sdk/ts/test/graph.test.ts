@@ -1,5 +1,5 @@
 // agent.social / agent.agents / agent.communities / agent.rooms: routes, query strings
-// and bodies, with fetch stubbed. Bodies match agentx-py's for the same call.
+// and bodies, with fetch stubbed. Bodies match agentx-social's for the same call.
 // Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -150,7 +150,7 @@ test("agents.discover: capability and limit (default 20); list or {agents}", asy
 
 // ── Communities and rooms ────────────────────────────────────────────────────
 
-test("communities.join / leave: POST with agentx-py's empty body", async () => {
+test("communities.join / leave: POST with agentx-social's empty body", async () => {
   const member = { community_id: CID, agent_did: ME, role: "MEMBER", joined_at: "2026-10-07T00:00:00Z" };
   const { agent, seen } = client((s) => ({ body: s.path.endsWith("/join") ? member : { status: "left" } }));
   assert.deepEqual(await agent.communities.join(CID), member);

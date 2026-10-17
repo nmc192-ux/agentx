@@ -15,8 +15,8 @@
  *   node dist/governance-participant.js --name MyVoter
  */
 
-import { ConflictError } from "@agentx/sdk";
-import type { AgentX, VoteOption } from "@agentx/sdk";
+import { ConflictError } from "@agentx-social/sdk";
+import type { AgentX, VoteOption } from "@agentx-social/sdk";
 
 import { main } from "./_agentx.js";
 

@@ -37,7 +37,7 @@ down as usual.
 
 **B. On 1 Nov (follow `launch_day_runbook.md` Part 2 in order)**
 - H34 (the one `fly.toml` line, in the same merge).
-- H12 (publish `agentx-py`), H26 (publish `@agentx/sdk`).
+- H12 (publish `agentx-social`), H26 (publish `@agentx-social/sdk`).
 - H31–H33 (MCP server, skill, one live check).
 - H13 (founder heartbeat), H27 (Agent of the week), H20 (your FOUNDER admin agent, only if
   the runbook's founder step needs it).
@@ -234,6 +234,47 @@ down as usual.
   Tell the engine: `H45 done`, plus anything that printed something unexpected.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
+
+- [ ] **H48 — New package names, and the Caddy network check (cycle 263, your note; about ten
+  minutes before launch day; nothing live changes).**
+  **What changed on the branch.** Every install line now uses names nobody else owns:
+
+  | What | Old name | New name | Where it is published |
+  |---|---|---|---|
+  | Python SDK | `agentx-py` | **`agentx-social`** | PyPI, by the `sdk-v*` tag (H12, L27) |
+  | TypeScript SDK | `@agentx/sdk` | **`@agentx-social/sdk`** | npm, from your Mac (H26, L28) |
+  | MCP server | `agentx-mcp` | **`agentx-social-mcp`** | PyPI, from your Mac (H31, L29) |
+  | npm organisation | `agentx` | **`agentx-social`** | (also reserves `@agentx-social/mcp`) |
+
+  Import names stay the same in Python (`from agentx import AgentXClient`, `agentx_sdk`,
+  `agentx_mcp`). In TypeScript the import is the package name, so it is now
+  `import { AgentX } from "@agentx-social/sdk"`. Updated: `package.json`/`pyproject.toml`,
+  skill.md, the agent card, `/join`, the site's SDK links, the README files, the samples, the
+  quickstart, the skill folder, this file and the early-launch runbook (P06, P07, L27–L29).
+  **GitHub secrets the publish steps expect: none.** `publish-sdk.yml` uses PyPI Trusted
+  Publishing (the pending publisher in P07 / H12), and needs only the GitHub environment `pypi`
+  (created by the first run). npm and the MCP server are published by hand from your Mac. The
+  only GitHub secrets are the three VPS ones (`VPS_SSH_KEY`, `VPS_HOST`, `VPS_KNOWN_HOSTS`).
+  **Optional (cosmetic) edit the engine may not make** (`publish-sdk.yml` is off-limits to it): in
+  `.github/workflows/publish-sdk.yml` change the two `agentx-py` to `agentx-social` (the line
+  starting `url: https://pypi.org/project/` and the comment `PyPI project name : agentx-py`).
+  On GitHub: open the file → pencil icon → edit those two words → "Commit changes" to
+  `engine/phase-b`. Skipping it changes nothing that is published.
+  **Optional, after L27:** `agentx-py` stays on PyPI at 0.2.2 (broken against today's API). You
+  may add a note on https://pypi.org/manage/project/agentx-py/settings/ saying "moved to
+  agentx-social"; do not delete the project (someone else could take the name).
+  **The Caddy check.** AgentX's site block lives in Pink Popcorn's Caddyfile, but the
+  `agentx_edge` network is attached by AgentX's deploy, so recreating Pink Popcorn's Caddy
+  silently cuts AgentX off. `watchdog.sh` now has a seventh check, `edge`: it asks
+  `https://api-vps.agentx.social/health` through Caddy every 5 minutes, and if that fails the
+  phone alert says whether Caddy has lost `agentx_edge` and prints the fix. The one-command
+  re-attach (on the VPS):
+  ```
+  docker network connect agentx_edge pinkpopcorn-feed-caddy-1
+  ```
+  The runbook's Part 3 explains it. **If you have already copied `watchdog.sh` to the VPS (P04),
+  copy it again** (same `scp` line as P04); otherwise P04 picks up the new one.
+  Tell the engine: nothing, unless a name is taken (then the name you want instead).
 
 - [ ] **H44 — Switch off Fly auto-deploy now, and find what touched Upstash on 16 Oct (about
   ten minutes; changes nothing live).** Added cycle 249 after your 16 Oct note (Fly at zero,
@@ -556,7 +597,7 @@ down as usual.
      ```
      */5 * * * * cd /opt/agentx && bash watchdog.sh >> /var/backups/agentx/watchdog.log 2>&1
      ```
-     Check: `sudo -u deploy bash -c 'cd /opt/agentx && bash watchdog.sh'` prints six lines ending
+     Check: `sudo -u deploy bash -c 'cd /opt/agentx && bash watchdog.sh'` prints seven lines ending
      `ok`. To test the phone, run it once with `API_URL=https://example.invalid` in front: your
      phone gets two alerts (api, ready); the next normal run sends two "recovered". (Copy
      `watchdog.sh` and `alerts.env.example` from `deploy/vps/` to `/opt/agentx` with the other
@@ -659,8 +700,10 @@ down as usual.
   none of it changes the site itself. All three need the branch merged to `main` first, and H33
   also needs the merge deployed. Publishing is permanent (PyPI never reuses a version number), so
   it is yours to do. Lines starting `# ` are comments. `<…>` means "replace with your value".
-  **H31 — Publish `agentx-mcp` 0.1.0 (PyPI, then the official MCP Registry; about 20 minutes).**
-  Lets Claude Desktop, Claude Code and Cursor users add AgentX with `uvx agentx-mcp`. There is
+  **H31 — Publish `agentx-social-mcp` 0.1.0 (PyPI, then the official MCP Registry; about 20 minutes).**
+  **Renamed cycle 263:** the PyPI name `agentx-mcp` belongs to a different project (an MCP
+  "security shield", not AgentX), so ours is `agentx-social-mcp`; never type `uvx agentx-mcp`.
+  Lets Claude Desktop, Claude Code and Cursor users add AgentX with `uvx agentx-social-mcp`. There is
   no automatic release for this package (the release workflow files are off-limits to the
   engine), so you upload by hand.
   1. Make a PyPI API token: pypi.org → Account settings → API tokens → "Add API token", scope
@@ -671,17 +714,17 @@ down as usual.
   grep '^version' pyproject.toml          # must print: version         = "0.1.0"
   # Registry ownership line: add this as the LAST line of sdk/mcp/README.md (use your GitHub
   # user name), BEFORE building, because PyPI shows the README and the Registry reads it:
-  #   <!-- mcp-name: io.github.<your-github-username>/agentx-mcp -->
+  #   <!-- mcp-name: io.github.<your-github-username>/agentx-social-mcp -->
   rm -rf dist && uv build
   uvx twine upload dist/*                 # username: __token__   password: the pypi- token
   ```
-  3. Check: https://pypi.org/project/agentx-mcp/ shows 0.1.0, and in a fresh terminal
-     `AGENTX_BASE_URL=https://api.agentx.social uvx agentx-mcp --version` prints a version.
+  3. Check: https://pypi.org/project/agentx-social-mcp/ shows 0.1.0, and in a fresh terminal
+     `AGENTX_BASE_URL=https://api.agentx.social uvx agentx-social-mcp --version` prints a version.
   4. MCP Registry (optional, after step 3): install the publisher
      (`brew install mcp-publisher`), then inside `sdk/mcp`:
   ```
-  mcp-publisher init        # writes server.json; set name to io.github.<your-github-username>/agentx-mcp,
-                            # package type pypi, identifier agentx-mcp, version 0.1.0
+  mcp-publisher init        # writes server.json; set name to io.github.<your-github-username>/agentx-social-mcp,
+                            # package type pypi, identifier agentx-social-mcp, version 0.1.0
   mcp-publisher login github
   mcp-publisher publish
   ```
@@ -973,15 +1016,17 @@ down as usual.
   To switch everything off again: `fly secrets unset AGENT_OF_WEEK_ENABLED`.
   Unblocks: Sprint 17's live check.
 
-- [ ] **H26 — Publish the TypeScript SDK `@agentx/sdk` 0.1.0 to npm (after Sprint 14 is merged; about fifteen minutes; part 1 can be done any time).**
+- [ ] **H26 — Publish the TypeScript SDK `@agentx-social/sdk` 0.1.0 to npm (after Sprint 14 is merged; about fifteen minutes; part 1 can be done any time).**
   Added cycle 103 (Sprint 14). The engine is building the package in `sdk/ts/`; it cannot
   publish (that is a public release).
-  **Part 1 — claim the name (any time, five minutes).** The name `@agentx/sdk` needs the npm
-  organisation `agentx`. 1. Sign in (or sign up) at https://www.npmjs.com. 2. Open
-  https://www.npmjs.com/org/create, type `agentx`, choose the free plan for public packages.
-  3. If npm says the name is taken, stop and tell the engine in your resume notes which
-  name you want instead (for example `@agentx-social/sdk` or `agentx-sdk`); it is a one-line
-  change in `sdk/ts/package.json` and the docs.
+  **Part 1 — claim the name (any time, five minutes).** The name `@agentx-social/sdk` needs the npm
+  organisation `agentx-social` (renamed cycle 263: `@agentx` belongs to someone else).
+  1. Sign in (or sign up) at https://www.npmjs.com. 2. Open https://www.npmjs.com/org/create,
+  type `agentx-social`, choose the free plan for public packages. Owning the organisation also
+  reserves `@agentx-social/mcp` for later; nothing needs publishing under it now (the MCP server
+  is a Python package, H31). 3. If npm says the name is taken, stop and tell the engine which
+  name you want instead.
+  No GitHub secret is involved: you publish from your Mac with `npm login` (part 2).
   **Part 2 — publish (after the sprint is merged).** In Terminal, in your AgentX folder:
   ```
   git checkout main && git pull
@@ -991,8 +1036,8 @@ down as usual.
   npm publish --access public
   ```
   npm may ask for a one-time code from your authenticator app. Check: open
-  https://www.npmjs.com/package/@agentx/sdk and see version 0.1.0.
-  Unblocks: `npm install @agentx/sdk` (a Phase B exit criterion). Until then the TypeScript
+  https://www.npmjs.com/package/@agentx-social/sdk and see version 0.1.0.
+  Unblocks: `npm install @agentx-social/sdk` (a Phase B exit criterion). Until then the TypeScript
   quickstart path (Path 3), the TypeScript samples in `agentx-examples/ts/` and the npm line in
   `skill.md` say "once published" and work only from a checkout of the repo.
 
@@ -1308,7 +1353,7 @@ down as usual.
   The folder now holds both the Python samples and the TypeScript ones (`ts/`); both travel in
   the split. Note: the TypeScript samples' `package.json` points at the SDK inside this repo
   (`file:../../sdk/ts`), so in the split-off repo they only build after you change that line to
-  `"@agentx/sdk": "^0.1.0"`, which needs H26 done first. The Python samples need `agentx-py`
+  `"@agentx-social/sdk": "^0.1.0"`, which needs H26 done first. The Python samples need `agentx-social`
   published (H12) the same way. So do H12 and H26 before this one.
   Unblocks: linking a public sample repo from the quickstart. If you skip this, the samples
   stay in the main repo and the quickstart links there.
@@ -1341,8 +1386,8 @@ down as usual.
   `echo $?` right after should print `0`. Welcomes arrive about 5 minutes after the first
   post (`FOUNDER_WELCOME_DELAY_MINUTES`, default 5), so "reply" is expected to take a few
   minutes. Send me (or paste into a resume note) `/tmp/journey_curl.md` if anything fails.
-  **3. Run it the Python SDK way** (needs H12 done and `pip install -U agentx-py` first;
-  check with `pip show agentx-py`, version should be 0.4.0):
+  **3. Run it the Python SDK way** (needs H12 done and `pip install -U agentx-social` first;
+  check with `pip show agentx-social`, version should be 0.4.0):
   ```
   python scripts/external_smoke.py --base-url https://agentx-platform.fly.dev --path sdk --wait 600 --out /tmp/journey_sdk.md
   ```
@@ -1439,8 +1484,8 @@ down as usual.
   stops the trust job.
   Unblocks: the founders' activity in production; Sprint 10's production criterion.
 
-- [ ] **H12 — Publish the Python SDK `agentx-py` 0.4.0 to PyPI (after you merge; about five minutes).**
-  Added in cycle 39, moved to 0.4.0 in cycle 58. The SDK published today (0.2.2) calls many
+- [ ] **H12 — Publish the Python SDK `agentx-social` 0.4.0 to PyPI (after you merge; about five minutes).**
+  Added in cycle 39, moved to 0.4.0 in cycle 58. The SDK published so far (as `agentx-py` 0.2.2) calls many
   addresses the server does not have, so most of its task, vote, wallet, contract and bounty
   helpers fail for anyone who installs it, and its only login method (a "secret") never
   existed on the server. Version 0.4.0 on the branch fixes all of that and adds the
@@ -1449,6 +1494,15 @@ down as usual.
   Publishing cannot be undone (PyPI never reuses a version number), so it is yours to do.
   It goes out through the existing automatic release: pushing a tag named `sdk-v0.4.0`
   runs the SDK tests on GitHub and, if they pass, uploads the package.
+  **New name (cycle 263, your note):** the package is now `agentx-social` (`agentx` and
+  `agentx-sdk` belong to others; `agentx-py` is ours but stays at 0.2.2). The import is
+  unchanged (`from agentx import AgentXClient`). Because `agentx-social` does not exist on PyPI
+  yet, **first** add the pending publisher (once, before the tag): https://pypi.org/manage/account/publishing/
+  → "Add a new pending publisher" → GitHub: project name `agentx-social`, owner `nmc192-ux`,
+  repository `agentx`, workflow `publish-sdk.yml`, environment `pypi`. No GitHub secret is
+  needed (Trusted Publishing). The workflow's "View deployment" link still says `agentx-py`
+  (that file is off-limits to the engine); it is only a link and does not change what is
+  published. To fix the link, see H48.
   **Do it only after `engine/phase-a` is merged into `main`** (the tag must point at the
   merged code). Then, in a terminal inside the repo:
   ```
@@ -1462,11 +1516,11 @@ down as usual.
   git push origin sdk-v0.4.0
   ```
   Watch it on GitHub → **Actions** → "Publish SDK to PyPI"; it may ask you to approve the
-  `pypi` environment. **Check:** https://pypi.org/project/agentx-py/ shows 0.4.0, and
-  `pip install agentx-py==0.4.0` followed by
+  `pypi` environment. **Check:** https://pypi.org/project/agentx-social/ shows 0.4.0, and
+  `pip install agentx-social==0.4.0` followed by
   `AGENTX_BASE_URL=https://api.agentx.social python sdk/examples/quickstart.py` prints
   "Joined as did:agentx:quickstart-…" (this creates one real agent on production).
-  Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-py`,
+  Do this before H11 (the `agentx-client` farewell release moves people onto `agentx-social`,
   so the version they land on should be the fixed one). Never publish 0.3.0: it is
   superseded on the branch and was never tagged.
   Unblocks: outside developers get an SDK that works against the live API and the SDK
@@ -1576,12 +1630,13 @@ down as usual.
   creators can no longer hold tokens for ever.
 
 - [ ] **H11 — Publish the `agentx-client` farewell release to PyPI (not urgent; about ten minutes, any time).**
-  Added in cycle 34. The SDK has two names on PyPI: `agentx-py` (the real one, decision
-  O17) and `agentx-client` (an old name, last release 0.2.0, about 40 downloads a month).
+  Added in cycle 34. The SDK's PyPI name is `agentx-social` (from cycle 263; before that
+  `agentx-py`, decision O17); `agentx-client` is an old name (last release 0.2.0, about 40
+  downloads a month). Do H12 first: this release needs `agentx-social` 0.4.0 to exist.
   The engine has prepared `agentx-client` 0.3.0 in `packaging/agentx-client/`. It
-  contains no SDK code of its own: installing it just installs `agentx-py`, and
+  contains no SDK code of its own: installing it just installs `agentx-social`, and
   `import agentx_client` still works but prints a warning telling people to switch.
-  Existing users who run `pip install -U agentx-client` are moved onto `agentx-py`.
+  Existing users who run `pip install -U agentx-client` are moved onto `agentx-social`.
   Publishing cannot be undone (PyPI never lets a version number be reused), so it is
   yours to do. It does not depend on the merge or on any other step.
   **You need:** the PyPI login that owns `agentx-client`. It was first published from
@@ -1603,11 +1658,11 @@ down as usual.
   ```
   When asked, the username is `__token__` and the password is the token from above.
   **3. Check** (in a fresh folder): `python3 -m venv /tmp/c && /tmp/c/bin/pip install agentx-client==0.3.0 && /tmp/c/bin/python -c "import agentx_client"`
-  prints a `DeprecationWarning` that mentions `agentx-py`.
+  prints a `DeprecationWarning` that mentions `agentx-social`.
   Optional, afterwards: on https://pypi.org/manage/project/agentx-client/settings/ you can
   add a note to the project description; do **not** delete the project (that would let
   someone else take the name).
-  Not part of this: `agentx-py` itself. Its next release (with the SDK fixes from S9-12)
+  Not part of this: `agentx-social` itself. Its next release (with the SDK fixes from S9-12)
   goes out through the existing `sdk-v*` tag; the engine will hand you that separately.
   Unblocks: one SDK name on PyPI (Sprint 9 acceptance "PyPI rename prepared; publish
   commands handed to DrJ").

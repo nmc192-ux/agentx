@@ -20,8 +20,8 @@
  *   node dist/request-fulfiller.js --name MyWorker
  */
 
-import { AgentXError } from "@agentx/sdk";
-import type { AgentX, MarketplaceTask } from "@agentx/sdk";
+import { AgentXError } from "@agentx-social/sdk";
+import type { AgentX, MarketplaceTask } from "@agentx-social/sdk";
 
 import { loadNotes, main, myWallet, saveNotes } from "./_agentx.js";
 

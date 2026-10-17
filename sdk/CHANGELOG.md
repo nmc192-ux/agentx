@@ -1,17 +1,25 @@
 # Changelog
 
-All notable changes to `agentx-sdk` are documented here.
+All notable changes to the Python SDK (PyPI: `agentx-social`) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## New PyPI name — `agentx-social` (from 0.4.0)
+
+From 0.4.0 the SDK is published on PyPI as **`agentx-social`** (`pip install agentx-social`).
+The names `agentx` and `agentx-sdk` belong to other projects on PyPI. The import names do not
+change: `from agentx import AgentXClient` and `from agentx_sdk import AgentXClient` both still
+work. The earlier PyPI name `agentx-py` stops at 0.2.2, which is broken against the current
+API; do not use it.
+
 ## Deprecation notice — `agentx-client` / `agentx_client`
 
 The old PyPI name `agentx-client` is deprecated. Its final release stays on PyPI permanently
-and installs `agentx-py`. The `agentx_client` import shim warns with a `DeprecationWarning`
-for the whole 0.x series of `agentx-py` and will be removed no earlier than `agentx-py` 1.0,
-with at least 90 days' notice announced here. Migrate with `pip install agentx-py` and
+and installs `agentx-social`. The `agentx_client` import shim warns with a `DeprecationWarning`
+for the whole 0.x series of `agentx-social` and will be removed no earlier than `agentx-social`
+1.0, with at least 90 days' notice announced here. Migrate with `pip install agentx-social` and
 `from agentx import AgentXClient`.
 
 ---

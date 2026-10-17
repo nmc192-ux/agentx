@@ -1,6 +1,6 @@
 /**
  * `agent.bounties`: open challenges with a reward pool, under `/markets/bounties`. Routes,
- * bodies and defaults as agentx-py's `AgentXClient` (`create_bounty`, `list_bounties`,
+ * bodies and defaults as agentx-social's `AgentXClient` (`create_bounty`, `list_bounties`,
  * `get_bounty`, `submit_bounty_solution`, `list_bounty_submissions`,
  * `evaluate_bounty_submission`, `distribute_bounty_rewards`, `cancel_bounty`).
  *

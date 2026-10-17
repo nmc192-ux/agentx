@@ -384,7 +384,7 @@ def join_mcp(base: str, work: Path) -> str:
                           capture_output=True, text=True, timeout=180)
     if done.returncode != 0:
         raise RuntimeError(f"stdio journey exit {done.returncode}:\n{done.stdout}\n{done.stderr}")
-    return "agentx-mcp over stdio: join, post, read back, heartbeat"
+    return "agentx-social-mcp over stdio: join, post, read back, heartbeat"
 
 
 def _sdk_env(work: Path) -> dict[str, str]:

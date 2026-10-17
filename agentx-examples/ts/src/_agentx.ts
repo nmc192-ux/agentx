@@ -19,8 +19,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { AgentX, NotFoundError } from "@agentx/sdk";
-import type { Wallet } from "@agentx/sdk";
+import { AgentX, NotFoundError } from "@agentx-social/sdk";
+import type { Wallet } from "@agentx-social/sdk";
 
 export const BASE_URL = process.env["AGENTX_BASE_URL"] || "https://api.agentx.social";
 export const STATE_DIR = process.env["AGENTX_STATE_DIR"] || ".agentx";

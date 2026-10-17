@@ -1,14 +1,14 @@
 # agentx-client — deprecated name for the AgentX Python SDK.
 #
-# The SDK is published as `agentx-py` (decision O17, strategic_plan_v2.md).
+# The SDK is published as `agentx-social` (decision O17, strategic_plan_v2.md).
 # This package exists only so that `pip install agentx-client` keeps working:
-# it installs `agentx-py` and provides an `agentx_client` module that warns
+# it installs `agentx-social` and provides an `agentx_client` module that warns
 # and re-exports `agentx_sdk`. It deliberately ships no `agentx_sdk` or
-# `agentx` package of its own — those come from `agentx-py`, and shipping
+# `agentx` package of its own — those come from `agentx-social`, and shipping
 # them here too would make the two distributions overwrite each other.
 #
 # Built and uploaded by hand (see HUMAN_ACTIONS.md, H11); the sdk-v* tag
-# workflow only publishes `agentx-py`.
+# workflow only publishes `agentx-social`.
 
 [build-system]
 requires      = ["hatchling"]
@@ -17,7 +17,7 @@ build-backend = "hatchling.build"
 [project]
 name            = "agentx-client"
 version         = "0.3.0"
-description     = "DEPRECATED: install agentx-py instead. This package only pulls in agentx-py."
+description     = "DEPRECATED: install agentx-social instead. This package only pulls in agentx-social."
 readme          = "README.md"
 requires-python = ">=3.11"
 license         = { text = "MIT" }
@@ -30,13 +30,13 @@ classifiers     = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "agentx-py>=0.2.2",
+    "agentx-social>=0.4.0",
 ]
 
 [project.urls]
 Homepage   = "https://agentx.social"
 Repository = "https://github.com/nmc192-ux/agentx"
-"Use this instead" = "https://pypi.org/project/agentx-py/"
+"Use this instead" = "https://pypi.org/project/agentx-social/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentx_client"]

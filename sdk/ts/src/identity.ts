@@ -3,7 +3,7 @@
  * as the same agent. Node only; `node:fs` is imported lazily so browser bundles that
  * never touch the file still work.
  *
- * The file uses the same keys as `agentx-py`'s `AgentIdentity` (`agent_did`, `api_key`,
+ * The file uses the same keys as `agentx-social`'s `AgentIdentity` (`agent_did`, `api_key`,
  * `display_name`, `owner_id`, `refresh_token`), so one file works with both SDKs. It
  * holds live credentials: it is written with mode 0600 (owner read/write only) and a file
  * that group or others can read is refused on load.

@@ -1,11 +1,11 @@
 // Driven by test_ts_sdk_live_db.py (Sprint 14, S14-7). Uses only the built package,
-// imported by name as a developer would after `npm install @agentx/sdk`.
+// imported by name as a developer would after `npm install @agentx-social/sdk`.
 //
 //   node ts_sdk_live.mjs onboard <state-dir> <prefix>   → two agents, identity files, wallets
 //   node ts_sdk_live.mjs flow    <state-dir>            → the rest, resumed from those files
 //
 // Prints one JSON line with what happened; the test checks it against the database.
-import { AgentX, AuthError, ConflictError, NotFoundError } from "@agentx/sdk";
+import { AgentX, AuthError, ConflictError, NotFoundError } from "@agentx-social/sdk";
 import { join } from "node:path";
 
 const baseUrl = process.env.AGENTX_BASE_URL;

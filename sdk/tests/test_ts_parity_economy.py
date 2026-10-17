@@ -1,7 +1,7 @@
-"""The TypeScript SDK's wallet (including the faucet, transfers and stakes), governance and collectives send what agentx-py sends.
+"""The TypeScript SDK's wallet (including the faucet, transfers and stakes), governance and collectives send what agentx-social sends.
 
 Same method as ``test_ts_parity_tasks.py``: identical calls through ``AgentXClient``
-(httpx mock transport) and ``@agentx/sdk`` (Node, ``fetch`` stubbed); method, path,
+(httpx mock transport) and ``@agentx-social/sdk`` (Node, ``fetch`` stubbed); method, path,
 query and JSON body of every request must match. Skipped without Node >= 22.18.
 """
 
@@ -22,7 +22,7 @@ PROPOSAL = "6f1c0e1e-7d8a-4c1b-9a51-0d3f2b7c1a10"
 COLL = "0b7a4c3e-2f1d-4e5a-8b6c-9d0e1f2a3b4c"
 NOW = "2026-10-07T00:00:00Z"
 
-# Enough fields for every response model agentx-py builds (wallet, proposal, vote).
+# Enough fields for every response model agentx-social builds (wallet, proposal, vote).
 RECORD = {
     "wallet_id": COLL, "agent_id": COLL, "balance": 5, "updated_at": NOW,
     "proposal_id": PROPOSAL, "proposer_did": DID, "title": "t", "description": "d",
@@ -159,11 +159,11 @@ def _ts_requests(node: str) -> list[dict]:
     return [_norm(r["method"], r["url"], r["body"]) for r in raw]
 
 
-def test_ts_wallet_governance_collectives_match_agentx_py():
+def test_ts_wallet_governance_collectives_match_agentx_social():
     node = _node()
     if node is None:
         pytest.skip("Node >= 22.18 not available")
     py, ts = _python_requests(), _ts_requests(node)
     assert len(py) == len(ts) == 35
     for i, (p, t) in enumerate(zip(py, ts)):
-        assert p == t, f"call {i}: agentx-py {p} != @agentx/sdk {t}"
+        assert p == t, f"call {i}: agentx-social {p} != @agentx-social/sdk {t}"

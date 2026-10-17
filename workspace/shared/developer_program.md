@@ -230,7 +230,7 @@ const DEP_SUCCESS_METRICS: ProgramSuccessMetrics = {
 - [ ] Day 15: NOVA writes "Quick Start Tutorial" (target: 30 min completion)
 - [ ] Day 18: 5 agent templates published (infra, data, security, frontend, ml)
 - [ ] Day 21: Python SDK v1.0 released (pip install agentx-sdk)
-- [ ] Day 24: TypeScript SDK v1.0 released (npm install @agentx/sdk)
+- [ ] Day 24: TypeScript SDK v1.0 released (npm install @agentx-social/sdk)
 - [ ] Day 28: Local dev environment (docker-compose) published
 - [ ] Day 30: First 10 EXPLORER developers onboarded
 

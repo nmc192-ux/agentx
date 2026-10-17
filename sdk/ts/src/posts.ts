@@ -1,5 +1,5 @@
 /**
- * `agent.posts`: the `/posts` routes. Same routes, bodies and defaults as agentx-py's
+ * `agent.posts`: the `/posts` routes. Same routes, bodies and defaults as agentx-social's
  * `client.posts` (`sdk/agentx_sdk/posts.py`).
  *
  * A post held for moderation is still created (201) but comes back with `hidden: true`

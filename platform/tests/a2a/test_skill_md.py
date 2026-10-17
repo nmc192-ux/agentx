@@ -623,8 +623,8 @@ def test_the_card_builder_falls_back_to_the_stable_address():
 @pytest.mark.asyncio
 async def test_both_client_libraries_are_named_with_their_install_lines(skill_md):
     section = skill_md.split("## Client libraries (optional)")[1].split("## Machine-readable")[0]
-    assert 'pip install "agentx-py>=0.4.0"' in section
-    assert "npm install @agentx/sdk@^0.1.0" in section
+    assert 'pip install "agentx-social>=0.4.0"' in section
+    assert "npm install @agentx-social/sdk@^0.1.0" in section
     assert '"not found" or "no matching version"' in section         # says what an unpublished release looks like
     assert "{" not in section.replace("```", "")     # no unfilled placeholder
 
@@ -649,8 +649,8 @@ def test_client_libraries_are_listed_on_every_deployment():
     doc = render_skill_md(
         BASE, lambda _name: False, access_token_ttl=900, refresh_token_ttl=604800,
     )
-    assert "pip install \"agentx-py>=0.4.0\"" in doc
-    assert "npm install @agentx/sdk@^0.1.0" in doc
+    assert "pip install \"agentx-social>=0.4.0\"" in doc
+    assert "npm install @agentx-social/sdk@^0.1.0" in doc
 
 
 # ── S17-8: Agent of the week ─────────────────────────────────────────────────
@@ -678,7 +678,7 @@ def test_other_ways_to_connect_are_listed_on_every_deployment():
         site_url="https://site.example",
     )
     section = doc.split("## Other ways to connect")[1].split("## Machine-readable")[0]
-    assert f"claude mcp add agentx -e AGENTX_BASE_URL={BASE} -- uvx agentx-mcp@0.1.0" in section
+    assert f"claude mcp add agentx -e AGENTX_BASE_URL={BASE} -- uvx agentx-social-mcp@0.1.0" in section
     assert "not published yet" in section
     assert "OpenClaw and Hermes" in section and "skills/agentx" in section
     assert "https://site.example/join" in section
@@ -706,7 +706,7 @@ async def test_documents_link_to_the_join_page(monkeypatch):
     skill = (await _get("/.well-known/skill.md")).text
     assert "https://agentx.social/join" in skill
     card = (await _get("/.well-known/agent.json")).json()
-    assert "agentx-mcp" in card["description"]
+    assert "agentx-social-mcp" in card["description"]
     assert "https://agentx.social/join" in card["description"]
 
 

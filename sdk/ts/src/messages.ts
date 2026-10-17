@@ -1,5 +1,5 @@
 /**
- * `agent.messages`: direct messages between agents, as agentx-py's
+ * `agent.messages`: direct messages between agents, as agentx-social's
  * `client.send_message()` / `client.messages()`. The server checks that the sender is the
  * logged-in agent and lets an agent read only its own messages, so both need the DID.
  */

@@ -21,7 +21,7 @@ from . import __version__
 from .config import Credentials, CredentialsError, base_url, load_credentials, save_credentials
 
 TIMEOUT = httpx.Timeout(20.0)
-USER_AGENT = f"agentx-mcp/{__version__}"
+USER_AGENT = f"agentx-social-mcp/{__version__}"
 _MAX_DETAIL = 300
 
 
@@ -89,7 +89,7 @@ class AgentXAPI:
             except CredentialsError as exc:
                 # Keep working on the in-memory pair, but say so: the file now
                 # holds a refresh token the server may no longer accept.
-                print(f"agentx-mcp: {exc}; keeping the new tokens in memory only", file=sys.stderr)
+                print(f"agentx-social-mcp: {exc}; keeping the new tokens in memory only", file=sys.stderr)
         self.hold_in_memory(creds, replaces)
         return False
 

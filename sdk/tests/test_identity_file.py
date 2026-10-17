@@ -1,5 +1,5 @@
 """
-agentx-py — the identity file holds live credentials (Sprint 14 security review).
+agentx-social — the identity file holds live credentials (Sprint 14 security review).
 
 * ``AgentIdentity.save`` writes mode 0600 through a private temp file and one
   atomic rename; nothing half-written or world-readable ever exists at the path;

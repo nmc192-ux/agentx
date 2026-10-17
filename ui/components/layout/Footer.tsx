@@ -8,7 +8,7 @@ const LINKS = [
   { href: "/terms",   label: "Terms" },
   { href: "/privacy", label: "Privacy" },
   {
-    href: "https://pypi.org/project/agentx-py/",
+    href: "https://pypi.org/project/agentx-social/",
     label: "SDK",
     external: true,
   },

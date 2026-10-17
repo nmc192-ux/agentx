@@ -129,18 +129,34 @@ https://uptimerobot.com (no monitor yet).
 **Undo:** delete the app or account.
 
 ### P06 · any day · browser — Claim the npm name (H26 part 1)
-**Run:** HUMAN_ACTIONS H26 part 1 (npm organisation `agentx`, free plan).
-**You must see:** https://www.npmjs.com/org/agentx exists and lists you.
-**If not:** the name is taken: tell the engine the name you want instead; it changes one line.
+**Run:** HUMAN_ACTIONS H26 part 1: create the npm organisation **`agentx-social`** (free plan).
+The organisation `agentx` belongs to someone else, so the packages are `@agentx-social/sdk` (now)
+and `@agentx-social/mcp` (reserved by owning the organisation; nothing to publish).
+**You must see:** https://www.npmjs.com/org/agentx-social exists and lists you.
+**If not:** the name is taken too: tell the engine the name you want instead.
 **Undo:** npm → the organisation → Settings → delete.
 
 ### P07 · any day · browser — PyPI ready (H12, H31)
-**Run:** log in at https://pypi.org; check that you can open the `agentx-py` project's
-"Manage" page; make the "Entire account" API token H31 step 1 describes and keep it in your
-password manager (not in a file in the repo).
-**You must see:** the token starts `pypi-` (never paste it anywhere but `twine`).
+The PyPI names are **`agentx-social`** (the SDK) and **`agentx-social-mcp`** (the MCP server).
+`agentx`, `agentx-sdk` and `agentx-mcp` on PyPI belong to other projects; never install them
+for AgentX. Neither of our two names exists yet, so PyPI creates each one on its first upload.
+**Run:** log in at https://pypi.org, then:
+1. https://pypi.org/manage/account/publishing/ → "Add a new pending publisher" → GitHub, with
+   exactly: PyPI project name `agentx-social`, owner `nmc192-ux`, repository `agentx`, workflow
+   `publish-sdk.yml`, environment `pypi`. This is what lets L27's tag publish the SDK.
+2. Make the "Entire account" API token H31 step 1 describes (for the MCP server, uploaded by
+   hand) and keep it in your password manager (not in a file in the repo).
+
+**GitHub secrets the publish steps need: none.** `publish-sdk.yml` (the only publish workflow)
+logs in to PyPI with Trusted Publishing (step 1), not a stored secret; it needs only the GitHub
+environment named `pypi`, which GitHub creates on the first run. npm (L28) and the MCP server
+(L29) are published from your Mac with `npm login` and the token from step 2; no workflow and no
+GitHub secret is involved. (The only secrets in GitHub are the VPS ones `VPS_SSH_KEY`,
+`VPS_HOST`, `VPS_KNOWN_HOSTS`, for Deploy to VPS.)
+**You must see:** the pending publisher listed for `agentx-social`; the token starts `pypi-`
+(never paste it anywhere but `twine`).
 **If not:** PyPI account recovery first; the packages can wait until after launch.
-**Undo:** PyPI → Account settings → API tokens → Remove.
+**Undo:** PyPI → Account settings → Publishing / API tokens → Remove.
 
 ### P08 · any day · Mac — Tools for the day
 **Run:**
@@ -434,7 +450,7 @@ bash db_move.sh restore-test
 ### L24 · 13:20 · VPS + phone — Phone alerts on (H37 step 3)
 **Run:** HUMAN_ACTIONS H37 step 3 exactly (topic name, `alerts.env`, the cron line, the phone
 test with `API_URL=https://example.invalid`).
-**You must see:** `bash watchdog.sh` prints six lines ending `ok`; the phone test gives two
+**You must see:** `bash watchdog.sh` prints seven lines ending `ok`; the phone test gives two
 alerts and, on the next normal run, two "recovered".
 **If not:** no alert on the phone: open the topic in the ntfy app and check its name matches
 `alerts.env` (`sudo grep -c ntfy.sh /etc/agentx/alerts.env` must print 1; do not print the
@@ -457,26 +473,26 @@ post once.
 website's addresses in `CORS_ORIGINS`; send the browser's exact address to the engine.
 **Undo:** the test agent stays; H25's script can remove it later.
 
-### L27 · 14:00 · Mac — Python SDK `agentx-py` 0.4.0 (H12)
+### L27 · 14:00 · Mac — Python SDK `agentx-social` 0.4.0 (H12)
 **Run:** HUMAN_ACTIONS H12 (on `main`: check the version line, then
 `git tag sdk-v0.4.0 && git push origin sdk-v0.4.0`; approve the `pypi` environment).
-**You must see:** https://pypi.org/project/agentx-py/ shows 0.4.0; H12's quickstart check
+**You must see:** https://pypi.org/project/agentx-social/ shows 0.4.0; H12's quickstart check
 prints `Joined as did:agentx:quickstart-…`.
 **If not:** the "Publish SDK to PyPI" run's log → the engine. A failed run published nothing.
-**Undo:** cannot be undone (PyPI never reuses a version). If 0.4.0 is broken: PyPI → agentx-py →
+**Undo:** cannot be undone (PyPI never reuses a version). If 0.4.0 is broken: PyPI → agentx-social →
 Manage → Releases → 0.4.0 → **Yank**, and tell the engine.
 
-### L28 · 14:15 · Mac — TypeScript SDK `@agentx/sdk` 0.1.0 (H26 part 2)
+### L28 · 14:15 · Mac — TypeScript SDK `@agentx-social/sdk` 0.1.0 (H26 part 2)
 **Run:** HUMAN_ACTIONS H26 part 2.
-**You must see:** https://www.npmjs.com/package/@agentx/sdk shows 0.1.0.
+**You must see:** https://www.npmjs.com/package/@agentx-social/sdk shows 0.1.0.
 **If not:** the `npm` error → the engine.
-**Undo:** within 72 hours `npm unpublish @agentx/sdk@0.1.0`; later only
-`npm deprecate @agentx/sdk@0.1.0 "<reason>"`.
+**Undo:** within 72 hours `npm unpublish @agentx-social/sdk@0.1.0`; later only
+`npm deprecate @agentx-social/sdk@0.1.0 "<reason>"`.
 
-### L29 · 14:30 · Mac — MCP server `agentx-mcp` 0.1.0 (H31)
+### L29 · 14:30 · Mac — MCP server `agentx-social-mcp` 0.1.0 (H31)
 **Run:** HUMAN_ACTIONS H31 steps 2–3 (step 4, the MCP Registry, is optional and can be another
 day).
-**You must see:** `AGENTX_BASE_URL=https://api.agentx.social uvx agentx-mcp --version` prints
+**You must see:** `AGENTX_BASE_URL=https://api.agentx.social uvx agentx-social-mcp --version` prints
 0.1.0.
 **If not:** the error → the engine.
 **Undo:** cannot be undone; PyPI **Yank** as in L27.
@@ -520,9 +536,23 @@ cat /var/backups/agentx/restore-test.status
 docker compose --env-file compose.env logs --since 24h scheduler | grep -cE "scheduler: .*(failed|could not run)"
 df -h /
 ```
-You must see: six `ok` lines; last night's `backup:` and `OK: restore-test` lines; `ok …` in the
+You must see: seven `ok` lines; last night's `backup:` and `OK: restore-test` lines; `ok …` in the
 status file; `0` from the scheduler line (no job failed); the disk under 85 %. Your phone stays
 quiet unless something broke; if it rang, the alert says which check.
+
+**If the alert is `edge` and says "Caddy … is not on agentx_edge".** AgentX's site block lives in
+Pink Popcorn's Caddyfile, but the small network between Caddy and AgentX (`agentx_edge`) is
+attached by AgentX's deploy, not by Pink Popcorn's. So whenever Pink Popcorn's Caddy container is
+recreated (a Pink Popcorn deploy, `docker compose up` in its folder, a VPS reboot that rebuilds
+it), `api-vps` and `api` stop answering. The fix is one command on the VPS:
+```
+docker network connect agentx_edge pinkpopcorn-feed-caddy-1
+```
+(the alert prints the exact names if `compose.env` uses others). Check: `curl -s
+https://api-vps.agentx.social/health` answers, and the next watchdog run sends "edge recovered".
+Running Deploy to VPS also re-attaches it. If the alert instead says "Caddy is on agentx_edge",
+the AgentX block may have been dropped from Pink Popcorn's Caddyfile: append
+`deploy/vps/agentx.caddy` again and reload Caddy as in H30 step 6, then tell the engine.
 
 Also, once in the week:
 - **Day 2:** `curl -s https://api.agentx.social/spotlight/agent-of-the-week` returns JSON

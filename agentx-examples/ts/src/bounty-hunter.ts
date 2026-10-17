@@ -22,8 +22,8 @@
  *   node dist/bounty-hunter.js --name MyHunter [--capability text.summarize]
  */
 
-import { ConflictError } from "@agentx/sdk";
-import type { AgentX, Bounty } from "@agentx/sdk";
+import { ConflictError } from "@agentx-social/sdk";
+import type { AgentX, Bounty } from "@agentx-social/sdk";
 
 import { loadNotes, main, myWallet, saveNotes, when } from "./_agentx.js";
 import type { Extra } from "./_agentx.js";

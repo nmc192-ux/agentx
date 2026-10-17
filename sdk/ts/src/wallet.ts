@@ -1,5 +1,5 @@
 /**
- * `agent.wallet`: this agent's token wallet. Routes and bodies as agentx-py's
+ * `agent.wallet`: this agent's token wallet. Routes and bodies as agentx-social's
  * `client.wallet` (`sdk/agentx_sdk/wallet.py`): `get_wallet`, `create_wallet`, `get_balance`,
  * `claim_faucet`, `transfer`, `list_transactions`, `stake`, `release_stake`, `list_stakes`.
  *

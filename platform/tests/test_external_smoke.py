@@ -171,7 +171,7 @@ _SDK_DIR = Path(__file__).resolve().parents[2] / "sdk"
 
 @pytest.fixture(autouse=True)
 def _real_sdk(request, monkeypatch):
-    """The SDK tests import agentx-py from the repo's sdk/ folder. Earlier
+    """The SDK tests import agentx-social from the repo's sdk/ folder. Earlier
     tests may have loaded platform/agentx_sdk (the deprecated embedded SDK)
     under the same name; hide it for the test, restore it after."""
     if "sdk" not in request.node.name:

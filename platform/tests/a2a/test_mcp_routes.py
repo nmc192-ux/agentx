@@ -1,5 +1,5 @@
 """
-Tests: every API call the `agentx-mcp` server makes is a route the app mounts.
+Tests: every API call the `agentx-social-mcp` server makes is a route the app mounts.
 
 Sprint 18 (S18-3): the MCP server (`sdk/mcp/`) talks to the HTTP API
 directly. If a route it calls moves or is gated off, every MCP host that

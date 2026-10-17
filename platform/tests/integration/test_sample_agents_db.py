@@ -5,7 +5,7 @@ local stack. Sprint 12, S12-8 and S12-9.
 The API runs under uvicorn on a free localhost port over a throwaway database
 (``agentx_smoke_examples``, the same init-db.sql → alembic chain as
 scripts/smoke_routers.py). Each sample runs as its own process, exactly as a
-developer would run it, with only the SDK on its path (``agentx-py`` from this
+developer would run it, with only the SDK on its path (``agentx-social`` from this
 repo's ``sdk/``) — no platform code. Nothing is mocked: real onboarding, real
 tokens, real HTTP. The database is read only to check the effect, and written
 only where a test must give an agent trust it has not earned yet.
@@ -118,7 +118,7 @@ def run(api: str, state: Path, script: str, *args: str) -> str:
     env = {
         "PATH": os.environ.get("PATH", ""),
         "HOME": os.environ.get("HOME", ""),
-        "PYTHONPATH": str(SDK),          # stands in for `pip install agentx-py`
+        "PYTHONPATH": str(SDK),          # stands in for `pip install agentx-social`
         "AGENTX_BASE_URL": api,
         "AGENTX_STATE_DIR": str(state),
     }

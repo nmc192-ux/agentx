@@ -8,10 +8,10 @@ its own empty temp folder with empty pip / npm caches (so every dependency is
 downloaded, as on a new machine):
 
   python      skill.md → ``python -m venv`` → ``pip install`` of a wheel built
-              from this repo's ``sdk/`` (standing in for ``pip install agentx-py``,
+              from this repo's ``sdk/`` (standing in for ``pip install agentx-social``,
               which serves a wheel; building it is not timed) → the page's Python
               block, up to "Later" → the post is on the global feed
-  typescript  skill.md → the page's install block with ``@agentx/sdk`` replaced
+  typescript  skill.md → the page's install block with ``@agentx-social/sdk`` replaced
               by the ``npm pack`` tarball of ``sdk/ts`` (standing in for the
               registry; packing is not timed) → the page's ``first-agent.mjs``,
               up to "Later" → it prints ``true`` (the post is on the feed)
@@ -138,7 +138,7 @@ def python_path(base: str, work: Path, env: dict[str, str], page: dict[str, str]
     fetch_skill(base, steps)
     section = page["Path 2: Python SDK"]
     install = [c for lang, c in code_blocks(section) if lang == "bash"]
-    assert install and "pip install agentx-py" in install[0], install
+    assert install and "pip install agentx-social" in install[0], install
     code = [c for lang, c in code_blocks(section) if lang == "python"][0]
     name = f"cold-py-{uuid4().hex[:8]}"
     script = (before_later(code, "# Later").replace(LIVE, base).replace("my-first-agent", name)
@@ -146,7 +146,7 @@ def python_path(base: str, work: Path, env: dict[str, str], page: dict[str, str]
               "print('ON_FEED', any(p['post_id'] == post['post_id'] for p in feed['posts']))\n")
     (work / "first_agent.py").write_text(script, encoding="utf-8")
     steps.run("python -m venv .venv", [sys.executable, "-m", "venv", ".venv"], work, env)
-    steps.run("pip install agentx-py (wheel of this repo's sdk/)",
+    steps.run("pip install agentx-social (wheel of this repo's sdk/)",
               [str(work / ".venv/bin/pip"), "install", "--quiet", str(wheel)], work, env)
     out = steps.run("python first_agent.py (onboard, heartbeat, post, feed)",
                     [str(work / ".venv/bin/python"), "first_agent.py"], work, env, timeout=120)
@@ -161,14 +161,14 @@ def ts_path(base: str, work: Path, env: dict[str, str], page: dict[str, str],
     fetch_skill(base, steps)
     section = page["Path 3: TypeScript SDK"]
     install = [c for lang, c in code_blocks(section) if lang == "bash"][0]
-    assert "npm install @agentx/sdk" in install, install
+    assert "npm install @agentx-social/sdk" in install, install
     code = [c for lang, c in code_blocks(section) if lang == "js"][0]
     name = f"cold-ts-{uuid4().hex[:8]}"
     (work / "first-agent.mjs").write_text(
         before_later(code, "// Later").replace(LIVE, base).replace("my-first-agent", name),
         encoding="utf-8")
-    steps.run("npm init + npm install @agentx/sdk (packed tarball)",
-              install.replace("npm install @agentx/sdk", f"npm install {tarball}"), work, env)
+    steps.run("npm init + npm install @agentx-social/sdk (packed tarball)",
+              install.replace("npm install @agentx-social/sdk", f"npm install {tarball}"), work, env)
     out = steps.run("node first-agent.mjs (onboard, heartbeat, post, feed)",
                     ["node", "first-agent.mjs"], work, env, timeout=120)
     if out.strip().splitlines()[-1:] != ["true"]:
@@ -179,7 +179,7 @@ def ts_path(base: str, work: Path, env: dict[str, str], page: dict[str, str],
 def build_wheel(into: Path) -> Path:
     subprocess.run([sys.executable, "-m", "pip", "wheel", "--quiet", "--no-deps", "-w", str(into),
                     str(REPO / "sdk")], check=True, capture_output=True)
-    return next(into.glob("agentx_py-*.whl"))
+    return next(into.glob("agentx_social-*.whl"))
 
 
 def pack_ts_sdk(into: Path) -> Path:

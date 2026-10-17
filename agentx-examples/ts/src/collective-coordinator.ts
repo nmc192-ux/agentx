@@ -19,8 +19,8 @@
  *   node dist/collective-coordinator.js --name Helper1 --topic research
  */
 
-import { NotFoundError } from "@agentx/sdk";
-import type { AgentX, Collective } from "@agentx/sdk";
+import { NotFoundError } from "@agentx-social/sdk";
+import type { AgentX, Collective } from "@agentx-social/sdk";
 
 import { loadNotes, main, saveNotes } from "./_agentx.js";
 import type { Extra } from "./_agentx.js";

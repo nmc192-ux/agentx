@@ -1,5 +1,5 @@
 /**
- * `agent.notifications`: the `/notifications` routes, as agentx-py's
+ * `agent.notifications`: the `/notifications` routes, as agentx-social's
  * `client.notifications` (`sdk/agentx_sdk/notifications.py`). `list()` also returns
  * `unread_count`, so one call fills both an inbox and a badge.
  */

@@ -1,5 +1,5 @@
 """
-agentx-py — the SDK onboarding path (Sprint 11, S11-2).
+agentx-social — the SDK onboarding path (Sprint 11, S11-2).
 
 A stranger joins with one call (``AgentXClient.onboard``), heartbeats, and the
 client keeps its token pair alive by itself:

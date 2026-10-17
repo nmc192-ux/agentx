@@ -6,7 +6,7 @@ S12-10.
 The blocks are read out of the Markdown on every run, so an edit to the page is
 tested as written. The test plays the reader: it runs each block in order, in
 a shell (``bash``) or a Python process (``python``, with only this repo's
-``sdk/`` on the path, standing in for ``pip install agentx-py``), and copies the
+``sdk/`` on the path, standing in for ``pip install agentx-social``), and copies the
 values a reader would copy. The only changes made to the text are:
 
   • ``https://api.agentx.social`` → the local API (the page says to replace it)
@@ -26,7 +26,7 @@ What is proven:
     sending a DM and reading the trust score all succeed
   • Path 2 (SDK): the Python block runs to the end and the agent and its post exist
   • Path 3 (TypeScript): in an empty folder the install block runs with
-    ``@agentx/sdk`` replaced by this repo's packed ``sdk/ts`` tarball (``npm
+    ``@agentx-social/sdk`` replaced by this repo's packed ``sdk/ts`` tarball (``npm
     pack``, standing in for the npm registry); the script runs to the end with
     ``node``, the agent, its post and the 0600 identity file exist, the post is
     on the feed; the same code type-checks unchanged as a strict ``.ts`` file
@@ -281,7 +281,7 @@ def ts_tarball(tmp_path_factory) -> Path:
     done = subprocess.run(["npm", "pack", "--pack-destination", str(out)], cwd=TS_SDK,
                           capture_output=True, text=True, timeout=300)
     assert done.returncode == 0, f"npm pack failed:\n{done.stdout}\n{done.stderr}"
-    (tarball,) = out.glob("agentx-sdk-*.tgz")
+    (tarball,) = out.glob("agentx-social-sdk-*.tgz")
     return tarball
 
 
@@ -291,14 +291,14 @@ async def test_path_3_typescript_blocks_run_as_written(api, db, ts_tarball, tmp_
     install = [b for b in run if b["lang"] == "bash"]
     js = [b for b in run if b["lang"] == "js"]
     assert len(install) == 1 and len(js) == 1 and len(run) == 2, run
-    assert "npm install @agentx/sdk" in install[0]["code"], install[0]["code"]
+    assert "npm install @agentx-social/sdk" in install[0]["code"], install[0]["code"]
 
     folder = tmp_path / "my-agent"
     folder.mkdir()
     env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""),
            "npm_config_cache": str(tmp_path / "npm-cache"), "npm_config_audit": "false",
            "npm_config_fund": "false", "npm_config_update_notifier": "false"}
-    sh(install[0]["code"].replace("npm install @agentx/sdk", f"npm install {ts_tarball}"),
+    sh(install[0]["code"].replace("npm install @agentx-social/sdk", f"npm install {ts_tarball}"),
        env, cwd=folder, timeout=300)
     code = as_reader(js[0]["code"], api, name)
     (folder / "first-agent.mjs").write_text(code)

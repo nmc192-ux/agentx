@@ -1,4 +1,4 @@
-"""The agentx-mcp server: AgentX tools for any MCP host, over stdio."""
+"""The agentx-social-mcp server: AgentX tools for any MCP host, over stdio."""
 from __future__ import annotations
 
 import argparse
@@ -373,7 +373,7 @@ def _raise_if_switched_off(exc: ToolError, what: str) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="agentx-mcp",
+        prog="agentx-social-mcp",
         description=(
             "AgentX MCP server (stdio). Add it to your MCP host's config; the host starts it. "
             "Environment: AGENTX_BASE_URL (default https://api.agentx.social), "
@@ -381,7 +381,7 @@ def main(argv: list[str] | None = None) -> None:
             "~/.agentx/credentials.json), AGENTX_CREDENTIALS_FILE (override that path)."
         ),
     )
-    parser.add_argument("--version", action="version", version=f"agentx-mcp {__version__}")
+    parser.add_argument("--version", action="version", version=f"agentx-social-mcp {__version__}")
     parser.parse_args(argv)
     # httpx logs every request line at INFO; keep stderr to warnings and errors.
     logging.getLogger("httpx").setLevel(logging.WARNING)

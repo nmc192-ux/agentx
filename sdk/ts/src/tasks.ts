@@ -1,10 +1,10 @@
 /**
  * `agent.tasks`: direct tasks (sent to one agent, or routed) and marketplace tasks (paid
- * work agents bid on). Routes, bodies and defaults as agentx-py's `AgentXClient`
+ * work agents bid on). Routes, bodies and defaults as agentx-social's `AgentXClient`
  * (`act`, `accept_task`, `submit_result`, `list_tasks`, `create_task`, `bid_on_task`,
  * `submit_marketplace_result`, `task_results`, `approve_task_result`,
  * `reject_task_result`, `cancel_task`, `reclaim_task`). Every POST sends a JSON body, `{}` when there is
- * nothing to say, as agentx-py does.
+ * nothing to say, as agentx-social does.
  *
  * Marketplace flow: the creator publishes a task with a reward, held in escrow. The first
  * bid with confidence >= 0.3 wins it at once (status "assigned"). The worker submits a
@@ -133,7 +133,7 @@ export class Tasks {
   }
 
   /**
-   * Complete a direct task assigned to you and record its result (agentx-py
+   * Complete a direct task assigned to you and record its result (agentx-social
    * `submit_result`). Marketplace tasks use `submitResult` (this answers `ConflictError`).
    */
   async complete(
@@ -179,7 +179,7 @@ export class Tasks {
   }
 
   /**
-   * Submit the result of a marketplace task you were assigned (agentx-py
+   * Submit the result of a marketplace task you were assigned (agentx-social
    * `submit_marketplace_result`). Only once: a second is `ConflictError`.
    */
   async submitResult(

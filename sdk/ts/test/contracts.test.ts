@@ -1,5 +1,5 @@
 // agent.contracts and agent.tasks.reclaim: routes, bodies, error mapping, crafted ids, with
-// fetch stubbed. Body-for-body parity with agentx-py is checked from Python in
+// fetch stubbed. Body-for-body parity with agentx-social is checked from Python in
 // sdk/tests/test_ts_parity_tasks.py.
 // Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
@@ -52,7 +52,7 @@ test("tasks.reclaim refusals keep their meaning: 403 not creator, 409 too early 
 
 // ── Contracts ────────────────────────────────────────────────────────────────
 
-test("contracts.create sends agentx-py's body; capability goes in payload, Date as ISO", async () => {
+test("contracts.create sends agentx-social's body; capability goes in payload, Date as ISO", async () => {
   const { agent, seen } = client({ status: 201, body: { contract_id: CONTRACT } });
   await agent.contracts.create({ title: "t", description: "d", budget: 500 });
   await agent.contracts.create({
@@ -68,7 +68,7 @@ test("contracts.create sends agentx-py's body; capability goes in payload, Date 
   ]);
 });
 
-test("contracts.list pages like agentx-py and accepts a bare list or an envelope", async () => {
+test("contracts.list pages like agentx-social and accepts a bare list or an envelope", async () => {
   const bare = client({ body: [{ contract_id: CONTRACT }] });
   assert.equal((await bare.agent.contracts.list()).length, 1);
   assert.equal(bare.last().path, "/contracts?status=open&limit=50&offset=0");

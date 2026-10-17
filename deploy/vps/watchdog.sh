@@ -6,6 +6,14 @@
 #
 # Checks (each one is "ok" or "bad"):
 #   api        GET $API_URL/health through Caddy answers 200
+#   edge       GET $EDGE_URL/health (api-vps, always this VPS) through Caddy answers 200. When it
+#              does not, the alert says whether Caddy has lost the agentx_edge network (Pink
+#              Popcorn's Caddy was recreated: AgentX's block lives in its Caddyfile, but the
+#              network is attached by deploy.sh, not by Pink Popcorn's compose file) and gives the
+#              one command that re-attaches it:
+#                docker network connect agentx_edge pinkpopcorn-feed-caddy-1
+#              (names from compose.env: PROXY_NETWORK, CADDY_CONTAINER). The watchdog only reports;
+#              it never touches Pink Popcorn's container itself.
 #   ready      GET $API_URL/health/ready answers 200 (the API reaches the database)
 #   scheduler  the newest successful scheduler_job_runs row finished < SCHEDULER_MAX_MIN ago
 #   backup     the newest $BACKUP_DIR/agentx-*.dump is < MAX_BACKUP_AGE_H old
@@ -34,10 +42,12 @@ set -uo pipefail
 cd "${AGENTX_DIR:-/opt/agentx}" || exit 2
 API_URL="${API_URL:-https://api.agentx.social}"
 API_URL="${API_URL%/}"
+EDGE_URL="${EDGE_URL:-https://api-vps.agentx.social}"
+EDGE_URL="${EDGE_URL%/}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/agentx}"
 STATE_FILE="${STATE_FILE:-$BACKUP_DIR/watchdog.state}"
 ALERTS_ENV="${ALERTS_ENV:-/etc/agentx/alerts.env}"
-CHECKS="${CHECKS:-api ready scheduler backup restore disk}"
+CHECKS="${CHECKS:-api edge ready scheduler backup restore disk}"
 SCHEDULER_MAX_MIN="${SCHEDULER_MAX_MIN:-30}"
 MAX_BACKUP_AGE_H="${MAX_BACKUP_AGE_H:-26}"
 DISK_MAX_PCT="${DISK_MAX_PCT:-85}"
@@ -73,6 +83,25 @@ check_api() {
   local code; code="$(http_code "$API_URL/health" | clean)"
   [[ "$code" == 200 ]] && { echo "$API_URL/health answers 200"; return 0; }
   echo "$API_URL/health answered ${code:-nothing} (want 200)"; return 1
+}
+
+check_edge() {
+  local code net caddy nets
+  code="$(http_code "$EDGE_URL/health" | clean)"
+  [[ "$code" == 200 ]] && { echo "$EDGE_URL/health answers 200 through Caddy"; return 0; }
+  net="$(env_value compose.env PROXY_NETWORK | clean)"; net="${net:-agentx_edge}"
+  caddy="$(env_value compose.env CADDY_CONTAINER | clean)"; caddy="${caddy:-pinkpopcorn-feed-caddy-1}"
+  # shellcheck disable=SC2016  # a Go template for docker, not a shell expansion
+  if ! nets="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$caddy" 2>/dev/null)"; then
+    echo "$EDGE_URL/health answered ${code:-nothing} (want 200); Caddy container $caddy not found (is Pink Popcorn's Caddy running?)"
+    return 1
+  fi
+  if [[ " $(clean <<< "$nets") " != *" $net "* ]]; then
+    echo "$EDGE_URL/health answered ${code:-nothing}: Caddy ($caddy) is not on $net (recreated?). Fix: docker network connect $net $caddy"
+    return 1
+  fi
+  echo "$EDGE_URL/health answered ${code:-nothing} (want 200); Caddy is on $net, so check the API copies (docker compose ps) and that Caddy's config still has the AgentX block"
+  return 1
 }
 
 check_ready() {

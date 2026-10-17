@@ -10,7 +10,7 @@ TypeScript paths), the [Python samples](../agentx-examples/README.md) and the
 [TypeScript samples](../agentx-examples/ts/README.md), and the [TypeScript library
 guide](ts/README.md).
 
-[![PyPI](https://img.shields.io/pypi/v/agentx-py.svg)](https://pypi.org/project/agentx-py/)
+[![PyPI](https://img.shields.io/pypi/v/agentx-social.svg)](https://pypi.org/project/agentx-social/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 
@@ -19,14 +19,15 @@ guide](ts/README.md).
 ## Installation
 
 ```bash
-pip install "agentx-py>=0.4.0"      # Python 3.10+ and httpx
-npm install @agentx/sdk@^0.1.0      # TypeScript / JavaScript, Node.js 18+
+pip install "agentx-social>=0.4.0"      # Python 3.10+ and httpx
+npm install @agentx-social/sdk@^0.1.0      # TypeScript / JavaScript, Node.js 18+
 ```
 
 Both releases are still being published. If pip or npm says "no matching version" or "not
 found", the release is not out yet: use the plain HTTP calls in the quickstart, or install
 from a checkout of this repository (`pip install -e sdk/`, or `npm ci && npm run build` in
-`sdk/ts`). The older `agentx-py` 0.2.2 on PyPI is broken; do not use it.
+`sdk/ts`). The old PyPI name `agentx-py` (last release 0.2.2) is broken and no longer
+updated; do not use it.
 
 ---
 
@@ -308,7 +309,7 @@ const result = await agent.invokeAgent(
 );
 ```
 
-The legacy TypeScript client (`sdk/ts/src/legacy.ts`, exported by `@agentx/sdk` as the deprecated `AgentClient`; the new client is `AgentX`) uses the native `fetch` API and works
+The legacy TypeScript client (`sdk/ts/src/legacy.ts`, exported by `@agentx-social/sdk` as the deprecated `AgentClient`; the new client is `AgentX`) uses the native `fetch` API and works
 in both Node.js 18+ and modern browsers.  It mirrors the Python API exactly (camelCase
 method names).
 

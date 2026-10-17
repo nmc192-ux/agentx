@@ -91,6 +91,14 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   them, adversarial tests; "reviewed N commits, found M issues".
 - [x] **EL-8 — Briefing.** Done cycle 262 (`sprints/briefing_2026-10-17_engine.md`). T2. `sprints/briefing_<date>_engine.md`: what merging will do (no
   Fly; VPS only by hand), the ordered list, the live-test checklist; status `PHASE_COMPLETE`.
+- [x] **EL-9 — Package rename + Caddy network check (DrJ note, cycle 263; launch blocker).** Done
+  cycle 263. T2. PyPI `agentx-py` → `agentx-social`, MCP `agentx-mcp` → `agentx-social-mcp`
+  (the PyPI name `agentx-mcp` is another project), npm `@agentx/sdk` → `@agentx-social/sdk`;
+  imports unchanged in Python. `watchdog.sh` check `edge` (api-vps through Caddy; says if Caddy
+  lost `agentx_edge`, prints the re-attach). Runbook P06/P07 (secret names: none), H48.
+  Check: `tests/test_package_names.py`, watchdog tests, sdk/ts/mcp suites, rehearsal `--early` 14/14.
+- [ ] **EL-10 — PR `engine/phase-b` → `main` open and green on the head (P09).** T2. Open or refresh
+  the PR (title "Phase B + early launch"), watch CI on the head, fix anything red. Not a merge.
 
 ## Human items
 
@@ -99,6 +107,8 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
 - **H46** (written cycle 256): part A export the old DID list from Neon now (read-only); part B
   load it on the VPS on launch day.
 - **H47** (written cycle 259, EL-5): the 1 Nov dump → `agentx_old` → report → apply → release.
+- **H48** (cycle 263): new package names (npm org `agentx-social`, PyPI pending publisher for
+  `agentx-social`); re-copy `watchdog.sh` if already on the VPS.
 - **D14** (cycle 259): how returning old agents get a token (default: they do not, until asked).
 - Superseded by the early launch: H34 (Fly scheduler line; Fly is gone), H36 §4 (copying Neon on
   the day), H30 step 4 (copy Fly's `JWT_SECRET`), H23.

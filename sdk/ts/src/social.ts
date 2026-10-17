@@ -1,7 +1,7 @@
 /**
  * `agent.social` (follow graph), `agent.communities` and `agent.rooms` (join and leave).
- * Routes and bodies as agentx-py's `client.social` (`sdk/agentx_sdk/social.py`) and
- * `client.communities` (`communities.py`); rooms are the `/rooms` routes agentx-py does
+ * Routes and bodies as agentx-social's `client.social` (`sdk/agentx_sdk/social.py`) and
+ * `client.communities` (`communities.py`); rooms are the `/rooms` routes agentx-social does
  * not wrap yet.
  */
 
@@ -36,7 +36,7 @@ export interface FollowListOptions {
   agentDid?: string;
   /** 1-based. Default 1. */
   page?: number;
-  /** 1–100. Default 50, as agentx-py. */
+  /** 1–100. Default 50, as agentx-social. */
   limit?: number;
   signal?: AbortSignal;
 }
@@ -108,7 +108,7 @@ export interface CommunityMember {
 }
 
 export interface ListCommunitiesOptions {
-  /** 1–100. Default 50, as agentx-py. */
+  /** 1–100. Default 50, as agentx-social. */
   limit?: number;
   /** Default "ACTIVE". */
   status?: "ACTIVE" | "ARCHIVED" | "SUSPENDED";

@@ -1,9 +1,9 @@
 """
 Tests: deploy/vps/watchdog.sh (LR-3) — free alerts on the VPS.
 
-Driven with fake `curl`, `psql` and `df` on PATH (PG_RUN=native), so no network, no database and
+Driven with fake `curl`, `psql`, `df` and `docker` on PATH (PG_RUN=native), so no network, no database and
 no real alert is ever sent. Pins what the sprint's acceptance criteria ask for:
-  1. every check (api, ready, scheduler, backup, restore, disk) alerts exactly once on going bad,
+  1. every check (api, edge, ready, scheduler, backup, restore, disk) alerts exactly once on going bad,
      stays quiet while it stays bad, and sends exactly one "recovered" message;
   2. all ok on the first run sends nothing; a bad first run sends one alert;
   3. with neither ntfy nor Slack set it only logs, and the state still moves on;
@@ -41,6 +41,7 @@ while (( $# )); do
 done
 if (( writeout )); then
   case "$url" in
+    https://edge.example.test/health) printf '%s' "$(cat "$FAKE/edge")" ;;
     */health/ready) printf '%s' "$(cat "$FAKE/ready")" ;;
     */health) printf '%s' "$(cat "$FAKE/health")" ;;
   esac
@@ -53,6 +54,16 @@ exit "$(cat "$FAKE/send_exit" 2>/dev/null || echo 0)"
 FAKE_PSQL = r"""#!/usr/bin/env bash
 v="$(cat "$FAKE/sched_age")"
 [[ "$v" == fail ]] && { echo "psql: connection refused" >&2; exit 2; }
+echo "$v"
+"""
+
+FAKE_DOCKER = r"""#!/usr/bin/env bash
+# docker inspect -f TEMPLATE NAME -> the networks of NAME, from $FAKE/caddy_nets ("gone": no such container)
+echo "$*" >> "$FAKE/docker.log"
+[[ "$1" == inspect ]] || exit 9
+[[ "${@: -1}" == "$(cat "$FAKE/caddy_name")" ]] || { echo "Error: No such object" >&2; exit 1; }
+v="$(cat "$FAKE/caddy_nets")"
+[[ "$v" == gone ]] && { echo "Error: No such object" >&2; exit 1; }
 echo "$v"
 """
 
@@ -72,13 +83,14 @@ class Box:
         self.backups = tmp / "backups"
         for d in (self.fake, self.bin, self.backups):
             d.mkdir()
-        for name, body in (("curl", FAKE_CURL), ("psql", FAKE_PSQL), ("df", FAKE_DF)):
+        for name, body in (("curl", FAKE_CURL), ("psql", FAKE_PSQL), ("df", FAKE_DF), ("docker", FAKE_DOCKER)):
             p = self.bin / name
             p.write_text(body)
             p.chmod(0o755)
         self.alerts = tmp / "alerts.env"
         self.alerts.write_text(f"NTFY_URL={NTFY}\nSLACK_WEBHOOK_URL='{SLACK}'\n")
-        self.set(health="200", ready="200", sched_age="120", disk="40")
+        self.set(health="200", edge="200", ready="200", sched_age="120", disk="40",
+                 caddy_name="pinkpopcorn-feed-caddy-1", caddy_nets="pinkpopcorn-feed_default agentx_edge ")
         self.fresh_backup()
         (self.backups / "restore-test.status").write_text("ok 2026-10-15T03:47:00Z agentx-x.dump 40 tables 900 rows\n")
 
@@ -99,6 +111,7 @@ class Box:
             "PATH": f"{self.bin}:{os.environ['PATH']}", "HOME": str(self.tmp), "FAKE": str(self.fake),
             "AGENTX_DIR": str(self.tmp), "PG_RUN": "native", "BACKUP_DIR": str(self.backups),
             "ALERTS_ENV": str(self.alerts), "API_URL": "https://api.example.test", "HOST_LABEL": "vps",
+            "EDGE_URL": "https://edge.example.test/",
             **env,
         }
         return subprocess.run(["bash", str(SCRIPT)], env=e, capture_output=True, text=True, timeout=60)
@@ -121,10 +134,10 @@ def test_all_ok_first_run_sends_nothing(box):
     r = box.run()
     assert r.returncode == 0, r.stdout + r.stderr
     assert box.sent() == []
-    for name in ("api", "ready", "scheduler", "backup", "restore", "disk"):
+    for name in ("api", "edge", "ready", "scheduler", "backup", "restore", "disk"):
         assert f"{name} ok" in r.stdout
     assert (box.backups / "watchdog.state").read_text().split() == [
-        "api", "ok", "ready", "ok", "scheduler", "ok", "backup", "ok", "restore", "ok", "disk", "ok"]
+        "api", "ok", "edge", "ok", "ready", "ok", "scheduler", "ok", "backup", "ok", "restore", "ok", "disk", "ok"]
 
 
 def _old_status(box):
@@ -141,6 +154,14 @@ def _no_backup(box):
 BREAKERS = {
     "api": (lambda b: b.set(health="502"), lambda b: b.set(health="200"), "answered 502"),
     "api-unreachable": (lambda b: b.set(health="000"), lambda b: b.set(health="200"), "answered 000"),
+    "edge-caddy-detached": (lambda b: b.set(edge="502", caddy_nets="pinkpopcorn-feed_default"),
+                            lambda b: b.set(edge="200", caddy_nets="pinkpopcorn-feed_default agentx_edge"),
+                            "Fix: docker network connect agentx_edge pinkpopcorn-feed-caddy-1"),
+    "edge-api-down": (lambda b: b.set(edge="502"), lambda b: b.set(edge="200"),
+                      "Caddy is on agentx_edge, so check the API copies"),
+    "edge-caddy-gone": (lambda b: b.set(edge="000", caddy_nets="gone"),
+                        lambda b: b.set(edge="200", caddy_nets="agentx_edge"),
+                        "Caddy container pinkpopcorn-feed-caddy-1 not found"),
     "ready": (lambda b: b.set(ready="503"), lambda b: b.set(ready="200"), "answered 503"),
     "scheduler": (lambda b: b.set(sched_age=str(45 * 60)), lambda b: b.set(sched_age="60"), "for 45 min"),
     "scheduler-db-down": (lambda b: b.set(sched_age="fail"), lambda b: b.set(sched_age="60"), "could not read"),
@@ -264,6 +285,36 @@ def test_restore_status_text_is_cleaned(box):
     data = [l for l in box.sent() if l.startswith("data ")][0]
     assert "\x1b" not in data and "\x07" not in data and "second line" not in data
     assert len(data) < 260
+
+
+def test_edge_uses_the_names_in_compose_env(box):
+    """The re-attach command names the network and container deploy.sh uses (compose.env)."""
+    (box.tmp / "compose.env").write_text("PROXY_NETWORK=edge_net_2\nCADDY_CONTAINER='other-caddy'\n")
+    box.set(caddy_name="other-caddy", caddy_nets="agentx_edge", edge="502")  # on a different network
+    r = box.run(CHECKS="edge")
+    assert r.returncode == 1
+    assert "Fix: docker network connect edge_net_2 other-caddy" in r.stdout
+    box.set(caddy_nets="bridge edge_net_2", edge="200")
+    assert box.run(CHECKS="edge").returncode == 0
+
+
+def test_edge_network_name_is_matched_whole(box):
+    """`agentx_edge_old` is not `agentx_edge`."""
+    box.set(edge="502", caddy_nets="agentx_edge_old pinkpopcorn-feed_default")
+    r = box.run(CHECKS="edge")
+    assert "is not on agentx_edge" in r.stdout
+
+
+def test_edge_only_inspects_never_changes_docker(box):
+    box.set(edge="502", caddy_nets="pinkpopcorn-feed_default")
+    box.run(CHECKS="edge")
+    calls = (box.fake / "docker.log").read_text().splitlines()
+    assert calls and all(c.startswith("inspect ") for c in calls), calls
+
+
+def test_edge_ok_does_not_call_docker(box):
+    box.run(CHECKS="edge")
+    assert not (box.fake / "docker.log").exists()
 
 
 def test_shellcheck_clean():

@@ -1,5 +1,5 @@
 // agent.posts / agent.notifications / agent.messages: routes, query strings and bodies,
-// with fetch stubbed. Bodies match agentx-py's for the same call.
+// with fetch stubbed. Bodies match agentx-social's for the same call.
 // Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -51,7 +51,7 @@ const POST_ID = "6f1c0e1e-7d8a-4c1b-9a51-0d3f2b7c1a10";
 
 // ── Posts: write ─────────────────────────────────────────────────────────────
 
-test("posts.create sends agentx-py's body with its defaults", async () => {
+test("posts.create sends agentx-social's body with its defaults", async () => {
   const { agent, last } = client({ status: 201, body: { post_id: POST_ID, hidden: false } });
   const post = await agent.posts.create({
     postType: "REQUEST",
@@ -161,7 +161,7 @@ test("posts.flag twice → ConflictError; own post → AuthError", async () => {
   await assert.rejects(own.agent.posts.flag(POST_ID, "spam"), AuthError);
 });
 
-test("posts.reply defaults to a PUBLIC UPDATE, like agentx-py", async () => {
+test("posts.reply defaults to a PUBLIC UPDATE, like agentx-social", async () => {
   const { agent, last } = client({ status: 201, body: {} });
   await agent.posts.reply(POST_ID, {
     title: "Done",
@@ -310,7 +310,7 @@ test("notifications.markRead / markAllRead: 204 resolves to undefined", async ()
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 
-test("messages.send: sender is this agent's DID, body as agentx-py", async () => {
+test("messages.send: sender is this agent's DID, body as agentx-social", async () => {
   const msg = {
     message_id: "m1",
     sender_agent_did: "did:agentx:atlas",

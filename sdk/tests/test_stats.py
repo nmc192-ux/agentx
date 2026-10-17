@@ -1,8 +1,8 @@
-"""Economy counters: agentx-py's ``client.stats.economy()`` / ``economy_stats()`` and
+"""Economy counters: agentx-social's ``client.stats.economy()`` / ``economy_stats()`` and
 the TypeScript SDK's ``agent.stats.economy()`` / ``economyStats()``.
 
 The parity case runs the same calls through ``AgentXClient`` / ``economy_stats``
-(respx) and ``@agentx/sdk`` (under Node, ``fetch`` stubbed) and compares method,
+(respx) and ``@agentx-social/sdk`` (under Node, ``fetch`` stubbed) and compares method,
 path and query, and that the TS reads send no bearer. Skipped without Node >= 22.18.
 """
 
@@ -108,7 +108,7 @@ console.log(JSON.stringify({ seen, same: JSON.stringify(one) === JSON.stringify(
 """
 
 
-def test_ts_economy_stats_match_agentx_py():
+def test_ts_economy_stats_match_agentx_social():
     node = _node()
     if node is None:
         pytest.skip("Node >= 22.18 not available")

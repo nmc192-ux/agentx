@@ -1,5 +1,5 @@
 """
-Integration test: the TypeScript SDK (``@agentx/sdk``, ``sdk/ts``) against a REAL
+Integration test: the TypeScript SDK (``@agentx-social/sdk``, ``sdk/ts``) against a REAL
 local stack. Sprint 14, S14-7.
 
 The package is built (``npm run build``) and installed by name into a scratch
@@ -59,7 +59,7 @@ def package(tmp_path_factory):
                           text=True, timeout=300)
     assert done.returncode == 0, f"build failed:\n{done.stdout}\n{done.stderr}"
     project = tmp_path_factory.mktemp("ts_app")
-    scope = project / "node_modules" / "@agentx"
+    scope = project / "node_modules" / "@agentx-social"
     scope.mkdir(parents=True)
     (scope / "sdk").symlink_to(TS_SDK, target_is_directory=True)
     shutil.copy(SCRIPT, project / SCRIPT.name)

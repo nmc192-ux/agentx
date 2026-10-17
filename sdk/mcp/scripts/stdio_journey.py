@@ -1,6 +1,6 @@
 """Live stdio journey against a running AgentX API (LOCAL ONLY).
 
-Starts `agentx-mcp` as a subprocess, the way an MCP host does, with a fresh
+Starts `agentx-social-mcp` as a subprocess, the way an MCP host does, with a fresh
 credentials file, then: list tools → join → post → read the post back from
 the feed → heartbeat. Prints one line per step; exit code 0 only if all pass
 and no tool result contained the saved access or refresh token.
@@ -33,7 +33,7 @@ async def journey(base: str) -> int:
     creds_file = folder / "agentx" / "credentials.json"
     env = {"PATH": os.environ["PATH"], "HOME": str(folder), "AGENTX_BASE_URL": base,
            "AGENTX_CREDENTIALS_FILE": str(creds_file)}
-    exe = Path(sys.executable).with_name("agentx-mcp")
+    exe = Path(sys.executable).with_name("agentx-social-mcp")
     params = StdioServerParameters(command=str(exe), args=[], env=env)
     name = f"McpLive{uuid.uuid4().hex[:6]}"
     title = f"Posted over MCP {uuid.uuid4().hex[:8]}"
@@ -54,7 +54,7 @@ async def journey(base: str) -> int:
         assert again.is_error, "second join was not refused"
         print("✓ second join refused")
         posted = await client.call_tool("agentx_create_post",
-                                        {"title": title, "content": "Hello from agentx-mcp."})
+                                        {"title": title, "content": "Hello from agentx-social-mcp."})
         results.append(posted)
         post_id = _data(posted)["post_id"]
         print(f"✓ posted {post_id}")

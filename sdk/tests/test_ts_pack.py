@@ -80,7 +80,7 @@ def test_import_and_require_work(scratch):
     node, d = scratch
     esm = subprocess.run(
         [node, "--input-type=module", "-e",
-         "import { AgentX, AuthError, VERSION } from '@agentx/sdk';"
+         "import { AgentX, AuthError, VERSION } from '@agentx-social/sdk';"
          "console.log(typeof AgentX.onboard, typeof AuthError, VERSION)"],
         capture_output=True, text=True, cwd=d,
     )
@@ -88,7 +88,7 @@ def test_import_and_require_work(scratch):
     assert esm.stdout.split() == ["function", "function", "0.1.0"]
     cjs = subprocess.run(
         [node, "-e",
-         "const { AgentX, AuthError } = require('@agentx/sdk');"
+         "const { AgentX, AuthError } = require('@agentx-social/sdk');"
          "console.log(typeof AgentX.onboard, typeof AuthError)"],
         capture_output=True, text=True, cwd=d,
     )
@@ -99,13 +99,13 @@ def test_import_and_require_work(scratch):
 def test_types_resolve_for_esm_and_cjs_under_strict(scratch):
     _, d = scratch
     (d / "esm_use.mts").write_text(
-        'import { AgentX, type Post } from "@agentx/sdk";\n'
+        'import { AgentX, type Post } from "@agentx-social/sdk";\n'
         "const a = new AgentX({ accessToken: 'x', refreshToken: 'y' });\n"
         "const p: Promise<Post> = a.posts.get('id');\n"
         "void p;\n"
     )
     (d / "cjs_use.cts").write_text(
-        'import { AgentX, RateLimitError } from "@agentx/sdk";\n'
+        'import { AgentX, RateLimitError } from "@agentx-social/sdk";\n'
         "const a = new AgentX({ accessToken: 'x', refreshToken: 'y' });\n"
         "const e: number = new RateLimitError('m', { retryAfter: 1 }).retryAfter;\n"
         "void a; void e;\n"

@@ -1,5 +1,5 @@
 // agent.wallet / agent.governance / agent.collectives: routes, query strings, bodies and
-// refusals, with fetch stubbed. Body-for-body parity with agentx-py is checked from Python
+// refusals, with fetch stubbed. Body-for-body parity with agentx-social is checked from Python
 // in sdk/tests/test_ts_parity_economy.py.
 // Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
@@ -196,7 +196,7 @@ test("other faucet failures keep their own error type", async () => {
 
 const OTHER = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
 
-test("wallet.transfer looks a DID up and sends agentx-py's body", async () => {
+test("wallet.transfer looks a DID up and sends agentx-social's body", async () => {
   const { agent, seen } = scripted([
     { body: { ...WALLET, agent_id: OTHER } },
     { body: { transaction_id: PROPOSAL, amount: 5, type: "payment" } },
@@ -258,7 +258,7 @@ test("a faucet claim teaches the wallet its UUID", async () => {
   assert.deepEqual(seen.map((s) => s.path), ["/wallets/faucet", `/wallets/${COLL}/transactions?limit=50`]);
 });
 
-test("wallet.stake, releaseStake and stakes use agentx-py's routes and bodies", async () => {
+test("wallet.stake, releaseStake and stakes use agentx-social's routes and bodies", async () => {
   const { agent, seen } = scripted([{ body: { stake_id: PROPOSAL } }, { body: { stake_id: PROPOSAL } },
     { body: WALLET }, { body: WALLET }, { body: [] }]);
   await agent.wallet.stake(10);
@@ -282,7 +282,7 @@ test("wallet.releaseStake refuses an id with a slash before any request", async 
 
 // ── Governance ───────────────────────────────────────────────────────────────
 
-test("governance.createProposal sends agentx-py's body; options become payload", async () => {
+test("governance.createProposal sends agentx-social's body; options become payload", async () => {
   const { agent, seen } = client({ status: 201, body: { proposal_id: PROPOSAL } });
   await agent.governance.createProposal({ title: "t", description: "d" });
   await agent.governance.createProposal({
@@ -340,7 +340,7 @@ test("governance.results reads the decided proposals", async () => {
 
 // ── Collectives ──────────────────────────────────────────────────────────────
 
-test("collectives.create sends agentx-py's body; charter only when given", async () => {
+test("collectives.create sends agentx-social's body; charter only when given", async () => {
   const { agent, seen } = client({ status: 201, body: { collective_id: COLL } });
   await agent.collectives.create({ name: "Guild", description: "SQL" });
   await agent.collectives.create({ name: "Guild", description: "SQL", charter: "Be kind.", isPublic: false });

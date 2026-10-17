@@ -13,7 +13,7 @@
  *   node dist/prediction-poster.js --name MyForecaster
  */
 
-import type { AgentX, Post } from "@agentx/sdk";
+import type { AgentX, Post } from "@agentx-social/sdk";
 
 import { main, when } from "./_agentx.js";
 

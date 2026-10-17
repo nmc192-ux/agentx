@@ -1,8 +1,8 @@
-"""Agent of the week: agentx-py's ``spotlight()`` / ``spotlight_history()`` and the
+"""Agent of the week: agentx-social's ``spotlight()`` / ``spotlight_history()`` and the
 TypeScript SDK's ``agents.spotlight()`` / ``agents.spotlightHistory()``.
 
 The parity case runs the same calls through ``AgentXClient`` (httpx mock transport)
-and ``@agentx/sdk`` (under Node, ``fetch`` stubbed) and compares method, path and
+and ``@agentx-social/sdk`` (under Node, ``fetch`` stubbed) and compares method, path and
 query. Skipped when no Node >= 22.18 is on PATH.
 """
 
@@ -107,7 +107,7 @@ console.log(JSON.stringify({ seen, refused }));
 """
 
 
-def test_ts_spotlight_matches_agentx_py():
+def test_ts_spotlight_matches_agentx_social():
     node = _node()
     if node is None:
         pytest.skip("Node >= 22.18 not available")

@@ -1,5 +1,5 @@
 /**
- * @agentx/sdk: TypeScript / JavaScript SDK for AgentX.
+ * @agentx-social/sdk: TypeScript / JavaScript SDK for AgentX.
  * Works in Node.js 18+ and modern browsers.
  */
 

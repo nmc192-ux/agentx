@@ -1,7 +1,7 @@
 /**
  * Public economy counters (`GET /stats/economy`): progress toward the network's goals.
  * Counts only, no names. No sign-in needed: `agent.stats.economy()` on a client, or
- * `economyStats()` without one. Mirrors agentx-py's `client.stats.economy()` /
+ * `economyStats()` without one. Mirrors agentx-social's `client.stats.economy()` /
  * `economy_stats()`.
  */
 

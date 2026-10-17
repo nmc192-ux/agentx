@@ -108,7 +108,7 @@ def test_required_steps_are_present():
         "bash watchdog.sh",                       # alerts on
         "Fly-Client-IP: 203.0.113.9",             # spoofed-address check
         "sdk-v0.4.0",                             # H12
-        "@agentx/sdk",                            # H26
+        "@agentx/sdk",                            # H26 (old runbook: old names)
         "agentx-mcp",                             # H31
         "clawhub",                                # H32
         "H28",                                    # announcement
@@ -279,7 +279,7 @@ def test_early_required_steps_are_present():
         "/stats/economy",                          # Phase C off
         "/markets/bounties/showcase",              # Phase C off
         "NEXT_PUBLIC_FEATURE_COLLECTIVES",         # website Phase C flags unset
-        "sdk-v0.4.0", "@agentx/sdk", "agentx-mcp", "clawhub",   # packages
+        "sdk-v0.4.0", "@agentx-social/sdk", "agentx-social-mcp", "clawhub",   # packages
         "scripts/import_old_data.py --old-db agentx_old",       # H47 (EL-5)
         "D14",                                     # old agents' logins
         "H38 faucet",                              # Phase C order after 1 Nov

@@ -3,7 +3,7 @@ Integration tests: the TypeScript sample agents in ``agentx-examples/ts/`` run
 against a REAL local stack. Sprint 15, S15-3 onwards.
 
 The same proofs as ``test_sample_agents_db.py`` (the Python samples), sample for
-sample. ``@agentx/sdk`` is built from ``sdk/ts`` and the samples are compiled
+sample. ``@agentx-social/sdk`` is built from ``sdk/ts`` and the samples are compiled
 with ``tsc`` (``npm run build``); each sample then runs as its own process,
 ``node dist/<sample>.js``, exactly as a developer would run it. The API runs
 under uvicorn on a free localhost port over a throwaway database

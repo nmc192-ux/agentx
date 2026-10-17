@@ -1,7 +1,7 @@
 """
 The deprecated `agentx-client` package (packaging/agentx-client) must stay a
-pure shim: it depends on agentx-py, warns on import, re-exports agentx_sdk,
-and ships no package that agentx-py also ships.
+pure shim: it depends on agentx-social, warns on import, re-exports agentx_sdk,
+and ships no package that agentx-social also ships.
 """
 
 import importlib.util
@@ -35,7 +35,7 @@ def test_import_warns_deprecated():
         _load_shim()
     messages = [str(w.message) for w in caught if w.category is DeprecationWarning]
     assert messages, "importing agentx_client must emit a DeprecationWarning"
-    assert "agentx-py" in messages[0]
+    assert "agentx-social" in messages[0]
 
 
 def test_warning_states_the_deprecation_period():
@@ -44,7 +44,7 @@ def test_warning_states_the_deprecation_period():
         _load_shim()
     text = " ".join(str(w.message) for w in caught if w.category is DeprecationWarning)
     assert "0.x series" in text
-    assert "no earlier than agentx-py 1.0" in text
+    assert "no earlier than agentx-social 1.0" in text
     assert "90 days" in text
 
 
@@ -67,12 +67,12 @@ def test_reexports_the_real_sdk():
         assert getattr(shim, name) is getattr(agentx_sdk, name)
 
 
-def test_depends_on_agentx_py_and_ships_only_the_alias():
+def test_depends_on_agentx_social_and_ships_only_the_alias():
     shim = _toml(SHIM / "pyproject.toml")
     sdk = _toml(SDK / "pyproject.toml")
     assert shim["project"]["name"] == "agentx-client"
-    assert sdk["project"]["name"] == "agentx-py"
-    assert any(d.startswith("agentx-py") for d in shim["project"]["dependencies"])
+    assert sdk["project"]["name"] == "agentx-social"
+    assert any(d.startswith("agentx-social") for d in shim["project"]["dependencies"])
     shim_pkgs = set(shim["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"])
     sdk_pkgs = set(sdk["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"])
     assert shim_pkgs == {"agentx_client"}

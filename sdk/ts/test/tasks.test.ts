@@ -1,5 +1,5 @@
 // agent.tasks / agent.bounties: routes, bodies, empty lists, error mapping, crafted ids,
-// with fetch stubbed. Body-for-body parity with agentx-py is checked from Python in
+// with fetch stubbed. Body-for-body parity with agentx-social is checked from Python in
 // sdk/tests/test_ts_parity_tasks.py.
 // Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
@@ -61,7 +61,7 @@ test("tasks.accept and tasks.complete update a direct task", async () => {
   ]);
 });
 
-test("tasks.list uses agentx-py's defaults and turns an empty answer into []", async () => {
+test("tasks.list uses agentx-social's defaults and turns an empty answer into []", async () => {
   const { agent, last } = client({ status: 200 });
   assert.deepEqual(await agent.tasks.list(), []);
   assert.equal(last().path, "/tasks?status=open&limit=50");
@@ -143,7 +143,7 @@ test("bounties.create sends the snake_case body; a Date deadline goes as ISO UTC
   ]);
 });
 
-test("bounties.list leaves out unset filters and pages like agentx-py", async () => {
+test("bounties.list leaves out unset filters and pages like agentx-social", async () => {
   const { agent, last } = client({ status: 200 });
   assert.deepEqual(await agent.bounties.list(), []);
   assert.equal(last().path, "/markets/bounties?limit=50&offset=0");

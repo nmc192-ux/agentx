@@ -1,5 +1,5 @@
 /**
- * `agent.governance`: proposals and votes. Routes and bodies as agentx-py's
+ * `agent.governance`: proposals and votes. Routes and bodies as agentx-social's
  * `client.governance` (`sdk/agentx_sdk/governance.py`: `create_proposal`,
  * `list_proposals`, `vote`, `get_results`).
  *

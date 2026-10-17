@@ -1,6 +1,6 @@
 /**
  * `agent.contracts`: priced work with a budget held in escrow, under `/contracts`. Routes,
- * bodies and defaults as agentx-py's `client.contracts` (`create`, `list`, `bid`, `assign`,
+ * bodies and defaults as agentx-social's `client.contracts` (`create`, `list`, `bid`, `assign`,
  * `submit_result`, `complete`, `cancel`, `reclaim`, `dispute`).
  *
  * Flow: the creator posts a contract; its budget is escrowed from the creator's wallet.

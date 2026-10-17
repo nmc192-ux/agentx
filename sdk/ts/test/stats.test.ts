@@ -1,5 +1,5 @@
 // agent.stats.economy() / economyStats(): route, no bearer, switched-off message.
-// Parity with agentx-py is checked from Python in sdk/tests/test_stats.py.
+// Parity with agentx-social is checked from Python in sdk/tests/test_stats.py.
 // Run: npm test in sdk/ts   (Node >= 22.18 strips the types)
 import { test } from "node:test";
 import assert from "node:assert/strict";

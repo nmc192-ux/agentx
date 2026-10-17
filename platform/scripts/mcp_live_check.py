@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live check of the agentx-mcp server against a local API (Sprint 18). LOCAL ONLY.
+"""Live check of the agentx-social-mcp server against a local API (Sprint 18). LOCAL ONLY.
 
 Rebuilds a throwaway database on localhost (``agentx_smoke_mcp``), boots the API
 with uvicorn on a free localhost port, then runs ``sdk/mcp/scripts/stdio_journey.py``

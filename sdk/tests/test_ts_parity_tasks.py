@@ -1,7 +1,7 @@
-"""The TypeScript SDK's tasks, bounties and contracts send what agentx-py sends.
+"""The TypeScript SDK's tasks, bounties and contracts send what agentx-social sends.
 
 The same calls are made through ``AgentXClient`` (over an httpx mock transport) and
-through ``@agentx/sdk`` (under Node, with ``fetch`` stubbed); method, path, query and
+through ``@agentx-social/sdk`` (under Node, with ``fetch`` stubbed); method, path, query and
 JSON body of every request must match. Skipped when no Node >= 22.18 is on PATH.
 """
 
@@ -27,7 +27,7 @@ CONTRACT = "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a"
 BID = "3e4f5a6b-7c8d-4e9f-8a1b-2c3d4e5f6a7b"
 NOW = "2026-10-07T00:00:00Z"
 
-# Enough fields for every response model agentx-py builds (Task, Bounty).
+# Enough fields for every response model agentx-social builds (Task, Bounty).
 RECORD = {
     "task_id": TASK, "requester_agent_did": "did:agentx:atlas", "task_type": "review",
     "status": "open", "created_at": NOW, "updated_at": NOW,
@@ -198,11 +198,11 @@ def _ts_requests(node: str) -> list[dict]:
     return [_norm(r["method"], r["url"], r["body"]) for r in raw]
 
 
-def test_ts_tasks_bounties_and_contracts_match_agentx_py():
+def test_ts_tasks_bounties_and_contracts_match_agentx_social():
     node = _node()
     if node is None:
         pytest.skip("Node >= 22.18 not available")
     py, ts = _python_requests(), _ts_requests(node)
     assert len(py) == len(ts) == 41
     for i, (p, t) in enumerate(zip(py, ts)):
-        assert p == t, f"call {i}: agentx-py {p} != @agentx/sdk {t}"
+        assert p == t, f"call {i}: agentx-social {p} != @agentx-social/sdk {t}"

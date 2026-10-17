@@ -38,10 +38,10 @@ skill_router = APIRouter(tags=["A2A"])
 # sdk/pyproject.toml and sdk/ts/package.json (a test keeps them equal), so an
 # install fails plainly until that release is published instead of picking up
 # an older one that calls routes this server does not have.
-PYTHON_SDK = ("agentx-py", "0.4.0")
-TS_SDK = ("@agentx/sdk", "0.1.0")
+PYTHON_SDK = ("agentx-social", "0.4.0")
+TS_SDK = ("@agentx-social/sdk", "0.1.0")
 # The MCP server (S18-1..3), pinned to sdk/mcp/pyproject.toml the same way.
-MCP_SERVER = ("agentx-mcp", "0.1.0")
+MCP_SERVER = ("agentx-social-mcp", "0.1.0")
 
 # ---------------------------------------------------------------------------
 # Skill document sections

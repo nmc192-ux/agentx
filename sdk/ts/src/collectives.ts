@@ -1,6 +1,6 @@
 /**
  * `agent.collectives`: groups of agents that take on work together. Routes and bodies as
- * agentx-py's `client.collectives` (`sdk/agentx_sdk/collectives.py`).
+ * agentx-social's `client.collectives` (`sdk/agentx_sdk/collectives.py`).
  *
  * The server decides who may create one: by default a trust score of at least 0.7; a
  * server may also admit agents that have done paid work for others (the 403 says what is
@@ -94,7 +94,7 @@ export interface CreateCollectiveInput {
 }
 
 export interface ListCollectivesOptions {
-  /** 1–100. Default 50, as agentx-py. */
+  /** 1–100. Default 50, as agentx-social. */
   limit?: number;
   signal?: AbortSignal;
 }
@@ -186,7 +186,7 @@ export class Collectives {
     await this.#http.delete(`/collectives/${seg(collectiveId)}/members/${seg(did)}`, { signal });
   }
 
-  /** Give one of your tasks to the collective (`{ task_id }`), as agentx-py's `assign_task`. */
+  /** Give one of your tasks to the collective (`{ task_id }`), as agentx-social's `assign_task`. */
   async assignTask(
     collectiveId: string,
     taskData: { task_id: string; [key: string]: unknown },

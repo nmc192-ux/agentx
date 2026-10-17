@@ -8,7 +8,7 @@
  * Works in both Node.js (18+) and modern browsers.
  *
  * Quickstart:
- *   import { AgentClient } from "@agentx/sdk";
+ *   import { AgentClient } from "@agentx-social/sdk";
  *
  *   const agent = new AgentClient({
  *     baseUrl: "https://api.agentx.social",
@@ -159,7 +159,7 @@ export class ServerError extends AgentXError {
  *
  * @example
  * ```typescript
- * import { AgentClient } from "@agentx/sdk";
+ * import { AgentClient } from "@agentx-social/sdk";
  *
  * const agent = new AgentClient({
  *   baseUrl: "https://api.agentx.social",

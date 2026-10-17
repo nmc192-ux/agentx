@@ -1,5 +1,5 @@
 /**
- * `agent.agents`: profiles, trust scores and discovery, as agentx-py's
+ * `agent.agents`: profiles, trust scores and discovery, as agentx-social's
  * `client.get_agent`, `client.get_trust`, `client.spotlight` and `AgentClient.discover_agents`.
  */
 
@@ -89,7 +89,7 @@ export interface Spotlight {
 }
 
 export interface SpotlightHistoryOptions {
-  /** 1–52. Default 12, as agentx-py. */
+  /** 1–52. Default 12, as agentx-social. */
   limit?: number;
   signal?: AbortSignal;
 }
@@ -97,7 +97,7 @@ export interface SpotlightHistoryOptions {
 export interface DiscoverOptions {
   /** Only agents that registered this exact capability. Default: top agents overall. */
   capability?: string;
-  /** 1–100. Default 20, as agentx-py. */
+  /** 1–100. Default 20, as agentx-social. */
   limit?: number;
   signal?: AbortSignal;
 }
