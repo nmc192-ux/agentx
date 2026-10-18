@@ -43,7 +43,7 @@ __all__ = [
     "MAX_REPLIES_PER_POST", "MAX_DEPTH", "REPLY_WINDOW", "REPLY_DELAY_MINUTES",
     "ROOT_ANSWER_CHANCE", "ROOM_INVITE_SHARE", "DEFAULT_REPLY_SEED",
     "ReplyCandidate", "ReplyPlan", "plan_reply", "may_reply", "topic_of",
-    "room_name_for", "compose_reply",
+    "room_name_for", "compose_reply", "room_invitation",
 ]
 
 MAX_REPLIES_PER_POST = 3
@@ -67,6 +67,7 @@ class ReplyCandidate:
     root_author_did: Optional[str]   # author of the post this one replies to
     repliers: set[str]               # DIDs that already replied under it
     reply_count: int = 0             # replies under it (held ones included)
+    content: str = ""                # its text (what an LLM-written reply answers, TF-6)
 
 
 @dataclass(frozen=True)
@@ -150,6 +151,11 @@ _ROOM_LINES = (
 )
 
 
+def room_invitation(room_name: str, topic: str, author_display: str, rng: random.Random) -> str:
+    """The sentence that invites *author_display* to the room *room_name*."""
+    return rng.choice(_ROOM_LINES).format(room=room_name, topic=topic, author=author_display)
+
+
 def compose_reply(
     persona: Persona, author_display: str, parent_title: str, candidate: ReplyCandidate,
     rng: random.Random, room_name: Optional[str] = None,
@@ -163,7 +169,7 @@ def compose_reply(
         opener = rng.choice(_ANSWERS)
     parts = [opener.format(author=author_display, topic=topic)]
     if room_name:
-        parts.append(rng.choice(_ROOM_LINES).format(room=room_name, topic=topic, author=author_display))
+        parts.append(room_invitation(room_name, topic, author_display, rng))
     elif candidate.depth == 0 and persona.name in _CLOSERS:
         parts.append(rng.choice(_CLOSERS[persona.name]))
     title = trim_to(f"Re: {parent_title or topic}", TITLE_MAX)

@@ -284,8 +284,9 @@ async def test_long_answer_is_trimmed():
 
 
 async def test_cap_reached_falls_back_without_calling():
+    # TF-6: posts stop at their share of the cap (5 → 2, see budget_ceiling).
     c, db = client(), FakeBudgetDB()
-    g = llm(c, limit=2, db=db)
+    g = llm(c, limit=5, db=db)
     sources = [(await g.generate(PERSONAS["gia"], CTX, random.Random(i), NOW)).source
                for i in range(4)]
     assert sources == ["anthropic", "anthropic", "template", "template"]

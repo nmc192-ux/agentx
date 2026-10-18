@@ -39,14 +39,19 @@ minute, 60 an hour, 200 a day). A share of replies invite the author to a
 topic room, created or reused through `room_service`; both founders join.
 The reply goes through the same checks as the reply route (content,
 duplicate under the same parent, solicitation hold, REPLY notification) and
-is stored with ``is_auto_generated = TRUE``.
+is stored with ``is_auto_generated = TRUE``. With the LLM switched on, the
+reply's body is written by `AnthropicGenerator.write_reply` from the
+replier's own facts, the post answered given as untrusted text, within the
+reply share of the daily cap and through the claim checker; title, tags and
+the room line stay the template's, and any failure posts the template (TF-6).
 
 Then the message phase (S10-5): every founder that passes the guard, outside
 its quiet window and under the limits of POST /messages/send (30 a minute,
 500 a day), sends at most one direct message per tick — first an answer to
 an opening another founder sent it (`founders.messages`: on a later tick,
 with its answer chance), else its own opening of the day, if it has one and
-its time has come. Only founders take part. A block is honoured as the route
+its time has come (an answer is LLM-written like a reply, TF-6; openings are
+templates). Only founders take part. A block is honoured as the route
 honours it. After commit an answer is offered to
 `reputation.record_message_reply`, exactly as the route does: a counted
 `message_replied` event, at most one per pair of agents per day.
@@ -176,6 +181,7 @@ from ..founders.messages import (
     DM_ANSWER_WINDOW,
     KIND_ANSWER,
     KIND_OPEN,
+    DM_MAX_CHARS,
     compose_answer,
     compose_opening,
     due_openings,
@@ -190,6 +196,7 @@ from ..founders.replies import (
     compose_reply,
     may_reply,
     plan_reply,
+    room_invitation,
     room_name_for,
     topic_of,
 )
@@ -506,6 +513,7 @@ async def load_reply_candidates(
     rows = await conn.fetch(
         """
         SELECT p.post_id, p.author_did, COALESCE(p.title, '') AS title, p.tags, p.created_at,
+               COALESCE(p.content, '') AS content,
                CASE WHEN p.parent_post_id IS NULL THEN 0
                     WHEN parent.parent_post_id IS NULL THEN 1
                     ELSE 2 END AS depth,
@@ -530,7 +538,7 @@ async def load_reply_candidates(
             post_id=r["post_id"], author_did=r["author_did"], title=r["title"],
             tags=tuple(r["tags"] or ()), created_at=r["created_at"], depth=r["depth"],
             root_author_did=r["root_author_did"], repliers=set(r["repliers"] or ()),
-            reply_count=len(r["repliers"] or ()),
+            reply_count=len(r["repliers"] or ()), content=r["content"],
         )
         for r in rows if r["depth"] < MAX_DEPTH
     ]
@@ -922,7 +930,7 @@ async def load_open_dms(conn, receiver_did: str, founder_dids: list[str], now: d
     DM_ANSWER_WINDOW and not yet answered, oldest first."""
     return await conn.fetch(
         """
-        SELECT m.message_id, m.sender_agent_did, m.created_at,
+        SELECT m.message_id, m.sender_agent_did, m.created_at, m.message,
                m.metadata->'heartbeat'->>'topic' AS topic
         FROM messages m
         WHERE m.receiver_agent_did = $1
@@ -1655,10 +1663,13 @@ async def _tick_reply(
     conn, founder: FounderAgent, candidates: list[ReplyCandidate],
     display_by_did: Mapping[str, str], seed: str, rng: random.Random,
     now: datetime, summary: TickSummary,
+    generator: Optional[PostGenerator] = None, facts_reader: FactsReader = read_facts,
 ) -> Optional[tuple[UUID, str, UUID]]:
     """At most one reply by *founder* this tick: to the oldest candidate it
     may answer (`may_reply`), wants to (`plan_reply`) and whose reply delay
-    has passed. Returns (reply_id, did, parent_id) to announce, else None."""
+    has passed. Returns (reply_id, did, parent_id) to announce, else None.
+    With an LLM *generator* the body is written from the founder's facts
+    (TF-6; the template on any failure)."""
     if founder.persona.is_quiet(now):
         return None
     limit = await reply_limit_hit(conn, founder.did, now)
@@ -1681,10 +1692,22 @@ async def _tick_reply(
         room = await invite_to_room(
             conn, founder, candidate.author_did, topic, now, list(display_by_did),
         )
+    author = display_by_did[candidate.author_did]
     generated = compose_reply(
-        founder.persona, display_by_did[candidate.author_did], candidate.title, candidate, rng,
+        founder.persona, author, candidate.title, candidate, rng,
         room_name=room[1] if room else None,
     )
+    write = getattr(generator, "write_reply", None)
+    if write is not None:
+        topic, _tag = topic_of(candidate, founder.persona)
+        generated = await write(
+            founder.persona, generated, author=author,
+            parent_text=f"{candidate.title}\n{candidate.content}".strip(),
+            facts=tuple(await facts_reader(conn, founder.name, now)),
+            quoted=tuple(q for q in (candidate.title, topic, room[1] if room else "") if q),
+            suffix=room_invitation(room[1], topic, author, rng) if room else "",
+            now=now,
+        )
     reply_id, held = await create_founder_reply(
         conn, founder, candidate, generated, now, room[0] if room else None,
     )
@@ -1722,6 +1745,7 @@ async def _guarded_founders(conn, roster: Mapping[str, str]) -> dict[str, Founde
 async def _reply_phase(
     conn, founders: Mapping[str, FounderAgent], seed: str, rng: random.Random,
     now: datetime, summary: TickSummary,
+    generator: Optional[PostGenerator] = None, facts_reader: FactsReader = read_facts,
 ) -> list[tuple[UUID, str, UUID]]:
     """Every founder that passes the guard gets one chance to reply, in a
     shuffled order (so the same founder does not always take the last slot
@@ -1739,6 +1763,7 @@ async def _reply_phase(
             async with conn.transaction():
                 reply = await _tick_reply(
                     conn, founders[name], candidates, display_by_did, seed, rng, now, summary,
+                    generator, facts_reader,
                 )
         except DuplicatePost:
             summary.reply_rejected[name] = "duplicate"
@@ -1762,10 +1787,13 @@ SentMessage = tuple[UUID, str, str, bool]
 async def _tick_message(
     conn, founder: FounderAgent, founders: Mapping[str, FounderAgent], seed: str,
     rng: random.Random, now: datetime, summary: TickSummary,
+    generator: Optional[PostGenerator] = None, facts_reader: FactsReader = read_facts,
 ) -> Optional[SentMessage]:
     """At most one message by *founder* this tick: an answer to the oldest
     opening it wants to answer and whose delay has passed, else its own
-    opening of the day once its time has come."""
+    opening of the day once its time has come. With an LLM *generator* the
+    answer is written from the founder's facts (TF-6; the template on any
+    failure); openings stay templates."""
     persona = founder.persona
     if persona.is_quiet(now):
         return None
@@ -1781,7 +1809,15 @@ async def _tick_message(
             continue
         opener = by_did[row["sender_agent_did"]]
         text = compose_answer(persona, opener.display_name, row["topic"], rng)
-        meta = {"kind": KIND_ANSWER, "answers": str(row["message_id"])}
+        source = "template"
+        write = getattr(generator, "write_dm_answer", None)
+        if write is not None:
+            text, source = await write(
+                persona, text, peer=opener.display_name, message_text=row["message"] or "",
+                facts=tuple(await facts_reader(conn, founder.name, now)),
+                quoted=tuple(q for q in (row["topic"],) if q), limit=DM_MAX_CHARS, now=now,
+            )
+        meta = {"kind": KIND_ANSWER, "answers": str(row["message_id"]), "generator": source}
         if row["topic"]:
             meta["topic"] = row["topic"]
         message_id = await send_founder_message(conn, founder, opener, text, meta, now)
@@ -1814,6 +1850,7 @@ async def _tick_message(
 async def _message_phase(
     conn, founders: Mapping[str, FounderAgent], seed: str, rng: random.Random,
     now: datetime, summary: TickSummary,
+    generator: Optional[PostGenerator] = None, facts_reader: FactsReader = read_facts,
 ) -> list[SentMessage]:
     """Every founder that passes the guard gets one chance to send a message,
     in the fixed roster order, each in its own savepoint."""
@@ -1821,7 +1858,9 @@ async def _message_phase(
     for name, founder in founders.items():
         try:
             async with conn.transaction():
-                made = await _tick_message(conn, founder, founders, seed, rng, now, summary)
+                made = await _tick_message(
+                    conn, founder, founders, seed, rng, now, summary, generator, facts_reader,
+                )
         except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
             logger.exception("founder_heartbeat: %s's message failed", name)
             summary.dm_errors[name] = type(exc).__name__
@@ -1983,7 +2022,9 @@ async def run_tick(
             else:
                 if made is not None:
                     to_announce.append(made)
-        replies = await _reply_phase(conn, founders, reply_seed, rng, now, summary)
+        replies = await _reply_phase(
+            conn, founders, reply_seed, rng, now, summary, generator, facts_reader or read_facts,
+        )
         if welcomes_enabled(settings):
             welcome_replies, welcome_messages = await _welcome_phase(
                 conn, founders, roster, now, summary,
@@ -1994,7 +2035,9 @@ async def run_tick(
             newcomers = await recently_welcomed(conn, now, list(roster.values()))
         else:
             newcomers = []
-        messages += await _message_phase(conn, founders, dm_seed, rng, now, summary)
+        messages += await _message_phase(
+            conn, founders, dm_seed, rng, now, summary, generator, facts_reader or read_facts,
+        )
 
     for post_id, did, title in to_announce:
         await _announce(post_id, did, title)

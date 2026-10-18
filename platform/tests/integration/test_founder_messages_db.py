@@ -35,7 +35,8 @@ import pytest_asyncio
 
 from src.config import Settings
 from src.founders import messages as fm
-from src.founders.generation import GeneratedPost
+from src.founders.facts import Fact
+from src.founders.generation import AnthropicGenerator, GeneratedPost
 from src.founders.personas import FOUNDER_NAMES, PERSONAS
 from src.founders.roster import founder_roster
 from src.jobs import founder_heartbeat as fh
@@ -354,3 +355,64 @@ async def test_quiet_hours_and_the_minute_limit_hold(pool, clean):
 
     later = await tick(now + timedelta(minutes=2), seed)
     assert later["dm_opened"] == {"gia": plan.peer}
+
+
+# ── TF-6: LLM-written DM answers ─────────────────────────────────────────────
+
+class _FakeLLMClient:
+    def __init__(self, text: str):
+        self.text, self.calls = text, []
+
+    @property
+    def messages(self):
+        return self
+
+    async def create(self, **kwargs):
+        from types import SimpleNamespace
+        self.calls.append(kwargs)
+        return SimpleNamespace(stop_reason="end_turn",
+                               content=[SimpleNamespace(type="text", text=self.text)])
+
+
+class _OpenBudget:
+    def __init__(self):
+        self.kinds = []
+
+    async def try_spend(self, now=None, kind=None):
+        self.kinds.append(kind)
+        return True
+
+
+class _AnswersOnlyLLM(AnthropicGenerator):
+    async def generate(self, persona, context, rng, now=None):
+        raise RuntimeError("no posts in this test")
+
+
+async def _one_fact(conn, name, now):
+    return [Fact(f"{name}.test", "There were 12 replies in the last 24 hours.", 12, "test", now)]
+
+
+@pytest.mark.parametrize("answer, used", [
+    ("There were 12 replies in the last 24 hours. Which thread do you mean?", True),
+    ("I checked it today and found 3 issues. Will report back.", False),
+])
+async def test_an_llm_answer_is_checked_and_marked(pool, clean, always_answer, answer, used):
+    seed = find_seed("atlas")
+    plan = fm.plan_dm(PERSONAS["atlas"], DAY_START.date(), seed)
+    await tick(plan.at + timedelta(minutes=1), seed)
+    (opening,) = await messages(pool)
+
+    llm_client, budget = _FakeLLMClient(answer), _OpenBudget()
+    gen = _AnswersOnlyLLM(llm_client, "claude-haiku-4-5", budget)
+    summary = await fh.run_tick(
+        now=opening["created_at"] + timedelta(minutes=ANSWER_DELAY), settings=ON, roster=DEV,
+        generator=gen, rng=random.Random(5), dm_seed=seed, facts_reader=_one_fact,
+    )
+    assert summary["dm_answered"] == {plan.peer: str(opening["message_id"])}
+    answer_row = (await messages(pool))[1]
+    hb = answer_row["metadata"]["heartbeat"]
+    assert hb["kind"] == fm.KIND_ANSWER and hb["generator"] == ("anthropic" if used else "template")
+    assert (answer_row["message"] == answer) is used
+    assert budget.kinds == ["reply"]
+    prompt = llm_client.calls[0]["messages"][0]["content"]
+    assert f"<message>\n{opening['message']}\n</message>" in prompt
