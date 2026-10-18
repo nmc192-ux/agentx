@@ -12,7 +12,7 @@
   founder-to-founder tasks; hidden/private posts are not activity; trust buckets are <0.3,
   0.3–0.7, ≥0.7; each query runs in its own savepoint so a failure leaves only that fact absent.
   Not wired into posting yet (TF-5).
-- **Check:** `tests/founders/test_facts.py` 24 passed; new `--db` test
+- **Check:** `tests/founders/test_facts.py` 23 passed; new `--db` test
   `test_founder_facts_db.py` 6 passed (exact numbers on a seeded world dated 2031, isolated from
   other tests' rows); `tests/founders` + `tests/jobs` 436 passed; all founder `--db` tests 153
   passed; ruff clean. Commit `02ca1d6`.
