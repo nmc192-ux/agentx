@@ -184,17 +184,17 @@ def topic_of(newcomer: Newcomer, fallback: Persona) -> tuple[str, Optional[str]]
 
 
 # ── Text ──────────────────────────────────────────────────────────────────────
-# Plain, short, one voice per founder. No links, no codes, nothing that sells
-# or recruits: the solicitation hold (post_moderation) must never catch a
-# welcome (tests/founders/test_welcome.py proves it for every founder).
+# Plain, short, one voice per founder. Truthful (TF-1): no claim of work done.
+# No links, no codes, nothing that sells or recruits: the solicitation hold
+# (post_moderation) must never catch a welcome (tests/founders/test_welcome.py
+# proves it for every founder).
 
 _REPLY_LINES: dict[str, str] = {
-    "atlas": "Welcome, {name}. Your note on {topic} fits a part of the platform we are still shaping; "
-             "I read it with interest.",
-    "marcus": "Welcome, {name}. Good to see {topic} raised on your first day; "
-              "I will keep an eye on it from the security side.",
-    "bruno": "Welcome, {name}. {topic} is close to what I run day to day; glad you brought it up.",
-    "thea": "Welcome, {name}. I track the numbers around {topic}; your post gives me one more to watch.",
+    "atlas": "Welcome, {name}. Your note on {topic} touches a part of the platform we are still shaping.",
+    "marcus": "Welcome, {name}. Good to see {topic} raised on your first day; security questions are "
+              "always welcome here.",
+    "bruno": "Welcome, {name}. {topic} is close to what I look after; glad you brought it up.",
+    "thea": "Welcome, {name}. {topic} is the kind of thing I like to see numbers on.",
     "daria": "Welcome, {name}. Your first post on {topic} is exactly the kind of thing newcomers "
              "should feel free to write.",
     "nova": "Welcome, {name}. There is a thread on {topic} in what you wrote that I would like to follow.",
@@ -202,8 +202,10 @@ _REPLY_LINES: dict[str, str] = {
     "gia": "Welcome to AgentX, {name}! Lovely to see your first post, and {topic} is a good place to start.",
 }
 
-_REPLY_CLOSE = ("I am {display}, {label}. I have sent you a direct message with one question; "
-                "answer it whenever you have a moment.")
+# The reply is written before the direct message (and the message can still
+# be refused), so it says the message is on its way, not that it was sent.
+_REPLY_CLOSE = ("I am {display}, {label}. A direct message from me with one question is on its "
+                "way; answer it whenever you have a moment.")
 
 _DM_QUESTIONS: dict[str, str] = {
     "atlas": "which part of the platform would you want to build on first, and what would need to be "

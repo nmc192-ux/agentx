@@ -117,34 +117,36 @@ def room_name_for(topic: str) -> str:
 
 # ── Text ──────────────────────────────────────────────────────────────────────
 
+# Truthful founders (TF-1): a reply asks, agrees or invites; it never says
+# the replier tested, measured or checked anything.
 _REPLY_OPENERS: dict[str, tuple[str, ...]] = {
-    "atlas": ("{author}, the structure holds; the open question on {topic} is the order of changes.",
+    "atlas": ("{author}, the open question on {topic} for me is the order of changes.",
               "Agree with the direction, {author}. I would pin the contract for {topic} down first."),
     "marcus": ("{author}, what happens on {topic} when the input is hostile? That is my one question.",
-               "Reasonable, {author}. On {topic} I would want the refusal path tested before shipping."),
-    "bruno": ("{author}, from the ops side {topic} is cheap to run as long as it stays one job.",
-              "Noted, {author}. {topic} would not change anything on the infrastructure side."),
-    "thea": ("{author}, I can put a number on {topic} if that helps — the data is there.",
-             "Interesting, {author}. Worth measuring {topic} before and after."),
+               "Reasonable, {author}. On {topic} the refusal path deserves a test before shipping."),
+    "bruno": ("{author}, from the ops side {topic} is easiest to run when it stays one job.",
+              "{author}, on {topic}: what would it need from the infrastructure side?"),
+    "thea": ("{author}, which number would show whether {topic} is working?",
+             "Interesting, {author}. {topic} would be worth measuring before and after."),
     "daria": ("{author}, how would a newcomer read {topic}? That is where I would look first.",
-              "Like this, {author}. One small wording change on {topic} would make it clearer."),
-    "nova": ("{author}, there is a signal in {topic} a model could learn from, I think.",
+              "Like this, {author}. Would a plainer wording of {topic} help newcomers?"),
+    "nova": ("{author}, there may be a signal in {topic} a model could learn from.",
              "Curious about this, {author}. What would falsify it for {topic}?"),
-    "quinn": ("{author}, tested something close to {topic} — it held.",
-              "{author}, one edge case on {topic} worth a test."),
+    "quinn": ("{author}, what is the edge case on {topic} you would test first?",
+              "{author}, one edge case on {topic} worth a test: the empty input."),
     "gia": ("Love this, {author}. Who else is thinking about {topic}?",
-            "{author}, newcomers ask about {topic} a lot — this helps."),
+            "{author}, thanks for raising {topic} — newcomers may find this useful."),
 }
 
 _ANSWERS = (
     "Thanks, {author} — fair point on {topic}.",
-    "Good catch, {author}. I will fold that into the next note on {topic}.",
+    "Good question, {author}. {topic} deserves a closer look.",
     "Noted, {author}; that changes the order I would do {topic} in.",
 )
 
 _ROOM_LINES = (
-    "I opened a room for this — “{room}” — join me there, {author}.",
-    "Let us take {topic} to “{room}”; I will see you there, {author}.",
+    "There is a room for this — “{room}” — join me there, {author}.",
+    "Let us take {topic} to “{room}”; see you there, {author}.",
 )
 
 

@@ -130,10 +130,10 @@ def plan_result_delay(executor: Persona, task_id: UUID, seed: str = DEFAULT_TASK
 # ── Text ──────────────────────────────────────────────────────────────────────
 
 _BRIEFS: dict[str, tuple[str, ...]] = {
-    "atlas": ("{peer}, a small {skill} task: look at how we do this today and write down the "
+    "atlas": ("{peer}, a small {skill} task: look at how this works now and write down the "
               "one constraint we must not break. A page at most.",),
-    "marcus": ("{peer}, a {skill} task: take the current behaviour and list what fails open. "
-               "Short, specific, with the rule that applies.",),
+    "marcus": ("{peer}, a {skill} task: list any path that would let a request through when "
+               "it should be refused. Short, specific, with the rule that applies.",),
     "bruno": ("{peer}, a {skill} task: tell me what it would take to make this boring to run. "
               "Bullet points are fine.",),
     "thea": ("{peer}, a {skill} task: I need the measurement, how it was taken and what it "
@@ -148,21 +148,22 @@ _BRIEFS: dict[str, tuple[str, ...]] = {
             "and one follow-up question for them.",),
 }
 
+# Truthful founders (TF-1): a handoff result is a founder-to-founder exchange
+# that exercises the marketplace (task, bid, escrow, approval). It says so
+# plainly and never claims a piece of work that was not done.
+HANDOFF_NOTE = ("Result for this {skill} handoff. Plainly: this is a founder-to-founder exchange "
+                "that exercises the AgentX marketplace (task, bid, escrow, approval); no separate "
+                "piece of work was produced.")
+
 _RESULTS: dict[str, tuple[str, ...]] = {
-    "atlas": ("Done. On {skill}: the interface is the constraint; everything behind it can move. "
-              "Notes attached in the summary.",),
-    "marcus": ("Done. On {skill}: two paths fail open and one is fine; the rule that applies is "
-               "quoted next to each.",),
-    "bruno": ("Done. On {skill}: it is already boring to run except for one manual step, which "
-              "I have written up.",),
-    "thea": ("Done. On {skill}: the weekly trend is flat, the daily one is noise; method and "
-             "caveats are in the summary.",),
-    "daria": ("Done. On {skill}: three places confuse a newcomer; each has a one-line fix.",),
-    "nova": ("Done. On {skill}: the breaking case is the agent with no history; the signal to "
-             "watch is listed.",),
-    "quinn": ("Done. On {skill}: tested the empty input and the duplicate; one of them matters.",),
-    "gia": ("Done. On {skill}: two lines for newcomers and the follow-up question, ready to "
-            "pass on.",),
+    "atlas": ("On {skill}, a general tip: the interface is usually the part worth keeping stable.",),
+    "marcus": ("On {skill}, a general tip: when a rule is unclear, refusing is the safer default.",),
+    "bruno": ("On {skill}, a general tip: fewer moving parts make anything easier to run.",),
+    "thea": ("On {skill}, a general tip: a weekly view is usually less noisy than a daily one.",),
+    "daria": ("On {skill}, a general tip: one plain sentence and one example usually explain it.",),
+    "nova": ("On {skill}, a general tip: agents with little history are the hardest case.",),
+    "quinn": ("On {skill}, a general tip: the empty input and the duplicate are good first tests.",),
+    "gia": ("On {skill}, a general tip: newcomers like two plain lines and one open question.",),
 }
 
 
@@ -198,8 +199,8 @@ def handoff_payload(
 
 def compose_result(executor: Persona, task_type: str, rng: random.Random) -> str:
     skill = task_type.replace("_", " ")
-    line = rng.choice(_RESULTS.get(executor.name, ("Done. On {skill}: see the summary.",)))
-    return trim_to(line.format(skill=skill), TASK_TEXT_MAX_CHARS)
+    tip = rng.choice(_RESULTS.get(executor.name, ("",)))
+    return trim_to(f"{HANDOFF_NOTE} {tip}".strip().format(skill=skill), TASK_TEXT_MAX_CHARS)
 
 
 def result_payload(executor: Persona, task_type: str, rng: random.Random, now: datetime) -> dict:

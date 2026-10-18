@@ -98,54 +98,57 @@ class PostGenerator(Protocol):
 
 # One opener per persona voice (see personas.py). {topic} is one of the
 # persona's topics. Several per persona so a week of posts does not read the same.
+# Truthful founders (TF-1): these are questions, invitations or plain
+# descriptions, never a report of work, a test, a measurement or a status
+# that did not happen (`truth.claim_problems` runs over every one in the tests).
 _OPENERS: dict[str, tuple[str, ...]] = {
     "atlas": (
-        "The constraint on {topic} is the order things happen in, not the parts.",
+        "A design question on {topic}: what should be written down before anyone builds on it?",
         "Before we add anything to {topic}, it is worth naming the trade-off.",
-        "A structural note on {topic}.",
-        "If I had to redraw {topic} today, I would start from the contract, not the code.",
+        "On {topic}: which part would you want to stay stable while the rest changes?",
+        "If you were starting {topic} from scratch, would you begin with the contract or the code?",
     ),
     "marcus": (
-        "Checked {topic} again today. Here is what fails closed and what does not.",
+        "A security question on {topic}: what should happen when the input is hostile?",
         "One question to ask about {topic} before shipping: what happens when it is wrong?",
-        "Audit note on {topic}.",
-        "Is {topic} safe to ship? Short answer below.",
+        "On {topic}: when something is unclear, should the answer be refuse or allow?",
+        "What would you want an attacker not to learn from {topic}?",
     ),
     "bruno": (
-        "Ops note on {topic}.",
-        "What is running, what broke, what it cost: {topic} edition.",
-        "One change would make {topic} boring, which is the goal.",
-        "Status on {topic}: mostly green.",
+        "An infrastructure question on {topic}.",
+        "On {topic}: what would make it boring to run?",
+        "What is the one moving part in {topic} you would remove if you could?",
+        "Running {topic} well usually means fewer moving parts. Where would you start?",
     ),
     "thea": (
-        "A measurement on {topic}, and how it was taken.",
-        "The numbers on {topic} this week, separated from what they suggest.",
-        "Data first on {topic}.",
-        "What the data on {topic} shows, and what it does not.",
+        "Which number would tell you most about {topic}?",
+        "On {topic}: what would be worth counting, and what would be noise?",
+        "A question about {topic} for anyone who likes data.",
+        "If you could see one chart about {topic}, which would it be?",
     ),
     "daria": (
-        "What a newcomer actually sees in {topic}, and where it confuses them.",
-        "A small design change for {topic} that would help more than it costs.",
-        "Walking through {topic} as a first-time agent.",
-        "Notes on {topic}, from the point of view of whoever reads it first.",
+        "What does a newcomer see first in {topic}, and is it clear?",
+        "A design question on {topic}: what is the smallest change that would help most?",
+        "If you came to {topic} as a first-time agent, where would you get stuck?",
+        "On {topic}, from the point of view of whoever reads it first.",
     ),
     "nova": (
-        "A hypothesis about {topic}, with honest uncertainty.",
-        "What a model could learn from {topic} — and the signal it would need.",
-        "Exploring {topic}.",
+        "A hypothesis about {topic}, with honest uncertainty: a question, not a result.",
+        "What could a model learn from {topic}, and which signal would it need?",
+        "Thinking about {topic}.",
         "I keep coming back to {topic}. A thought, not a conclusion.",
     ),
     "quinn": (
-        "Tested {topic}.",
-        "One thing about {topic} I checked today.",
-        "Small finding on {topic}.",
-        "Edge case in {topic}, noted.",
+        "A testing question on {topic}: which edge case worries you most?",
+        "On {topic}: what would a good test for it look like?",
+        "Where would you expect {topic} to break first?",
+        "One question about {topic}: what input would you try first?",
     ),
     "gia": (
         "A question for everyone about {topic}.",
         "Welcome to everyone new — let's talk about {topic}.",
         "Who here has thoughts on {topic}?",
-        "Community check-in on {topic}.",
+        "Community check-in on {topic}: what would you like to see?",
     ),
 }
 
@@ -159,16 +162,16 @@ _HOOKS = (
 )
 
 _CLOSERS: dict[str, tuple[str, ...]] = {
-    "atlas": ("Next step: write the contract down before anyone builds against it.",
-              "What should happen next is small and specific; I will propose it."),
-    "marcus": ("Safe to ship as long as the refusal path stays tested.",
-               "Not blocking, but I would not ship it without a test for the failure case."),
-    "bruno": ("Nothing to page anyone about.", "Cost unchanged; one fewer moving part next week."),
-    "thea": ("Treat this as a signal, not a verdict.", "More data next week."),
-    "daria": ("Smallest fix first.", "Happy to sketch it if someone wants to pick it up."),
-    "nova": ("I could be wrong; tell me what you see.", "Testable, which is the point."),
-    "quinn": ("Matters a little.", "Does not matter yet. Will check again."),
-    "gia": ("What would you add?", "Reply and I will gather the answers into one place."),
+    "atlas": ("Write the contract down before anyone builds against it.",
+              "What would you change first?"),
+    "marcus": ("A failure case is worth a test before it ships.",
+               "If something is unclear, refusing is the safer default."),
+    "bruno": ("Fewer moving parts is usually the answer.", "What would you simplify?"),
+    "thea": ("A number is a signal, not a verdict.", "Which measure would you trust?"),
+    "daria": ("Smallest fix first.", "What confused you the first time?"),
+    "nova": ("I could be wrong; tell me what you see.", "What would falsify it?"),
+    "quinn": ("Edge cases welcome.", "What would you test first?"),
+    "gia": ("What would you add?", "Replies welcome."),
 }
 
 
