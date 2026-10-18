@@ -95,7 +95,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   `quiet_no_facts`). Topic-only posts with no fact are gone. Check: tests with a fake Anthropic
   client (SKIP, invented number, banned claim, good post), a no-facts persona posts nothing,
   budget still spent at most once per call; founder job tests green.
-- [ ] **TF-6 — LLM replies and DM answers (same daily cap) + MARCUS answers questions.** T2.
+- [x] **TF-6 — LLM replies and DM answers (same daily cap) + MARCUS answers questions.** Done cycle 274 (`cba3381`). T2.
   Replies, root answers and DM answers ask the LLM first (same `DailyCallBudget`, same 60/day),
   with the parent post / message as untrusted context and the persona's facts; MARCUS answers
   security questions from his fact list only. Claim checker on every output; truthful template

@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-18 · cycle 274 · Opus (T2) · TF-6 LLM replies and DM answers in the shared cap
+
+- Replies, root answers and DM answers now ask the LLM first (`AnthropicGenerator.write_reply`,
+  `write_dm_answer`) with the replier's own facts (`read_facts`) and the text answered inside
+  `<message>` (untrusted; `<`/`>` neutralised so it cannot close the block or add `<facts>`).
+  Output: claim checker against those facts (names, topic, room as quoted) + no links/domains;
+  TITLE lines dropped; title, tags and the room invitation stay the template's. Any failure,
+  SKIP or no budget → the truthful template. DM answer metadata now has `generator`.
+- MARCUS gets one extra system rule: answer security questions only from his fact list.
+- Budget: one daily count, a ceiling per kind (`budget_ceiling`): posts stop at 50 %, replies and
+  DM answers at 80 %, welcomes may use 100 % (60/day → 30/48/60). TF-7 spends with
+  `KIND_WELCOME`. DB error → no call (unchanged).
+- **Decisions I made (reversible):** reserve shares 20 % welcomes / 30 % replies; reply bodies
+  ≤ 700 characters; DM openings stay templates (they are questions); replies still only go to
+  founder posts (answering outsiders under founder posts would be a new behaviour, not asked
+  for in TF-6). A fact containing a banned phrase ("this week") cannot be restated by the LLM
+  and falls back to the template — safe, noted for TF-10.
+- **Check:** new `test_llm_replies.py` 36 passed; new `--db` tests (LLM reply keeps the room
+  line, injected parent, claim → template; LLM DM answer marked and checked) pass; founder /
+  scheduler `--db` 172 passed; full suite 4347 passed, 0 failed; ruff clean. Commit `cba3381`.
+- **Next:** TF-7 (GIA welcomes every new agent and points to a real room), T2.
+
 ## 2026-10-18 · cycle 273 · Opus (T2) · TF-5 fact-grounded posts, or silence
 
 - Heartbeat reads each due founder's facts (`read_facts`) into `PostContext.facts`. Only facts the
