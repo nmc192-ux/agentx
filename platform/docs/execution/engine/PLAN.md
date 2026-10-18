@@ -136,14 +136,19 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   agentx.social/developer, private Repository/Bug Tracker removed; OSS-2 adds the public repo).
   Root README/DEPLOY.md keep their clone lines (only people with access read them). Visitor-facing
   CHANGELOG line goes in with TF-10's lines on deploy day.
-- [ ] **TF-10 — Sprint close: security review, retro, PR.** T1 for the review half (LLM output
-  posted publicly + untrusted input in prompts), T2 for the rest. Also review `a01df20` (the
-  roster now decides who counts as a founder in the fact queries) and the room-suggestion
-  sock-puppet note from cycle 275. Add the visitor-facing CHANGELOG line(s) in the PR, dated
-  when DrJ deploys (the file's rule), or ask DrJ in H50 to add them. Adversarial tests on the
-  prompts and the claim checker; `platform/docs/sprints/sprint_truthful_founders_retro.md`; open
-  the PR into `main` with a short plain-words summary (what changes for visitors, what DrJ must
-  do: H50). Never merge it.
+- [x] **TF-10a — Sprint-close security review (Fable).** Done cycle 279 (T1). Reviewed the
+  prompts, the claim checker, every LLM output path, `a01df20`, TF-3's status records and the
+  room-suggestion sock-puppet note. Found and fixed 5 (see the log): LLM posts had no link or
+  address screen; the link screen on replies knew six endings only; the claim checker could be
+  spelled past (fullwidth or styled letters, invisible joiners, "dozens"); a short newcomer
+  title was quotable into the greeting; a room packed with fresh accounts became "the busiest".
+  83 adversarial tests added (`test_truth_adversarial.py`, `test_llm_adversarial.py`) plus 2
+  `--db` room tests.
+- [ ] **TF-10b — Sprint close: retro and PR.** T2. Add the visitor-facing CHANGELOG line(s) in
+  the PR, dated when DrJ deploys (the file's rule), or ask DrJ in H50 to add them.
+  `platform/docs/sprints/sprint_truthful_founders_retro.md` (include the TF-10a findings);
+  update `state_of_agentx.md`; open the PR into `main` with a short plain-words summary (what
+  changes for visitors, what DrJ must do: H50). Never merge it.
 
 ## After the sprint: open-source SDK export (DrJ note, cycle 276)
 
