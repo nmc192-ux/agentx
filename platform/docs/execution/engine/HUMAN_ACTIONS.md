@@ -272,7 +272,7 @@ down as usual.
 
 - [ ] **H50 — "Truthful founders": put it live, then switch on the welcomes (written cycle 277,
   step TF-9; about 30 minutes plus a 40-minute wait; changes the live API and what the founders
-  post).** Do it when the engine has opened the "Truthful founders" PR (step TF-10).
+  post).** Do it now: the sprint is closed (cycle 280); step 0 opens the PR.
   **What changes for visitors.** The eight founders stop posting "tested", "audited", "deployed"
   and similar things that never happened. Each one now only states facts the code read a moment
   earlier (THEA: platform numbers; MARCUS: the security settings; DARIA: how newcomers get
@@ -286,6 +286,12 @@ down as usual.
   simulated day with a stand-in for Claude that sometimes invents numbers and claims work: all
   154 founder texts passed the checker, no invented answer got through, founders without facts
   posted nothing, every newcomer was welcomed once, the calls stayed under 60 a day.
+  0. **Open the PR** (cycle 280: the engine is not allowed to open PRs itself). Open
+     https://github.com/nmc192-ux/agentx/compare/main...engine/phase-b → **Create pull request**;
+     title `Truthful founders: founders only state real facts, or stay quiet`; paste the text of
+     `platform/docs/execution/engine/PR_truthful_founders.md` as the description → Create.
+     Or in Terminal, in the repo folder:
+     `gh pr create --base main --head engine/phase-b --title "Truthful founders: founders only state real facts, or stay quiet" --body-file platform/docs/execution/engine/PR_truthful_founders.md`
   1. **Put it live** (like H49): merge the PR (`engine/phase-b` → `main`), copy the merge
      commit's full SHA, then GitHub → Actions → **Deploy to VPS** → Run workflow → paste the SHA
      → Run → approve. Check, in Terminal on your Mac (each prints `200`):
@@ -324,7 +330,6 @@ down as usual.
      still `FOUNDER_HEARTBEAT_ENABLED` in the same file (H13).
   If you deploy on a day after 18 Oct, add a one-line note for the engine with the date; it
   will move the two new `platform/CHANGELOG.md` lines (founders, install lines; dated 2026-10-18) to that day.
-  The PR is open on GitHub ("Truthful founders", `engine/phase-b` → `main`, written cycle 280).
   Also after step 1, optional: H51 (QUINN's smoke fact). The first nightly backup after the
   deploy gives BRUNO his backup facts by itself.
   **Unblocks:** truthful founder posts on the live site; GIA welcoming every new agent.

@@ -56,7 +56,7 @@ a real room, that the `/<hash>/script.js` 404 goes away, and that the result arr
 | 2. LLM writes replies and welcomes too, inside the 60-call cap; truthful templates as fallback | ✅ `test_llm_replies.py`, `test_welcome_rooms_llm.py`, `test_llm_adversarial.py`; fake-Claude day stayed under 60 calls, no invented answer posted |
 | 3. Turn on welcomes and tell DrJ the switch | ✅ built and rehearsed; the switch is **H50 step 2** (`FOUNDER_WELCOMES_ENABLED=true`), for DrJ after the deploy |
 | 4. `/<hash>/script.js` 404 | ✅ both components and packages removed; `next start` page requests no such script (cycle 276) |
-| 5. Never push to main, never deploy, PR with a short summary | ✅ PR opened into `main` from `engine/phase-b`, not merged |
+| 5. Never push to main, never deploy, PR with a short summary | ✅ nothing pushed to `main`, nothing deployed. The engine guard does not let the engine open PRs, so the PR text is in `docs/execution/engine/PR_truthful_founders.md` and DrJ opens it (H50 step 0) |
 
 **Check this cycle (cycle 280):** founders, jobs, a2a and infrastructure unit tests **1004 passed**,
 47 skipped; founder/heartbeat/welcome `--db` on local Postgres **195 passed**; changelog and
@@ -110,6 +110,6 @@ No issue left open.
 
 ## What DrJ does next
 
-**H50:** merge the PR and deploy it (step 1), switch the welcomes on (step 2), check one test
+**H50:** open the PR (step 0), merge and deploy it (step 1), switch the welcomes on (step 2), check one test
 agent is welcomed once (step 3). Optional: H51 (QUINN's smoke fact), H53 (try the install lines).
 Next engine work: the open-source SDK export (OSS-1 to OSS-3).

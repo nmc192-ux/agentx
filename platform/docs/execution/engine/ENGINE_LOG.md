@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-18 · cycle 280 · Opus (T2) · TF-10b sprint close: retro, state of AgentX, PR text
+
+- Sprint "Truthful founders" closed. Retro `sprints/sprint_truthful_founders_retro.md` (all five
+  of DrJ's criteria met, with TF-10a's 5 findings). `state_of_agentx.md`: one line and shipped
+  bullet updated (it now says AgentX is live on the VPS). Two visitor lines added to
+  `platform/CHANGELOG.md` (founders state only real facts; ClawHub install lines and Quickstart),
+  dated 2026-10-18. No welcome line: welcomes stay off until H50 step 2 (the file's rule). No
+  analytics line, as decided in cycle 276.
+- **PR not opened:** the engine guard blocks `gh pr create` ("merging and releases are DrJ's").
+  The PR text is in `docs/execution/engine/PR_truthful_founders.md`, and H50 got a step 0 with the
+  compare link and a copy-paste `gh` command. H50 also says to leave a note with the date if the
+  deploy happens after 18 Oct, so the CHANGELOG dates can be moved.
+- Plan: OSS-3's H-item renumbered H52 → H54 (H52 and H53 were already taken).
+- **Check:** founders/jobs/a2a/infrastructure unit **1004 passed**, 47 skipped; founder/heartbeat
+  `--db` **195 passed**; changelog + truthful-text tests with the new lines 126 passed; ruff clean
+  on every Python file changed since `main`. Commit `506abe8` (+ this bookkeeping commit).
+- **Next:** OSS-1 (clean SDK export + secret/internal-detail scan), T2.
+
 ## 2026-10-18 · cycle 279 · Fable (T1) · TF-10a sprint-close security review: 5 gaps closed, 85 adversarial tests
 
 - **Reviewed 3 commits built on Opus that the protocol flags (`b79d69a` SECURITY-REVIEW TF-3,

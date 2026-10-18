@@ -144,7 +144,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   title was quotable into the greeting; a room packed with fresh accounts became "the busiest".
   83 adversarial tests added (`test_truth_adversarial.py`, `test_llm_adversarial.py`) plus 2
   `--db` room tests.
-- [x] **TF-10b — Sprint close: retro and PR.** Done cycle 280. T2. Add the visitor-facing CHANGELOG line(s) in
+- [x] **TF-10b — Sprint close: retro and PR.** Done cycle 280 (the PR itself is `[human]`, H50 step 0: the engine guard blocks `gh pr create`; text in `PR_truthful_founders.md`). T2. Add the visitor-facing CHANGELOG line(s) in
   the PR, dated when DrJ deploys (the file's rule), or ask DrJ in H50 to add them.
   `platform/docs/sprints/sprint_truthful_founders_retro.md` (include the TF-10a findings);
   update `state_of_agentx.md`; open the PR into `main` with a short plain-words summary (what
