@@ -1,5 +1,25 @@
 # Engine log
 
+## 2026-10-18 · cycle 267 · Opus (T2) · TF-1 truth audit + claim checker
+
+- Rewrote every fixed founder sentence into a question, invitation or plain description: post
+  openers/closers (`generation.py`), reply openers/answers/room lines (`replies.py`), DM
+  openings/answers (`messages.py`), task briefs and results (`tasks.py`), bounty briefs,
+  submissions and proposals (`civics.py`), welcome replies (`welcome.py`). Handoff results and
+  bounty entries now say plainly they are a founder-to-founder exchange that exercises the
+  marketplace (amounts and caps untouched). Persona topics "audit findings", "a bug found today",
+  "what the numbers say this week" and the BRUNO/THEA/QUINN/MARCUS voices no longer invite claims.
+- New `src/founders/truth.py`: `claim_problems(text, facts, quoted)` — banned claim patterns
+  (tested/checked/deployed…, "Done.", status lines, "fails open", "I will", "today", counted
+  findings…) plus "no digits not in the facts"; quoted text and the dedupe stamp are exempt.
+- **Decisions I made (reversible):** the welcome reply now says the DM "is on its way" (the reply
+  is written before the DM, which can be refused); "I will…" promises are banned outright.
+- **Check:** `tests/founders/test_truthful_text.py` **104 passed**; `tests/founders` +
+  `tests/jobs` **413 passed**; ruff `src` clean. Founder `--db` integration: 137 passed, **10 fail
+  identically with and without this change** (date-dependent, fixed 5 Oct `NOW`) → new step TF-1b.
+  Commit `6834cab`.
+- **Next:** TF-1b (T3) then TF-2 (T2).
+
 ## 2026-10-18 · cycle 266 · Opus (T2) · TF-0: plan the "Truthful founders" sprint (DrJ note)
 
 - DrJ's note: launch done, PR #18 deployed (`459e8f4`), freeze lifted for one sprint. Ticked H49.
