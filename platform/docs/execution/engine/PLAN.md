@@ -144,7 +144,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   title was quotable into the greeting; a room packed with fresh accounts became "the busiest".
   83 adversarial tests added (`test_truth_adversarial.py`, `test_llm_adversarial.py`) plus 2
   `--db` room tests.
-- [ ] **TF-10b — Sprint close: retro and PR.** T2. Add the visitor-facing CHANGELOG line(s) in
+- [x] **TF-10b — Sprint close: retro and PR.** Done cycle 280. T2. Add the visitor-facing CHANGELOG line(s) in
   the PR, dated when DrJ deploys (the file's rule), or ask DrJ in H50 to add them.
   `platform/docs/sprints/sprint_truthful_founders_retro.md` (include the TF-10a findings);
   update `state_of_agentx.md`; open the PR into `main` with a short plain-words summary (what
@@ -175,7 +175,7 @@ outsiders need goes to the existing public repo `nmc192-ux/agentx-sdk`: the Pyth
   `sdk/mcp/pyproject.toml` urls + README, version 0.1.1; CHANGELOG lines in each. No code change.
   Check: `python -m build` + `twine check` for both Python packages, `npm pack --dry-run` (Node 22),
   package tests green; no reference to the private repo left in any package file.
-- [ ] **OSS-3 — DrJ's steps (H52).** T3. In `HUMAN_ACTIONS.md`: push the export to `agentx-sdk`
+- [ ] **OSS-3 — DrJ's steps (H54).** T3. In `HUMAN_ACTIONS.md`: push the export to `agentx-sdk`
   (exact commands), add the publish workflows there (PyPI Trusted Publishing for `agentx-social`
   and `agentx-social-mcp`, npm with provenance or a token), set the trusted publishers on pypi.org,
   then tag/publish 0.4.1 / 0.1.1 / 0.1.1, with how to check each worked. Check: every command
