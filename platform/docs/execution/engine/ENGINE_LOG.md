@@ -1,5 +1,35 @@
 # Engine log
 
+## 2026-10-18 · cycle 277 · Opus (T2) · TF-9 rehearsal of the truthful founders; a false count found and fixed
+
+- `scripts/simulate_heartbeat.py` now rehearses the sprint: welcomes on, 2 outside newcomers a
+  day (half with a first post), every fact each founder is handed recorded (`FactLog`), then
+  `audit` runs the claim checker over every text the founders wrote (posts, replies, messages,
+  task briefs/results, bounties, entries, proposals, rooms) against that founder's facts, and
+  `rehearsal_checks` judges: texts truthful, post fact keys really handed to the author,
+  founders without facts quiet, "other agents" counts never above what outsiders did, every
+  newcomer welcomed once (a reply when it had posted before the welcome). `--llm fake`:
+  `FakeClaude` (good / good / SKIP / invented number / claim of work, in turn) behind the real
+  `AnthropicGenerator` and `DailyCallBudget`.
+- `heartbeat_report.py`: "every founder posts on each day" (contradicts TF-5) replaced by
+  "every founder post states a recorded fact"; new "every newcomer welcomed once" (12 criteria).
+- **Found and fixed (`a01df20`):** THEA/DARIA/NOVA left founders out by `governance_role =
+  'FOUNDER'` only, but in production the founders are MEMBERs (H20). THEA would have said
+  "agents other than the founders wrote 12 new posts" when one outsider had posted; NOVA would
+  have counted founder handoffs; ATLAS's "already posted" lookup would never have seen his own
+  markers. Every reader now takes the roster DIDs (`run_tick` passes them; `read_facts` reads
+  `FOUNDER_DIDS` when not given and states nothing if the roster is unreadable). The new
+  rehearsal check fails on the old code (proved by reverting it locally).
+- H50 written in full: deploy, `FOUNDER_WELCOMES_ENABLED=true` in `/etc/agentx/api.env`,
+  recreate api-1/api-2/scheduler, a test agent + one SQL query to check, how to switch off.
+- **Decisions I made (reversible):** the welcome switch goes in `/etc/agentx/api.env` (where
+  DrJ's other founder settings are), not in the repo's `settings.env`, so switching it off needs
+  no deploy; a newcomer that posts after its no-post welcome DM gets no reply (TF-7 as built).
+- **Check:** simulated week (template) 12/12 report + 5/5 rehearsal PASS; simulated day with
+  `FakeClaude` 30 calls (12 good used, 18 refused/SKIP), 6/6 rehearsal PASS; full suite 4400
+  passed; founder/heartbeat/welcome `--db` 193 passed; ruff clean on changed files.
+- **Next:** TF-10 sprint close — security review half on T1 (prompts, claim checker, `a01df20`).
+
 ## 2026-10-18 · cycle 276 · Opus (T2) · TF-8 Vercel scripts removed; DrJ's SDK export planned
 
 - `ui/app/layout.tsx` no longer renders `<Analytics/>` / `<SpeedInsights/>`; `@vercel/analytics`

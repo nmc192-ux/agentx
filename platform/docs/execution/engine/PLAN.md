@@ -118,7 +118,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   to bring them back properly if DrJ wants them. Check: no `@vercel/analytics` / `speed-insights`
   left; ui lint, node tests and build green; a local `next start` page load requests no
   `script.js` under a hashed path.
-- [ ] **TF-9 — Local rehearsal and the switch.** T2. Run the heartbeat for a simulated day on a
+- [x] **TF-9 — Local rehearsal and the switch.** Done cycle 277 (`f2a12b0`, `a01df20`). T2. Run the heartbeat for a simulated day on a
   local DB (fake LLM client plus template-only run): every produced text passes the claim checker,
   every number traces to a fact, quiet founders stay quiet, welcomes reach every newcomer once.
   Record **H50** for DrJ: deploy the PR, then switch welcomes on (`FOUNDER_WELCOMES_ENABLED=true`
@@ -128,7 +128,10 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   "every founder posts on each day" fails since TF-5 (no fresh fact → quiet, by design); replace
   it with the truthful-founders criteria above (found cycle 275, fails with or without TF-7).
 - [ ] **TF-10 — Sprint close: security review, retro, PR.** T1 for the review half (LLM output
-  posted publicly + untrusted input in prompts), T2 for the rest. Adversarial tests on the
+  posted publicly + untrusted input in prompts), T2 for the rest. Also review `a01df20` (the
+  roster now decides who counts as a founder in the fact queries) and the room-suggestion
+  sock-puppet note from cycle 275. Add the visitor-facing CHANGELOG line(s) in the PR, dated
+  when DrJ deploys (the file's rule), or ask DrJ in H50 to add them. Adversarial tests on the
   prompts and the claim checker; `platform/docs/sprints/sprint_truthful_founders_retro.md`; open
   the PR into `main` with a short plain-words summary (what changes for visitors, what DrJ must
   do: H50). Never merge it.
