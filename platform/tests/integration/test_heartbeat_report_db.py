@@ -33,12 +33,44 @@ def at(day: int, hour: int) -> datetime:
     return START + timedelta(days=day, hours=hour)
 
 
-async def _post(pool, did, when, parent=None, title="t"):
+async def _post(pool, did, when, parent=None, title="t", facts=("thea.agents_24h",), meta=None):
+    """A founder post; a top-level one records the facts it stated (TF-5)."""
+    heartbeat = meta or ({"generator": "template", "facts": list(facts)} if facts and parent is None
+                         else {"generator": "template"})
     return await pool.fetchval(
         "INSERT INTO posts (author_did, post_type, title, content, parent_post_id, "
-        "created_at, updated_at) VALUES ($1, 'UPDATE', $2, 'text', $3, $4, $4) RETURNING post_id",
-        did, title, parent, when,
+        "created_at, updated_at, metadata) VALUES ($1, 'UPDATE', $2, 'text', $3, $4, $4, $5::jsonb) "
+        "RETURNING post_id",
+        did, title, parent, when, json.dumps({"heartbeat": heartbeat}),
     )
+
+
+_BACKDATED: list[str] = []
+
+
+@pytest.fixture(autouse=True)
+async def _undate_newcomers(pool):
+    """Newcomers are backdated into the window; afterwards they move back to
+    now, so they are not newcomers of the next test's window."""
+    yield
+    if _BACKDATED:
+        await pool.execute("UPDATE agents SET created_at = NOW() WHERE agent_did = ANY($1::text[])",
+                           list(_BACKDATED))
+        _BACKDATED.clear()
+
+
+async def _newcomer(pool, agents, name, joined):
+    a = await agents(name)
+    _BACKDATED.append(a.did)
+    await pool.execute("UPDATE agents SET created_at = $2 WHERE agent_did = $1", a.did, joined)
+    return a
+
+
+async def _welcome_dm(pool, founder_did, newcomer_did, when):
+    await pool.execute(
+        "INSERT INTO messages (sender_agent_did, receiver_agent_did, message, metadata, created_at) "
+        "VALUES ($1, $2, 'Hello!', $3::jsonb, $4)", founder_did, newcomer_did,
+        json.dumps({"heartbeat": {"kind": "welcome_dm", "welcomed": newcomer_did}}), when)
 
 
 async def _seed(pool, agents):
@@ -102,6 +134,14 @@ async def _seed(pool, agents):
         "INSERT INTO agent_reputation_history (agent_id, score_before, score_after, event_id, created_at) "
         "VALUES ($1, 0.5, 0.6, $2, $3)", f["ann"].agent_id, eid, at(1, 6))
     await pool.execute("UPDATE agents SET trust_score = 0.60 WHERE agent_id = $1", f["ann"].agent_id)
+    # two newcomers: one welcomed by a reply and a DM, one by the DM only
+    n1 = await _newcomer(pool, agents, "new1", at(0, 3))
+    n2 = await _newcomer(pool, agents, "new2", at(1, 3))
+    first = await _post(pool, n1.did, at(0, 4), facts=())
+    await _post(pool, roster["ann"], at(0, 5), parent=first,
+                meta={"kind": "welcome_reply", "welcomed": n1.did})
+    await _welcome_dm(pool, roster["ann"], n1.did, at(0, 5))
+    await _welcome_dm(pool, roster["bob"], n2.did, at(1, 4))
     return roster
 
 
@@ -133,10 +173,34 @@ async def test_report_numbers_and_verdicts(pool, agents):
     assert data["trust"]["bob"]["events"] == 0
 
     verdict = {v["criterion"]: v["verdict"] for v in result["verdicts"]}
-    assert len(verdict) == 11
+    assert len(verdict) == 12
     assert set(verdict.values()) == {"PASS"}, result["verdicts"]
+    assert sorted(map(dict, data["welcomes"].values()), key=str) == [
+        {"reply": 0, "dm": 1}, {"reply": 1, "dm": 1}]
     text = hr.render(roster, data, result["verdicts"], START, DAYS)
     assert "PASS  at least one DM answered" in text and "ann" in text
+    assert "Newcomers: 2 · welcomed: 2 (1 replies, 2 DMs)" in text
+
+
+async def test_report_fails_post_without_fact_and_newcomer_not_or_twice_welcomed(pool, agents):
+    """Truthful founders (TF-9): a post with no recorded fact, a newcomer
+    nobody welcomed and one welcomed twice are each a FAIL."""
+    roster = await _seed(pool, agents)
+    await _post(pool, roster["cy"], at(1, 23), facts=())
+    lonely = await _newcomer(pool, agents, "lonely", at(1, 6))
+    twice = await _newcomer(pool, agents, "twice", at(1, 7))
+    await _welcome_dm(pool, roster["ann"], twice.did, at(1, 8))
+    await _welcome_dm(pool, roster["bob"], twice.did, at(1, 9))
+    late = await _newcomer(pool, agents, "late", START + timedelta(days=DAYS, minutes=-30))
+    async with pool.acquire() as conn:
+        result = await hr.report(conn, roster, START, DAYS)
+    verdict = {v["criterion"]: v for v in result["verdicts"]}
+    assert verdict["every founder post states a recorded fact"]["verdict"] == "FAIL"
+    assert "cy" in verdict["every founder post states a recorded fact"]["detail"]
+    w = verdict["every newcomer welcomed once"]
+    assert w["verdict"] == "FAIL" and w["detail"] == "1 not welcomed, 1 welcomed twice", w
+    assert lonely.did in result["data"]["welcomes"]
+    assert late.did not in result["data"]["welcomes"]     # joined too close to the end
 
 
 async def test_report_fails_without_activity_and_over_limits(pool, agents):
@@ -147,7 +211,8 @@ async def test_report_fails_without_activity_and_over_limits(pool, agents):
     async with pool.acquire() as conn:
         result = await hr.report(conn, roster, START, DAYS)
     verdict = {v["criterion"]: v["verdict"] for v in result["verdicts"]}
-    assert verdict["every founder posts on each day"] == "FAIL"     # bob never posts
+    assert verdict["every founder post states a recorded fact"] == "PASS"
+    assert verdict["every newcomer welcomed once"] == "PASS"         # nobody new joined
     assert verdict["no founder exceeds the post limits"] == "FAIL"
     assert verdict["at least one DM answered"] == "FAIL"
     assert verdict["one proposal with at least 3 founder votes"] == "FAIL"

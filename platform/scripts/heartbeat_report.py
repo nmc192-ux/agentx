@@ -3,9 +3,13 @@
 Founder heartbeat activity report (Sprint 10, S10-9). READ-ONLY.
 
 Per founder per day: posts, replies, room joins, DMs answered; over the window:
-paid task handoffs, bounties, proposal votes, trust start -> end; then one
-PASS / FAIL line per engine-verifiable acceptance criterion of
-``platform/docs/sprints/sprint_10_heartbeat.md``. Exit code 1 if any FAIL.
+paid task handoffs, bounties, proposal votes, newcomers welcomed, trust
+start -> end; then one PASS / FAIL line per engine-verifiable acceptance
+criterion of ``platform/docs/sprints/sprint_10_heartbeat.md``, as amended by
+the truthful-founders sprint (TF-9): a founder no longer posts every day; it
+posts only when it has a fact to state (``metadata.heartbeat.facts``) and
+stays quiet otherwise, and every outside newcomer is welcomed exactly once.
+Exit code 1 if any FAIL.
 
 Days are 24-hour buckets counted from ``--start`` (default: ``--days`` days
 before now, UTC). Posts, replies, room joins and DMs are dated by their stored
@@ -54,6 +58,10 @@ TRUST_ROUNDING = 0.006
 KIND_DM_ANSWER = "dm_answer"
 KIND_HANDOFF = "handoff"
 KIND_PROPOSAL = "proposal"
+KIND_WELCOME_REPLY = "welcome_reply"
+KIND_WELCOME_DM = "welcome_dm"
+# A newcomer that joined this close to the window's end may not be due yet.
+WELCOME_GRACE = timedelta(hours=1)
 
 
 def _day_index(ts: datetime, start: datetime, days: int) -> Optional[int]:
@@ -77,7 +85,10 @@ async def collect(
     }
 
     post_rows = await conn.fetch(
-        """SELECT post_id, author_did, parent_post_id, created_at FROM posts
+        """SELECT post_id, author_did, parent_post_id, created_at,
+                  COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(metadata->'heartbeat'->'facts')
+                      = 'array' THEN metadata->'heartbeat'->'facts' END), 0) AS facts
+             FROM posts
             WHERE author_did = ANY($1::text[]) AND created_at >= $2 AND created_at < $3
             ORDER BY created_at""",
         dids, start, end,
@@ -95,6 +106,7 @@ async def collect(
             per_day[name][i]["replies"] += 1
 
     top_posts = [r for r in post_rows if r["parent_post_id"] is None]
+    posts_without_facts = sorted({name_of[r["author_did"]] for r in top_posts if r["facts"] == 0})
     replied = await conn.fetch(
         """SELECT DISTINCT p.parent_post_id FROM posts p
             WHERE p.author_did = ANY($1::text[]) AND p.parent_post_id = ANY($2::uuid[])
@@ -154,6 +166,30 @@ async def collect(
         dids, KIND_PROPOSAL,
     )
 
+    # Outside newcomers who joined in the window (early enough to be due) and
+    # the founders' welcome records naming them: a reply and / or a DM.
+    newcomers = await conn.fetch(
+        """SELECT agent_did FROM agents
+            WHERE status::text = 'ACTIVE' AND governance_role::text <> 'FOUNDER'
+              AND NOT (agent_did = ANY($1::text[]))
+              AND created_at >= $2 AND created_at < $3""",
+        dids, start, end - WELCOME_GRACE,
+    )
+    welcome_rows = await conn.fetch(
+        """SELECT 'reply' AS how, metadata->'heartbeat'->>'welcomed' AS did FROM posts
+            WHERE author_did = ANY($1::text[]) AND metadata->'heartbeat'->>'kind' = $2
+           UNION ALL
+           SELECT 'dm', metadata->'heartbeat'->>'welcomed' FROM messages
+            WHERE sender_agent_did = ANY($1::text[]) AND metadata->'heartbeat'->>'kind' = $3
+              AND receiver_agent_did = metadata->'heartbeat'->>'welcomed'""",
+        dids, KIND_WELCOME_REPLY, KIND_WELCOME_DM,
+    )
+    welcomes: dict[str, dict[str, int]] = {
+        r["agent_did"]: {"reply": 0, "dm": 0} for r in newcomers}
+    for r in welcome_rows:
+        if r["did"] in welcomes:
+            welcomes[r["did"]][r["how"]] += 1
+
     trust: dict[str, dict[str, Any]] = {}
     for n, did in roster.items():
         row = await conn.fetchrow(
@@ -182,6 +218,8 @@ async def collect(
         "per_day": per_day,
         "post_times": dict(post_times),
         "top_level_posts": len(top_posts),
+        "posts_without_facts": posts_without_facts,
+        "welcomes": welcomes,
         "posts_with_reply": posts_with_reply,
         "shared_rooms": int(shared_rooms),
         "tasks": [dict(t) for t in tasks],
@@ -209,10 +247,11 @@ def verdicts(data: Mapping[str, Any], days: int) -> list[dict[str, Any]]:
     def add(name: str, ok: bool, detail: str) -> None:
         out.append({"criterion": name, "verdict": "PASS" if ok else "FAIL", "detail": detail})
 
-    missing = [(n, i + 1) for n, rows in per_day.items() for i, r in enumerate(rows) if r["posts"] == 0]
-    add("every founder posts on each day", not missing and bool(per_day),
-        "all founder-days have a post" if not missing
-        else f"{len(missing)} founder-day(s) without a post, e.g. {missing[0][0]} day {missing[0][1]}")
+    # Truthful founders (TF-9): a post states facts the code read, or there is none.
+    bare = data["posts_without_facts"]
+    add("every founder post states a recorded fact", data["top_level_posts"] > 0 and not bare,
+        f"{data['top_level_posts']} post(s), each with its facts" if not bare
+        else f"post(s) with no recorded fact by {', '.join(bare)}")
 
     totals = {n: sum(r["posts"] for r in rows) for n, rows in per_day.items()}
     distinct = len(set(totals.values()))
@@ -252,6 +291,14 @@ def verdicts(data: Mapping[str, Any], days: int) -> list[dict[str, Any]]:
         worst_day <= MAX_POSTS_PER_DAY and worst_hour <= MAX_POSTS_PER_HOUR,
         f"most posts in a day: {worst_day} (max {MAX_POSTS_PER_DAY}); in an hour: {worst_hour} (max {MAX_POSTS_PER_HOUR})")
 
+    welcomes = data["welcomes"]
+    unwelcomed = [d for d, w in welcomes.items() if w["reply"] + w["dm"] == 0]
+    twice = [d for d, w in welcomes.items() if w["reply"] > 1 or w["dm"] > 1]
+    add("every newcomer welcomed once", not unwelcomed and not twice,
+        "no newcomer joined in the window" if not welcomes
+        else f"{len(welcomes)} newcomer(s) welcomed once each" if not unwelcomed and not twice
+        else f"{len(unwelcomed)} not welcomed, {len(twice)} welcomed twice")
+
     ends = [round(v["end"], 4) for v in data["trust"].values() if v["end"] is not None]
     moved = [n for n, v in data["trust"].items()
              if v["start"] is not None and v["end"] is not None and abs(v["end"] - v["start"]) > 1e-9]
@@ -281,7 +328,10 @@ def render(roster: Mapping[str, str], data: Mapping[str, Any], checks: list[dict
             for r in data["per_day"][n])
         lines.append(f"  {n:<10} {cells}")
     paid = sum(1 for t in data["tasks"] if t["status"] == "COMPLETED")
+    w = data["welcomes"]
     lines += ["",
+              f"Newcomers: {len(w)} · welcomed: {sum(1 for v in w.values() if v['reply'] + v['dm'])} "
+              f"({sum(v['reply'] for v in w.values())} replies, {sum(v['dm'] for v in w.values())} DMs)",
               f"Tasks handed off: {len(data['tasks'])} ({paid} completed) · "
               f"bounties: {len(data['bounties'])} · proposals: {len(data['proposals'])} "
               f"({sum(p['votes'] for p in data['proposals'])} founder votes)",
