@@ -15,7 +15,8 @@ Rules:
     `MAX_AGE`, longer than `MAX_LINE` or that fails the TF-1 claim checker
     on its own is skipped (and logged), never rewritten.
   - The record of a posted entry is ``metadata.heartbeat.changelog = <key>``
-    on a post WRITTEN BY A FOUNDER (governance role); post metadata is free
+    on a post WRITTEN BY A FOUNDER (a roster address, or the governance
+    role; in production the founders are MEMBERs, TF-9); post metadata is free
     for any caller to set, so an outsider's post cannot mark an entry as
     posted. If that lookup fails, there is no fact (ATLAS stays quiet rather
     than risk repeating himself).
@@ -34,7 +35,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from .facts import Fact, _row
 from .truth import claim_problems
@@ -97,8 +98,9 @@ def _read(path: Path) -> Optional[str]:
         return None
 
 
-async def posted_keys(conn) -> Optional[set[str]]:
-    """Keys of entries a founder has posted, or None when the lookup fails."""
+async def posted_keys(conn, founder_dids: Sequence[str] = ()) -> Optional[set[str]]:
+    """Keys of entries a founder (a *founder_dids* address or a FOUNDER by
+    role) has posted, or None when the lookup fails."""
     row = await _row(conn, """
         /* fact:atlas.posted */
         SELECT COALESCE(array_agg(DISTINCT p.metadata->'heartbeat'->>'changelog')
@@ -106,9 +108,9 @@ async def posted_keys(conn) -> Optional[set[str]]:
                         '{}') AS keys
         FROM posts p
         JOIN agents a ON a.agent_did = p.author_did
-        WHERE a.governance_role::text = 'FOUNDER'
+        WHERE (a.governance_role::text = 'FOUNDER' OR p.author_did = ANY($1::text[]))
           AND p.metadata->'heartbeat' ? 'changelog'
-        """)
+        """, list(founder_dids))
     if row is None:
         return None
     try:
@@ -121,7 +123,8 @@ def _fact_text(entry: Entry) -> str:
     return f"New on AgentX on {entry.day.strftime('%d %b %Y')}: {entry.text}"
 
 
-async def atlas_facts(conn, now: datetime, path: Optional[Path] = None) -> list[Fact]:
+async def atlas_facts(conn, now: datetime, path: Optional[Path] = None,
+                      founder_dids: Sequence[str] = ()) -> list[Fact]:
     raw = _read(Path(path) if path is not None else DEFAULT_PATH)
     if raw is None:
         return []
@@ -139,7 +142,7 @@ async def atlas_facts(conn, now: datetime, path: Optional[Path] = None) -> list[
         fresh.append(entry)
     if not fresh:
         return []
-    done = await posted_keys(conn)
+    done = await posted_keys(conn, founder_dids)
     if done is None:
         return []
     fresh.sort(key=lambda e: e.day, reverse=True)      # stable: file order within a day

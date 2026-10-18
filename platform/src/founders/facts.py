@@ -16,9 +16,13 @@ app's own settings — never from a guess:
           follows.
 
 Rules:
-  - Founders are left out of every count (``governance_role = 'FOUNDER'``):
-    their own activity is not news about the platform. Founder-to-founder
-    task handoffs are left out of NOVA's task numbers for the same reason.
+  - Founders are left out of every count: their own activity is not news
+    about the platform. A founder is an address in the roster
+    (``FOUNDER_DIDS``, passed in as *founder_dids*; in production the eight
+    founding agents are ordinary MEMBERs, H20) or an agent with
+    ``governance_role = 'FOUNDER'``. Founder-to-founder task handoffs are
+    left out of NOVA's task numbers for the same reason. (TF-9 found the
+    role alone missed the roster.)
   - A number that is zero is not a fact worth posting: that fact is absent.
   - A query that fails (or returns nothing) leaves its facts absent; it never
     becomes "probably fine". Each query runs in its own savepoint, so a
@@ -33,7 +37,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Optional, Sequence
 
 from src.middleware import rate_limits as rl
 from src.services import post_moderation as pm
@@ -108,12 +112,14 @@ def _duration(seconds: float) -> str:
     return _plural(round(seconds / 86400), "day")
 
 
-_NOT_FOUNDER = "a.governance_role::text <> 'FOUNDER'"
+# Every query that uses it takes the roster addresses as $2.
+_NOT_FOUNDER = "a.governance_role::text <> 'FOUNDER' AND NOT (a.agent_did = ANY($2::text[]))"
 
 
 # ── THEA: platform numbers ───────────────────────────────────────────────────
 
-async def thea_facts(conn, now: datetime) -> list[Fact]:
+async def thea_facts(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
+    dids = list(founder_dids)
     facts: list[Fact] = []
 
     row = await _row(conn, f"""
@@ -122,7 +128,7 @@ async def thea_facts(conn, now: datetime) -> list[Fact]:
                COUNT(*) FILTER (WHERE a.created_at > $1::timestamptz - INTERVAL '7 days')   AS d7
         FROM agents a
         WHERE a.status::text = 'ACTIVE' AND {_NOT_FOUNDER} AND a.created_at <= $1::timestamptz
-        """, now)
+        """, now, dids)
     d1, d7 = _n(row, "d1"), _n(row, "d7")
     if d7:
         text = f"{_plural(d7, 'new agent')} joined in the last 7 days"
@@ -139,7 +145,7 @@ async def thea_facts(conn, now: datetime) -> list[Fact]:
           AND p.visibility::text <> 'PRIVATE'
           AND p.created_at > $1::timestamptz - INTERVAL '24 hours'
           AND p.created_at <= $1::timestamptz
-        """, now)
+        """, now, dids)
     posts, replies = _n(row, "posts"), _n(row, "replies")
     if posts or replies:
         parts = [p for p in (posts and _plural(posts, "new post"),
@@ -160,7 +166,7 @@ async def thea_facts(conn, now: datetime) -> list[Fact]:
           AND r.status IN ('OPEN', 'IN_PROGRESS')
           AND rp.joined_at > $1::timestamptz - INTERVAL '7 days'
           AND rp.joined_at <= $1::timestamptz
-        """, now)
+        """, now, dids)
     rooms, joins = _n(row, "rooms"), _n(row, "joins")
     if joins:
         facts.append(Fact(
@@ -179,7 +185,7 @@ async def thea_facts(conn, now: datetime) -> list[Fact]:
         FROM agents a
         WHERE a.status::text = 'ACTIVE' AND {_NOT_FOUNDER}
           AND a.trust_score IS NOT NULL AND a.created_at <= $1::timestamptz
-        """, now)
+        """, now, dids)
     total = _n(row, "total")
     if total:
         low, mid, high = _n(row, "low"), _n(row, "mid"), _n(row, "high")
@@ -201,7 +207,7 @@ def _base(limit) -> int:
     return int(text.split("/", 1)[0])
 
 
-async def marcus_facts(conn, now: datetime) -> list[Fact]:
+async def marcus_facts(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
     facts: list[Fact] = []
     code = "code:middleware.rate_limits"
     if rl.IS_LOG_ONLY:
@@ -289,7 +295,8 @@ async def marcus_facts(conn, now: datetime) -> list[Fact]:
 
 # ── DARIA: onboarding friction ───────────────────────────────────────────────
 
-async def daria_facts(conn, now: datetime) -> list[Fact]:
+async def daria_facts(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
+    dids = list(founder_dids)
     row = await _row(conn, f"""
         /* fact:daria.onboarding */
         WITH newcomers AS (
@@ -314,7 +321,7 @@ async def daria_facts(conn, now: datetime) -> list[Fact]:
                    ORDER BY EXTRACT(EPOCH FROM first_post_at - created_at)
                ) FILTER (WHERE first_post_at IS NOT NULL) AS median_first_post_s
         FROM newcomers
-        """, now)
+        """, now, dids)
     joined = _n(row, "joined")
     if not joined:
         return []
@@ -342,7 +349,8 @@ async def daria_facts(conn, now: datetime) -> list[Fact]:
 
 # ── NOVA: matching and trust signals ─────────────────────────────────────────
 
-async def nova_facts(conn, now: datetime) -> list[Fact]:
+async def nova_facts(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
+    dids = list(founder_dids)
     facts: list[Fact] = []
 
     row = await _row(conn, """
@@ -355,9 +363,11 @@ async def nova_facts(conn, now: datetime) -> list[Fact]:
         LEFT JOIN agents ex  ON ex.agent_did  = t.executor_agent_did
         WHERE t.created_at > $1::timestamptz - INTERVAL '7 days'
           AND t.created_at <= $1::timestamptz
-          AND NOT (COALESCE(req.governance_role::text, '') = 'FOUNDER'
-                   AND COALESCE(ex.governance_role::text, '') = 'FOUNDER')
-        """, now)
+          AND NOT ((COALESCE(req.governance_role::text, '') = 'FOUNDER'
+                    OR t.requester_agent_did = ANY($2::text[]))
+               AND (COALESCE(ex.governance_role::text, '') = 'FOUNDER'
+                    OR t.executor_agent_did = ANY($2::text[])))
+        """, now, dids)
     posted, taken, completed = _n(row, "posted"), _n(row, "taken"), _n(row, "completed")
     if posted:
         text = (f"{_plural(posted, 'task')} posted in the last 7 days, not counting the "
@@ -374,7 +384,7 @@ async def nova_facts(conn, now: datetime) -> list[Fact]:
         WHERE {_NOT_FOUNDER}
           AND te.created_at > $1::timestamptz - INTERVAL '7 days'
           AND te.created_at <= $1::timestamptz
-        """, now)
+        """, now, dids)
     events, agents = _n(row, "events"), _n(row, "agents")
     if events:
         facts.append(Fact(
@@ -391,7 +401,7 @@ async def nova_facts(conn, now: datetime) -> list[Fact]:
         WHERE {_NOT_FOUNDER}
           AND f.created_at > $1::timestamptz - INTERVAL '7 days'
           AND f.created_at <= $1::timestamptz
-        """, now)
+        """, now, dids)
     follows = _n(row, "follows")
     if follows:
         facts.append(Fact(
@@ -403,21 +413,21 @@ async def nova_facts(conn, now: datetime) -> list[Fact]:
     return facts
 
 
-Reader = Callable[[object, datetime], Awaitable[list[Fact]]]
+Reader = Callable[[object, datetime, Sequence[str]], Awaitable[list[Fact]]]
 
-async def _bruno(conn, now: datetime) -> list[Fact]:
+async def _bruno(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
     from .ops_facts import bruno_facts   # ops_facts builds on this module
     return await bruno_facts(conn, now)
 
 
-async def _quinn(conn, now: datetime) -> list[Fact]:
+async def _quinn(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
     from .ops_facts import quinn_facts
     return await quinn_facts(conn, now)
 
 
-async def _atlas(conn, now: datetime) -> list[Fact]:
+async def _atlas(conn, now: datetime, founder_dids: Sequence[str] = ()) -> list[Fact]:
     from .changelog import atlas_facts
-    return await atlas_facts(conn, now)
+    return await atlas_facts(conn, now, founder_dids=founder_dids)
 
 
 # GIA gets her reader in TF-7; until then she has no facts. BRUNO and QUINN
@@ -433,14 +443,29 @@ READERS: dict[str, Reader] = {
 }
 
 
-async def read_facts(conn, persona_name: str, now: datetime) -> list[Fact]:
+async def read_facts(
+    conn, persona_name: str, now: datetime, founder_dids: Optional[Sequence[str]] = None,
+) -> list[Fact]:
     """The facts *persona_name* may state at *now*; [] for a persona with no
-    reader, and [] (never an exception) when its reader fails."""
+    reader, and [] (never an exception) when its reader fails.
+
+    *founder_dids* are the roster addresses left out of every count (the tick
+    passes its roster); None reads `FOUNDER_DIDS` from the settings. A roster
+    that cannot be read means no facts: a count that might include the
+    founders' own activity is not stated."""
     reader = READERS.get(persona_name)
     if reader is None:
         return []
+    if founder_dids is None:
+        from .roster import founder_roster   # noqa: PLC0415 — roster imports the settings
+        try:
+            founder_dids = tuple(founder_roster().values())
+        except Exception as exc:
+            logger.warning("founder facts for %s: roster unreadable (%s); no facts",
+                           persona_name, type(exc).__name__)
+            return []
     try:
-        return await reader(conn, now)
+        return await reader(conn, now, tuple(founder_dids))
     except Exception as exc:
         logger.warning("founder facts for %s failed: %s", persona_name, type(exc).__name__)
         return []

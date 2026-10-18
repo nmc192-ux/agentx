@@ -30,8 +30,9 @@ Every fact a founder is given is recorded (`FactLog`); afterwards
 `audit` reads back every text the founders wrote (posts, replies, messages,
 task briefs and results, bounties, entries, proposals, rooms) and runs the
 claim checker over it against that founder's facts, and `rehearsal_checks`
-adds: every text passes, every number traces to a fact, founders that were
-never given a fact stayed quiet, every newcomer was welcomed once (a reply
+adds: every text passes, every number traces to a fact, counts about
+"agents other than the founders" never exceed what the outsiders really did,
+founders that were never given a fact stayed quiet, every newcomer was welcomed once (a reply
 under its first post when it wrote one), and, with ``--llm fake``, the LLM
 calls stayed within the daily cap. ``--llm fake`` puts a scripted stand-in
 for Claude (`FakeClaude`: good answers, SKIP, invented numbers, claims of
@@ -209,16 +210,19 @@ class FactLog:
     """The facts reader the tick is given: the real `read_facts`, with every
     fact a founder was handed remembered (texts and keys, by founder)."""
 
-    def __init__(self) -> None:
+    def __init__(self, founder_dids: tuple[str, ...] = ()) -> None:
+        self.founder_dids = founder_dids
         self.texts: dict[str, set[str]] = defaultdict(set)
         self.keys: dict[str, set[str]] = defaultdict(set)
+        self.values: dict[str, list[float]] = defaultdict(list)
 
     async def __call__(self, conn, name: str, now: datetime):
         from src.founders.facts import read_facts
-        facts = await read_facts(conn, name, now)
+        facts = await read_facts(conn, name, now, founder_dids=self.founder_dids)
         for f in facts:
             self.texts[name].add(f.text)
             self.keys[name].add(f.key)
+            self.values[f.key].append(f.value)
         return facts
 
 
@@ -407,6 +411,36 @@ async def rehearsal_checks(
         f"{len(factless)} founder(s) never had a fact ({', '.join(factless) or 'none'}); "
         "none of them posted" if not loud else f"posted with no fact: {', '.join(loud)}")
 
+    # Counts about "agents other than the founders" can never exceed what the
+    # outsiders (here: the newcomers) really did, ever (TF-9 found the founders'
+    # own posts counted when they are not FOUNDERs by role).
+    roster_dids = list(roster.values())
+    outside = await conn.fetchrow(
+        """SELECT
+             (SELECT count(*) FROM agents WHERE NOT (agent_did = ANY($1::text[]))) AS agents,
+             (SELECT count(*) FROM posts WHERE NOT (author_did = ANY($1::text[]))) AS posts,
+             (SELECT count(*) FROM room_participants
+               WHERE NOT (agent_did = ANY($1::text[]))) AS joins,
+             (SELECT count(*) FROM tasks WHERE NOT (requester_agent_did = ANY($1::text[])
+                AND COALESCE(executor_agent_did, '') = ANY($1::text[]))) AS tasks,
+             (SELECT count(*) FROM trust_events WHERE NOT (agent_did = ANY($1::text[]))) AS trust,
+             (SELECT count(*) FROM follows WHERE NOT (follower_did = ANY($1::text[]))) AS follows""",
+        roster_dids)
+    ceilings = {
+        "thea.new_agents": outside["agents"], "thea.trust_spread": outside["agents"],
+        "daria.no_post": outside["agents"], "daria.no_bio": outside["agents"],
+        "daria.no_room": outside["agents"], "thea.posts_24h": outside["posts"],
+        "thea.room_joins_7d": outside["joins"], "nova.tasks_7d": outside["tasks"],
+        "nova.trust_events_7d": outside["trust"], "nova.follows_7d": outside["follows"],
+    }
+    over = sorted({k for k, vals in fact_log.values.items()
+                   if k in ceilings and max(vals) > ceilings[k]})
+    add("counts about other agents leave the founders out", not over,
+        f"{sum(len(fact_log.values.get(k, ())) for k in ceilings)} count(s) read, none above "
+        f"what the {outside['agents']} outside agent(s) did" if not over
+        else "counts include the founders' own activity: " + ", ".join(
+            f"{k} up to {max(fact_log.values[k]):g} > {ceilings[k]}" for k in over))
+
     rows = await conn.fetch(
         """SELECT a.agent_did,
                   EXISTS (SELECT 1 FROM posts p WHERE p.author_did = a.agent_did
@@ -481,7 +515,7 @@ async def run(start: Optional[datetime], days: int, step: int, progress: bool = 
         newcomers = await seed_newcomers(pool, start, days)
         # Trust history is stamped by the database clock, not the simulated one.
         trust_since = await pool.fetchval("SELECT CURRENT_TIMESTAMP")
-        fact_log = FactLog()
+        fact_log = FactLog(tuple(roster.values()))
         client = FakeClaude() if llm == "fake" else None
         sim = await simulate(pool, roster, start, days, step, progress=progress, llm=llm,
                              fact_log=fact_log, client=client)

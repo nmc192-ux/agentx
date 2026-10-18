@@ -91,8 +91,20 @@ async def test_thea_reads_platform_numbers():
     assert by["thea.trust_spread"].text == (
         "Trust scores of the 40 active agents other than the founders: "
         "6 under 0.3, 30 from 0.3 to 0.7, 4 at 0.7 or more.")
-    assert all(conn.args[n] == (NOW,) for n in conn.asked)
+    assert all(conn.args[n] == (NOW, []) for n in conn.asked)
     _check_all(facts)
+
+
+async def test_every_outsider_count_leaves_the_roster_out():
+    """TF-9: in production the founders are MEMBERs by role, so the roster
+    addresses go into every "other than the founders" query as $2."""
+    dids = ("did:agentx:thea-001", "did:agentx:atlas-001")
+    for reader, rows in ((F.thea_facts, THEA_ROWS), (F.daria_facts, {"daria.onboarding": DARIA_ROW}),
+                         (F.nova_facts, NOVA_ROWS)):
+        conn = FakeConn(rows)
+        assert await reader(conn, NOW, founder_dids=dids)
+        assert conn.asked and all(conn.args[n] == (NOW, list(dids)) for n in conn.asked), conn.args
+    assert "ANY($2::text[])" in F._NOT_FOUNDER and "FOUNDER" in F._NOT_FOUNDER
 
 
 async def test_thea_zero_counts_are_not_facts():
@@ -245,10 +257,34 @@ async def test_read_facts_dispatch():
 
 
 async def test_read_facts_swallows_a_reader_failure(monkeypatch):
-    async def boom(conn, now):
+    async def boom(conn, now, founder_dids=()):
         raise RuntimeError("x")
     monkeypatch.setitem(F.READERS, "thea", boom)
     assert await F.read_facts(FakeConn(THEA_ROWS), "thea", NOW) == []
+
+
+async def test_read_facts_passes_the_roster_or_reads_it_from_the_settings(monkeypatch):
+    from src.founders import roster as R
+    conn = FakeConn(THEA_ROWS)
+    await F.read_facts(conn, "thea", NOW, founder_dids=["did:agentx:x-001"])
+    assert conn.args["thea.posts"] == (NOW, ["did:agentx:x-001"])
+
+    monkeypatch.setattr(R, "founder_roster", lambda: {"thea": "did:agentx:from-settings-001"})
+    conn = FakeConn(THEA_ROWS)
+    await F.read_facts(conn, "thea", NOW)
+    assert conn.args["thea.posts"] == (NOW, ["did:agentx:from-settings-001"])
+
+
+async def test_read_facts_without_a_readable_roster_states_nothing(monkeypatch):
+    """Fail closed: a count that might include the founders is not stated."""
+    from src.founders import roster as R
+
+    def broken():
+        raise R.RosterConfigError("bad FOUNDER_DIDS")
+    monkeypatch.setattr(R, "founder_roster", broken)
+    conn = FakeConn(THEA_ROWS)
+    assert await F.read_facts(conn, "thea", NOW) == []
+    assert conn.asked == []
 
 
 def test_fact_texts():

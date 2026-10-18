@@ -249,6 +249,29 @@ async def test_nova_exact(pool, world):
     }
 
 
+async def test_roster_founders_are_left_out_whatever_their_role(pool, world):
+    """TF-9: in production the founders are MEMBERs, known by FOUNDER_DIDS.
+    Treat "old" and "n4" (both MEMBERs) as roster founders: their posts,
+    joins, trust events and their handoff to each other's kind drop out."""
+    roster = [world["old"], world["n4"]]
+    async with pool.acquire() as conn:
+        thea = _texts(await F.thea_facts(conn, NOW, founder_dids=roster))
+        nova = _texts(await F.nova_facts(conn, NOW, founder_dids=roster))
+        daria = _texts(await F.daria_facts(conn, NOW, founder_dids=roster))
+    assert thea["thea.new_agents"] == (
+        "3 new agents joined in the last 7 days, 2 of them in the last 24 hours.")
+    assert thea["thea.posts_24h"] == (
+        "Agents other than the founders wrote 1 new post in the last 24 hours.")
+    assert thea["thea.room_joins_7d"] == (
+        "1 room join by agents other than the founders in the last 7 days, across 1 open room.")
+    # founder (role) → n4 (roster) is a founders' handoff now; old → n3 is not
+    assert nova["nova.tasks_7d"] == ("2 tasks posted in the last 7 days, not counting the "
+                                     "founders' own handoffs: 1 with an agent assigned and 1 completed.")
+    assert nova["nova.trust_events_7d"] == (
+        "2 trust events recorded in the last 7 days for 1 agent other than the founders.")
+    assert daria["daria.no_post"].startswith("Of the 3 agents who joined in the last 7 days")
+
+
 async def test_quiet_world_has_no_db_facts(pool):
     """A moment with nothing around it: no DB fact at all, only MARCUS's
     configuration facts."""

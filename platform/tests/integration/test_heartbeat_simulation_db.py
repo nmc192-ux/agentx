@@ -16,7 +16,8 @@ scripts/heartbeat_report.py then judges the week. Proven:
   • no tick was skipped, refused a founder, or failed
   • every founder's trust moved over the week
   • the TF-9 rehearsal: every text a founder wrote passes the claim checker
-    against the facts it was given, founders never given a fact posted
+    against the facts it was given, counts about other agents leave the
+    founders out (they are MEMBERs by role in production), founders never given a fact posted
     nothing, every newcomer was welcomed once
   • one day with a scripted stand-in for Claude behind the real generator
     and daily budget: its invented numbers and claims of work never reach a
@@ -52,7 +53,7 @@ async def test_seven_simulated_days_pass_every_criterion():
     assert len(verdicts) == 12
     failed = [v for v in verdicts + out["rehearsal"] if v["verdict"] != "PASS"]
     assert not failed, out["rendered"]
-    assert len(out["rehearsal"]) == 4
+    assert len(out["rehearsal"]) == 5
     assert out["simulation"]["totals"]["welcomed"] == 7 * sim.NEWCOMERS_PER_DAY
     assert out["simulation"]["totals"]["quiet_no_facts"] > 0      # someone had nothing to say
 
@@ -65,7 +66,7 @@ async def test_one_day_with_a_scripted_model_keeps_every_text_truthful():
 
     assert out["simulation"]["problems"] == {}, out["simulation"]["problems"]
     checks = {c["criterion"]: c for c in out["rehearsal"]}
-    assert len(checks) == 5
+    assert len(checks) == 6
     failed = [c for c in checks.values() if c["verdict"] != "PASS"]
     assert not failed, out["rendered"]
     truth = out["truth"]

@@ -139,6 +139,7 @@ Run once by hand (local; the flag must be on):
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import random
@@ -2103,8 +2104,9 @@ async def run_tick(
     Everything is injectable for tests and the simulation: *now* (default:
     the wall clock), *roster* (default: `FOUNDER_DIDS`; re-validated by the
     guard either way), *generator* (default: `select_generator`), *rng*,
-    *facts_reader* (default: `founders.facts.read_facts`; what each founder
-    may state in a post),
+    *facts_reader* (default: `founders.facts.read_facts` with the roster's
+    addresses as the founders left out of every count; what each founder
+    may state),
     *reply_seed* (fixes who replies to which post; see `founders.replies`),
     *dm_seed* (fixes who messages whom and who answers; `founders.messages`),
     *task_seed* (fixes who hands which task to whom and when it is finished;
@@ -2129,6 +2131,9 @@ async def run_tick(
         return summary.as_dict()
     generator = generator or select_generator(settings)
     rng = rng or random.Random()
+    if facts_reader is None:
+        # Every roster address is a founder for the counts, whatever its role (TF-9).
+        facts_reader = functools.partial(read_facts, founder_dids=tuple(roster.values()))
 
     to_announce: list[tuple[UUID, str, str]] = []
     replies: list[tuple[UUID, str, UUID]] = []
@@ -2159,7 +2164,7 @@ async def run_tick(
                 async with conn.transaction():   # savepoint: one founder's failure stays its own
                     made = await _tick_founder(
                         conn, name, roster, generator, rng, now, summary,
-                        facts_reader or read_facts,
+                        facts_reader,
                     )
             except FounderRefused as exc:
                 summary.refused[name] = exc.reason
@@ -2176,7 +2181,7 @@ async def run_tick(
                 if made is not None:
                     to_announce.append(made)
         replies = await _reply_phase(
-            conn, founders, reply_seed, rng, now, summary, generator, facts_reader or read_facts,
+            conn, founders, reply_seed, rng, now, summary, generator, facts_reader,
         )
         if welcomes_enabled(settings):
             welcome_replies, welcome_messages = await _welcome_phase(
@@ -2190,7 +2195,7 @@ async def run_tick(
         else:
             newcomers = []
         messages += await _message_phase(
-            conn, founders, dm_seed, rng, now, summary, generator, facts_reader or read_facts,
+            conn, founders, dm_seed, rng, now, summary, generator, facts_reader,
         )
 
     for post_id, did, title in to_announce:

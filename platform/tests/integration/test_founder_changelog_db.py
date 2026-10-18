@@ -9,6 +9,8 @@ What is proven:
     free for any caller to set), so an outsider cannot silence an entry
   • atlas_facts skips an entry a founder posted and offers it again when
     only an outsider "posted" it
+  • a roster founder that is a MEMBER by role (production, TF-9) marks an
+    entry as posted too
 
 Isolation: everything happens inside one transaction that is rolled back;
 assertions only look at keys made up for this test.
@@ -71,5 +73,24 @@ async def test_only_founder_posts_mark_an_entry(pool, tmp_path):
 
             await _post(conn, founder, second)
             assert await C.atlas_facts(conn, NOW, path) == []
+        finally:
+            await tx.rollback()
+
+
+async def test_a_member_in_the_roster_marks_an_entry(pool, tmp_path):
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(f"- 2026-10-18 — Rooms can be searched {uuid.uuid4().hex}.\n", encoding="utf-8")
+    [entry] = C.parse_changelog(path.read_text())
+    async with pool.acquire() as conn:
+        tx = conn.transaction()
+        await tx.start()
+        try:
+            atlas = await _agent(conn, False)            # a MEMBER, like ATLAS in production
+            await _post(conn, atlas, entry.key)
+            assert entry.key not in await C.posted_keys(conn)
+            assert entry.key in await C.posted_keys(conn, [atlas[0]])
+            [fact] = await C.atlas_facts(conn, NOW, path)                    # role only: offered again
+            assert C.entry_key(fact) == entry.key
+            assert await C.atlas_facts(conn, NOW, path, founder_dids=[atlas[0]]) == []
         finally:
             await tx.rollback()
