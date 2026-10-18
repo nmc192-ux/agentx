@@ -1,5 +1,15 @@
 # Engine log
 
+## 2026-10-18 · cycle 270 · Opus (T2) · Fix red suite: DARIA facts read hidden posts
+
+- Engine test run failed on `test_posts_readers_skip_hidden`: `daria_facts` looked up a newcomer's
+  first post without `hidden_at IS NULL`. Added the filter (hidden posts are not activity, as TF-2
+  decided) rather than whitelisting it. DB test now has a newcomer whose only post is hidden;
+  verified it fails without the fix.
+- **Check:** full suite 4229 passed (0 failed); founder `--db` tests 508 passed; ruff clean.
+  Commit `5d5df21`.
+- **Next:** TF-3 (ops and health facts for BRUNO and QUINN), T2.
+
 ## 2026-10-18 · cycle 269 · Opus (T2) · TF-2 founder facts (THEA, MARCUS, DARIA, NOVA)
 
 - New `src/founders/facts.py`: `Fact(key, text, value, source, as_of)`, per-persona readers and
