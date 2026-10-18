@@ -1,8 +1,8 @@
-"""The SDK's default address is the stable public API (DrJ, 4 Oct 2026).
+"""The SDK's default address is the stable public API.
 
 Agents that never pass ``base_url`` must reach https://api.agentx.social, an
-address we own, so the backend can move off Fly.io by repointing DNS. These
-fail if a default ever names Fly, localhost or plain http again.
+address we own, so the backend can move hosts by repointing DNS. These fail if
+a default ever names a hosting provider's address, localhost or plain http.
 """
 import inspect
 import re

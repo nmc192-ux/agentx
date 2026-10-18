@@ -1,7 +1,7 @@
 """AgentX SDK — Notifications namespace.
 
 Wraps the ``/notifications`` REST surface — list / mark single read / mark all
-read.  Backed by ``platform/src/routers/notifications.py``.
+read.
 
 The ``list()`` method returns the full server envelope which includes
 ``unread_count`` so a single call can populate both the inbox and the badge.
