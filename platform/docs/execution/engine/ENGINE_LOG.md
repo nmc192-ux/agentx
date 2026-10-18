@@ -1,5 +1,21 @@
 # Engine log
 
+## 2026-10-18 · cycle 276 · Opus (T2) · TF-8 Vercel scripts removed; DrJ's SDK export planned
+
+- `ui/app/layout.tsx` no longer renders `<Analytics/>` / `<SpeedInsights/>`; `@vercel/analytics`
+  and `@vercel/speed-insights` uninstalled (lockfile only loses those two). The site runs on the
+  VPS, where their `/<hash>/script.js` never exists. New `ui/lib/noVercelScripts.test.ts` keeps
+  them out. H52 (optional) says how page statistics could come back properly.
+- DrJ's note (private platform repo, public `agentx-sdk`): added OSS-1 (clean export + gitleaks
+  and internal-detail scan, report only), OSS-2 (package urls → public repo, 0.4.1 / 0.1.1 /
+  0.1.1) and OSS-3 (H-item with push and Trusted Publishing steps) to `PLAN.md`, after TF-10 as
+  DrJ asked. Seen: gitleaks is not installed on this Mac yet; Node here is v26 (TS tests want 22).
+- **Decision I made (reversible):** no CHANGELOG line — a missing 404 in the browser console is
+  not something a visitor notices.
+- **Check:** ui lint clean; `npm test` 25 passed (2 new); `npm run build` green; `next start` →
+  `/terms` HTML has no `script.js` and no `_vercel`/insights reference. Commit `1da0247`.
+- **Next:** TF-9 (local rehearsal of a founder day, fix the old simulation test, write H50), T2.
+
 ## 2026-10-18 · cycle 275 · Opus (T2) · TF-7 GIA welcomes every new agent, points to a real room
 
 - Every new ACTIVE outside agent (≤ 7 days) is welcomed once, by the best-fitting founder (GIA

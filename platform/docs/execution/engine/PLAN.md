@@ -111,7 +111,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   line, never an invented one). LLM-written within the cap, truthful template fallback. Same
   caps (per hour, never twice). Check: `--db` test on local Postgres (newcomer with and without a
   post, room chosen exists, no room → no mention, second tick does nothing); founder tests green.
-- [ ] **TF-8 — Remove the Vercel script that 404s on every page.** T3. `<Analytics/>` and
+- [x] **TF-8 — Remove the Vercel script that 404s on every page.** Done cycle 276. T3. `<Analytics/>` and
   `<SpeedInsights/>` in `ui/app/layout.tsx` load `/<hash>/script.js`, which only exists when the
   Vercel project has Web Analytics / Speed Insights switched on. Default: remove both components
   and the two packages (reversible; nobody reads those dashboards today); the human action says how
@@ -132,3 +132,34 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   prompts and the claim checker; `platform/docs/sprints/sprint_truthful_founders_retro.md`; open
   the PR into `main` with a short plain-words summary (what changes for visitors, what DrJ must
   do: H50). Never merge it.
+
+## After the sprint: open-source SDK export (DrJ note, cycle 276)
+
+DrJ's decision (18 Oct 2026): the platform repo `nmc192-ux/agentx` stays **private**. Only what
+outsiders need goes to the existing public repo `nmc192-ux/agentx-sdk`: the Python SDK
+(`agentx-social` 0.4.0), the TypeScript SDK (`@agentx-social/sdk` 0.1.0), the MCP server
+(`agentx-social-mcp`) and the agentx skill. The engine prepares and checks; it never pushes to
+`agentx-sdk` and never publishes. DrJ asked for this after TF-10 (or alongside, if small).
+
+- [ ] **OSS-1 — Clean export + scan.** T2. `scripts/export_public_sdk.sh` builds a fresh tree
+  (outside the repo, e.g. `/tmp/agentx-sdk-export`) from `sdk/` (Python), `sdk/ts/`, `sdk/mcp/`
+  and `skills/agentx/` with an allow-list (no `node_modules`, `dist`, caches, `.env*`, build
+  output), an Apache-2.0 `LICENSE` at the root and a root `README.md` pointing to
+  https://agentx.social/join and https://agentx.social/developer. Scan the export with gitleaks
+  (install locally via brew if missing; fall back to a scripted regex scan and say so) and with a
+  scripted search for internal details (IP addresses, VPS/host names, `fly.dev`, internal doc
+  paths, `platform/`, e-mail addresses, "DrJ"). Report every finding in
+  `platform/docs/execution/engine/sdk_export_report.md`; fix what belongs in the source (e.g.
+  internal links in READMEs) in the repo. Check: script runs twice identically; gitleaks clean or
+  every finding explained; Python SDK, MCP and TS (Node 22) tests pass inside the export.
+- [ ] **OSS-2 — Package metadata points to the public repo (patch versions).** T2. `sdk/pyproject.toml`
+  `[project.urls]` (Homepage agentx.social, Repository/Issues `github.com/nmc192-ux/agentx-sdk`),
+  version 0.4.1; `sdk/ts/package.json` `repository`/`homepage`/`bugs`, version 0.1.1;
+  `sdk/mcp/pyproject.toml` urls + README, version 0.1.1; CHANGELOG lines in each. No code change.
+  Check: `python -m build` + `twine check` for both Python packages, `npm pack --dry-run` (Node 22),
+  package tests green; no reference to the private repo left in any package file.
+- [ ] **OSS-3 — DrJ's steps (H52).** T3. In `HUMAN_ACTIONS.md`: push the export to `agentx-sdk`
+  (exact commands), add the publish workflows there (PyPI Trusted Publishing for `agentx-social`
+  and `agentx-social-mcp`, npm with provenance or a token), set the trusted publishers on pypi.org,
+  then tag/publish 0.4.1 / 0.1.1 / 0.1.1, with how to check each worked. Check: every command
+  copy-pasteable and tested locally where it can be (dry runs).

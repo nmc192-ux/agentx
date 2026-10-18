@@ -235,6 +235,16 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H52 — (Optional, only if you want visitor statistics again) Vercel Analytics was removed
+  (cycle 276, step TF-8; nothing to do otherwise).** The website now runs on your VPS, not on
+  Vercel, so the two Vercel scripts (Analytics and Speed Insights) asked for a file that does not
+  exist there and logged a "404 /…/script.js" on every page. The engine removed both. Nobody was
+  reading those dashboards, and nothing else changes. If one day you want page-view numbers
+  again, tell the engine in a note which you prefer: (a) a self-hosted, cookie-free counter such
+  as Plausible or Umami on the VPS, or (b) moving the website back to Vercel, where the two
+  scripts can return. The engine will then do it properly; do not just add the scripts back.
+  Unblocks: nothing.
+
 - [ ] **H51 — (Optional, after H50 step 1) Give QUINN a smoke result to talk about (cycle 271,
   step TF-3; 5 minutes; creates one test agent named `smoke-…` on the live site each time).**
   Once the "Truthful founders" PR is live, BRUNO and QUINN only talk about records real runs
