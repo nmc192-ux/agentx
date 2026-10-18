@@ -42,7 +42,9 @@ from src.jobs import founder_heartbeat as fh
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
 
-DAY_START = datetime(2026, 10, 5, 0, 0, tzinfo=timezone.utc)
+# Today (UTC): rows written through the services carry the database clock, so a
+# fixed past day would put them outside the 3-day and 7-day windows.
+DAY_START = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
 ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="")
@@ -253,15 +255,18 @@ async def test_three_days_of_ticks_keep_every_rule(pool, clean):
                for r in rows)
 
     # The plans say exactly which openings must exist (all founders always available here).
-    expected = {
-        (DEV[n], DEV[fm.plan_dm(PERSONAS[n], (DAY_START + timedelta(days=d)).date(), seed).peer],
-         (DAY_START + timedelta(days=d)).date())
-        for n in FOUNDER_NAMES for d in range(3)
-        if fm.plan_dm(PERSONAS[n], (DAY_START + timedelta(days=d)).date(), seed).wants
-    }
+    # The day before DAY_START may also show up: its late plans fall due in the first ticks.
+    def planned(days):
+        return {
+            (DEV[n], DEV[fm.plan_dm(PERSONAS[n], (DAY_START + timedelta(days=d)).date(), seed).peer],
+             (DAY_START + timedelta(days=d)).date())
+            for n in FOUNDER_NAMES for d in days
+            if fm.plan_dm(PERSONAS[n], (DAY_START + timedelta(days=d)).date(), seed).wants
+        }
     got = [(r["sender_agent_did"], r["receiver_agent_did"],
             date.fromisoformat(r["metadata"]["heartbeat"]["day"])) for r in openings]
-    assert len(got) == len(set(got)) and set(got) == expected
+    assert len(got) == len(set(got))
+    assert planned(range(3)) <= set(got) <= planned(range(-1, 3))
 
     by_id = {r["message_id"]: r for r in openings}
     answered = [UUID(r["metadata"]["heartbeat"]["answers"]) for r in answers]

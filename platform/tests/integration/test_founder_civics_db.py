@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -59,7 +59,10 @@ from .support import total_tokens
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
 
-WEEK = (2026, 41)                       # Monday 2026-10-05
+# Next ISO week, so every planned moment and deadline is still ahead of the
+# database clock (the bounty/proposal rows are stamped by it) whatever today is.
+_NEXT = datetime.now(timezone.utc).date() + timedelta(days=7)
+WEEK = (_NEXT.isocalendar()[0], _NEXT.isocalendar()[1])
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
 BY_DID = {DEV[n]: n for n in FOUNDER_NAMES}
@@ -513,7 +516,7 @@ async def test_one_proposal_gets_staked_votes_and_closes(pool, clean):
     assert p["proposer_did"] == proposer and p["status"] == "active"
     assert p["payload"]["heartbeat"]["kind"] == fc.KIND_PROPOSAL
     assert p["payload"]["heartbeat"]["at"] == prop.at.isoformat()
-    assert p["payload"]["heartbeat"]["week"] == "2026-W41"
+    assert p["payload"]["heartbeat"]["week"] == f"{WEEK[0]}-W{WEEK[1]:02d}"
     assert prop.topic in p["title"]
     again = await tick(prop.at + timedelta(minutes=2), seed)
     assert again["proposal_posted"] == {} and len(await proposals(pool)) == 1

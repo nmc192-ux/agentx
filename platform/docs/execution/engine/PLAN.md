@@ -55,12 +55,12 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   are not in the facts") and `tests/founders/test_truthful_text.py` that runs it over every
   template string and over many rendered outputs of every compose function. Check: the new test
   green; `tests/founders/` and `tests/jobs/` founder tests green; ruff clean.
-- [ ] **TF-1b — Fix the date-dependent founder DB tests.** T3 (tests only). 10 `--db` tests in
+- [x] **TF-1b — Fix the date-dependent founder DB tests.** T3 (tests only). 10 `--db` tests in
   `tests/integration/test_founder_{civics,messages,trust_replay}_db.py` fail on 18 Oct 2026 with
   and without TF-1 (e.g. `dm_trust` 'not_a_reply' instead of 'recorded'); they use a fixed
   `NOW` of 5 Oct while rows get the database clock, so windows have run out. Make them clock-
   independent (pass the test moment into the rows or derive `NOW` from today). Check: those three
-  files green with `--db`.
+  files green with `--db`. Done cycle 268.
 - [ ] **TF-2 — Platform facts for THEA, MARCUS, DARIA, NOVA.** T2 (read-only queries).
   `src/founders/facts.py`: a `Fact` (text, value, source, as-of) and per-persona readers.
   THEA: new agents 24h/7d, top-level posts and replies 24h, active rooms and joins, trust-score
