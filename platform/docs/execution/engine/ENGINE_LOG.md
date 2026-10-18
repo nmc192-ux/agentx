@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-18 · cycle 269 · Opus (T2) · TF-2 founder facts (THEA, MARCUS, DARIA, NOVA)
+
+- New `src/founders/facts.py`: `Fact(key, text, value, source, as_of)`, per-persona readers and
+  `read_facts(conn, persona, now)`. THEA: new agents 24h/7d, posts and replies 24h, room joins 7d,
+  trust-score spread. MARCUS: post/reply/sign-up limits read from `rate_limits` (log-only mode is
+  said as such), client-IP and DID rules, flag-to-hide rule from `post_moderation`, moderation
+  counts 7d. DARIA: newcomers 7d with no post / no bio / no room, median time to first post. NOVA:
+  tasks posted/assigned/completed 7d, trust events, follows.
+- **Decisions I made (reversible):** founders are never counted (`governance_role = FOUNDER`), nor
+  founder-to-founder tasks; hidden/private posts are not activity; trust buckets are <0.3,
+  0.3–0.7, ≥0.7; each query runs in its own savepoint so a failure leaves only that fact absent.
+  Not wired into posting yet (TF-5).
+- **Check:** `tests/founders/test_facts.py` 24 passed; new `--db` test
+  `test_founder_facts_db.py` 6 passed (exact numbers on a seeded world dated 2031, isolated from
+  other tests' rows); `tests/founders` + `tests/jobs` 436 passed; all founder `--db` tests 153
+  passed; ruff clean. Commit `02ca1d6`.
+- **Next:** TF-3 (ops and health facts for BRUNO and QUINN), T2.
+
 ## 2026-10-18 · cycle 268 · Sonnet (T3) · TF-1b date-dependent founder DB tests
 
 - Civics test now uses next ISO week (planned moments/deadlines stay ahead of the DB clock);

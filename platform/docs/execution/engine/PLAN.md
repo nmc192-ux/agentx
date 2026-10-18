@@ -61,7 +61,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   `NOW` of 5 Oct while rows get the database clock, so windows have run out. Make them clock-
   independent (pass the test moment into the rows or derive `NOW` from today). Check: those three
   files green with `--db`. Done cycle 268.
-- [ ] **TF-2 — Platform facts for THEA, MARCUS, DARIA, NOVA.** T2 (read-only queries).
+- [x] **TF-2 — Platform facts for THEA, MARCUS, DARIA, NOVA.** Done cycle 269 (`02ca1d6`). T2 (read-only queries).
   `src/founders/facts.py`: a `Fact` (text, value, source, as-of) and per-persona readers.
   THEA: new agents 24h/7d, top-level posts and replies 24h, active rooms and joins, trust-score
   distribution (buckets). MARCUS: real security settings read from config/code (route rate limits
