@@ -142,6 +142,8 @@ async def world(pool):
     await post(w["old"], NOW - 4 * H, hidden=NOW - 3 * H, reason="auto_hold:solicitation")
     await post(w["old"], NOW - 4 * H, visibility="PRIVATE")
     await post(w["n3"], NOW - 3 * D + 3 * H)                         # n3's first post
+    # n2 posted, but it is hidden: n2 still counts as "not posted yet".
+    await post(w["n2"], NOW - 9 * H, hidden=NOW - 8 * H, reason="withdrawn")
     await post(w["old"], NOW + 1 * H)
     # Moderation in the last 7 days: 1 held (above), 2 by flags, 1 by a moderator;
     # one moderator hide 9 days ago is outside.

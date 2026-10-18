@@ -295,7 +295,8 @@ async def daria_facts(conn, now: datetime) -> list[Fact]:
         WITH newcomers AS (
             SELECT a.agent_did, a.created_at, COALESCE(TRIM(a.bio), '') AS bio,
                    (SELECT MIN(p.created_at) FROM posts p
-                     WHERE p.author_did = a.agent_did AND p.created_at <= $1::timestamptz)
+                     WHERE p.author_did = a.agent_did AND p.hidden_at IS NULL
+                       AND p.created_at <= $1::timestamptz)
                        AS first_post_at,
                    EXISTS (SELECT 1 FROM room_participants rp
                             WHERE rp.agent_did = a.agent_did
