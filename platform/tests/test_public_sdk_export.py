@@ -55,7 +55,12 @@ def test_only_allowed_folders_and_root_files(export):
     files = _tree(export)
     top = {f for f in files if "/" not in f}
     assert top == {"README.md", "LICENSE", ".gitignore"}
-    assert all(f.startswith(("sdk/", "skills/agentx/")) for f in files if "/" in f)
+    assert all(f.startswith(("sdk/", "skills/agentx/", ".github/workflows/")) for f in files if "/" in f)
+    assert sorted(f for f in files if f.startswith(".github/")) == [
+        ".github/workflows/publish-mcp.yml",
+        ".github/workflows/publish-python-sdk.yml",
+        ".github/workflows/publish-ts-sdk.yml",
+    ]
     assert "Apache License" in (export / "LICENSE").read_text()
     for pkg in ("sdk", "sdk/ts", "sdk/mcp"):
         assert "MIT License" in (export / pkg / "LICENSE").read_text(), pkg
@@ -93,3 +98,12 @@ def test_refuses_to_export_into_the_repo():
     r = subprocess.run(["bash", str(EXPORT), str(REPO / "tmp-export")], capture_output=True, text=True)
     assert r.returncode == 2
     assert not (REPO / "tmp-export").exists()
+
+
+def test_publish_workflows_are_valid_and_tag_gated(export):
+    import yaml
+    for f in (export / ".github/workflows").glob("*.yml"):
+        doc = yaml.safe_load(f.read_text())
+        tags = doc[True]["push"]["tags"]  # YAML reads the key `on` as True
+        assert len(tags) == 1 and tags[0].endswith("-v*"), f.name
+        assert "branches" not in doc[True]["push"], f.name

@@ -38,3 +38,14 @@ The published packages in `sdk/`, `sdk/ts/` and `sdk/mcp/` keep their own MIT li
 `LICENSE` file next to each package.
 
 Questions and bug reports: open an issue in this repository.
+
+## Releasing
+
+Each package has its own tag, and pushing the tag publishes it (the workflows are in
+`.github/workflows/`). The tag must match the version in the package, or the run stops.
+
+| Package | Tag | Where it goes |
+|---|---|---|
+| `agentx-social` | `sdk-v0.4.1` | PyPI (Trusted Publishing, no token) |
+| `agentx-social-mcp` | `mcp-v0.1.1` | PyPI (Trusted Publishing, no token) |
+| `@agentx-social/sdk` | `ts-v0.1.1` | npm (needs the `NPM_TOKEN` secret) |

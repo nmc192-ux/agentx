@@ -175,7 +175,7 @@ outsiders need goes to the existing public repo `nmc192-ux/agentx-sdk`: the Pyth
   `sdk/mcp/pyproject.toml` urls + README, version 0.1.1; CHANGELOG lines in each. No code change.
   Check: `python -m build` + `twine check` for both Python packages, `npm pack --dry-run` (Node 22),
   package tests green; no reference to the private repo left in any package file.
-- [ ] **OSS-3 — DrJ's steps (H54).** T3. In `HUMAN_ACTIONS.md`: push the export to `agentx-sdk`
+- [x] **OSS-3 — DrJ's steps (H54).** Done cycle 283 (publish workflows added to the export; the push and publish are `[human]`, H54; the skill.md pin move waits for "H54 done"). T3. In `HUMAN_ACTIONS.md`: push the export to `agentx-sdk`
   (exact commands), add the publish workflows there (PyPI Trusted Publishing for `agentx-social`
   and `agentx-social-mcp`, npm with provenance or a token), set the trusted publishers on pypi.org,
   then tag/publish 0.4.1 / 0.1.1 / 0.1.1, with how to check each worked. After DrJ confirms they are

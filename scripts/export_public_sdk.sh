@@ -41,6 +41,8 @@ git ls-files -z -- "${ALLOW[@]}" \
 
 cp "$REPO/packaging/public_sdk/README.md" "$OUT/README.md"
 cp "$REPO/LICENSE" "$OUT/LICENSE"
+mkdir -p "$OUT/.github/workflows"
+cp "$REPO"/packaging/public_sdk/workflows/*.yml "$OUT/.github/workflows/"
 cat > "$OUT/.gitignore" <<'IGN'
 __pycache__/
 *.py[co]

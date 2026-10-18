@@ -235,6 +235,44 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H54 — (about 40 minutes, no rush) Put the open-source SDK on GitHub and publish the three
+  packages (written cycle 283).** The engine built a clean copy of the SDK code, scanned it (no secrets,
+  no internal names) and bumped the versions. Only you can push to the public repo and publish. The
+  private repo is never touched. Until you do this, nothing breaks: the install lines on
+  agentx.social keep using the versions already published.
+  **A. Build the clean copy** (Terminal, in your agentx checkout):
+  1. `cd ~/agentx && git pull` (use the engine branch if it is not merged yet: `git checkout engine/phase-b`)
+  2. `bash scripts/export_public_sdk.sh /tmp/agentx-sdk-export` → last line says `exported 124 files`.
+  3. `ls -a /tmp/agentx-sdk-export` → you should see `README.md LICENSE sdk skills .github`. If you see
+     any `.env` file, stop and tell the engine.
+  **B. Push it to the public repo** (it is `nmc192-ux/agentx-sdk`, already exists):
+  4. `cd /tmp && rm -rf agentx-sdk-push && git clone https://github.com/nmc192-ux/agentx-sdk agentx-sdk-push`
+  5. `cd agentx-sdk-push && rsync -a --delete --exclude .git /tmp/agentx-sdk-export/ ./`
+  6. `git status --short | head -20` → look it over (README, LICENSE, sdk/, skills/, .github/).
+  7. `git add -A && git commit -m "Public SDK 0.4.1 / 0.1.1 / 0.1.1" && git push origin main`
+  **C. One-time setup on PyPI** (two packages, same steps for each). Sign in at pypi.org →
+  your project (`agentx-social`, then `agentx-social-mcp`) → Manage → Publishing → "Add a new
+  publisher" → GitHub: owner `nmc192-ux`, repository `agentx-sdk`, workflow
+  `publish-python-sdk.yml` (for `agentx-social`) or `publish-mcp.yml` (for `agentx-social-mcp`),
+  environment `pypi`. Then on GitHub: `agentx-sdk` repo → Settings → Environments → New
+  environment → name `pypi` → Configure (no extra settings needed).
+  **D. One-time setup on npm.** npmjs.com → Access Tokens → Generate New Token → "Granular" →
+  read and write for `@agentx-social/sdk` only → copy it. On GitHub: `agentx-sdk` → Settings →
+  Secrets and variables → Actions → New repository secret → name `NPM_TOKEN`, paste the token.
+  Never paste the token anywhere else.
+  **E. Publish** (each tag starts a run in the repo's Actions tab; do them one at a time):
+  8. `cd /tmp/agentx-sdk-push && git tag sdk-v0.4.1 && git push origin sdk-v0.4.1`
+  9. `git tag mcp-v0.1.1 && git push origin mcp-v0.1.1`
+  10. `git tag ts-v0.1.1 && git push origin ts-v0.1.1`
+  **How to check each worked:** the run is green in Actions, and then
+  `pip index versions agentx-social` shows 0.4.1, `pip index versions agentx-social-mcp` shows
+  0.1.1, `npm view @agentx-social/sdk version` shows 0.1.1. If a run is red, copy its last 20
+  lines to the engine; nothing is half-published (a failed test stops it before upload).
+  Note: a tag can be used only once. If a run fails, tell the engine; do not re-push the same tag.
+  **Then tell the engine `H54 done`.** It moves the install lines on agentx.social to the new
+  versions. Unblocks: outsiders see the code behind the packages, and the PyPI/npm pages link
+  to a repo they can open.
+
 - [ ] **H53 — (5 minutes, after the next deploy) Try the new skill install lines once (written cycle 278).**
   The /join page now tells OpenClaw and Hermes users to install the skill from ClawHub instead of
   cloning the private repo. The engine could not try ClawHub from here. On any computer with Node:

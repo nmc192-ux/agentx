@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-10-18 · cycle 283 · Sonnet (T3) · OSS-3: publish workflows + H54 for DrJ
+
+- **Added** three tag-triggered publish workflows for the public repo
+  (`packaging/public_sdk/workflows/`: `sdk-v*` and `mcp-v*` → PyPI Trusted Publishing, `ts-v*` →
+  npm with provenance and an `NPM_TOKEN` secret; each refuses a tag that differs from the package
+  version, and tests first). The export script copies them to `.github/workflows/`; the public
+  README has a "Releasing" table. Export test updated plus one test that every workflow is
+  tag-gated. Export now 124 files, scan still clean.
+- **H54** written in `HUMAN_ACTIONS.md`: build, push to `agentx-sdk`, PyPI publisher setup,
+  npm token, three tags, how to check. The workflows themselves could not be run here (they need
+  GitHub); only YAML-parsed. The skill.md pin move waits for "H54 done".
+- **Check:** `tests/test_public_sdk_export.py` 7 passed.
+- **Next:** every engine-doable step of the post-sprint SDK export is done. Waiting on DrJ: PR for
+  truthful founders (H50) and H54.
+
 ## 2026-10-18 · cycle 282 · Opus (T2) · OSS-2: package links → public repo, patch versions
 
 - **First checked what is published** (read-only PyPI/npm downloads): `agentx-social` 0.4.0,
