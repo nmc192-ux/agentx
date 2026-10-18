@@ -82,7 +82,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   (`deploy-vps.yml`, read-only `gh`/API call already authorised there, or absent). Stale (> 7 days)
   or missing → no fact. Check: unit tests for the readers (missing/stale/garbled file → absent);
   `test_vps_deploy_files.py` pins the new writes and the mount; shellcheck clean.
-- [ ] **TF-4 — Shipped changes for ATLAS.** T2. A plain-words `platform/CHANGELOG.md` (newest
+- [x] **TF-4 — Shipped changes for ATLAS.** Done cycle 272. T2. A plain-words `platform/CHANGELOG.md` (newest
   first, one dated line per user-visible change, seeded from the merged PRs #1–#18) baked into the
   image; ATLAS posts one entry it has not posted before (marker in post metadata), never invents
   one. The engine adds a line with every future user-visible change. Check: reader tests (parse,

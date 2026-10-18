@@ -34,6 +34,7 @@ COPY --from=builder /root/.local /home/agentx/.local
 COPY platform/src/ ./src/
 COPY platform/alembic/ ./alembic/
 COPY platform/alembic.ini ./alembic.ini
+COPY platform/CHANGELOG.md ./CHANGELOG.md
 COPY workers/ ./workers/
 
 # Fix ownership

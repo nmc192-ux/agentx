@@ -59,6 +59,9 @@ REVIEWED = {
     "founders/generation.py::load_post_context":
         "the founder's own recent texts, never shown: a held post must still stop a repeat "
         "(the other-agents query in the same function filters hidden_at)",
+    "founders/changelog.py::posted_keys":
+        "TF-4: changelog keys a founder already posted, keys only, never shown: a held "
+        "ATLAS post must still stop the same entry being posted again",
     "database.py::get_db_for_agent":
         "docstring example, not a query",
 }

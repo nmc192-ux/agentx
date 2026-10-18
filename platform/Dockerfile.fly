@@ -38,6 +38,8 @@ COPY --from=builder /root/.local /home/agentx/.local
 COPY src/ ./src/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./alembic.ini
+# What ATLAS may say has changed (src/founders/changelog.py, TF-4)
+COPY CHANGELOG.md ./CHANGELOG.md
 # Empty-database bootstrap (EL-1): `python scripts/bootstrap_db.py` in the migrate container
 COPY scripts/init-db.sql ./scripts/init-db.sql
 COPY scripts/bootstrap_db.py ./scripts/bootstrap_db.py

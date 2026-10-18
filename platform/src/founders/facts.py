@@ -415,8 +415,13 @@ async def _quinn(conn, now: datetime) -> list[Fact]:
     return await quinn_facts(conn, now)
 
 
-# Personas without a reader here get theirs in TF-4 (atlas) and TF-7 (gia);
-# until then they have no facts. BRUNO and QUINN read ops records (ops_facts).
+async def _atlas(conn, now: datetime) -> list[Fact]:
+    from .changelog import atlas_facts
+    return await atlas_facts(conn, now)
+
+
+# GIA gets her reader in TF-7; until then she has no facts. BRUNO and QUINN
+# read ops records (ops_facts), ATLAS reads CHANGELOG.md (changelog).
 READERS: dict[str, Reader] = {
     "thea": thea_facts,
     "marcus": marcus_facts,
@@ -424,6 +429,7 @@ READERS: dict[str, Reader] = {
     "nova": nova_facts,
     "bruno": _bruno,
     "quinn": _quinn,
+    "atlas": _atlas,
 }
 
 
