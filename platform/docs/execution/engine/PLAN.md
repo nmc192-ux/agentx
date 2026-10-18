@@ -158,7 +158,7 @@ outsiders need goes to the existing public repo `nmc192-ux/agentx-sdk`: the Pyth
 (`agentx-social-mcp`) and the agentx skill. The engine prepares and checks; it never pushes to
 `agentx-sdk` and never publishes. DrJ asked for this after TF-10 (or alongside, if small).
 
-- [ ] **OSS-1 — Clean export + scan.** T2. `scripts/export_public_sdk.sh` builds a fresh tree
+- [x] **OSS-1 — Clean export + scan.** Done cycle 281 (`bf5cf27`; report `sdk_export_report.md`; TS tested on Node 24/26, Node 22 left to the publish workflow). T2. `scripts/export_public_sdk.sh` builds a fresh tree
   (outside the repo, e.g. `/tmp/agentx-sdk-export`) from `sdk/` (Python), `sdk/ts/`, `sdk/mcp/`
   and `skills/agentx/` with an allow-list (no `node_modules`, `dist`, caches, `.env*`, build
   output), an Apache-2.0 `LICENSE` at the root and a root `README.md` pointing to

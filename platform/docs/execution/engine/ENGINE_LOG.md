@@ -1,5 +1,30 @@
 # Engine log
 
+## 2026-10-18 · cycle 281 · Opus (T2) · OSS-1: public SDK export + scan, clean
+
+- **Built** `scripts/export_public_sdk.sh` (tracked files from `sdk/` and `skills/agentx/` only,
+  deny-list for `.env*`, build output, caches and the private shim test; root README from
+  `packaging/public_sdk/README.md`, Apache-2.0 root LICENSE; byte-repeatable, 121 files) and
+  `scripts/scan_public_sdk.py` (IPs, hosting/VPS names, private repo, `platform/` and doc paths,
+  private folders, links leaving the export, e-mails, "DrJ", fallback secret patterns).
+  `platform/tests/test_public_sdk_export.py` (6) runs both and plants details the scan must catch.
+- **Scans:** gitleaks 8.30.1 (GitHub release, checksum checked; brew failed) **no leaks**;
+  scan **0 findings**, 3 explained (loopback twice, `fly.dev` in a test that forbids it).
+- **Fixed in source** (first run found 11 + 3 by hand): `sdk/README.md`, which is also the PyPI
+  page, linked `../platform/docs/quickstart.md`, `../agentx-examples/` and `runners/`; docstrings
+  named `platform/src/...`; the examples README sent readers to the private platform's
+  docker compose; a test docstring named DrJ and Fly.io; **`sdk/mcp/` had no LICENSE** though it
+  declares MIT (added). Full list in `sdk_export_report.md`.
+- **Check:** inside the export, Python SDK **524 passed**, MCP **128 passed** (own venv), TS
+  **171 passed** on Node 24.19 and 26.7; repo `sdk/tests` 531 passed; docs-link and
+  package-name tests 11 passed; ruff clean. Commit `bf5cf27`.
+- **Not done as asked:** Node 22. Homebrew's `node@22` is broken here (missing libsimdjson) and
+  the nodejs.org download crawled; recorded in the report, OSS-3's workflow will pin Node 22.
+- **Decisions I made (reversible):** the export keeps the repo's layout (`sdk/`, `sdk/ts/`,
+  `sdk/mcp/`, `skills/agentx/`) so tests run unchanged; root Apache-2.0 with MIT packages, per
+  DrJ's cycle-63 answer.
+- **Next:** OSS-2 (package metadata points to the public repo, patch versions), T2.
+
 ## 2026-10-18 · cycle 280 · Opus (T2) · TF-10b sprint close: retro, state of AgentX, PR text
 
 - Sprint "Truthful founders" closed. Retro `sprints/sprint_truthful_founders_retro.md` (all five
