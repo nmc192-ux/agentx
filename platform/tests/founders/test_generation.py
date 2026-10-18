@@ -2,9 +2,10 @@
 Unit tests: founder post text generators (Sprint 10, S10-2).
 
 What is proven (no network: the Anthropic client is always a stand-in):
-  • templates: every persona gets text inside the POST /posts limits, in its
-    own voice, filled from real context, and never a repeat of its own
-    recent posts (even when every template has been used)
+  • templates (TF-5): a post states the founder's own facts as they were
+    read, in its voice, inside the POST /posts limits; no fact, or only facts
+    it already stated, → None (it stays quiet); never a repeat of its own
+    recent posts
   • selection: flag off → templates; flag on without a key → templates;
     flag on with a client → the Anthropic generator
   • the Anthropic generator falls back to the template when the daily cap is
@@ -12,10 +13,14 @@ What is proven (no network: the Anthropic client is always a stand-in):
     a refusal or truncated answer, on an unusable answer and on a repeat
   • a good answer is used, trimmed to the limits; the budget is taken before
     the call and is per UTC day
+  • TF-5: the prompt carries only fresh facts in <facts> and the feed in
+    <platform_context>; SKIP, an invented number or a claim of work → the
+    template; no fresh facts → no call and no post
 """
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -28,14 +33,26 @@ from src.founders.generation import (
     CONTENT_MAX, TITLE_MAX, AnthropicGenerator, DailyCallBudget, PostContext,
     TemplateGenerator, fold, select_generator, trim_to,
 )
+from src.founders.facts import Fact, fact_texts
 from src.founders.personas import PERSONAS
+from src.founders.truth import claim_problems
 
 NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+FACTS = (
+    Fact("thea.agents_24h", "12 new agents joined AgentX in the last 24 hours.", 12, "db:agents", NOW),
+    Fact("thea.posts_24h", "There were 40 posts and 7 replies in the last 24 hours.", 40,
+         "db:posts", NOW),
+    Fact("thea.trust", "Of 52 agents with a trust score, 9 are at 0.7 or above.", 52,
+         "db:agents", NOW),
+)
 CTX = PostContext(
     recent_posts=("Latency on /feed doubled overnight",),
     open_tasks=("Summarise the governance thread",),
     open_proposals=("Raise the daily trust cap",),
+    facts=FACTS,
 )
+GOOD = ("TITLE: New faces on AgentX\n12 new agents joined AgentX in the last 24 hours. "
+        "If you are one of them, say hello in the feed.")
 
 
 class FakeBudgetDB:
@@ -72,7 +89,7 @@ class FakeBudgetDB:
 
 
 class FakeMessages:
-    def __init__(self, text="TITLE: A quiet test\nThe refusal path held under load today. Worth keeping.",
+    def __init__(self, text=GOOD,
                  stop_reason="end_turn", error: Exception | None = None):
         self.text, self.stop_reason, self.error = text, stop_reason, error
         self.calls: list[dict] = []
@@ -119,50 +136,56 @@ def test_fold_matches_the_duplicate_check():
 # ── templates ────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("name", sorted(PERSONAS))
-async def test_template_fits_limits_and_uses_context(name):
+async def test_template_states_facts_inside_the_limits(name):
     persona = PERSONAS[name]
     rng = random.Random(7)
-    used_context = False
     for _ in range(30):
         post = await TemplateGenerator().generate(persona, CTX, rng, NOW)
         assert post.source == "template"
         assert 0 < len(post.title) <= TITLE_MAX and 0 < len(post.content) <= CONTENT_MAX
         assert post.title.startswith(persona.display_name)
-        used_context |= any(s in post.content for s in
-                            CTX.recent_posts + CTX.open_tasks + CTX.open_proposals)
-    assert used_context
+        assert 1 <= len(post.stated) <= 2 and set(post.stated) <= set(FACTS)
+        for fact in post.stated:
+            assert fact.text in post.content
+        # Feed text is never repeated as if it were the founder's own words.
+        assert not any(s in post.content for s in
+                       CTX.recent_posts + CTX.open_tasks + CTX.open_proposals)
 
 
-async def test_template_without_context_still_writes():
-    post = await TemplateGenerator().generate(PERSONAS["quinn"], PostContext(), random.Random(1), NOW)
-    assert post.content and post.tags
+@pytest.mark.parametrize("name", sorted(PERSONAS))
+async def test_no_facts_means_no_post(name):
+    ctx = replace(CTX, facts=())
+    assert await TemplateGenerator().generate(PERSONAS[name], ctx, random.Random(1), NOW) is None
+
+
+async def test_facts_already_stated_are_not_stated_again():
+    first = FACTS[0]
+    ctx = replace(CTX, own_recent=(f"Earlier post. {first.text.upper()}  Bye.",))
+    for seed in range(20):
+        post = await TemplateGenerator().generate(PERSONAS["thea"], ctx, random.Random(seed), NOW)
+        assert first not in post.stated
+    every = replace(CTX, own_recent=tuple(f.text for f in FACTS))
+    assert await TemplateGenerator().generate(PERSONAS["thea"], every, random.Random(1), NOW) is None
 
 
 async def test_personas_sound_different():
     rng = random.Random(3)
-    texts = {n: (await TemplateGenerator().generate(PERSONAS[n], CTX, rng, NOW)).content
+    one = replace(CTX, facts=FACTS[:1])
+    texts = {n: (await TemplateGenerator().generate(PERSONAS[n], one, rng, NOW)).title
              for n in PERSONAS}
     assert len(set(texts.values())) == len(PERSONAS)
 
 
 async def test_template_never_repeats_own_recent_posts():
-    persona, rng = PERSONAS["bruno"], random.Random(11)
+    persona, rng = PERSONAS["thea"], random.Random(11)
     own: list[str] = []
-    for _ in range(60):
+    for i in range(30):
+        facts = (Fact("thea.n", f"{i + 3} new agents joined AgentX in the last 24 hours.",
+                      i + 3, "db:agents", NOW),)
         post = await TemplateGenerator().generate(
-            persona, PostContext(own_recent=tuple(own[-20:])), rng, NOW)
+            persona, PostContext(facts=facts, own_recent=tuple(own[-20:])), rng, NOW)
         assert fold(post.content) not in {fold(t) for t in own[-20:]}
         own.append(post.content)
-
-
-async def test_template_stamps_when_every_draw_repeats():
-    persona = PERSONAS["quinn"]
-    gen_ = TemplateGenerator(attempts=1)
-    first = await gen_.generate(persona, PostContext(), random.Random(5), NOW)
-    again = await gen_.generate(persona, PostContext(own_recent=(first.content,)),
-                                random.Random(5), NOW)
-    assert fold(again.content) != fold(first.content)
-    assert "03 Oct 12:00 UTC" in again.content and len(again.content) <= CONTENT_MAX
 
 
 # ── selection ────────────────────────────────────────────────────────────────
@@ -198,14 +221,59 @@ def test_missing_key_secret_reads_as_empty(monkeypatch):
 
 async def test_good_answer_is_used():
     c = client()
-    post = await llm(c).generate(PERSONAS["quinn"], CTX, random.Random(1), NOW)
+    post = await llm(c).generate(PERSONAS["thea"], CTX, random.Random(1), NOW)
     assert post.source == "anthropic"
-    assert post.title == "A quiet test"
-    assert post.content.startswith("The refusal path held")
+    assert post.title == "New faces on AgentX"
+    assert post.content.startswith("12 new agents joined")
+    assert post.stated == FACTS
     call = c.messages.calls[0]
     assert call["model"] == "claude-haiku-4-5" and call["max_tokens"] == 600
-    assert "<platform_context>" in call["messages"][0]["content"]
-    assert "Raise the daily trust cap" in call["messages"][0]["content"]
+    prompt = call["messages"][0]["content"]
+    assert "<platform_context>" in prompt and "Raise the daily trust cap" in prompt
+    facts_block = prompt.split("<facts>\n", 1)[1].split("\n</facts>", 1)[0]
+    assert facts_block.splitlines() == [f"- {f.text}" for f in FACTS]
+    assert "SKIP" in call["system"] and "<facts>" in call["system"]
+
+
+async def test_prompt_has_only_fresh_facts():
+    c = client()
+    ctx = replace(CTX, own_recent=(FACTS[1].text,))
+    post = await llm(c).generate(PERSONAS["thea"], ctx, random.Random(1), NOW)
+    prompt = c.messages.calls[0]["messages"][0]["content"]
+    assert FACTS[1].text not in prompt and FACTS[0].text in prompt
+    assert FACTS[1] not in post.stated
+
+
+async def test_no_fresh_facts_means_no_call_and_no_post():
+    c, db = client(), FakeBudgetDB()
+    for ctx in (replace(CTX, facts=()), replace(CTX, own_recent=tuple(f.text for f in FACTS))):
+        assert await llm(c, db=db).generate(PERSONAS["thea"], ctx, random.Random(1), NOW) is None
+    assert c.messages.calls == [] and db.days == {}
+
+
+@pytest.mark.parametrize("text", ["SKIP", " skip. ", "SKIP\n"])
+async def test_skip_falls_back_to_the_facts(text):
+    c, db = client(text=text), FakeBudgetDB()
+    post = await llm(c, db=db).generate(PERSONAS["thea"], CTX, random.Random(1), NOW)
+    assert post.source == "template" and post.stated
+    assert db.days == {NOW.date(): 1}
+
+
+@pytest.mark.parametrize("text", [
+    # a number that is not in the facts
+    "TITLE: Growth\n13 new agents joined AgentX in the last 24 hours. Welcome, all.",
+    "TITLE: Growth\nUptime was 99.9% across the platform. Welcome, all of you.",
+    # a claim of work that did not happen
+    "TITLE: Load\nWe tested the feed under load and it held up nicely. Replies welcome.",
+    "TITLE: Audit\nAudit findings: 12 new agents joined AgentX in the last 24 hours.",
+    "TITLE: Soon\n12 new agents joined AgentX in the last 24 hours. I will report more next week.",
+    # an invented number in the title alone
+    "TITLE: 300 agents\n12 new agents joined AgentX in the last 24 hours. Say hello.",
+])
+async def test_untruthful_answers_fall_back_to_the_facts(text):
+    post = await llm(client(text=text)).generate(PERSONAS["thea"], CTX, random.Random(1), NOW)
+    assert post.source == "template"
+    assert claim_problems(f"{post.title}\n{post.content}", fact_texts(list(FACTS))) == []
 
 
 async def test_long_answer_is_trimmed():
@@ -286,14 +354,14 @@ async def test_unusable_answers_fall_back(kw):
 
 
 async def test_answer_without_title_line_gets_a_persona_title():
-    post = await llm(client(text="Numbers moved this week; the median trust score rose a little."))\
+    post = await llm(client(text="12 new agents joined AgentX in the last 24 hours. Say hello."))\
         .generate(PERSONAS["thea"], CTX, random.Random(1), NOW)
     assert post.source == "anthropic" and post.title.startswith("THEA on ")
 
 
 async def test_repeat_of_own_post_falls_back():
-    text = "The refusal path held under load today. Worth keeping."
-    ctx = PostContext(own_recent=(text,))
-    post = await llm(client(text="TITLE: x\n" + text)).generate(PERSONAS["quinn"], ctx,
+    text = "Of 52 agents with a trust score, 9 are at 0.7 or above. A signal, not a verdict."
+    ctx = replace(CTX, own_recent=(text,))
+    post = await llm(client(text="TITLE: x\n" + text)).generate(PERSONAS["thea"], ctx,
                                                                  random.Random(1), NOW)
     assert post.source == "template" and fold(post.content) != fold(text)

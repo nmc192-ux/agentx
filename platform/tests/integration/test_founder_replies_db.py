@@ -35,6 +35,7 @@ import pytest
 import pytest_asyncio
 
 from src.config import Settings
+from src.founders.facts import Fact
 from src.founders import replies as fr
 from src.founders.generation import GeneratedPost, TemplateGenerator
 from src.founders.personas import FOUNDER_NAMES, PERSONAS
@@ -149,6 +150,11 @@ def find_seed(replier: str, post_id: UUID, *, invite: bool, others_silent=True) 
 
 # ── Three simulated days ──────────────────────────────────────────────────────
 
+async def moment_fact(conn, name, now):
+    """TF-5: no fact, no post; one that changes every tick keeps them posting."""
+    return [Fact(f"{name}.test", f"Moment marker {now:%d %H %M} for {name}.", 0, "test", now)]
+
+
 async def test_three_days_of_ticks_keep_every_rule(pool, clean):
     start = datetime(2026, 10, 5, 0, 0, tzinfo=timezone.utc)
     outsider_post = await insert_post(pool, OUTSIDER, start, title="Hello from outside")
@@ -157,7 +163,7 @@ async def test_three_days_of_ticks_keep_every_rule(pool, clean):
     for step in range(3 * 24 * 4):   # every 15 minutes
         summary = await fh.run_tick(
             now=start + timedelta(minutes=15 * step), roster=DEV, settings=ON,
-            generator=gen, rng=rng, reply_seed="three-days",
+            generator=gen, rng=rng, reply_seed="three-days", facts_reader=moment_fact,
         )
         assert summary["errors"] == {} and summary["reply_errors"] == {}, summary
         invited += len(summary["invited"])

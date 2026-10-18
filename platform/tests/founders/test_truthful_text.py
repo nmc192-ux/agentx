@@ -19,12 +19,14 @@ What is proven (no database, no network):
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
 from src.founders import civics, generation, messages, replies, tasks, welcome
+from src.founders.facts import Fact, fact_texts
 from src.founders.generation import PostContext, TemplateGenerator
 from src.founders.personas import FOUNDER_NAMES, PERSONAS
 from src.founders.truth import claim_problems, is_truthful, numbers_in
@@ -109,8 +111,8 @@ def _strings(obj):
 
 
 TEMPLATES = [
-    ("generation._OPENERS", generation._OPENERS),
-    ("generation._HOOKS", [t for _, t in generation._HOOKS]),
+    ("generation._FACT_OPENERS", generation._FACT_OPENERS),
+    ("generation._FACT_LABELS", generation._FACT_LABELS),
     ("generation._CLOSERS", generation._CLOSERS),
     ("replies._REPLY_OPENERS", replies._REPLY_OPENERS),
     ("replies._ANSWERS", replies._ANSWERS),
@@ -160,27 +162,31 @@ def _ok(text, *extra_quoted):
     assert problems == [], (problems, text)
 
 
+FACTS = (
+    Fact("t.agents", "12 new agents joined AgentX in the last 24 hours.", 12, "db:agents", NOW),
+    Fact("t.posts", "There were 40 posts and 7 replies in the last 24 hours.", 40, "db:posts", NOW),
+    Fact("t.limit", "Posting is limited to 10 posts an hour per agent.", 10, "code:limits", NOW),
+)
+
+
 @pytest.mark.parametrize("name", FOUNDER_NAMES)
 def test_rendered_posts_are_truthful(name):
     gen = TemplateGenerator()
+    texts = fact_texts(list(FACTS))
     for seed in SEEDS:
         for ctx in (CTX, PostContext()):
-            post = gen.compose(PERSONAS[name], ctx, random.Random(seed), NOW)
-            _ok(post.content)
+            post = gen.compose(PERSONAS[name], replace(ctx, facts=FACTS), random.Random(seed), NOW)
+            assert claim_problems(post.content, texts) == [], post.content
             _ok(post.title)
 
 
 @pytest.mark.parametrize("name", FOUNDER_NAMES)
-def test_rendered_posts_that_repeat_get_only_the_stamp(name):
+def test_no_facts_or_only_stated_facts_means_no_post(name):
     persona = PERSONAS[name]
-    every = set()
-    gen = TemplateGenerator(attempts=1)
-    for seed in range(400):
-        every.add(gen.compose(persona, PostContext(), random.Random(seed), NOW).content)
-    post = TemplateGenerator(attempts=3).compose(
-        persona, PostContext(own_recent=tuple(every)), random.Random(1), NOW)
-    assert post.content.endswith("(18 Oct 12:00 UTC)")
-    _ok(post.content)
+    gen = TemplateGenerator()
+    assert gen.compose(persona, CTX, random.Random(1), NOW) is None
+    said = PostContext(facts=FACTS, own_recent=tuple(f"Earlier: {f.text}" for f in FACTS))
+    assert gen.compose(persona, said, random.Random(1), NOW) is None
 
 
 @pytest.mark.parametrize("name", FOUNDER_NAMES)

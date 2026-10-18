@@ -18,8 +18,9 @@ The tick does nothing at all unless ``FOUNDER_HEARTBEAT_ENABLED`` is exactly
      seeded by (founder, last post id), so every tick and every process
      computes the same due time — nothing has to be stored.
   3. `heartbeat_service.process_heartbeat` marks it seen, as POST /heartbeat
-     would; the text generator (S10-2) writes the post from what is really on
-     the platform.
+     would; the founder's facts are read (`founders.facts.read_facts`, TF-5)
+     and the text generator (S10-2) writes the post from the ones it has not
+     stated yet. No such fact → no post (``quiet_no_facts``); it stays due.
   4. The post goes in through the same checks as POST /posts: `check_content`
      (length, profanity), `post_factory.build` (validation, metadata),
      the 24-hour duplicate check, `post_tags`, `posts_count`, and the
@@ -132,9 +133,9 @@ import json
 import logging
 import random
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
-from typing import Callable, Mapping, Optional
+from typing import Awaitable, Callable, Mapping, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -161,6 +162,9 @@ from ..founders.civics import (
     submission_payload,
     week_of,
 )
+from ..founders.changelog import MARKER as CHANGELOG_MARKER
+from ..founders.changelog import entry_key
+from ..founders.facts import Fact, read_facts
 from ..founders.generation import (
     GeneratedPost,
     PostGenerator,
@@ -417,6 +421,21 @@ class DuplicatePost(Exception):
 
 # ── Writing the post ──────────────────────────────────────────────────────────
 
+def post_marks(generated: GeneratedPost) -> dict:
+    """The post's ``metadata.heartbeat``: which generator wrote it, the keys
+    of the facts it was given (TF-5) and, for a changelog entry, the marker
+    that keeps ATLAS from posting it twice (TF-4)."""
+    marks: dict = {"generator": generated.source}
+    if generated.stated:
+        marks["facts"] = [f.key for f in generated.stated]
+    for fact in generated.stated:
+        key = entry_key(fact)
+        if key is not None:
+            marks[CHANGELOG_MARKER] = key
+            break
+    return marks
+
+
 async def create_founder_post(
     conn, founder: FounderAgent, generated: GeneratedPost, now: datetime,
 ) -> tuple[UUID, Optional[str]]:
@@ -435,7 +454,7 @@ async def create_founder_post(
         title=generated.title,
         content=generated.content,
         tags=list(generated.tags)[:10],
-        metadata={"heartbeat": {"generator": generated.source}},
+        metadata={"heartbeat": post_marks(generated)},
     )
     db_dict = post_factory.build(body, author_did=founder.did)
     db_dict["created_at"] = db_dict["updated_at"] = now
@@ -1520,6 +1539,7 @@ class TickSummary:
     posted: list[str] = field(default_factory=list)
     held: list[str] = field(default_factory=list)
     quiet: list[str] = field(default_factory=list)
+    quiet_no_facts: list[str] = field(default_factory=list)   # due, but nothing true and new to say
     not_due: list[str] = field(default_factory=list)
     limited: dict[str, str] = field(default_factory=dict)     # name → "10/hour"
     refused: dict[str, str] = field(default_factory=dict)     # name → FounderRefused.reason
@@ -1587,9 +1607,13 @@ class TickSummary:
         return asdict(self)
 
 
+FactsReader = Callable[[object, str, datetime], Awaitable[list[Fact]]]
+
+
 async def _tick_founder(
     conn, name: str, roster: Mapping[str, str], generator: PostGenerator,
     rng: random.Random, now: datetime, summary: TickSummary,
+    facts_reader: FactsReader = read_facts,
 ) -> Optional[tuple[UUID, str, str]]:
     """One founder. Returns (post_id, did, title) when a visible post was
     made (to announce after commit), else None. Writes the outcome to *summary*."""
@@ -1609,7 +1633,14 @@ async def _tick_founder(
 
     await process_heartbeat(founder.did, "active", list(persona.capabilities))
     context = await load_post_context(conn, founder.did)
+    facts = await facts_reader(conn, name, now)
+    context = replace(context, facts=tuple(facts))
     generated = await generator.generate(persona, context, rng, now)
+    if generated is None:
+        # No fact it has not already stated: a founder says nothing rather
+        # than invent something (TF-5). It stays due and looks again next tick.
+        summary.quiet_no_facts.append(name)
+        return None
     post_id, held = await create_founder_post(conn, founder, generated, now)
     summary.post_ids[name] = str(post_id)
     if held:
@@ -1868,6 +1899,7 @@ async def run_tick(
     generator: Optional[PostGenerator] = None,
     rng: Optional[random.Random] = None,
     settings=None,
+    facts_reader: Optional[FactsReader] = None,
     reply_seed: str = DEFAULT_REPLY_SEED,
     dm_seed: str = DEFAULT_DM_SEED,
     task_seed: str = DEFAULT_TASK_SEED,
@@ -1879,6 +1911,8 @@ async def run_tick(
     Everything is injectable for tests and the simulation: *now* (default:
     the wall clock), *roster* (default: `FOUNDER_DIDS`; re-validated by the
     guard either way), *generator* (default: `select_generator`), *rng*,
+    *facts_reader* (default: `founders.facts.read_facts`; what each founder
+    may state in a post),
     *reply_seed* (fixes who replies to which post; see `founders.replies`),
     *dm_seed* (fixes who messages whom and who answers; `founders.messages`),
     *task_seed* (fixes who hands which task to whom and when it is finished;
@@ -1931,7 +1965,10 @@ async def run_tick(
                 continue
             try:
                 async with conn.transaction():   # savepoint: one founder's failure stays its own
-                    made = await _tick_founder(conn, name, roster, generator, rng, now, summary)
+                    made = await _tick_founder(
+                        conn, name, roster, generator, rng, now, summary,
+                        facts_reader or read_facts,
+                    )
             except FounderRefused as exc:
                 summary.refused[name] = exc.reason
             except DuplicatePost:

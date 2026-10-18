@@ -17,9 +17,11 @@ Run: cd platform && .venv/bin/python -m pytest tests/integration -v --db
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 import pytest
 
+from src.founders.facts import Fact
 from src.founders.generation import TemplateGenerator, _context_block, fold, load_post_context
 from src.founders.personas import PERSONAS
 
@@ -98,7 +100,9 @@ async def test_context_reads_only_what_should_be_quoted(pool):
             assert "Active idea" in ctx.open_proposals and "Closed idea" not in ctx.open_proposals
             assert "Tested the feed. Matters a little." in ctx.own_recent
 
-            post = await TemplateGenerator().generate(PERSONAS["quinn"], ctx, random.Random(2))
+            fact = Fact("quinn.test", "A fact for the test.", 0, "test", None)
+            post = await TemplateGenerator().generate(
+                PERSONAS["quinn"], replace(ctx, facts=(fact,)), random.Random(2))
             assert fold(post.content) not in {fold(t) for t in ctx.own_recent}
         finally:
             await tr.rollback()
