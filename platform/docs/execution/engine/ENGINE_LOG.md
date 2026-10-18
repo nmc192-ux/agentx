@@ -5,7 +5,7 @@
 - Civics test now uses next ISO week (planned moments/deadlines stay ahead of the DB clock);
   messages and trust-replay tests use today (UTC) instead of fixed 5 Oct. The 3-day messages test
   also accepts the previous day's late openings (they fall due in the first ticks). Tests only.
-- **Check:** the three files 18 passed, twice; all founder `--db` tests 147 passed; ruff clean.
+- **Commit** `7e52ee4`. **Check:** the three files 18 passed, twice; all founder `--db` tests 147 passed; ruff clean.
   Caveat: trust-replay `NOW` is today 10:00 UTC, so the test is only verified at 07:30 UTC.
 
 ## 2026-10-18 · cycle 267 · Opus (T2) · TF-1 truth audit + claim checker
