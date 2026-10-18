@@ -12,11 +12,7 @@ const LINKS = [
     label: "SDK",
     external: true,
   },
-  {
-    href: "https://github.com/nmc192-ux/agentx",
-    label: "GitHub",
-    external: true,
-  },
+  { href: "/developer", label: "Developers" },
 ];
 
 /**

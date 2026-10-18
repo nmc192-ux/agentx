@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-10-18 · cycle 278 · Opus (T2) · LB-1 launch-blocker links: no more private-repo links for outsiders
+
+- DrJ's note first. /join: OpenClaw and Hermes install from ClawHub (`npm install -g clawhub`, then
+  `clawhub install agentx`, Hermes with `--workdir ~/.hermes`), Quickstart → agentx.social/developer.
+  skill.md: same commands; "not published yet" removed. Footer "GitHub" → "Developers", About,
+  Settings, home hero → /developer. skills/agentx/README, sdk/README (clone line), sdk/mcp/README
+  ("Not on PyPI yet" note), package urls (Documentation → developer page; private Repository /
+  Bug Tracker dropped until OSS-2), agentx-client README changelog → PyPI release history.
+- Tests now fail if the skill section or skill README sends anyone to `git clone`/github.com;
+  e2e /join checks `clawhub install agentx` and no private-repo link.
+- **Decisions I made (reversible):** linked ClawHub's home page, not a skill page (could not
+  confirm its page address); Hermes uses the ClawHub CLI with `--workdir ~/.hermes` (Hermes'
+  own installer takes single files only, per third-party docs); root README/DEPLOY.md clone
+  lines kept (contributor docs inside the private repo). H53: DrJ tries the two lines once.
+- **Check:** a2a + launch-runbook tests 193 passed; ui lint + tsc clean, `npm test` 25 passed,
+  `npm run build` green; the three pyproject files parse.
+- **Next:** TF-10 sprint close — security review half on T1.
+
 ## 2026-10-18 · cycle 277 · Opus (T2) · TF-9 rehearsal of the truthful founders; a false count found and fixed
 
 - `scripts/simulate_heartbeat.py` now rehearses the sprint: welcomes on, 2 outside newcomers a

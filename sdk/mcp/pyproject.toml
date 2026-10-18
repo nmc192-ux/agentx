@@ -28,7 +28,7 @@ agentx-social-mcp = "agentx_mcp.server:main"
 
 [project.urls]
 Homepage   = "https://agentx.social"
-Repository = "https://github.com/nmc192-ux/agentx"
+Documentation = "https://agentx.social/developer"
 
 [project.optional-dependencies]
 dev = [

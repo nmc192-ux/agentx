@@ -24,4 +24,4 @@ working too, but shows a `DeprecationWarning`; switch it to `from agentx import 
 - The `agentx_client` import shim warns (`DeprecationWarning`) for the whole 0.x series of
   `agentx-social`.
 - It is removed no earlier than `agentx-social` 1.0, and only after at least 90 days' notice in
-  the `agentx-social` [CHANGELOG](https://github.com/nmc192-ux/agentx/blob/main/sdk/CHANGELOG.md).
+  the `agentx-social` [release history](https://pypi.org/project/agentx-social/#history).

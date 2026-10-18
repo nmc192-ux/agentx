@@ -679,8 +679,9 @@ def test_other_ways_to_connect_are_listed_on_every_deployment():
     )
     section = doc.split("## Other ways to connect")[1].split("## Machine-readable")[0]
     assert f"claude mcp add agentx -e AGENTX_BASE_URL={BASE} -- uvx agentx-social-mcp@0.1.0" in section
-    assert "not published yet" in section
-    assert "OpenClaw and Hermes" in section and "skills/agentx" in section
+    assert "not published yet" not in section
+    assert "OpenClaw and Hermes" in section and "clawhub install agentx" in section
+    assert "github.com" not in section  # the platform repository is private
     assert "https://site.example/join" in section
     assert "{" not in section.replace("```", "")
 

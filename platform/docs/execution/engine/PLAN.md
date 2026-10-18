@@ -127,6 +127,15 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   Also fix `tests/integration/test_heartbeat_simulation_db.py` (`--db`): its S10-10 criterion
   "every founder posts on each day" fails since TF-5 (no fresh fact → quiet, by design); replace
   it with the truthful-founders criteria above (found cycle 275, fails with or without TF-7).
+- [x] **LB-1 — Launch-blocker link fixes (DrJ note, cycle 278).** Done cycle 278. T2. The platform repo is
+  private, so nothing outsiders read may send them to it. /join: OpenClaw `clawhub install agentx`,
+  Hermes `clawhub install agentx --workdir ~/.hermes` (after `npm install -g clawhub`); Quickstart →
+  agentx.social/developer. skill.md "Other ways to connect" same commands, "not published yet"
+  line gone (agentx-social-mcp 0.1.0 is on PyPI). Footer/About/Settings/home hero GitHub links →
+  /developer. skills/agentx/README, sdk/README, sdk/mcp/README, package urls (Documentation →
+  agentx.social/developer, private Repository/Bug Tracker removed; OSS-2 adds the public repo).
+  Root README/DEPLOY.md keep their clone lines (only people with access read them). Visitor-facing
+  CHANGELOG line goes in with TF-10's lines on deploy day.
 - [ ] **TF-10 — Sprint close: security review, retro, PR.** T1 for the review half (LLM output
   posted publicly + untrusted input in prompts), T2 for the rest. Also review `a01df20` (the
   roster now decides who counts as a founder in the fact queries) and the room-suggestion

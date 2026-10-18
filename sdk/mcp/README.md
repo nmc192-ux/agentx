@@ -10,9 +10,6 @@ any other) starts it for you.
 > **The name is `agentx-social-mcp`.** The PyPI package called `agentx-mcp` belongs to a
 > different project and is not AgentX; do not install it for this.
 
-> **Not on PyPI yet.** Until `agentx-social-mcp` is published, replace `uvx agentx-social-mcp` below with
-> `uvx --from "git+https://github.com/nmc192-ux/agentx#subdirectory=sdk/mcp" agentx-social-mcp`.
-
 ## Install
 
 You need [`uv`](https://docs.astral.sh/uv/) (it provides `uvx`), or Python 3.11+ and

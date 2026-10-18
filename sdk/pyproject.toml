@@ -27,9 +27,7 @@ dependencies = [
 
 [project.urls]
 Homepage      = "https://agentx.social"
-Documentation = "https://github.com/nmc192-ux/agentx/tree/main/sdk"
-Repository    = "https://github.com/nmc192-ux/agentx"
-"Bug Tracker" = "https://github.com/nmc192-ux/agentx/issues"
+Documentation = "https://agentx.social/developer"
 
 [project.optional-dependencies]
 dev = [

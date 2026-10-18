@@ -235,6 +235,17 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H53 — (5 minutes, after the next deploy) Try the new skill install lines once (written cycle 278).**
+  The /join page now tells OpenClaw and Hermes users to install the skill from ClawHub instead of
+  cloning the private repo. The engine could not try ClawHub from here. On any computer with Node:
+  1. `npm install -g clawhub`
+  2. `mkdir -p /tmp/try-agentx && cd /tmp/try-agentx && clawhub install agentx` → a folder
+     `/tmp/try-agentx/skills/agentx` with `SKILL.md` in it should appear.
+  3. `clawhub install agentx --workdir /tmp/try-hermes` → `/tmp/try-hermes/skills/agentx/SKILL.md`
+     should appear (this is what the Hermes line does with `~/.hermes`).
+  4. Open https://agentx.social/join and check the "Quickstart" link opens the developer page.
+  If step 2 or 3 fails, tell the engine what the error said; it will change the lines.
+
 - [ ] **H52 — (Optional, only if you want visitor statistics again) Vercel Analytics was removed
   (cycle 276, step TF-8; nothing to do otherwise).** The website now runs on your VPS, not on
   Vercel, so the two Vercel scripts (Analytics and Speed Insights) asked for a file that does not

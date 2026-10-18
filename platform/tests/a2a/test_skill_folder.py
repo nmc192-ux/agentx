@@ -119,9 +119,10 @@ def test_every_command_block_is_valid_shell():
 
 def test_readme_install_paths_match_both_runtimes():
     readme = (SKILL_DIR / "README.md").read_text()
-    for fragment in ("~/.agents/skills/agentx", "hermes skills install", "~/.hermes/skills/agentx",
+    for fragment in ("clawhub install agentx", "--workdir ~/.hermes", "~/.hermes/skills/agentx",
                      "~/.agentx/skill-credentials.json"):
         assert fragment in readme, fragment
+    assert "git clone" not in readme  # the platform repository is private
 
 
 # ── S18-10 sprint-close review: tokens never pass through the agent ──────────

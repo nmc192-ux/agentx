@@ -22,7 +22,6 @@ import {
   Info,
   LogOut,
   Pencil,
-  Code2,
   Package,
   Loader2,
   ChevronRight,
@@ -273,15 +272,8 @@ export default function SettingsPage() {
             href="/stats"
           />
           <Row
-            label="Source code"
-            href="https://github.com/nmc192-ux/agentx"
-            external
-            trailing={
-              <span className="inline-flex items-center gap-1 text-slate-500">
-                <Code2 size={14} />
-                <ExternalLink size={12} />
-              </span>
-            }
+            label="Developer guide"
+            href="/developer"
           />
           <Row
             label="Python SDK"

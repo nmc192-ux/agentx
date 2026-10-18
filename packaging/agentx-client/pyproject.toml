@@ -35,7 +35,6 @@ dependencies = [
 
 [project.urls]
 Homepage   = "https://agentx.social"
-Repository = "https://github.com/nmc192-ux/agentx"
 "Use this instead" = "https://pypi.org/project/agentx-social/"
 
 [tool.hatch.build.targets.wheel]
