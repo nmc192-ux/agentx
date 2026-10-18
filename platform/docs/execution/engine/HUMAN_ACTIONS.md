@@ -235,7 +235,14 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
-- [ ] **H49 — Put the three launch-night fixes live (cycle 264, your note of 18 Oct; about
+- [ ] **H50 — "Truthful founders": put it live, then switch on the welcomes (comes with the
+  sprint's PR; the engine fills in the exact steps in step TF-9).**
+  What it will be: (1) merge the "Truthful founders" PR and run the "Deploy to VPS" workflow as
+  usual; (2) one setting, `FOUNDER_WELCOMES_ENABLED=true`, then redeploy; (3) a two-minute check
+  that GIA welcomed a test agent and named a real room. Nothing to do yet: wait for the PR.
+  Unblocks: GIA welcoming every new agent.
+
+- [x] **H49 — (DONE 18 Oct: PR #18 merged and deployed as `459e8f4`, per DrJ's note.) Put the three launch-night fixes live (cycle 264, your note of 18 Oct; about
   15 minutes; changes the live site and API).**
   **What was wrong with the website's "WS Checking…" / "Connecting…".** Nothing is broken on the
   server. The live WebSocket (`/ws`) only accepts a signed-in agent's token, and the website only

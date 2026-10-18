@@ -1,5 +1,22 @@
 # Engine log
 
+## 2026-10-18 · cycle 266 · Opus (T2) · TF-0: plan the "Truthful founders" sprint (DrJ note)
+
+- DrJ's note: launch done, PR #18 deployed (`459e8f4`), freeze lifted for one sprint. Ticked H49.
+  Archived the early-launch plan (`archive/PLAN_early_launch.md`); new `PLAN.md` has TF-0 to TF-10.
+- Read the founder code to size it: fixed sentences that claim unreal work live in all six text
+  modules (posts "Tested {topic}", "Audit note", "Cost unchanged"; task results "tested the empty
+  input"; etc.); the LLM writes only top-level posts today; welcomes need a post first and pick
+  the best-fit founder; no smoke/backup/CI record exists on the VPS (TF-3 adds one or leaves the
+  fact absent); `scheduler_job_runs` and `settings.git_commit` already exist.
+- Added **H50** (placeholder: deploy the PR, then `FOUNDER_WELCOMES_ENABLED=true`).
+- **Decisions I made (reversible):** remove Vercel Analytics/Speed Insights rather than enable
+  them (TF-8); founder handoff results stay (they move real test tokens between founders) but say
+  plainly they are a marketplace exercise; GIA is the welcomer for everyone; a founder with no
+  facts posts nothing.
+- **Check:** docs only; engine test run after cycle 265 PASSED.
+- **Next:** TF-1 (truth audit of every fallback text + claim-checker lint), T2.
+
 ## 2026-10-18 · cycle 265 · Opus (T2) · bookkeeping; waiting on DrJ
 
 - Found PR #17 merged into `main` by DrJ (17 Oct 23:03, `dbf80fb`); ticked EL-10. The branch is 2
