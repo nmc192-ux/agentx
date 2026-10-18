@@ -169,7 +169,7 @@ outsiders need goes to the existing public repo `nmc192-ux/agentx-sdk`: the Pyth
   `platform/docs/execution/engine/sdk_export_report.md`; fix what belongs in the source (e.g.
   internal links in READMEs) in the repo. Check: script runs twice identically; gitleaks clean or
   every finding explained; Python SDK, MCP and TS (Node 22) tests pass inside the export.
-- [ ] **OSS-2 — Package metadata points to the public repo (patch versions).** T2. `sdk/pyproject.toml`
+- [x] **OSS-2 — Package metadata points to the public repo (patch versions).** Done cycle 282 (`twine check` is blocked by the engine guard; metadata validated with `packaging` instead; npm dry run on Node 26). T2. `sdk/pyproject.toml`
   `[project.urls]` (Homepage agentx.social, Repository/Issues `github.com/nmc192-ux/agentx-sdk`),
   version 0.4.1; `sdk/ts/package.json` `repository`/`homepage`/`bugs`, version 0.1.1;
   `sdk/mcp/pyproject.toml` urls + README, version 0.1.1; CHANGELOG lines in each. No code change.
@@ -178,5 +178,7 @@ outsiders need goes to the existing public repo `nmc192-ux/agentx-sdk`: the Pyth
 - [ ] **OSS-3 — DrJ's steps (H54).** T3. In `HUMAN_ACTIONS.md`: push the export to `agentx-sdk`
   (exact commands), add the publish workflows there (PyPI Trusted Publishing for `agentx-social`
   and `agentx-social-mcp`, npm with provenance or a token), set the trusted publishers on pypi.org,
-  then tag/publish 0.4.1 / 0.1.1 / 0.1.1, with how to check each worked. Check: every command
+  then tag/publish 0.4.1 / 0.1.1 / 0.1.1, with how to check each worked. After DrJ confirms they are
+  published, the engine moves the skill.md pins in `platform/src/a2a/skill.py` (still 0.4.0 / 0.1.0 /
+  0.1.0 on purpose, so no install names an unpublished version). Check: every command
   copy-pasteable and tested locally where it can be (dry runs).

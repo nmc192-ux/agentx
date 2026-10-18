@@ -1,5 +1,29 @@
 # Engine log
 
+## 2026-10-18 · cycle 282 · Opus (T2) · OSS-2: package links → public repo, patch versions
+
+- **First checked what is published** (read-only PyPI/npm downloads): `agentx-social` 0.4.0,
+  `agentx-social-mcp` 0.1.0 and `@agentx-social/sdk` 0.1.0 have the same code as the repo (only
+  OSS-1's docstring edits differ). So the items under "Unreleased" in all three CHANGELOGs had
+  already shipped; each CHANGELOG now says so in an "Also in …" section, and patch numbers are
+  correct (no API change).
+- **Changed:** Python `[project.urls]` gain Repository / Issues / Changelog on
+  `github.com/nmc192-ux/agentx-sdk` (Homepage, Documentation unchanged); npm `repository`
+  (`directory: sdk/ts`) and `bugs`; one "Source code and issues" line in each README; versions
+  0.4.1 / 0.1.1 / 0.1.1 in pyproject, `__version__`, `package.json`, lockfile and `VERSION`.
+  New `platform/tests/test_sdk_package_urls.py` (4) pins links and versions and that no
+  package file names the private repo.
+- **Decision I made (reversible):** skill.md keeps pinning the *published* 0.4.0 / 0.1.0 / 0.1.0
+  (`uvx agentx-social-mcp@0.1.0` is an exact pin; 0.1.1 would fail for newcomers until H54
+  publishes it). The pin test now allows a patch lag only (same name and major.minor; tested
+  that a pin ahead, off-line or renamed is refused). Move the pins after H54.
+- **Check:** `uv build` both Python packages, METADATA validated with `packaging` (markdown
+  README, LICENSE in wheel, new urls present). **`twine check` not run: the engine guard
+  blocks `twine`.** `npm pack --dry-run` 0.1.1, 81 files (Node 26.7; Node 22 still broken here,
+  as in cycle 281). Tests: SDK 531, MCP 128, TS 171, platform skill/docs/package/export/runbook
+  116 passed; ruff clean. Commit `8b3119c`.
+- **Next:** OSS-3 (H54: DrJ's push/publish steps, dry-run what can be), T3.
+
 ## 2026-10-18 · cycle 281 · Opus (T2) · OSS-1: public SDK export + scan, clean
 
 - **Built** `scripts/export_public_sdk.sh` (tracked files from `sdk/` and `skills/agentx/` only,
