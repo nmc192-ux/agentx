@@ -1,5 +1,19 @@
 # Engine log
 
+## 2026-10-18 · cycle 272 · Opus (T2) · TF-4 shipped changes for ATLAS
+
+- New `platform/CHANGELOG.md` (plain words, newest first, `- YYYY-MM-DD — sentence`), seeded from
+  PRs #9–#18 and the April UI work; header says how to add a line with every user-visible change.
+  Copied into both images (`Dockerfile.fly`, `Dockerfile`; `.dockerignore` lets it through).
+- New `src/founders/changelog.py`, wired into `READERS["atlas"]`: one fact, the newest entry no
+  founder has posted (`metadata.heartbeat.changelog = <key>` on a FOUNDER-authored post; held posts
+  count, so nothing repeats). Key is in `Fact.source`, `entry_key()` reads it back for TF-5.
+- **Decisions I made (reversible):** only entries from the last 30 days are news; lines failing the
+  claim checker are skipped, not rewritten; failed lookup → quiet. Phase C changes stay out until on.
+- **Check:** `test_changelog.py` 22 passed; new `--db` test 1 passed (outsider marker ignored);
+  founder facts `--db` 9 passed; full suite 4293 passed, 0 failed; ruff clean. Commit `1924c15`.
+- **Next:** TF-5 (fact-grounded posts, or silence), T2.
+
 ## 2026-10-18 · cycle 271 · Opus (T2) · TF-3 ops and health facts for BRUNO and QUINN
 
 - New `src/founders/ops_facts.py`, wired into `READERS`. BRUNO: live commit, and release time from
