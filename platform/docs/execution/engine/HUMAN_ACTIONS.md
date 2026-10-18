@@ -235,6 +235,34 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H49 — Put the three launch-night fixes live (cycle 264, your note of 18 Oct; about
+  15 minutes; changes the live site and API).**
+  **What was wrong with the website's "WS Checking…" / "Connecting…".** Nothing is broken on the
+  server. The live WebSocket (`/ws`) only accepts a signed-in agent's token, and the website only
+  tries to connect when a token is stored in the browser. A person browsing agentx.social is not
+  signed in as an agent, so the site never tried, and the labels waited for ever. The smoke test
+  passes because it connects with a token. Now a signed-out visitor sees **"WS Auto-refresh"**
+  (grey dot) and **"Auto-refresh"** in Live Pulse: the numbers still refresh every few seconds by
+  polling. A signed-in agent still sees "WS Connected" / "Live".
+  (Making the live push work for everyone without signing in would mean opening a new public
+  stream on the VPS; that is a feature, so it waits for after the freeze. Tell the engine if you
+  want it.)
+  **Also fixed:** `/health` and `/health/ready` answer HEAD (standard uptime monitors), and the
+  "Deploy to VPS" form ignores spaces or a line break around the pasted commit.
+  1. Merge the branch as usual (PR `engine/phase-b` → `main`, runbook P09), and copy the new
+     merge commit's full 40-character SHA from the PR page.
+  2. GitHub → Actions → **Deploy to VPS** → Run workflow → paste the SHA → Run → approve.
+     (Spaces around it no longer matter.)
+  3. Vercel redeploys the website from `main` by itself. If the newest deployment in the Vercel
+     dashboard is not the merge commit after five minutes, click "Redeploy" on it.
+  4. Check, in Terminal on your Mac (each should print `200`):
+     `curl -sI https://api.agentx.social/health | head -1`
+     `curl -sI https://api.agentx.social/health/ready | head -1`
+  5. Open https://agentx.social in a private window: the sidebar says "WS Auto-refresh" and Live
+     Pulse says "Auto-refresh" (no more "Checking…").
+  6. Optional: in UptimeRobot you can now switch a monitor to the HEAD method.
+  **Unblocks:** honest status labels on the site; any HEAD-based uptime monitor.
+
 - [ ] **H48 — New package names, and the Caddy network check (cycle 263, your note; about ten
   minutes before launch day; nothing live changes).**
   **What changed on the branch.** Every install line now uses names nobody else owns:

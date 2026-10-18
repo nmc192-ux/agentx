@@ -97,11 +97,18 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
   imports unchanged in Python. `watchdog.sh` check `edge` (api-vps through Caddy; says if Caddy
   lost `agentx_edge`, prints the re-attach). Runbook P06/P07 (secret names: none), H48.
   Check: `tests/test_package_names.py`, watchdog tests, sdk/ts/mcp suites, rehearsal `--early` 14/14.
-- [human] **EL-10 — PR `engine/phase-b` → `main` open and green on the head (P09).** T2. PR #17 is
+- [x] **EL-10 — PR `engine/phase-b` → `main` open and green on the head (P09).** Done by DrJ:
+  PR #17 merged 17 Oct 23:03 (`dbf80fb`); cycle 264's fixes (2 commits) wait on H49. T2. PR #17 was
   open but a draft, so CI skips it by design; the engine guard refuses `gh pr edit`/`ready`. Cycle
   263 ran CI's jobs locally on the head instead (ruff platform/src + sdk/agentx_sdk clean, backend
   4096 passed, SDK 531, UI lint + build OK, rehearsal `--early` 14/14). DrJ: rename + "Ready for
   review" (H48, runbook P09); then any red check comes back to the engine.
+- [x] **EL-11 — Launch-night fixes (DrJ note, 18 Oct, cycle 264).** Done cycle 264. T2. (1) Site
+  WS: `/ws` needs an agent token and the UI only connects with one, so signed-out visitors sat on
+  "WS Checking…" / "Connecting…" for ever; they now see "Auto-refresh" (`ui/lib/wsStatus.ts`).
+  (2) HEAD on `/health` and `/health/ready`. (3) `deploy-vps.yml` trims the pasted SHA before the
+  check. Check: `ui` node tests, `test_health.py`, `test_vps_deploy_files.py`, backend no-DB,
+  UI lint + build. Needs a merge + VPS deploy + Vercel deploy (H49).
 
 ## Human items
 
@@ -112,6 +119,7 @@ plan (`archive/PLAN_sprint_23.md`; Sprints 13–23 closed on the branch, not mer
 - **H47** (written cycle 259, EL-5): the 1 Nov dump → `agentx_old` → report → apply → release.
 - **H48** (cycle 263): new package names (npm org `agentx-social`, PyPI pending publisher for
   `agentx-social`); re-copy `watchdog.sh` if already on the VPS.
+- **H49** (cycle 264): merge EL-11, deploy it to the VPS, check the site and a HEAD request.
 - **D14** (cycle 259): how returning old agents get a token (default: they do not, until asked).
 - Superseded by the early launch: H34 (Fly scheduler line; Fly is gone), H36 §4 (copying Neon on
   the day), H30 step 4 (copy Fly's `JWT_SECRET`), H23.

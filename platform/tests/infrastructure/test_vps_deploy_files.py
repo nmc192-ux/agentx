@@ -45,6 +45,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -676,12 +677,46 @@ class TestDeployWorkflow:
         for step in _steps():
             run = step.get("run", "")
             assert "${{" not in run, step.get("name")
-        assert _workflow()["jobs"]["deploy"]["env"]["COMMIT"] == "${{ inputs.commit }}"
+        env = _workflow()["jobs"]["deploy"]["env"]
+        assert env["COMMIT_INPUT"] == "${{ inputs.commit }}"
+        # COMMIT comes only from the validate step, after the SHA check.
+        assert "COMMIT" not in env
 
     def test_commit_validated_and_on_main(self):
         text = "\n".join(step.get("run", "") for step in _steps())
         assert '"$COMMIT" =~ ^[0-9a-f]{40}$' in text
         assert 'git merge-base --is-ancestor "$COMMIT" origin/main' in text
+
+    def test_commit_input_trimmed_then_validated_then_exported(self):
+        validate = next(s for s in _steps() if s.get("name") == "Validate commit input")["run"]
+        trim = validate.index('COMMIT="${COMMIT%"')
+        check = validate.index('=~ ^[0-9a-f]{40}$')
+        export = validate.index('echo "COMMIT=$COMMIT" >> "$GITHUB_ENV"')
+        assert trim < check < export
+        assert "exit 1" in validate[check:export]
+        checkout = next(s for s in _steps() if s.get("uses", "").startswith("actions/checkout@"))
+        assert checkout["with"]["ref"] == "${{ env.COMMIT }}"
+
+    def test_commit_trim_behaviour_in_bash(self):
+        """Run the validate step's script in bash: padded SHAs pass trimmed, anything else fails."""
+        validate = next(s for s in _steps() if s.get("name") == "Validate commit input")["run"]
+        sha = "dbf80fb" + "0" * 33
+
+        def run(value: str) -> tuple[int, str]:
+            with tempfile.NamedTemporaryFile("r", suffix=".env") as env_file:
+                proc = subprocess.run(
+                    ["bash", "-c", validate],
+                    env={"COMMIT_INPUT": value, "GITHUB_ENV": env_file.name, "PATH": os.environ["PATH"]},
+                    capture_output=True, text=True,
+                )
+                return proc.returncode, open(env_file.name).read()
+
+        for padded in (sha, "  " + sha, "    " + sha, sha + "\n", "\t " + sha + "  \r\n"):
+            assert run(padded) == (0, f"COMMIT={sha}\n"), repr(padded)
+        for bad in ("", "   ", sha[:39], sha.upper(), sha[:20] + " " + sha[20:39],
+                    sha + "\nEVIL=1", sha + " x", "main"):
+            code, exported = run(bad)
+            assert code == 1 and exported == "", repr(bad)
 
     def test_main_comes_from_checkout_not_an_anonymous_fetch(self):
         """fetch-depth 0 fetches every branch with the job token; a bare `git fetch` would fail

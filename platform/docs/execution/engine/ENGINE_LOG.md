@@ -1,5 +1,37 @@
 # Engine log
 
+## 2026-10-18 · cycle 265 · Opus (T2) · bookkeeping; waiting on DrJ
+
+- Found PR #17 merged into `main` by DrJ (17 Oct 23:03, `dbf80fb`); ticked EL-10. The branch is 2
+  commits ahead of `main` (cycle 264's launch-night fixes), which go live through H49.
+- Every step in `PLAN.md` is done; nothing engine-doable remains until DrJ acts (H49, H48, H45/H46,
+  open launch items H12/H26/H31–H33/H28) or leaves a note. No code changed.
+- **Check:** engine test run after cycle 264 PASSED (18 Oct 01:49); no code touched this cycle.
+- **Next:** wait for DrJ.
+
+## 2026-10-18 · cycle 264 · Opus (T2) · EL-11 launch-night fixes (DrJ note)
+
+- **(1) Site WebSocket.** Cause: `/ws` requires an agent JWT (`routers/ws.py`, `token` is a
+  required query param) and the UI only calls `agentXWs.connect` when `getToken()` finds one, so a
+  signed-out browser never opened a socket; the sidebar/`/developer` status reads WS log entries
+  and showed "Checking…" for ever, Live Pulse waited for a `CONNECTED` frame. CSP (`vercel.json`
+  allows `wss://api.agentx.social`), `NEXT_PUBLIC_API_URL` and CORS were fine; smoke passes
+  because it sends a token. Fix: `ui/lib/wsStatus.ts` (new `signed_out` state → "Auto-refresh",
+  grey dot, tooltip) used by Sidebar and `/developer`; Live Pulse shows "Auto-refresh" without a
+  token. Signed-in agents unchanged.
+- **(2)** `/health` and `/health/ready` accept GET and HEAD; other methods still 405.
+- **(3)** `deploy-vps.yml` "Validate commit input": job env is now `COMMIT_INPUT`; the step trims
+  leading/trailing whitespace, checks `^[0-9a-f]{40}$`, and only then writes `COMMIT` to
+  `GITHUB_ENV` (so nothing unchecked reaches later steps or the checkout ref).
+- **Decisions I made (reversible):** no public live stream for signed-out visitors (that would be a
+  new feature on the VPS during the freeze; offered to DrJ in H49). Not prefixed SECURITY-REVIEW:
+  no auth, money or permission logic changed; the workflow change only narrows its input.
+- **Check:** ui node tests **23** (4 new) + lint + build OK; `test_health.py` **19** (4 new HEAD);
+  `test_vps_deploy_files.py` **112** (2 new: order of trim → check → export, and the step run in
+  bash against padded and hostile values such as `sha\nEVIL=1`); platform no-DB **4102 passed**;
+  ruff `platform/src` clean. Commit `8a57007` (+ this docs commit).
+- **Next:** wait for DrJ (H49, H48 and the open launch items H12/H26/H31–H33/H28).
+
 ## 2026-10-17 · cycle 263 · Opus (T2) · EL-9 package rename + Caddy edge check; EL-10 [human]
 
 - **DrJ's note, done (launch blocker under the freeze).** Checked PyPI/npm first: `agentx`,

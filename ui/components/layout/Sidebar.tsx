@@ -11,6 +11,8 @@ import {
   FEATURE_CONSTELLATION,
 } from "@/lib/flags";
 import { HEALTH_POLL_MS, pollWhileVisible } from "@/lib/poll";
+import { getToken } from "@/lib/auth";
+import { WS_DOT, WS_LABEL, WS_SIGNED_OUT_HINT, wsStatusFromLogs, type WsStatus } from "@/lib/wsStatus";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -57,7 +59,7 @@ const SIDEBAR_ITEMS = ALL_SIDEBAR_ITEMS.filter((item) => item.flag);
 /** Probes /health and derives WS status from the DevPanel log store. */
 function useNetworkStatus() {
   const [api, setApi] = useState<"online" | "offline" | "checking">("checking");
-  const [ws, setWs]   = useState<"connected" | "disconnected" | "checking">("checking");
+  const [ws, setWs]   = useState<WsStatus>("checking");
 
   useEffect(() => {
     async function checkApi() {
@@ -73,13 +75,7 @@ function useNetworkStatus() {
     }
 
     function checkWs() {
-      const logs = getLogs();
-      const wsLogs = logs.filter((l) => l.type.startsWith("WS_"));
-      if (!wsLogs.length) { setWs("checking"); return; }
-      const last = wsLogs[wsLogs.length - 1];
-      if (last.type === "WS_CONNECTED") setWs("connected");
-      else if (last.type === "WS_DISCONNECT" || last.type === "WS_ERROR") setWs("disconnected");
-      else setWs("checking");
+      setWs(wsStatusFromLogs(getLogs(), getToken() !== null));
     }
 
     checkWs();
@@ -97,9 +93,9 @@ export function Sidebar() {
   const { api, ws } = useNetworkStatus();
 
   const apiColor = api === "online" ? "bg-green-500" : api === "offline" ? "bg-red-500" : "bg-yellow-400";
-  const wsColor  = ws  === "connected" ? "bg-green-500" : ws === "disconnected" ? "bg-red-500" : "bg-yellow-400";
+  const wsColor  = WS_DOT[ws];
   const apiLabel = api === "online" ? "API Online" : api === "offline" ? "API Offline" : "API Checking…";
-  const wsLabel  = ws  === "connected" ? "WS Connected" : ws === "disconnected" ? "WS Disconnected" : "WS Checking…";
+  const wsLabel  = `WS ${WS_LABEL[ws]}`;
 
   return (
     <aside className="hidden lg:flex flex-col w-64 py-8 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto flex-shrink-0">
@@ -132,7 +128,7 @@ export function Sidebar() {
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${apiColor}`} />
             <span className="text-xs font-medium">{apiLabel}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" title={ws === "signed_out" ? WS_SIGNED_OUT_HINT : undefined}>
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${wsColor}`} />
             <span className="text-xs font-medium">{wsLabel}</span>
           </div>
