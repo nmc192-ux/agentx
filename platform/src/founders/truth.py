@@ -21,14 +21,22 @@ a room name) is passed as *quoted* and removed before checking: a quote is
 not a claim. The heartbeat's de-duplication stamp ("(18 Oct 12:20 UTC)",
 the platform's own clock) is allowed at the very end of a text.
 
+The text is normalised first (TF-10 review): compatibility forms are folded
+(fullwidth "１２" is 12, "ｔｅｓｔｅｄ" is tested) and invisible joiners are
+dropped (a soft hyphen or zero-width space inside "tes\u00adted" does not
+hide the word), so a model steered by an injected instruction cannot spell
+its way past the rules. Spelled-out quantities ("dozens", "a hundred",
+"twenty") count as numbers too: allowed only when a fact says the word.
+
 Nothing here touches the database.
 """
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Iterable
 
-__all__ = ["CLAIM_PATTERNS", "claim_problems", "is_truthful", "numbers_in"]
+__all__ = ["CLAIM_PATTERNS", "claim_problems", "is_truthful", "numbers_in", "normalise"]
 
 # Case-insensitive. Each is a sentence shape that asserts something happened,
 # was measured, has a status, or will be done by the founder later.
@@ -65,13 +73,35 @@ CLAIM_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
 )
 
 _DIGITS = re.compile(r"\d+(?:[.,]\d+)*")
+# Quantities written as words: a count a founder did not read is still a
+# count. "one" to "nine" are left alone (too common as ordinary words; the
+# "counted findings" rule above catches them when they count findings).
+_WORD_NUMBERS = re.compile(
+    r"\b(?:dozens?|hundreds?|thousands?|millions?|billions?|"
+    r"(?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+    r"(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?)\b",
+    re.IGNORECASE,
+)
+# Characters that print as nothing and can split a word: soft hyphen,
+# zero-width space / non-joiner / joiner, word joiner, byte-order mark.
+_INVISIBLE = re.compile("[\u00ad\u200b\u200c\u200d\u2060\ufeff]")
 # The heartbeat's de-duplication stamp, e.g. " (03 Oct 12:00 UTC)" at the end.
 _STAMP = re.compile(r"\s*\(\d{2} [A-Z][a-z]{2} \d{2}:\d{2} UTC\)\s*$")
 
 
+def normalise(text: str) -> str:
+    """*text* with compatibility forms folded (NFKC: fullwidth and
+    mathematical letters and digits become plain ones) and invisible
+    joiners removed, so the rules see the words a reader sees."""
+    return _INVISIBLE.sub("", unicodedata.normalize("NFKC", text or ""))
+
+
 def numbers_in(text: str) -> set[str]:
-    """Every run of digits in *text* ("1,204" and "3.5" count as one)."""
-    return set(_DIGITS.findall(text or ""))
+    """Every run of digits in *text* ("1,204" and "3.5" count as one) and
+    every spelled-out quantity ("dozens", "twenty-one"), lower-cased."""
+    text = normalise(text)
+    return set(_DIGITS.findall(text)) | {w.lower() for w in _WORD_NUMBERS.findall(text)}
 
 
 def claim_problems(
@@ -81,8 +111,8 @@ def claim_problems(
     is. *facts* are the fact sentences read this tick (the only allowed
     source of numbers); *quoted* are strings the founder repeats from
     others (removed before checking)."""
-    body = _STAMP.sub("", text or "")
-    for q in sorted({q for q in quoted if q}, key=len, reverse=True):
+    body = _STAMP.sub("", normalise(text))
+    for q in sorted({normalise(q) for q in quoted if q}, key=len, reverse=True):
         body = body.replace(q, " ")
     problems = [f"claim:{name}" for name, rx in CLAIM_PATTERNS if rx.search(body)]
     allowed: set[str] = set()

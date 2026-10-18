@@ -735,6 +735,47 @@ async def test_nothing_matches_so_the_busiest_open_room(pool, clean, agents):
     assert full != busiest
 
 
+async def test_a_room_packed_with_fresh_accounts_is_not_the_busiest(pool, clean, agents):
+    """TF-10 review: an outsider who signs up a handful of puppets this
+    morning and seats them in a plain-named room does not make it the
+    busiest room; only members at least a day old count, and so must the
+    room's creator. Fullness still counts every seat."""
+    host = await newcomer(agents, pool, age_days=30)
+    elder = await newcomer(agents, pool, age_days=30)
+    quiet = await make_room(pool, host.did, "Quiet corner", members=(elder.did,))   # 2 established
+    puppeteer = await newcomer(agents, pool, age_days=30)
+    puppets = [await newcomer(agents, pool, joined_at=NOON - timedelta(hours=2)) for _ in range(5)]
+    packed = await make_room(pool, puppeteer.did, "General help",
+                             members=tuple(p.did for p in puppets))                 # 1 + 5 fresh
+    fresh_host = await newcomer(agents, pool, joined_at=NOON - timedelta(hours=3))
+    await make_room(pool, fresh_host.did, "Open hall", members=(host.did, elder.did, puppeteer.did))
+    nc = await newcomer(agents, pool, joined_at=NOON - timedelta(hours=5))   # oldest: welcomed first
+
+    summary = await tick()
+    # The puppets are newcomers too and get welcomed as well: every welcome points to the quiet room.
+    assert nc.did in summary["welcome_rooms"]
+    assert set(summary["welcome_rooms"].values()) == {str(quiet)}
+    (dm,) = await messages_to(pool, nc.did)
+    assert "“Quiet corner”" in dm["message"] and "General help" not in dm["message"]
+    assert "Open hall" not in dm["message"]
+
+    rooms = await fh.load_open_rooms(pool, NOON)
+    by_id = {r.room_id: r for r in rooms}
+    assert by_id[packed].participants == 1 and by_id[quiet].participants == 2
+    assert all(r.name != "Open hall" for r in rooms)              # a fresh creator: not listed
+    # A day later the same puppets are established and the room counts in full.
+    later = await fh.load_open_rooms(pool, NOON + timedelta(days=1, hours=1))
+    assert {r.room_id: r.participants for r in later}[packed] == 6
+
+
+async def test_fresh_seats_still_make_a_room_full(pool, clean, agents):
+    host = await newcomer(agents, pool, age_days=30)
+    fresh = [await newcomer(agents, pool, joined_at=NOON - timedelta(hours=2)) for _ in range(2)]
+    await make_room(pool, host.did, "Small table", members=tuple(f.did for f in fresh),
+                    max_participants=3)
+    assert await fh.load_open_rooms(pool, NOON) == []
+
+
 async def test_a_room_with_a_hostile_name_is_never_suggested(pool, clean, agents):
     host = await newcomer(agents, pool, age_days=30)
     m1 = await newcomer(agents, pool, age_days=30)
@@ -803,6 +844,7 @@ class WelcomeWriter(SilentGenerator):
 
     async def write_welcome(self, persona, template, *, newcomer, newcomer_text, what, quoted, now):
         self.calls.append((persona.name, newcomer, newcomer_text, what))
+        self.quoted = quoted
         return self.text
 
 
@@ -820,6 +862,8 @@ async def test_the_llm_writes_the_greeting_and_the_rest_stays_fixed(pool, clean,
     assert set(summary["welcomed"]) == {with_post.did, no_post.did}
     assert {c[3] for c in writer.calls} == {"the first post", "the profile"}
     assert any("I index research datasets" in c[2] for c in writer.calls)
+    # Only the plain topic is quotable (TF-10): the title stays the newcomer's own words.
+    assert writer.quoted == ("research",)
 
     (reply,) = await replies_under(pool, first)
     assert reply["content"].startswith("Welcome, friend!")

@@ -51,7 +51,7 @@ from typing import Any, Optional, Protocol
 from ..config import _read_secret, get_settings
 from .facts import Fact, fact_texts
 from .personas import Persona
-from .truth import claim_problems
+from .truth import claim_problems, normalise
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ __all__ = [
     "TemplateGenerator", "AnthropicGenerator", "DailyCallBudget",
     "fold", "fresh_facts", "trim_to", "load_post_context", "select_generator",
     "KIND_POST", "KIND_REPLY", "KIND_WELCOME", "budget_ceiling", "REPLY_MAX", "WELCOME_MAX",
+    "unsafe_text",
 ]
 
 TITLE_MAX = 200        # models/post.py PostCreate.title
@@ -297,7 +298,15 @@ _SYSTEM = (
 
 REPLY_MAX = 700           # characters of an LLM-written reply or DM answer
 _ANSWERED_MAX = 1_200     # how much of the post / message answered goes in the prompt
-_LINK = re.compile(r"https?://|www\.|\b[a-z0-9-]+\.(?:com|io|ai|net|org|xyz)\b", re.IGNORECASE)
+# A link or anything that reads as one: a scheme, "www.", a dotted host
+# with any letters-only ending ("evil.site", "t.me"), or "dot com" spelled
+# out. Founders write no links (TF-10 review widened this from a short list
+# of endings: the system prompt forbids links, the code must too).
+_LINK = re.compile(
+    r"https?:|www\.|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b|"
+    r"\b[a-z0-9-]+ ?(?:\(|\[)?dot(?:\)|\])? ?[a-z]{2,}\b",
+    re.IGNORECASE,
+)
 
 _SHORT_SYSTEM = (
     "You write one short reply for a founding agent of AgentX, a social network "
@@ -326,6 +335,19 @@ _WELCOME_RULES = (
 )
 
 _ADDRESS = re.compile(r"did:|@\w", re.IGNORECASE)
+
+
+def unsafe_text(text: str) -> Optional[str]:
+    """Why *text* may not leave a founder's mouth whatever the facts say:
+    "link" or "address", else None. Run over every LLM-written post, reply,
+    answer and greeting (TF-10 review: posts had no such screen, and the
+    solicitation hold does not catch a bare link)."""
+    text = normalise(text)
+    if _LINK.search(text):
+        return "link"
+    if _ADDRESS.search(text):
+        return "address"
+    return None
 _PARROT_WORDS = 5         # a greeting may not repeat this many of the newcomer's words in a row
 
 
@@ -408,6 +430,11 @@ class AnthropicGenerator:
         post = self._parse(text, persona, template.title, template.tags, fresh)
         if post is None or fold(post.content) in {fold(t) for t in context.own_recent}:
             return template
+        unsafe = unsafe_text(f"{post.title}\n{post.content}")
+        if unsafe:
+            logger.warning("founder LLM post for %s carries a %s; using template",
+                           persona.name, unsafe)
+            return template
         problems = claim_problems(f"{post.title}\n{post.content}", fact_texts(list(fresh)))
         if problems:
             logger.warning("founder LLM post for %s failed the claim check (%s); using template",
@@ -456,7 +483,7 @@ class AnthropicGenerator:
             return None
         lines = [ln for ln in answer.strip().splitlines() if not ln.upper().startswith("TITLE:")]
         body = trim_to("\n".join(lines), limit)
-        if len(body) < 20 or fold(body) == fold(template) or _LINK.search(body):
+        if len(body) < 20 or fold(body) == fold(template) or unsafe_text(body):
             return None
         problems = claim_problems(body, fact_texts(list(facts)), quoted)
         if problems:
@@ -515,7 +542,7 @@ class AnthropicGenerator:
             text=newcomer_text, facts=(), quoted=(newcomer, *quoted), limit=limit, now=now,
             kind=KIND_WELCOME, extra_rules=_WELCOME_RULES,
         )
-        if body is None or _ADDRESS.search(body) or _parrots(body, newcomer_text):
+        if body is None or _parrots(body, newcomer_text):
             return None
         return body
 

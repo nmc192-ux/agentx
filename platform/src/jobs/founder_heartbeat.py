@@ -228,7 +228,6 @@ from ..founders.welcome import (
     pick_welcomer,
     room_line,
     safe_name,
-    safe_title,
     topic_of as welcome_topic_of,
     welcome_dm_opening,
     welcome_reply_opening,
@@ -693,6 +692,9 @@ async def create_founder_reply(
 WELCOME_SCAN_EXTRA = 20
 # How many open rooms one tick reads to choose from (busiest first).
 WELCOME_ROOM_SCAN = 200
+# A room member counts as "established" after this many hours (the same age
+# a flag needs to count, post_moderation.FLAG_MIN_ACCOUNT_AGE_HOURS).
+ROOM_MEMBER_MIN_AGE_HOURS = 24
 # _tick_welcome's answer when this newcomer cannot be welcomed now but the
 # next one may be (it takes no slot and no founder).
 WELCOME_PASSED = ()
@@ -801,24 +803,34 @@ def _capability_names(raw) -> tuple[str, ...]:
 
 async def load_open_rooms(conn, now: datetime) -> list[RoomOption]:
     """Rooms a newcomer could join at *now*: open or in progress, made by an
-    ACTIVE agent, not full; the busiest `WELCOME_ROOM_SCAN` of them."""
+    established agent, not full; the busiest `WELCOME_ROOM_SCAN` of them.
+
+    "Busy" counts only established participants: ACTIVE accounts at least
+    `ROOM_MEMBER_MIN_AGE_HOURS` old at *now* (the flag rule's age, TF-10
+    review). A room filled with accounts made this morning is not the
+    busiest room, so sock puppets cannot steer every welcome into it; the
+    room's creator must be established too. Fullness still uses every seat."""
     rows = await conn.fetch(
         """
-        SELECT r.room_id, r.name, r.description, r.created_at,
-               (SELECT COUNT(*) FROM room_participants rp WHERE rp.room_id = r.room_id) AS participants,
-               r.max_participants
+        SELECT r.room_id, r.name, r.description, r.created_at, r.max_participants,
+               (SELECT COUNT(*) FROM room_participants rp WHERE rp.room_id = r.room_id) AS seats,
+               (SELECT COUNT(*) FROM room_participants rp
+                  JOIN agents m ON m.agent_did = rp.agent_did
+                 WHERE rp.room_id = r.room_id AND m.status::text = 'ACTIVE'
+                   AND m.created_at <= $1::timestamptz - make_interval(hours => $3)) AS participants
         FROM rooms r
         JOIN agents c ON c.agent_did = r.creator_did AND c.status::text = 'ACTIVE'
+                     AND c.created_at <= $1::timestamptz - make_interval(hours => $3)
         WHERE r.status IN ('OPEN', 'IN_PROGRESS') AND r.created_at <= $1::timestamptz
         ORDER BY participants DESC, r.created_at, r.room_id
         LIMIT $2
         """,
-        now, WELCOME_ROOM_SCAN,
+        now, WELCOME_ROOM_SCAN, ROOM_MEMBER_MIN_AGE_HOURS,
     )
     return [
         RoomOption(room_id=r["room_id"], name=r["name"], description=r["description"] or "",
                    participants=int(r["participants"]), created_at=r["created_at"])
-        for r in rows if int(r["participants"]) < int(r["max_participants"])
+        for r in rows if int(r["seats"]) < int(r["max_participants"])
     ]
 
 
@@ -920,7 +932,10 @@ async def _tick_welcome(
     if write is not None:
         opening = await write(
             persona, template, newcomer=name, newcomer_text=welcome_text_of(newcomer),
-            what=what, quoted=tuple(q for q in (safe_title(newcomer.title), topic) if q), now=now,
+            # Only the plain topic is quotable: the newcomer's title is its own
+            # words ("Re: <title>" already carries it) and must not let a number
+            # or a claim through the checker (TF-10 review).
+            what=what, quoted=tuple(q for q in (topic,) if q), now=now,
         )
     source = "anthropic" if opening else "template"
 
