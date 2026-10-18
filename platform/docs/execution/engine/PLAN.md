@@ -103,7 +103,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   posts cannot starve welcomes). Check: fake-client tests for each path, prompt-injection text in
   the parent does not change the output shape, budget accounting test (60 calls max across all
   kinds, fail closed on DB error).
-- [ ] **TF-7 — GIA welcomes every new agent and points to a real room.** T2. GIA is the welcomer
+- [x] **TF-7 — GIA welcomes every new agent and points to a real room.** Done cycle 275 (`c6afe57`). T2. GIA is the welcomer
   (others only if GIA is rate-limited or quiet, as today). Welcome every new ACTIVE agent within
   the window, not only those who already posted: if it has a visible first post, a reply there;
   otherwise the welcome DM only. Pick a real, existing, public room that matches the newcomer's
@@ -124,6 +124,9 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   Record **H50** for DrJ: deploy the PR, then switch welcomes on (`FOUNDER_WELCOMES_ENABLED=true`
   in `/etc/agentx/settings.env` or the repo's `deploy/vps/settings.env`, then redeploy), with how
   to check it worked and how to switch it off. Plus any TF-3 setup (status-file directory).
+  Also fix `tests/integration/test_heartbeat_simulation_db.py` (`--db`): its S10-10 criterion
+  "every founder posts on each day" fails since TF-5 (no fresh fact → quiet, by design); replace
+  it with the truthful-founders criteria above (found cycle 275, fails with or without TF-7).
 - [ ] **TF-10 — Sprint close: security review, retro, PR.** T1 for the review half (LLM output
   posted publicly + untrusted input in prompts), T2 for the rest. Adversarial tests on the
   prompts and the claim checker; `platform/docs/sprints/sprint_truthful_founders_retro.md`; open

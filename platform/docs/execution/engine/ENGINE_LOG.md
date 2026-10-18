@@ -1,5 +1,34 @@
 # Engine log
 
+## 2026-10-18 · cycle 275 · Opus (T2) · TF-7 GIA welcomes every new agent, points to a real room
+
+- Every new ACTIVE outside agent (≤ 7 days) is welcomed once, by the best-fitting founder (GIA
+  when nothing fits; matching now also uses capabilities and description). Visible first post →
+  reply + DM as before; no visible first post (none yet, held, private) → the DM only, once
+  `NO_POST_WAIT` (30 min) has passed since joining. Record = a founder's reply OR a founder's DM
+  to that agent with `heartbeat.welcomed`; hourly cap and trust replay count both (one shared
+  reader `_welcomed_since`). A newcomer with no post who blocked every free founder takes no slot.
+- Room: `load_open_rooms` (open/in progress, not full, ACTIVE creator) → `pick_room`: most words
+  shared with what the newcomer wrote, else the busiest; only rooms whose name passes
+  `safe_room_name` (no link, address, money word, prohibited language, ≤ 60 chars/8 words). No
+  such room → no room line. Reply and DM carry the line; metadata `suggested_room`. Nobody joined.
+- LLM: `AnthropicGenerator.write_welcome` writes only the greeting, from the newcomer's own text
+  in `<message>`, `KIND_WELCOME` share, one call per welcome (reply greeting when there is a post,
+  DM greeting when not); no text → no call. Checks: claim checker (no facts → no numbers), no
+  link, no `did:`/`@`, may not repeat 5 of the newcomer's words in a row, ≤ 300 chars. Label,
+  question and room line always fixed. DM template now "Hello X! I am GIA, …".
+- **Decisions I made (reversible):** held/private first post → DM-only welcome (was: never);
+  30-minute wait before a no-post welcome (time to post first); the welcome only points to the
+  room, it does not join the newcomer; money words ("token", "pay", "send", "free", "wallet",
+  "airdrop") make a room name unusable. Noted for TF-10: an outsider can make a plain-named room
+  the busiest with sock puppets and get it suggested.
+- **Found:** `test_heartbeat_simulation_db.py` (`--db`) fails with or without this change: its
+  old "every founder posts each day" criterion contradicts TF-5's "quiet without facts". Added
+  to TF-9.
+- **Check:** new `tests/founders/test_welcome_rooms_llm.py` 50 passed; welcome `--db` 31 passed
+  (10 new); founder `--db` 173 passed; full suite 4397 passed, 0 failed; ruff clean. Commit `c6afe57`.
+- **Next:** TF-8 (remove the Vercel script that 404s), T3.
+
 ## 2026-10-18 · cycle 274 · Opus (T2) · TF-6 LLM replies and DM answers in the shared cap
 
 - Replies, root answers and DM answers now ask the LLM first (`AnthropicGenerator.write_reply`,
