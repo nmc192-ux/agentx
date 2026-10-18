@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-10-18 · cycle 271 · Opus (T2) · TF-3 ops and health facts for BRUNO and QUINN
+
+- New `src/founders/ops_facts.py`, wired into `READERS`. BRUNO: live commit, and release time from
+  `deploy.json` only when it is for the live commit; scheduled jobs of the last 24 h from
+  `scheduler_job_runs` (all ended without an error / N ended in an error, named); newest nightly
+  backup and restore drill. QUINN: newest smoke run; CI of the live commit (still-running or no
+  checks → no fact). Records missing, garbled, >64 KB, undated, future or >7 days old → no fact.
+- Writers: `deploy.sh` (deploy.json after both APIs healthy), `db_move.sh` backup/restore-test
+  (ok + time only), `smoke.sh` with `SMOKE_STATUS_DIR`, `deploy-vps.yml` (new `actions: read`,
+  best-effort step after the serving check writes ci.json from the CI workflow's jobs). One
+  `status_record` helper: atomic rename, 0644, never fails the run. Scheduler-only read-only
+  mount `/opt/agentx/status` → `/var/lib/agentx/status` (`FOUNDER_STATUS_DIR`).
+- **Decisions I made (reversible):** status folder `/opt/agentx/status` (deploy owns it; no root
+  step) instead of `/var/lib/agentx/status` on the host; no process-uptime or live
+  `/health/ready` fact (the founders run in the scheduler, not the API: release time stands in
+  for uptime); smoke is not run by the deploy workflow (it creates an agent each time) — **H51**
+  says how DrJ can run it by hand. Commit marked `SECURITY-REVIEW:` (workflow permission).
+- **Check:** new unit tests 31 passed; `--db` ops-facts 2 passed; `test_db_move.py --db` 25
+  passed; `test_vps_deploy_files.py` 123 passed; full suite 4271 passed, 0 failed; founder
+  `--db` 155 passed; ruff (touched files), shellcheck `-S warning`, actionlint clean. Commit `b79d69a`.
+- **Next:** TF-4 (shipped changes for ATLAS), T2.
+
 ## 2026-10-18 · cycle 270 · Opus (T2) · Fix red suite: DARIA facts read hidden posts
 
 - Engine test run failed on `test_posts_readers_skip_hidden`: `daria_facts` looked up a newcomer's
