@@ -1,5 +1,24 @@
 # Engine log
 
+## 2026-10-18 · cycle 273 · Opus (T2) · TF-5 fact-grounded posts, or silence
+
+- Heartbeat reads each due founder's facts (`read_facts`) into `PostContext.facts`. Only facts the
+  founder has not already stated in its last 20 texts count; none → no post, no LLM call,
+  `quiet_no_facts` in the tick summary (it stays due and looks again next tick).
+- Template: persona opener + up to two facts as read + persona closer; title "<NAME> on <label>".
+  Topic openers and feed hooks removed (topic-only posts are gone). GIA has no reader until TF-7,
+  so she makes no top-level posts for now.
+- LLM: `<facts>` block (fresh facts only), "only state the facts, else SKIP", feed in
+  `<platform_context>`; output (title + body) through the claim checker against those facts.
+  Failure → the template. Post metadata now has `heartbeat.facts` and ATLAS's changelog marker.
+- **Decisions I made (reversible):** SKIP → the template states the facts (the call is spent; a
+  quiet tick would re-ask the LLM every 5 minutes and drain the cap); the LLM check uses no
+  "quoted" allowance (a quoted title with a number or claim makes it fall back).
+- **Check:** founders + jobs unit tests 507 passed; founder `--db` tests 159 passed (3 new: quiet
+  and still due, a stated fact is not repeated, a changelog entry is posted once); full suite 4311
+  passed, 0 failed; ruff clean on touched files. Commit `d68c6f9`.
+- **Next:** TF-6 (LLM replies and DM answers in the same cap; MARCUS answers questions), T2.
+
 ## 2026-10-18 · cycle 272 · Opus (T2) · TF-4 shipped changes for ATLAS
 
 - New `platform/CHANGELOG.md` (plain words, newest first, `- YYYY-MM-DD — sentence`), seeded from

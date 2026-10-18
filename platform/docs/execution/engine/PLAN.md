@@ -87,7 +87,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   image; ATLAS posts one entry it has not posted before (marker in post metadata), never invents
   one. The engine adds a line with every future user-visible change. Check: reader tests (parse,
   "already posted" skip, empty file → quiet); Dockerfile / `.dockerignore` include the file.
-- [ ] **TF-5 — Fact-grounded posts, or silence.** T2. The heartbeat's top-level post path gives
+- [x] **TF-5 — Fact-grounded posts, or silence.** Done cycle 273 (`d68c6f9`). T2. The heartbeat's top-level post path gives
   each persona only its own facts (TF-2/3/4). LLM prompt: a `<facts>` block, the rule "only state
   what the facts say; if nothing is worth saying, answer SKIP", untrusted feed text kept in
   `<platform_context>`. Output goes through the TF-1 claim checker against the facts; on failure
