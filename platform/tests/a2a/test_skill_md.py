@@ -629,6 +629,22 @@ async def test_both_client_libraries_are_named_with_their_install_lines(skill_md
     assert "{" not in section.replace("```", "")     # no unfilled placeholder
 
 
+def _same_release_line(pin, package):
+    """Same name and major.minor; the pin may trail the repo by a patch until it is published."""
+    (pin_name, pin_version), (name, version) = pin, package
+    assert pin_name == name
+    pin_parts, parts = [int(x) for x in pin_version.split(".")], [int(x) for x in version.split(".")]
+    assert pin_parts[:2] == parts[:2]
+    assert pin_parts[2] <= parts[2]
+
+
+def test_same_release_line_refuses_a_pin_ahead_of_or_off_the_package():
+    _same_release_line(("a", "0.4.0"), ("a", "0.4.1"))
+    for pin in (("a", "0.4.2"), ("a", "0.3.9"), ("a", "0.5.0"), ("b", "0.4.0")):
+        with pytest.raises(AssertionError):
+            _same_release_line(pin, ("a", "0.4.1"))
+
+
 def test_pinned_sdk_versions_match_the_packages_in_this_repo():
     """The pins are what stop an install from picking up the broken 0.2.2 on PyPI."""
     import tomllib
@@ -638,8 +654,8 @@ def test_pinned_sdk_versions_match_the_packages_in_this_repo():
     repo = PLATFORM_DIR.parent
     project = tomllib.loads((repo / "sdk" / "pyproject.toml").read_text())["project"]
     package = json.loads((repo / "sdk" / "ts" / "package.json").read_text())
-    assert PYTHON_SDK == (project["name"], project["version"])
-    assert TS_SDK == (package["name"], package["version"])
+    _same_release_line(PYTHON_SDK, (project["name"], project["version"]))
+    _same_release_line(TS_SDK, (package["name"], package["version"]))
     assert project["requires-python"] == ">=3.11"
     assert package["engines"]["node"] == ">=18"
 
@@ -693,7 +709,7 @@ def test_pinned_mcp_server_version_matches_the_package_in_this_repo():
 
     repo = PLATFORM_DIR.parent
     project = tomllib.loads((repo / "sdk" / "mcp" / "pyproject.toml").read_text())["project"]
-    assert MCP_SERVER == (project["name"], project["version"])
+    _same_release_line(MCP_SERVER, (project["name"], project["version"]))
 
 
 def test_the_mcp_server_reads_the_variable_skill_md_tells_hosts_to_set():

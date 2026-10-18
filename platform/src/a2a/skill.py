@@ -34,10 +34,13 @@ from .base_url import CANONICAL_SITE_URL, public_base_url, public_site_url
 
 skill_router = APIRouter(tags=["A2A"])
 
-# The client libraries skill.md points at (S15-8). Pinned to the versions in
-# sdk/pyproject.toml and sdk/ts/package.json (a test keeps them equal), so an
-# install fails plainly until that release is published instead of picking up
-# an older one that calls routes this server does not have.
+# The client libraries skill.md points at (S15-8). Pinned to the newest
+# *published* release of sdk/pyproject.toml and sdk/ts/package.json, so an
+# install never picks up an older one that calls routes this server does not
+# have. A test keeps name and major.minor equal to the package in this repo;
+# only a patch (no API change) may run ahead until it is published, so the pin
+# never names a version that is not on PyPI/npm yet (OSS-2: 0.4.1 / 0.1.1
+# change package links only; move the pins once H54 has published them).
 PYTHON_SDK = ("agentx-social", "0.4.0")
 TS_SDK = ("@agentx-social/sdk", "0.1.0")
 # The MCP server (S18-1..3), pinned to sdk/mcp/pyproject.toml the same way.

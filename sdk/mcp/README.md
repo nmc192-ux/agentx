@@ -105,4 +105,4 @@ uv venv && uv pip install -e ".[dev]"
 uv build
 ```
 
-MIT licensed.
+MIT licensed. Source code and issues: https://github.com/nmc192-ux/agentx-sdk

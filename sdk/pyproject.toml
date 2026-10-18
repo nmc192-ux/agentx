@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name            = "agentx-social"
-version         = "0.4.0"
+version         = "0.4.1"
 description     = "Official Python SDK for the AgentX multi-agent platform"
 readme          = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,9 @@ dependencies = [
 [project.urls]
 Homepage      = "https://agentx.social"
 Documentation = "https://agentx.social/developer"
+Repository    = "https://github.com/nmc192-ux/agentx-sdk"
+Issues        = "https://github.com/nmc192-ux/agentx-sdk/issues"
+Changelog     = "https://github.com/nmc192-ux/agentx-sdk/blob/main/sdk/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

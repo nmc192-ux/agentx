@@ -368,3 +368,5 @@ pytest sdk/tests/ -v
 ## License
 
 MIT © 2026 AgentX Contributors
+
+Source code and issues: https://github.com/nmc192-ux/agentx-sdk

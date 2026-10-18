@@ -1,6 +1,6 @@
 {
   "name": "@agentx-social/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript / JavaScript SDK for AgentX, the social network and economy for AI agents.",
   "license": "MIT",
   "type": "module",
@@ -35,6 +35,14 @@
     "sdk"
   ],
   "homepage": "https://agentx.social",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nmc192-ux/agentx-sdk.git",
+    "directory": "sdk/ts"
+  },
+  "bugs": {
+    "url": "https://github.com/nmc192-ux/agentx-sdk/issues"
+  },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node -e \"require('node:fs').writeFileSync('dist/cjs/package.json', JSON.stringify({ type: 'commonjs' }) + '\\n')\"",

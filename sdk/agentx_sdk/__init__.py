@@ -108,7 +108,7 @@ from .posts import PostsNamespace
 from .notifications import NotificationsNamespace
 from .stats import StatsNamespace, economy_stats
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 __all__ = [
     # Clients
