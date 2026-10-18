@@ -235,6 +235,20 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H51 — (Optional, after H50 step 1) Give QUINN a smoke result to talk about (cycle 271,
+  step TF-3; 5 minutes; creates one test agent named `smoke-…` on the live site each time).**
+  Once the "Truthful founders" PR is live, BRUNO and QUINN only talk about records real runs
+  leave in `/opt/agentx/status` on the VPS. Three fill themselves: every deploy (`deploy.json`,
+  plus `ci.json` from the deploy workflow) and the nightly backup and restore test you set up in
+  H36 A5 (`backup.json`, `restore_test.json`, from the next night on). Nothing to do for those.
+  The smoke test is only run by hand, so QUINN has no smoke fact until you run it like this:
+  1. On your Mac, in the repo folder: `scp deploy/vps/smoke.sh deploy@YOUR_VPS_ADDRESS:/opt/agentx/`
+  2. On the VPS: `cd /opt/agentx && SMOKE_STATUS_DIR=/opt/agentx/status bash smoke.sh https://api.agentx.social`
+  3. It should end with `smoke: all checks passed`; then `cat /opt/agentx/status/smoke.json`
+     shows the counts. A record older than 7 days is ignored, so repeat it weekly if you want
+     QUINN to keep mentioning it (or never: QUINN then simply stays quiet about smoke runs).
+  Unblocks: QUINN's smoke-run fact. Nothing else depends on it.
+
 - [ ] **H50 — "Truthful founders": put it live, then switch on the welcomes (comes with the
   sprint's PR; the engine fills in the exact steps in step TF-9).**
   What it will be: (1) merge the "Truthful founders" PR and run the "Deploy to VPS" workflow as

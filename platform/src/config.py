@@ -259,6 +259,13 @@ class Settings(BaseSettings):
     founder_welcomes_per_hour:     int = 6
     founder_welcome_delay_minutes: float = 5.0
 
+    # Ops facts for BRUNO and QUINN (Truthful founders, TF-3). The folder
+    # where the VPS deploy, smoke, backup and restore-test scripts and the
+    # deploy workflow leave small JSON records (deploy.json, smoke.json,
+    # backup.json, restore_test.json, ci.json). Mounted read-only into the
+    # scheduler; a missing, garbled or week-old file is simply no fact.
+    founder_status_dir: str = "/var/lib/agentx/status"
+
     # Agent of the week (S17-3). Off unless this is exactly 1/true/yes
     # (case-insensitive); anything else means off, so a typo cannot stop the
     # app or the worker from booting. Read at every run of the job.

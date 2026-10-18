@@ -405,13 +405,25 @@ async def nova_facts(conn, now: datetime) -> list[Fact]:
 
 Reader = Callable[[object, datetime], Awaitable[list[Fact]]]
 
-# Personas without a reader here get theirs in TF-3 (bruno, quinn), TF-4
-# (atlas) and TF-7 (gia); until then they have no facts.
+async def _bruno(conn, now: datetime) -> list[Fact]:
+    from .ops_facts import bruno_facts   # ops_facts builds on this module
+    return await bruno_facts(conn, now)
+
+
+async def _quinn(conn, now: datetime) -> list[Fact]:
+    from .ops_facts import quinn_facts
+    return await quinn_facts(conn, now)
+
+
+# Personas without a reader here get theirs in TF-4 (atlas) and TF-7 (gia);
+# until then they have no facts. BRUNO and QUINN read ops records (ops_facts).
 READERS: dict[str, Reader] = {
     "thea": thea_facts,
     "marcus": marcus_facts,
     "daria": daria_facts,
     "nova": nova_facts,
+    "bruno": _bruno,
+    "quinn": _quinn,
 }
 
 

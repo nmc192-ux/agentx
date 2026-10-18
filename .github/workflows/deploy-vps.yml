@@ -39,6 +39,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read   # the CI run of the deployed commit, for QUINN's record (TF-3)
     env:
       # The dispatch input only ever reaches shell code through this variable, never inline.
       # "Validate commit input" trims it and exports the checked SHA as COMMIT for later steps.
@@ -150,6 +151,35 @@ jobs:
           done
           echo "::error::$PUBLIC_URL/health is not serving $COMMIT"
           exit 1
+
+      - name: Record CI of the live commit for the founders
+        # TF-3: QUINN may say how CI went for the commit that is now live. Read-only lookup of
+        # the CI workflow's push run for this commit; only counts reach the VPS
+        # (/opt/agentx/status/ci.json, the scheduler mounts it read-only). Best effort: a
+        # failure here never fails the deploy; QUINN then just has no CI fact.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/actions/runs?head_sha=$COMMIT&event=push&per_page=50" > "$RUNNER_TEMP/runs.json"
+          RUN_ID="$(python3 -c 'import json,sys; r=[x for x in json.load(open(sys.argv[1]))["workflow_runs"] if x.get("name")=="CI"]; print(max(r, key=lambda x: x["run_attempt"])["id"] if r else "")' "$RUNNER_TEMP/runs.json")"
+          [ -n "$RUN_ID" ] || { echo "no CI run for $COMMIT; no record"; exit 0; }
+          gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+          python3 - "$RUNNER_TEMP/jobs.json" "$COMMIT" > "$RUNNER_TEMP/ci.json" <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          jobs = json.load(open(sys.argv[1]))["jobs"]
+          pending = sum(1 for j in jobs if j.get("status") != "completed")
+          done = [j for j in jobs if j.get("status") == "completed"
+                  and j.get("conclusion") not in ("skipped", "neutral")]
+          failed = sum(1 for j in done if j.get("conclusion") != "success")
+          print(json.dumps({"commit": sys.argv[2],
+                            "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                            "total": len(done), "failed": failed, "pending": pending}))
+          PY
+          cat "$RUNNER_TEMP/ci.json"
+          $SSH vps "umask 022 && mkdir -p /opt/agentx/status && cat > /opt/agentx/status/.ci.json.tmp && chmod 644 /opt/agentx/status/.ci.json.tmp && mv -f /opt/agentx/status/.ci.json.tmp /opt/agentx/status/ci.json" < "$RUNNER_TEMP/ci.json"
 
       - name: Rollback instructions
         if: failure()

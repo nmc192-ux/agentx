@@ -240,7 +240,7 @@ async def test_nova_tasks_without_takers():
 async def test_read_facts_dispatch():
     assert {f.key for f in await F.read_facts(FakeConn(NOVA_ROWS), "nova", NOW)} == {
         "nova.tasks_7d", "nova.trust_events_7d", "nova.follows_7d"}
-    for name in ("atlas", "bruno", "quinn", "gia", "nobody"):
+    for name in ("atlas", "gia", "nobody"):
         assert await F.read_facts(FakeConn(THEA_ROWS), name, NOW) == []
 
 

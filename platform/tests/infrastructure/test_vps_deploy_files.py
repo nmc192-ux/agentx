@@ -660,7 +660,7 @@ class TestDeployWorkflow:
         assert set(wf["jobs"]) == {"deploy"}
         job = wf["jobs"]["deploy"]
         assert job["environment"]["name"] == "production"
-        assert job["permissions"] == {"contents": "read", "packages": "write"}
+        assert job["permissions"] == {"contents": "read", "packages": "write", "actions": "read"}
         assert wf["concurrency"]["cancel-in-progress"] is False
 
     def test_actions_pinned_to_commits(self):
@@ -936,3 +936,75 @@ class TestDeployScript:
         assert result.returncode == 0, result.stderr
         assert not any("migrate" in c for c in calls)
         assert f"IMAGE_TAG={OLD}" in env
+
+
+# ── TF-3: status records for the founders BRUNO and QUINN ────────────────────
+
+DB_MOVE = VPS / "db_move.sh"
+STATUS_MOUNT = "${AGENTX_STATUS_DIR:-/opt/agentx/status}:/var/lib/agentx/status:ro"
+
+
+def _status_record_fn(script: Path) -> str:
+    text = script.read_text()
+    start = text.index("status_record() {")
+    return text[start:text.index("\n}\n", start) + 3]
+
+
+class TestStatusRecords:
+    def test_only_the_scheduler_mounts_the_folder_read_only(self):
+        services = _compose()["services"]
+        assert services["scheduler"]["volumes"] == [STATUS_MOUNT]
+        for name in ("api-1", "api-2", "migrate", "db"):
+            assert "volumes" not in services[name] or STATUS_MOUNT not in services[name]["volumes"]
+
+    def test_app_reads_the_mounted_path(self):
+        from src.config import Settings
+        assert Settings.model_fields["founder_status_dir"].default == "/var/lib/agentx/status"
+
+    def test_every_writer_writes_its_record(self):
+        deploy, db_move, smoke = DEPLOY_SH.read_text(), DB_MOVE.read_text(), SMOKE.read_text()
+        assert "status_record deploy " in deploy
+        assert "status_record backup " in db_move and "status_record restore_test " in db_move
+        assert "status_record smoke " in smoke and 'STATUS_DIR="$SMOKE_STATUS_DIR"' in smoke
+        # deploy.json only after both APIs are healthy and compose.env records the tag.
+        assert deploy.index("status_record deploy ") > deploy.index('wait_healthy "$svc"')
+        assert deploy.index("status_record deploy ") > deploy.index("sed -i.bak")
+
+    def test_workflow_writes_ci_record_best_effort_and_last(self):
+        steps = _steps()
+        names = [s.get("name") for s in steps]
+        i = names.index("Record CI of the live commit for the founders")
+        assert i > names.index("Verify the new commit is serving")
+        step = steps[i]
+        assert step["continue-on-error"] is True
+        assert "/opt/agentx/status/ci.json" in step["run"] and "chmod 644" in step["run"]
+        assert '"name")=="CI"' in step["run"]   # the CI workflow only, not this deploy's own job
+
+    def test_deploy_makes_the_folder_before_containers_mount_it(self):
+        deploy = DEPLOY_SH.read_text()
+        mkdir = deploy.index('mkdir -p "$STATUS_DIR") || echo')
+        assert mkdir < deploy.index("dc up -d --no-deps")
+
+    @pytest.mark.parametrize("script", [DEPLOY_SH, DB_MOVE, SMOKE])
+    def test_status_record_writes_a_readable_file(self, script, tmp_path):
+        fn = _status_record_fn(script)
+        out = tmp_path / "status"
+        r = subprocess.run(["bash", "-c", f'set -euo pipefail; umask 077; {fn}\nSTATUS_DIR="$1"; '
+                            'status_record deploy \'{"a": 1}\'', "x", str(out)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        f = out / "deploy.json"
+        assert json.loads(f.read_text()) == {"a": 1}
+        assert oct(f.stat().st_mode & 0o777) == "0o644" and oct(out.stat().st_mode & 0o777) == "0o755"
+        assert not list(out.glob(".*.tmp"))
+
+    @pytest.mark.parametrize("script", [DEPLOY_SH, DB_MOVE, SMOKE])
+    def test_status_record_never_fails_the_run(self, script, tmp_path):
+        fn = _status_record_fn(script)
+        blocker = tmp_path / "file"
+        blocker.write_text("not a folder")
+        r = subprocess.run(["bash", "-c", f'set -euo pipefail; {fn}\nSTATUS_DIR="$1"; '
+                            'status_record deploy "{}"; echo after', "x", str(blocker / "status")],
+                           capture_output=True, text=True)
+        assert r.returncode == 0 and r.stdout.strip() == "after", r.stderr
+        assert "warning: could not write" in r.stderr

@@ -34,6 +34,19 @@ env_value() {  # env_value FILE NAME -> last value of NAME in FILE, quotes remov
   printf '%s' "$v"
 }
 
+# backup and restore-test also leave backup.json / restore_test.json here for BRUNO (TF-3):
+# only ok/fail and the time, never a file name, size or error text.
+STATUS_DIR="${AGENTX_STATUS_DIR:-$(env_value compose.env AGENTX_STATUS_DIR)}"
+STATUS_DIR="${STATUS_DIR:-/opt/agentx/status}"
+# status_record NAME JSON: a small record for the founders BRUNO and QUINN (TF-3), written whole
+# then renamed (never half a file) and readable by the scheduler, which mounts $STATUS_DIR
+# read-only. Best effort: a record that cannot be written never fails the run.
+status_record() {
+  (umask 022 && mkdir -p "$STATUS_DIR" && printf '%s\n' "$2" > "$STATUS_DIR/.$1.json.tmp" \
+    && chmod 644 "$STATUS_DIR/.$1.json.tmp" && mv -f "$STATUS_DIR/.$1.json.tmp" "$STATUS_DIR/$1.json") 2>/dev/null \
+    || echo "warning: could not write $STATUS_DIR/$1.json" >&2
+}
+
 # The Neon side. Since the early launch (EL-3) settings.env names the VPS database, not Neon,
 # so Neon is only ever reached when SRC_HOST is given on the command line: the direct endpoint,
 # not the "-pooler" one (Neon's pooler is PgBouncer in transaction mode; pg_dump wants a plain session).
@@ -210,6 +223,7 @@ cmd_backup() {
   ls -1t "$BACKUP_DIR"/agentx-*.dump | tail -n +"$(( KEEP + 1 ))" | while IFS= read -r old; do
     rm -f -- "$old"
   done
+  status_record backup "$(printf '{"ok": true, "finished_at": "%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
   echo "backup: $file ($(du -h "$file" | cut -f1)); kept $(ls -1 "$BACKUP_DIR"/agentx-*.dump | wc -l | tr -d ' ')"
 }
 
@@ -222,6 +236,9 @@ restore_status() {  # restore_status ok|fail DETAIL (written whole, then renamed
   mkdir -p "$BACKUP_DIR"
   printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$BACKUP_DIR/restore-test.status.tmp" \
     && mv -f "$BACKUP_DIR/restore-test.status.tmp" "$BACKUP_DIR/restore-test.status"
+  local ok=false
+  [[ "$1" == ok ]] && ok=true
+  status_record restore_test "$(printf '{"ok": %s, "finished_at": "%s"}' "$ok" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
 }
 
 RT_REPORTED=""

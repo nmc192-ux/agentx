@@ -21,9 +21,12 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+
+from src.founders.ops_facts import read_status
 
 REPO = Path(__file__).resolve().parents[3]
 PLATFORM = REPO / "platform"
@@ -90,6 +93,7 @@ def run(workdir: Path, *args: str, **extra) -> subprocess.CompletedProcess:
         **os.environ,
         "AGENTX_DIR": str(workdir),
         "BACKUP_DIR": str(workdir / "backups"),
+        "AGENTX_STATUS_DIR": str(workdir / "status"),
         "AGENTX_SECRETS_FILE": str(workdir / "api.env"),
         "PG_RUN": "native",
         "SRC_HOST": "localhost", "SRC_USER": PG_USER, "SRC_DB": SRC_DB, "SRC_SSLMODE": "disable",
@@ -286,6 +290,16 @@ def _status(workdir: Path) -> str:
     return (workdir / "backups" / "restore-test.status").read_text()
 
 
+def _record(workdir: Path, name: str) -> dict:
+    """The TF-3 status record for BRUNO, as the scheduler would read it."""
+    path = workdir / "status" / f"{name}.json"
+    assert oct(path.stat().st_mode & 0o777) == "0o644"
+    record = read_status(name, datetime.now(timezone.utc), str(workdir / "status"))
+    assert record is not None, path.read_text()
+    assert set(record) == {"ok", "finished_at", "_at"}   # never a file name, size or error text
+    return record
+
+
 def _assert_alert(result: subprocess.CompletedProcess, words: str) -> None:
     assert result.returncode == 1, result.stdout + result.stderr
     assert "ALERT: backup restore-test failed" in result.stderr and words in result.stderr, result.stderr
@@ -301,6 +315,8 @@ def test_restore_test_passes_and_drops_the_throwaway(live_with_backup):
     assert "agents" in result.stdout
     assert not _db_exists(RT_DB)
     assert _status(workdir).startswith("ok ")
+    assert _record(workdir, "restore_test")["ok"] is True
+    assert _record(workdir, "backup")["ok"] is True
     # The live database was only read.
     assert _pg("-c", "SELECT count(*) FROM agents", db=DST_DB) == live_before
 
@@ -346,6 +362,7 @@ def test_restore_test_fails_on_a_stale_backup(live_with_backup):
 
 def test_restore_test_fails_without_backups(workdir):
     _assert_alert(run(workdir, "restore-test"), "no backup folder")
+    assert _record(workdir, "restore_test")["ok"] is False
     (workdir / "backups").mkdir(exist_ok=True)
     (workdir / "backups" / "neon-20261101-000000.dump").write_bytes(b"x")   # not a nightly
     _assert_alert(run(workdir, "restore-test"), "no agentx-*.dump")

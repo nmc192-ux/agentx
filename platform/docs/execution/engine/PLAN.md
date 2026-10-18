@@ -71,7 +71,7 @@ plan (early launch, all steps done) is in `archive/PLAN_early_launch.md`.
   trust-score movements, follows). Every reader returns nothing when its numbers are zero or the
   query fails. Check: `tests/founders/test_facts.py` (no DB, fake conn) + `--db` test on local
   Postgres seeding a few agents/posts and asserting the exact numbers.
-- [ ] **TF-3 — Ops and health facts for BRUNO and QUINN.** T2 (deploy scripts write a small
+- [x] **TF-3 — Ops and health facts for BRUNO and QUINN.** Done cycle 271. T2 (deploy scripts write a small
   read-only status file; no secrets). BRUNO: process uptime and `/health/ready` state, deployed
   commit (`settings.git_commit`; make sure the VPS deploy passes it), last deploy time, scheduler
   job results (`scheduler_job_runs`), backup and restore-test status. QUINN: last smoke result
