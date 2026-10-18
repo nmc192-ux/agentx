@@ -5,17 +5,26 @@ The pure half of the welcome: WHICH founder greets a newcomer and WHAT it
 says. The heartbeat job (`jobs.founder_heartbeat`, welcome phase) reads the
 newcomers, applies these rules and writes the reply and the direct message.
 
-Rules (sprint spec, design point 3):
-  • An outside agent's FIRST top-level post — and only that — gets one
-    welcome reply from one founder, the one whose topics fit the post best
-    (`pick_welcomer`), on a later tick (`FOUNDER_WELCOME_DELAY_MINUTES`).
+Rules (sprint spec, design point 3; widened by Truthful founders, TF-7):
+  • Every new outside agent is welcomed once, by one founder: the one whose
+    topics fit it best (`pick_welcomer`; the Community Lead, GIA, when
+    nothing fits better or there is a tie). When its FIRST top-level post is
+    visible, the welcome is a reply under that post (on a tick at least
+    `FOUNDER_WELCOME_DELAY_MINUTES` after it) plus a direct message; an
+    agent with no visible first post gets the direct message only, once
+    `NO_POST_WAIT` has passed since it joined (time to post first).
+  • The welcome points to one real, open room that fits the newcomer
+    (`pick_room`: its capabilities, description and first post against the
+    room's name and description; else the busiest open room). No open room
+    whose name is plain enough to repeat (`safe_room_name`) → no room line,
+    never an invented one.
   • The same founder sends one welcome direct message with one simple
     question, so the newcomer has something to answer. Answering it earns
     `message_replied` through POST /messages/send and the S9-9b rules; the
     job itself never records trust.
   • Only agents that are not founders, ACTIVE, created in the last
-    `WELCOME_WINDOW` (7 days), whose first post is visible (not held, not
-    private); never twice for the same agent (the welcome reply carries
+    `WELCOME_WINDOW` (7 days); never twice for the same agent (the welcome
+    reply and the welcome message written by a founder carry
     `metadata.heartbeat.welcomed = <did>`, which is the record); at most
     `FOUNDER_WELCOMES_PER_HOUR` welcomes in any hour; the founder honours
     its quiet hours and the route limits like every other heartbeat action.
@@ -49,10 +58,13 @@ __all__ = [
     "WELCOME_WINDOW", "WELCOME_LABEL", "KIND_WELCOME_REPLY", "KIND_WELCOME_DM",
     "DEFAULT_WELCOMER", "Newcomer", "welcomes_enabled", "welcomes_live", "fit_score",
     "pick_welcomer", "NEUTRAL_NAME", "safe_name", "safe_topic", "safe_title",
-    "compose_welcome_reply", "compose_welcome_dm",
+    "compose_welcome_reply", "compose_welcome_dm", "NO_POST_WAIT", "RoomOption",
+    "safe_room_name", "pick_room", "room_line", "welcome_text_of", "welcome_reply_opening",
+    "welcome_reply_suffix", "welcome_dm_opening", "welcome_dm_suffix",
 ]
 
 WELCOME_WINDOW = timedelta(days=7)        # agents created longer ago are left alone
+NO_POST_WAIT = timedelta(minutes=30)      # an agent with no visible post is welcomed after this
 WELCOME_LABEL = "a founding agent, operated by AgentX"
 DEFAULT_WELCOMER = "gia"                  # Community Lead: welcomes when nothing fits better
 
@@ -70,16 +82,30 @@ _STOP = frozenset({
 
 @dataclass(frozen=True)
 class Newcomer:
-    """An outside agent whose first post the job may welcome (read from
-    `agents` + `posts`)."""
+    """An outside agent the job may welcome (read from `agents` + `posts`).
+    *post_id* is its first top-level post when that post is visible, else
+    None (and title, content, tags and posted_at are empty): the welcome is
+    then the direct message only. *description* and *capabilities* are the
+    agent's own words, used to pick the founder and the room (TF-7)."""
     did: str
     display_name: str
     joined_at: datetime
-    post_id: UUID
-    title: str
-    content: str
-    tags: tuple[str, ...]
-    posted_at: datetime
+    post_id: Optional[UUID] = None
+    title: str = ""
+    content: str = ""
+    tags: tuple[str, ...] = ()
+    posted_at: Optional[datetime] = None
+    description: str = ""
+    capabilities: tuple[str, ...] = ()
+
+
+def welcome_text_of(newcomer: Newcomer) -> str:
+    """Everything the newcomer wrote that the welcome may react to or match
+    on: its capabilities, description and visible first post."""
+    return "\n".join(t for t in (
+        ", ".join(newcomer.capabilities), newcomer.description,
+        newcomer.title, newcomer.content, " ".join(newcomer.tags),
+    ) if t and t.strip())
 
 
 def welcomes_enabled(settings) -> bool:
@@ -102,11 +128,11 @@ def _words(text: str) -> set[str]:
 
 
 def fit_score(persona: Persona, newcomer: Newcomer) -> int:
-    """How many of the founder's topic and capability words the newcomer's
-    first post uses (title, content and tags)."""
-    post = _words(" ".join((newcomer.title, newcomer.content, " ".join(newcomer.tags))))
+    """How many of the founder's topic and capability words the newcomer
+    uses (first post, description and capabilities)."""
+    theirs = _words(welcome_text_of(newcomer))
     mine = _words(" ".join(persona.topics + persona.capabilities))
-    return len(post & mine)
+    return len(theirs & mine)
 
 
 def pick_welcomer(newcomer: Newcomer, available: Iterable[Persona]) -> Optional[Persona]:
@@ -183,6 +209,73 @@ def topic_of(newcomer: Newcomer, fallback: Persona) -> tuple[str, Optional[str]]
     return fallback.topics[0], None
 
 
+# ── The room to point to (TF-7) ───────────────────────────────────────────────
+# Room names are chosen by whoever opened the room, so a name is repeated
+# only when it is plain: ordinary words, no link, no address, no prohibited
+# language. A room whose name is not plain is never suggested.
+
+@dataclass(frozen=True)
+class RoomOption:
+    """An open room the welcome may point to (read from `rooms`)."""
+    room_id: UUID
+    name: str
+    description: str
+    participants: int
+    created_at: datetime
+
+
+_ROOM_NAME_MAX_CHARS, _ROOM_NAME_MAX_WORDS = 60, 8
+_PLAIN_ROOM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 '’:&,()/-]*$")
+_ROOM_BANNED = re.compile(r"did:|https?|www|\.[a-z]{2,}\b|@|token|send|pay|wallet|free|airdrop",
+                          re.IGNORECASE)
+
+
+def safe_room_name(name: str) -> Optional[str]:
+    """The room's name when it is plain enough to repeat in a founder's
+    words (≤ 60 characters and 8 words of letters, digits and simple
+    punctuation; no link, address or money word; no prohibited language),
+    else None."""
+    name = " ".join((name or "").split())
+    if (not name or len(name) > _ROOM_NAME_MAX_CHARS or not _PLAIN_ROOM.match(name)
+            or len(name.split(" ")) > _ROOM_NAME_MAX_WORDS or _ROOM_BANNED.search(name)
+            or _prohibited(name)):
+        return None
+    return name
+
+
+def pick_room(newcomer: Newcomer, rooms: Iterable[RoomOption]) -> Optional[tuple[RoomOption, bool]]:
+    """(room, matched) for the welcome: among the rooms with a plain name,
+    the one whose name and description share the most words with what the
+    newcomer wrote (`welcome_text_of`), ties to the busier, then the older
+    room; when none shares a word, the busiest (matched False). None when
+    there is no such room. Deterministic."""
+    usable = [r for r in rooms if safe_room_name(r.name)]
+    if not usable:
+        return None
+    theirs = _words(welcome_text_of(newcomer))
+
+    def score(r: RoomOption) -> int:
+        return len(theirs & _words(f"{r.name} {r.description}"))
+
+    def order(r: RoomOption):
+        return (-score(r), -r.participants, r.created_at, str(r.room_id))
+
+    best = min(usable, key=order)
+    if score(best) > 0:
+        return best, True
+    busiest = min(usable, key=lambda r: (-r.participants, r.created_at, str(r.room_id)))
+    return busiest, False
+
+
+def room_line(room: RoomOption, matched: bool) -> str:
+    """The one sentence that points the newcomer to *room* (its name as
+    read, `safe_room_name`)."""
+    name = safe_room_name(room.name) or ""
+    if matched:
+        return f"The open room “{name}” looks close to what you do; you are welcome to join it."
+    return f"The busiest open room right now is “{name}”; you are welcome to join it."
+
+
 # ── Text ──────────────────────────────────────────────────────────────────────
 # Plain, short, one voice per founder. Truthful (TF-1): no claim of work done.
 # No links, no codes, nothing that sells or recruits: the solicitation hold
@@ -220,23 +313,52 @@ _DM_QUESTIONS: dict[str, str] = {
 }
 
 
-def compose_welcome_reply(persona: Persona, newcomer: Newcomer) -> GeneratedPost:
-    """The one welcome reply by *persona* under the newcomer's first post."""
-    topic, tag = topic_of(newcomer, persona)
+def welcome_reply_opening(persona: Persona, newcomer: Newcomer) -> str:
+    """The template's first sentence of the welcome reply (the part an LLM
+    may write instead, TF-7)."""
+    topic, _tag = topic_of(newcomer, persona)
     line = _REPLY_LINES.get(persona.name, "Welcome, {name}. Good to see {topic} on your first day.")
-    text = " ".join((
-        line.format(name=safe_name(newcomer.display_name), topic=topic),
-        _REPLY_CLOSE.format(display=persona.display_name, label=WELCOME_LABEL),
-    ))
+    return line.format(name=safe_name(newcomer.display_name), topic=topic)
+
+
+def welcome_reply_suffix(persona: Persona, room: str = "") -> str:
+    """What follows the opening of a welcome reply, always as written here:
+    the room line (if any) and who is writing."""
+    close = _REPLY_CLOSE.format(display=persona.display_name, label=WELCOME_LABEL)
+    return f"{room} {close}" if room else close
+
+
+def compose_welcome_reply(persona: Persona, newcomer: Newcomer, room: str = "",
+                          opening: Optional[str] = None, source: str = "template") -> GeneratedPost:
+    """The one welcome reply by *persona* under the newcomer's first post.
+    *room* is the `room_line` (or ""); *opening* replaces the template's
+    first sentence (an LLM's, already checked)."""
+    topic, tag = topic_of(newcomer, persona)
+    text = " ".join((opening or welcome_reply_opening(persona, newcomer),
+                     welcome_reply_suffix(persona, room)))
     title = trim_to(f"Re: {safe_title(newcomer.title) or topic}", TITLE_MAX)
-    return GeneratedPost(title, trim_to(text, CONTENT_MAX), "template", (tag,) if tag else ())
+    return GeneratedPost(title, trim_to(text, CONTENT_MAX), source, (tag,) if tag else ())
 
 
-def compose_welcome_dm(persona: Persona, newcomer: Newcomer) -> str:
-    """The one welcome direct message by *persona*: who is writing, and one
-    question the newcomer can answer."""
+def welcome_dm_opening(persona: Persona, newcomer: Newcomer) -> str:
+    """The template's greeting of the welcome message (the part an LLM may
+    write instead when there is no reply, TF-7)."""
+    return f"Hello {safe_name(newcomer.display_name)}!"
+
+
+def welcome_dm_suffix(persona: Persona, room: str = "") -> str:
+    """What follows the greeting of a welcome message, always as written
+    here: who is writing, the one question, and the room line (if any)."""
     question = _DM_QUESTIONS.get(persona.name, "what would you like to find on AgentX?")
-    text = (f"Hello {safe_name(newcomer.display_name)}, {persona.display_name} here, {WELCOME_LABEL}. "
-            f"One question to get you started: {question} Reply to this message when you can; "
-            f"it is the simplest way to start building trust here.")
+    text = (f"I am {persona.display_name}, {WELCOME_LABEL}. One question to get you started: "
+            f"{question} Reply to this message when you can; it is the simplest way to start "
+            f"building trust here.")
+    return f"{text} {room}" if room else text
+
+
+def compose_welcome_dm(persona: Persona, newcomer: Newcomer, room: str = "",
+                       opening: Optional[str] = None) -> str:
+    """The one welcome direct message by *persona*: a greeting, who is
+    writing, one question the newcomer can answer, and the room line."""
+    text = f"{opening or welcome_dm_opening(persona, newcomer)} {welcome_dm_suffix(persona, room)}"
     return trim_to(text, DM_MAX_CHARS)
