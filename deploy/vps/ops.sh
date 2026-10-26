@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+# AgentX VPS ops: the server side of the "VPS ops" workflow (.github/workflows/vps-ops.yml).
+# Runs on the VPS as `deploy`, never with sudo, and only touches what `deploy` owns:
+# /opt/agentx (ops.env, alerts.env), its own crontab, and the db container through docker.
+#
+#   cd /opt/agentx && bash ops.sh status          # what is running and switched on (changes nothing)
+#   cd /opt/agentx && bash ops.sh welcomes on     # H50 step 2: founder welcomes on (rolls api-1, api-2, scheduler)
+#   cd /opt/agentx && bash ops.sh welcomes off    # H50 step 4: and off again
+#   cd /opt/agentx && bash ops.sh alerts-setup    # H37 step 3: ntfy topic, watchdog cron, first run
+#   cd /opt/agentx && bash ops.sh alerts-test     # one test notification to the phone
+#   cd /opt/agentx && bash ops.sh import-report   # H47 steps 1-4: backup, Neon dump, side db, DRY RUN
+#   cd /opt/agentx && bash ops.sh import-apply    # H47 steps 5-6: apply, release reservations, tidy, backup
+#
+# Switches live in /opt/agentx/ops.env (owner deploy, chmod 600), which docker-compose.yml loads
+# AFTER settings.env and BEFORE /etc/agentx/api.env: a line DrJ writes by hand in api.env always
+# wins, so api.env stays the manual override. Only the names in OPS_SWITCHES can be written.
+#
+# import-report reads Neon's DIRECT host from NEON_HOST and the Neon password from stdin (one
+# line); the password goes into a temporary chmod-600 file for db_move.sh and is removed on exit.
+# It is never printed and never put on a command line.
+#
+# Pinned by platform/tests/infrastructure/test_vps_ops.py.
+set -euo pipefail
+
+cd "${AGENTX_DIR:-/opt/agentx}"
+OPS_ENV="${AGENTX_OPS_ENV:-$PWD/ops.env}"
+SECRETS="${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/agentx}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
+OLD_DB="agentx_old"
+OPS_SWITCHES="FOUNDER_WELCOMES_ENABLED"
+PROJECT=agentx
+
+dc() { docker compose --env-file compose.env "$@"; }
+say() { printf '%s\n' "$*"; }
+die() { printf 'ops: %s\n' "$*" >&2; exit 1; }
+
+env_value() {  # env_value FILE NAME -> last value of NAME in FILE, quotes removed (never sourced)
+  local v
+  v="$(sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -n 1)"
+  v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+  printf '%s' "$v"
+}
+
+is_switch() { [[ " $OPS_SWITCHES " == *" $1 "* ]]; }
+
+set_switch() {  # set_switch NAME VALUE: rewrite ops.env whole, then rename (never half a file)
+  local name="$1" value="$2" tmp
+  is_switch "$name" || die "$name is not an ops switch"
+  [[ "$value" =~ ^(true|false)$ ]] || die "switch values are true or false"
+  tmp="$(mktemp "$OPS_ENV.XXXXXX")"
+  chmod 600 "$tmp"
+  {
+    echo "# Written by ops.sh (VPS ops workflow). Switches only, never secrets. api.env wins."
+    if [[ -f "$OPS_ENV" ]]; then
+      grep -E '^[A-Z_]+=(true|false)$' "$OPS_ENV" | while IFS='=' read -r k v; do
+        if is_switch "$k" && [[ "$k" != "$name" ]]; then echo "$k=$v"; fi
+      done
+    fi
+    echo "$name=$value"
+  } > "$tmp"
+  mv -f "$tmp" "$OPS_ENV"
+}
+
+scheduler_running() {
+  [[ -n "$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter "label=com.docker.compose.service=scheduler" --filter status=running)" ]]
+}
+
+wait_healthy() {  # same rule as deploy.sh: one API container healthy before the next is replaced
+  local svc="$1" id status waited=0
+  id="$(dc ps -q "$svc")"
+  [[ -n "$id" ]] || die "$svc: no container"
+  while (( waited < HEALTH_TIMEOUT )); do
+    status="$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null || echo missing)"
+    case "$status" in
+      healthy) say "$svc healthy after ${waited}s"; return 0 ;;
+      unhealthy|missing) break ;;
+    esac
+    sleep 3
+    waited=$(( waited + 3 ))
+  done
+  dc logs --tail 30 "$svc" >&2 || true
+  die "$svc did not become healthy (last status: ${status:-unknown})"
+}
+
+roll() {  # recreate api-1, api-2 one at a time (same image), then the scheduler if it ran
+  local had_scheduler=no svc
+  if scheduler_running; then had_scheduler=yes; fi
+  for svc in api-1 api-2; do
+    dc up -d --no-deps --force-recreate "$svc"
+    wait_healthy "$svc"
+  done
+  if [[ "$had_scheduler" == yes ]]; then
+    dc --profile scheduler up -d --no-deps --force-recreate scheduler
+    say "scheduler recreated"
+  else
+    say "scheduler was not running; left stopped"
+  fi
+}
+
+effective() {  # effective NAME -> the value a container sees (api.env beats ops.env)
+  local v
+  v="$(env_value "$SECRETS" "$1")"
+  [[ -n "$v" ]] || v="$(env_value "$OPS_ENV" "$1")"
+  printf '%s' "${v:-unset}"
+}
+
+cmd_status() {
+  say "== containers"
+  dc ps --format '{{.Service}}  {{.State}}  {{.Status}}' 2>/dev/null || dc ps
+  say "== image tag: $(env_value compose.env IMAGE_TAG)"
+  say "== switches (api.env beats ops.env)"
+  local name
+  for name in FOUNDER_HEARTBEAT_ENABLED FOUNDER_WELCOMES_ENABLED FOUNDER_LLM_PROVIDER; do
+    say "$name=$(effective "$name")"
+  done
+  say "== alerts"
+  if [[ -f "$PWD/alerts.env" ]]; then say "alerts.env: /opt/agentx/alerts.env"; \
+  elif [[ -r /etc/agentx/alerts.env ]]; then say "alerts.env: /etc/agentx/alerts.env"; \
+  else say "alerts.env: none"; fi
+  if crontab -l 2>/dev/null | grep -q 'watchdog.sh'; then say "watchdog cron: installed"; else say "watchdog cron: missing"; fi
+  tail -n 8 "$BACKUP_DIR/watchdog.log" 2>/dev/null || true
+  say "== newest backup"
+  ls -1t "$BACKUP_DIR"/agentx-*.dump 2>/dev/null | head -n 1 || say "none"
+  say "== side database $OLD_DB"
+  if old_db_exists; then say "present"; else say "absent"; fi
+}
+
+cmd_welcomes() {
+  local value
+  case "${1:-}" in
+    on) value=true ;;
+    off) value=false ;;
+    *) die "usage: ops.sh welcomes on|off" ;;
+  esac
+  if [[ -n "$(env_value "$SECRETS" FOUNDER_WELCOMES_ENABLED)" ]]; then
+    die "api.env sets FOUNDER_WELCOMES_ENABLED itself, so ops.env would be ignored; change it there"
+  fi
+  [[ "$(effective FOUNDER_HEARTBEAT_ENABLED)" =~ ^(1|true|yes|TRUE|True)$ ]] \
+    || say "note: FOUNDER_HEARTBEAT_ENABLED is not on, so no welcomes are sent until it is (H13)"
+  set_switch FOUNDER_WELCOMES_ENABLED "$value"
+  roll
+  say "api-1 sees FOUNDER_WELCOMES_ENABLED=$(dc exec -T api-1 printenv FOUNDER_WELCOMES_ENABLED 2>/dev/null || echo unset)"
+  say "welcomes $1"
+}
+
+alerts_file() {  # the alerts file the watchdog should read: DrJ's /etc copy if he made one
+  if [[ -r /etc/agentx/alerts.env ]]; then echo /etc/agentx/alerts.env; else echo "$PWD/alerts.env"; fi
+}
+
+cmd_alerts_setup() {
+  local file topic="" line
+  [[ -f watchdog.sh ]] || die "watchdog.sh is not in /opt/agentx"
+  mkdir -p "$BACKUP_DIR"
+  file="$(alerts_file)"
+  if [[ "$file" == "$PWD/alerts.env" && -z "$(env_value "$file" NTFY_URL)" ]]; then
+    topic="agentx-$(openssl rand -hex 12)"
+    (umask 077 && printf 'NTFY_URL=https://ntfy.sh/%s\nSLACK_WEBHOOK_URL=\n' "$topic" > "$file.tmp")
+    mv -f "$file.tmp" "$file"
+  fi
+  chmod 600 "$file" 2>/dev/null || true
+  line="*/5 * * * * cd /opt/agentx && ALERTS_ENV=$file bash watchdog.sh >> $BACKUP_DIR/watchdog.log 2>&1"
+  { crontab -l 2>/dev/null | grep -v 'watchdog.sh' || true; echo "$line"; } | crontab -
+  say "watchdog cron installed (every 5 minutes, alerts from $file)"
+  say "== first watchdog run"
+  ALERTS_ENV="$file" bash watchdog.sh || say "(at least one check is bad; see above)"
+  if [[ -n "$topic" ]]; then
+    # The one line the workflow lifts into the run summary and masks in the log.
+    say "NTFY_TOPIC=$topic"
+  else
+    say "alerts file already had a topic; kept it"
+  fi
+  send_test "$file" "AgentX alerts are set up on $(hostname -s). You will hear here when the API, scheduler, backups or disk go wrong."
+}
+
+send_test() {  # send_test FILE MESSAGE: one ntfy message; the URL is never printed
+  local url
+  url="$(env_value "$1" NTFY_URL)"
+  [[ -n "$url" ]] || die "no NTFY_URL in $1"
+  if curl -sf --max-time 15 -H "Title: AgentX alerts" -d "$2" "$url" >/dev/null; then
+    say "test notification sent"
+  else
+    die "could not reach ntfy"
+  fi
+}
+
+cmd_alerts_test() { send_test "$(alerts_file)" "Test from the AgentX watchdog on $(hostname -s): alerts reach this phone."; }
+
+old_db_exists() {
+  [[ "$(dc --profile db exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='$OLD_DB'\"" 2>/dev/null)" == 1 ]]
+}
+
+cmd_import_report() {
+  local host="${NEON_HOST:-}" password tmp dump
+  [[ "$host" =~ ^ep-[a-z0-9-]+\.[a-z0-9.-]+\.neon\.tech$ ]] || die "NEON_HOST must be Neon's direct host (ep-....neon.tech)"
+  [[ "$host" != *-pooler* ]] || die "NEON_HOST is the -pooler host; give the direct one"
+  IFS= read -r password || true
+  [[ -n "$password" ]] || die "no Neon password on stdin"
+  say "== 1. backup of the live database"
+  bash db_move.sh backup
+  say "== 2. dump Neon (read only)"
+  tmp="$(mktemp "$PWD/.neon.env.XXXXXX")"
+  trap 'rm -f "$tmp"' EXIT
+  chmod 600 "$tmp"
+  printf 'POSTGRES_PASSWORD=%s\n' "$password" > "$tmp"
+  unset password
+  AGENTX_SECRETS_FILE="$tmp" SRC_HOST="$host" bash db_move.sh dump
+  rm -f "$tmp"
+  dump="$(ls -1t "$BACKUP_DIR"/neon-*.dump | head -n 1)"
+  say "dump: $(basename "$dump")"
+  say "== 3. restore into the side database $OLD_DB (the live database is not touched)"
+  dc --profile db exec -T db sh -c "dropdb -U \"\$POSTGRES_USER\" --if-exists $OLD_DB && createdb -U \"\$POSTGRES_USER\" $OLD_DB"
+  dc --profile db exec -T db sh -c "exec pg_restore --no-owner --no-privileges --single-transaction --exit-on-error -U \"\$POSTGRES_USER\" -d $OLD_DB" < "$dump"
+  say "== 4. import report (DRY RUN, changes nothing)"
+  dc --profile migrate run --rm migrate python scripts/import_old_data.py --old-db "$OLD_DB"
+}
+
+cmd_import_apply() {
+  old_db_exists || die "no $OLD_DB database: run import-report first"
+  say "== 5. apply"
+  dc --profile migrate run --rm migrate python scripts/import_old_data.py --old-db "$OLD_DB" --apply
+  say "== 6. release leftover reservations, drop $OLD_DB, fresh backup"
+  dc --profile migrate run --rm migrate python scripts/reserve_dids.py release --all
+  dc --profile db exec -T db sh -c "dropdb -U \"\$POSTGRES_USER\" $OLD_DB"
+  bash db_move.sh backup
+}
+
+case "${1:-}" in
+  status) cmd_status ;;
+  welcomes) shift; cmd_welcomes "${1:-}" ;;
+  alerts-setup) cmd_alerts_setup ;;
+  alerts-test) cmd_alerts_test ;;
+  import-report) cmd_import_report ;;
+  import-apply) cmd_import_apply ;;
+  *) echo "usage: ops.sh status|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
+esac

@@ -69,6 +69,7 @@ API_SERVICES = ("api-1", "api-2")
 APP_SERVICES = ("api-1", "api-2", "scheduler", "migrate")
 APP_ENV_FILES = [
     "./settings.env",
+    "${AGENTX_OPS_ENV:-./ops.env}",   # ops.sh switches; optional; api.env (next) wins
     "${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}",
     "${AGENTX_DB_ENV:-/dev/null}",
 ]
