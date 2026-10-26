@@ -1,0 +1,147 @@
+name: VPS ops
+
+# Fixed, named jobs on the AgentX VPS, started by hand (Actions → VPS ops → Run workflow).
+# The VPS side is deploy/vps/ops.sh, run as `deploy` (no sudo). Same SSH key, pinned host key and
+# `production` environment as "Deploy to VPS", and the same concurrency group, so an ops job and a
+# deploy never overlap. Only a choice from the list below reaches the server; there is no free
+# text input.
+#
+#   status         what runs and what is switched on (changes nothing)
+#   welcomes-on    H50 step 2: founder welcomes on (rolls api-1, api-2, scheduler; no new image)
+#   welcomes-off   H50 step 4
+#   alerts-setup   H37 step 3: ntfy topic + watchdog cron. A NEW topic appears in the run's
+#                  summary only (masked in the log); subscribe to it in the ntfy app.
+#   alerts-test    one test notification
+#   import-report  H47 steps 1-4 (1 Nov): backup, Neon dump, side database, DRY RUN report.
+#                  Needs environment secrets NEON_HOST (direct ep-....neon.tech) and NEON_PASSWORD.
+#   import-apply   H47 steps 5-6: only after reading the report.
+#
+# Pinned by platform/tests/infrastructure/test_vps_ops.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "What to run on the VPS"
+        required: true
+        type: choice
+        default: status
+        options:
+          - status
+          - welcomes-on
+          - welcomes-off
+          - alerts-setup
+          - alerts-test
+          - import-report
+          - import-apply
+
+permissions: {}
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  ops:
+    name: VPS ops (${{ inputs.task }})
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+    permissions:
+      contents: read
+    env:
+      TASK: ${{ inputs.task }}
+
+    steps:
+      - name: Check the task name
+        run: |
+          case "$TASK" in
+            status|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply) ;;
+            *) echo "::error::unknown task"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up SSH (pinned host key)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          for name in VPS_SSH_KEY VPS_HOST VPS_KNOWN_HOSTS; do
+            [ -n "${!name}" ] || { echo "::error::secret $name is not set"; exit 1; }
+          done
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$RUNNER_TEMP/ssh/key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
+          {
+            echo "Host vps"
+            echo "  HostName $VPS_HOST"
+            echo "  User deploy"
+            echo "  IdentityFile $RUNNER_TEMP/ssh/key"
+            echo "  IdentitiesOnly yes"
+            echo "  UserKnownHostsFile $RUNNER_TEMP/ssh/known_hosts"
+            echo "  StrictHostKeyChecking yes"
+            echo "  BatchMode yes"
+            echo "  ConnectTimeout 20"
+          } > "$RUNNER_TEMP/ssh/config"
+          echo "SSH=ssh -F $RUNNER_TEMP/ssh/config" >> "$GITHUB_ENV"
+
+      - name: Copy the ops files to the VPS
+        run: |
+          scp -F "$RUNNER_TEMP/ssh/config" \
+            deploy/vps/ops.sh deploy/vps/watchdog.sh deploy/vps/alerts.env.example deploy/vps/db_move.sh \
+            vps:/opt/agentx/
+
+      - name: Run the task
+        env:
+          NEON_HOST: ${{ secrets.NEON_HOST }}
+          NEON_PASSWORD: ${{ secrets.NEON_PASSWORD }}
+        run: |
+          case "$TASK" in
+            welcomes-on)  ARGS="welcomes on" ;;
+            welcomes-off) ARGS="welcomes off" ;;
+            *)            ARGS="$TASK" ;;
+          esac
+          OUT="$RUNNER_TEMP/ops.out"
+          set +e
+          if [ "$TASK" = import-report ]; then
+            [ -n "$NEON_HOST" ] && [ -n "$NEON_PASSWORD" ] \
+              || { echo "::error::add NEON_HOST and NEON_PASSWORD to the production environment's secrets first"; exit 1; }
+            # Host on the command line is not secret; the password goes on stdin only.
+            printf '%s\n' "$NEON_PASSWORD" | $SSH vps "cd /opt/agentx && NEON_HOST=$(printf '%q' "$NEON_HOST") bash ops.sh import-report" > "$OUT" 2>&1
+          else
+            $SSH vps "cd /opt/agentx && bash ops.sh $ARGS" < /dev/null > "$OUT" 2>&1
+          fi
+          status=$?
+          set -e
+          # A new ntfy topic is shown in the run summary only and masked in the log.
+          TOPIC="$(sed -n 's/^NTFY_TOPIC=//p' "$OUT" | tail -n 1)"
+          if [ -n "$TOPIC" ]; then
+            echo "::add-mask::$TOPIC"
+            {
+              echo "### ntfy topic for AgentX alerts"
+              echo
+              echo "In the ntfy app tap **+** and subscribe to: \`$TOPIC\`"
+              echo
+              echo "Treat it like a password. After subscribing you can delete this run."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          grep -v '^NTFY_TOPIC=' "$OUT" || true
+          {
+            echo "### VPS ops: $TASK"
+            echo
+            echo '```'
+            grep -v '^NTFY_TOPIC=' "$OUT" | tail -n 120
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh"

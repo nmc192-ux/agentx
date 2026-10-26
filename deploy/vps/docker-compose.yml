@@ -35,6 +35,10 @@ x-app: &app
   image: "${AGENTX_IMAGE:?set AGENTX_IMAGE in compose.env}:${IMAGE_TAG:?set IMAGE_TAG (git commit)}"
   env_file:
     - path: ./settings.env
+    # On/off switches written by ops.sh (VPS ops workflow); never secrets. Optional, and loaded
+    # before api.env so a line DrJ writes by hand in api.env always wins.
+    - path: "${AGENTX_OPS_ENV:-./ops.env}"
+      required: false
     - path: "${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}"
     # The VPS `db` container's settings and password (/etc/agentx/db.env via compose.env).
     - path: "${AGENTX_DB_ENV:-/dev/null}"
