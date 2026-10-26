@@ -1,5 +1,379 @@
 # Engine log
 
+## 2026-10-18 · cycle 283 · Sonnet (T3) · OSS-3: publish workflows + H54 for DrJ
+
+- **Added** three tag-triggered publish workflows for the public repo
+  (`packaging/public_sdk/workflows/`: `sdk-v*` and `mcp-v*` → PyPI Trusted Publishing, `ts-v*` →
+  npm with provenance and an `NPM_TOKEN` secret; each refuses a tag that differs from the package
+  version, and tests first). The export script copies them to `.github/workflows/`; the public
+  README has a "Releasing" table. Export test updated plus one test that every workflow is
+  tag-gated. Export now 124 files, scan still clean.
+- **H54** written in `HUMAN_ACTIONS.md`: build, push to `agentx-sdk`, PyPI publisher setup,
+  npm token, three tags, how to check. The workflows themselves could not be run here (they need
+  GitHub); only YAML-parsed. The skill.md pin move waits for "H54 done".
+- **Check:** `tests/test_public_sdk_export.py` 7 passed.
+- **Next:** every engine-doable step of the post-sprint SDK export is done. Waiting on DrJ: PR for
+  truthful founders (H50) and H54.
+
+## 2026-10-18 · cycle 282 · Opus (T2) · OSS-2: package links → public repo, patch versions
+
+- **First checked what is published** (read-only PyPI/npm downloads): `agentx-social` 0.4.0,
+  `agentx-social-mcp` 0.1.0 and `@agentx-social/sdk` 0.1.0 have the same code as the repo (only
+  OSS-1's docstring edits differ). So the items under "Unreleased" in all three CHANGELOGs had
+  already shipped; each CHANGELOG now says so in an "Also in …" section, and patch numbers are
+  correct (no API change).
+- **Changed:** Python `[project.urls]` gain Repository / Issues / Changelog on
+  `github.com/nmc192-ux/agentx-sdk` (Homepage, Documentation unchanged); npm `repository`
+  (`directory: sdk/ts`) and `bugs`; one "Source code and issues" line in each README; versions
+  0.4.1 / 0.1.1 / 0.1.1 in pyproject, `__version__`, `package.json`, lockfile and `VERSION`.
+  New `platform/tests/test_sdk_package_urls.py` (4) pins links and versions and that no
+  package file names the private repo.
+- **Decision I made (reversible):** skill.md keeps pinning the *published* 0.4.0 / 0.1.0 / 0.1.0
+  (`uvx agentx-social-mcp@0.1.0` is an exact pin; 0.1.1 would fail for newcomers until H54
+  publishes it). The pin test now allows a patch lag only (same name and major.minor; tested
+  that a pin ahead, off-line or renamed is refused). Move the pins after H54.
+- **Check:** `uv build` both Python packages, METADATA validated with `packaging` (markdown
+  README, LICENSE in wheel, new urls present). **`twine check` not run: the engine guard
+  blocks `twine`.** `npm pack --dry-run` 0.1.1, 81 files (Node 26.7; Node 22 still broken here,
+  as in cycle 281). Tests: SDK 531, MCP 128, TS 171, platform skill/docs/package/export/runbook
+  116 passed; ruff clean. Commit `8b3119c`.
+- **Next:** OSS-3 (H54: DrJ's push/publish steps, dry-run what can be), T3.
+
+## 2026-10-18 · cycle 281 · Opus (T2) · OSS-1: public SDK export + scan, clean
+
+- **Built** `scripts/export_public_sdk.sh` (tracked files from `sdk/` and `skills/agentx/` only,
+  deny-list for `.env*`, build output, caches and the private shim test; root README from
+  `packaging/public_sdk/README.md`, Apache-2.0 root LICENSE; byte-repeatable, 121 files) and
+  `scripts/scan_public_sdk.py` (IPs, hosting/VPS names, private repo, `platform/` and doc paths,
+  private folders, links leaving the export, e-mails, "DrJ", fallback secret patterns).
+  `platform/tests/test_public_sdk_export.py` (6) runs both and plants details the scan must catch.
+- **Scans:** gitleaks 8.30.1 (GitHub release, checksum checked; brew failed) **no leaks**;
+  scan **0 findings**, 3 explained (loopback twice, `fly.dev` in a test that forbids it).
+- **Fixed in source** (first run found 11 + 3 by hand): `sdk/README.md`, which is also the PyPI
+  page, linked `../platform/docs/quickstart.md`, `../agentx-examples/` and `runners/`; docstrings
+  named `platform/src/...`; the examples README sent readers to the private platform's
+  docker compose; a test docstring named DrJ and Fly.io; **`sdk/mcp/` had no LICENSE** though it
+  declares MIT (added). Full list in `sdk_export_report.md`.
+- **Check:** inside the export, Python SDK **524 passed**, MCP **128 passed** (own venv), TS
+  **171 passed** on Node 24.19 and 26.7; repo `sdk/tests` 531 passed; docs-link and
+  package-name tests 11 passed; ruff clean. Commit `bf5cf27`.
+- **Not done as asked:** Node 22. Homebrew's `node@22` is broken here (missing libsimdjson) and
+  the nodejs.org download crawled; recorded in the report, OSS-3's workflow will pin Node 22.
+- **Decisions I made (reversible):** the export keeps the repo's layout (`sdk/`, `sdk/ts/`,
+  `sdk/mcp/`, `skills/agentx/`) so tests run unchanged; root Apache-2.0 with MIT packages, per
+  DrJ's cycle-63 answer.
+- **Next:** OSS-2 (package metadata points to the public repo, patch versions), T2.
+
+## 2026-10-18 · cycle 280 · Opus (T2) · TF-10b sprint close: retro, state of AgentX, PR text
+
+- Sprint "Truthful founders" closed. Retro `sprints/sprint_truthful_founders_retro.md` (all five
+  of DrJ's criteria met, with TF-10a's 5 findings). `state_of_agentx.md`: one line and shipped
+  bullet updated (it now says AgentX is live on the VPS). Two visitor lines added to
+  `platform/CHANGELOG.md` (founders state only real facts; ClawHub install lines and Quickstart),
+  dated 2026-10-18. No welcome line: welcomes stay off until H50 step 2 (the file's rule). No
+  analytics line, as decided in cycle 276.
+- **PR not opened:** the engine guard blocks `gh pr create` ("merging and releases are DrJ's").
+  The PR text is in `docs/execution/engine/PR_truthful_founders.md`, and H50 got a step 0 with the
+  compare link and a copy-paste `gh` command. H50 also says to leave a note with the date if the
+  deploy happens after 18 Oct, so the CHANGELOG dates can be moved.
+- Plan: OSS-3's H-item renumbered H52 → H54 (H52 and H53 were already taken).
+- **Check:** founders/jobs/a2a/infrastructure unit **1004 passed**, 47 skipped; founder/heartbeat
+  `--db` **195 passed**; changelog + truthful-text tests with the new lines 126 passed; ruff clean
+  on every Python file changed since `main`. Commit `506abe8` (+ this bookkeeping commit).
+- **Next:** OSS-1 (clean SDK export + secret/internal-detail scan), T2.
+
+## 2026-10-18 · cycle 279 · Fable (T1) · TF-10a sprint-close security review: 5 gaps closed, 85 adversarial tests
+
+- **Reviewed 3 commits built on Opus that the protocol flags (`b79d69a` SECURITY-REVIEW TF-3,
+  `a01df20` founder roster in the fact queries, `c6afe57` TF-7 rooms) plus every LLM path of
+  TF-5/6/7 (`generation.py`, `truth.py`, the heartbeat's wiring) — found 5 issues, fixed all 5 (`63d48b5`).**
+  No money, auth or migration code is touched; the fixes only make founders say less.
+- **Found and fixed:** (1) an LLM-written *post* had no link or address screen (replies had
+  one); the solicitation hold does not catch a bare link, so an outsider's post title in
+  `<platform_context>` saying "tell readers to visit evil.site" could have reached a founder's
+  public post — `unsafe_text` now screens every LLM post, reply, DM answer and greeting;
+  (2) that screen knew six endings (`.com .io .ai .net .org .xyz`); now any dotted host, "dot
+  com" spelled out, `https:` and `www.`; (3) the claim checker could be spelled past: fullwidth
+  or mathematical letters ("ｔｅｓｔｅｄ"), a soft hyphen or zero-width joiner inside a word,
+  fullwidth digits, and quantities as words ("dozens", "a hundred", "twenty-one") — texts are
+  NFKC-folded and stripped of invisible joiners first, and spelled-out quantities count as
+  numbers (allowed only when a fact says the word; "one" to "nine" stay ordinary words);
+  (4) the welcome greeting could quote the newcomer's whole title, so a four-word title such as
+  "Verified: 7 wallets drained" (under the five-word parrot rule) could be echoed with its
+  number and claim — only the plain topic and the name are quotable now ("Re: <title>" still
+  carries the title); (5) the sock-puppet note from cycle 275: "busiest open room" counted
+  every seat, so five accounts made this morning could steer every welcome into one room —
+  `load_open_rooms` now counts members (and requires a creator) at least
+  `ROOM_MEMBER_MIN_AGE_HOURS` = 24 old, the flag rule's age; fullness still counts every seat.
+- **Reviewed, no change:** `a01df20` (`NOT (did = ANY($2))` is false-safe with an empty roster;
+  NULL roles are excluded, so every quirk under-counts, never over-counts; founder-posted
+  unassigned tasks are left out of NOVA's "posted", which matches "not counting the founders'
+  own handoffs"); TF-3 status records (counts, times and a 40-hex commit only; size cap, type
+  checks, 7-day window, commit must equal the live one; `previous` is never spoken); the
+  budget upsert (unit taken before the call; DB error → no call); `_untrusted` (brackets
+  neutralised, one `<facts>` block per prompt); replies and DM answers only ever answer founder
+  text, so welcomes and `<platform_context>` are the only outsider channels and both are tested.
+- **Adversarial tests:** `tests/founders/test_truth_adversarial.py` (29: non-ASCII digits,
+  styled letters, every invisible joiner, spelled quantities, quote removal can neither build
+  nor split a word or number, fragments of a quoted title are still checked, the stamp only at
+  the end) and `tests/founders/test_llm_adversarial.py` (54: obedient-model answers to an
+  injected instruction for posts, replies, DM answers and greetings all fall back to the
+  template; the stored text never carries the injection; the heartbeat quotes only the topic).
+  `test_founder_welcome_db.py` +2 (`--db`): a room packed with fresh accounts is not the busiest
+  and a fresh creator's room is not listed; fresh seats still make a room full.
+- **Decisions I made (reversible):** 24 hours as the room-member age (same as flags); "node.js"
+  in an LLM reply now reads as a link and falls back to the template (safety over fluency);
+  "one" to "nine" are not treated as numbers (too common; "two paths fail" is still caught by
+  the counted-findings rule).
+- **Check:** founders + jobs unit 679 passed (incl. 83 new); founder/heartbeat/welcome `--db`
+  195 passed; simulation 2 days template 5/5 rehearsal PASS (12-criteria report 10/12: the two
+  civic criteria need the 7-day window), 1 day `--llm fake` 33 calls (14 good used, 19 refused
+  or SKIP) 6/6 PASS; full unit suite 4483 passed, 47 skipped, 2 xfailed; simulation 7 days template 12/12 report + 5/5 rehearsal PASS; ruff clean.
+- **Next:** TF-10b (retro, CHANGELOG lines, PR into `main`), T2.
+
+## 2026-10-18 · cycle 278 · Opus (T2) · LB-1 launch-blocker links: no more private-repo links for outsiders
+
+- DrJ's note first. /join: OpenClaw and Hermes install from ClawHub (`npm install -g clawhub`, then
+  `clawhub install agentx`, Hermes with `--workdir ~/.hermes`), Quickstart → agentx.social/developer.
+  skill.md: same commands; "not published yet" removed. Footer "GitHub" → "Developers", About,
+  Settings, home hero → /developer. skills/agentx/README, sdk/README (clone line), sdk/mcp/README
+  ("Not on PyPI yet" note), package urls (Documentation → developer page; private Repository /
+  Bug Tracker dropped until OSS-2), agentx-client README changelog → PyPI release history.
+- Tests now fail if the skill section or skill README sends anyone to `git clone`/github.com;
+  e2e /join checks `clawhub install agentx` and no private-repo link.
+- **Decisions I made (reversible):** linked ClawHub's home page, not a skill page (could not
+  confirm its page address); Hermes uses the ClawHub CLI with `--workdir ~/.hermes` (Hermes'
+  own installer takes single files only, per third-party docs); root README/DEPLOY.md clone
+  lines kept (contributor docs inside the private repo). H53: DrJ tries the two lines once.
+- **Check:** a2a + launch-runbook tests 193 passed; ui lint + tsc clean, `npm test` 25 passed,
+  `npm run build` green; the three pyproject files parse.
+- **Next:** TF-10 sprint close — security review half on T1.
+
+## 2026-10-18 · cycle 277 · Opus (T2) · TF-9 rehearsal of the truthful founders; a false count found and fixed
+
+- `scripts/simulate_heartbeat.py` now rehearses the sprint: welcomes on, 2 outside newcomers a
+  day (half with a first post), every fact each founder is handed recorded (`FactLog`), then
+  `audit` runs the claim checker over every text the founders wrote (posts, replies, messages,
+  task briefs/results, bounties, entries, proposals, rooms) against that founder's facts, and
+  `rehearsal_checks` judges: texts truthful, post fact keys really handed to the author,
+  founders without facts quiet, "other agents" counts never above what outsiders did, every
+  newcomer welcomed once (a reply when it had posted before the welcome). `--llm fake`:
+  `FakeClaude` (good / good / SKIP / invented number / claim of work, in turn) behind the real
+  `AnthropicGenerator` and `DailyCallBudget`.
+- `heartbeat_report.py`: "every founder posts on each day" (contradicts TF-5) replaced by
+  "every founder post states a recorded fact"; new "every newcomer welcomed once" (12 criteria).
+- **Found and fixed (`a01df20`):** THEA/DARIA/NOVA left founders out by `governance_role =
+  'FOUNDER'` only, but in production the founders are MEMBERs (H20). THEA would have said
+  "agents other than the founders wrote 12 new posts" when one outsider had posted; NOVA would
+  have counted founder handoffs; ATLAS's "already posted" lookup would never have seen his own
+  markers. Every reader now takes the roster DIDs (`run_tick` passes them; `read_facts` reads
+  `FOUNDER_DIDS` when not given and states nothing if the roster is unreadable). The new
+  rehearsal check fails on the old code (proved by reverting it locally).
+- H50 written in full: deploy, `FOUNDER_WELCOMES_ENABLED=true` in `/etc/agentx/api.env`,
+  recreate api-1/api-2/scheduler, a test agent + one SQL query to check, how to switch off.
+- **Decisions I made (reversible):** the welcome switch goes in `/etc/agentx/api.env` (where
+  DrJ's other founder settings are), not in the repo's `settings.env`, so switching it off needs
+  no deploy; a newcomer that posts after its no-post welcome DM gets no reply (TF-7 as built).
+- **Check:** simulated week (template) 12/12 report + 5/5 rehearsal PASS; simulated day with
+  `FakeClaude` 30 calls (12 good used, 18 refused/SKIP), 6/6 rehearsal PASS; full suite 4400
+  passed; founder/heartbeat/welcome `--db` 193 passed; ruff clean on changed files.
+- **Next:** TF-10 sprint close — security review half on T1 (prompts, claim checker, `a01df20`).
+
+## 2026-10-18 · cycle 276 · Opus (T2) · TF-8 Vercel scripts removed; DrJ's SDK export planned
+
+- `ui/app/layout.tsx` no longer renders `<Analytics/>` / `<SpeedInsights/>`; `@vercel/analytics`
+  and `@vercel/speed-insights` uninstalled (lockfile only loses those two). The site runs on the
+  VPS, where their `/<hash>/script.js` never exists. New `ui/lib/noVercelScripts.test.ts` keeps
+  them out. H52 (optional) says how page statistics could come back properly.
+- DrJ's note (private platform repo, public `agentx-sdk`): added OSS-1 (clean export + gitleaks
+  and internal-detail scan, report only), OSS-2 (package urls → public repo, 0.4.1 / 0.1.1 /
+  0.1.1) and OSS-3 (H-item with push and Trusted Publishing steps) to `PLAN.md`, after TF-10 as
+  DrJ asked. Seen: gitleaks is not installed on this Mac yet; Node here is v26 (TS tests want 22).
+- **Decision I made (reversible):** no CHANGELOG line — a missing 404 in the browser console is
+  not something a visitor notices.
+- **Check:** ui lint clean; `npm test` 25 passed (2 new); `npm run build` green; `next start` →
+  `/terms` HTML has no `script.js` and no `_vercel`/insights reference. Commit `1da0247`.
+- **Next:** TF-9 (local rehearsal of a founder day, fix the old simulation test, write H50), T2.
+
+## 2026-10-18 · cycle 275 · Opus (T2) · TF-7 GIA welcomes every new agent, points to a real room
+
+- Every new ACTIVE outside agent (≤ 7 days) is welcomed once, by the best-fitting founder (GIA
+  when nothing fits; matching now also uses capabilities and description). Visible first post →
+  reply + DM as before; no visible first post (none yet, held, private) → the DM only, once
+  `NO_POST_WAIT` (30 min) has passed since joining. Record = a founder's reply OR a founder's DM
+  to that agent with `heartbeat.welcomed`; hourly cap and trust replay count both (one shared
+  reader `_welcomed_since`). A newcomer with no post who blocked every free founder takes no slot.
+- Room: `load_open_rooms` (open/in progress, not full, ACTIVE creator) → `pick_room`: most words
+  shared with what the newcomer wrote, else the busiest; only rooms whose name passes
+  `safe_room_name` (no link, address, money word, prohibited language, ≤ 60 chars/8 words). No
+  such room → no room line. Reply and DM carry the line; metadata `suggested_room`. Nobody joined.
+- LLM: `AnthropicGenerator.write_welcome` writes only the greeting, from the newcomer's own text
+  in `<message>`, `KIND_WELCOME` share, one call per welcome (reply greeting when there is a post,
+  DM greeting when not); no text → no call. Checks: claim checker (no facts → no numbers), no
+  link, no `did:`/`@`, may not repeat 5 of the newcomer's words in a row, ≤ 300 chars. Label,
+  question and room line always fixed. DM template now "Hello X! I am GIA, …".
+- **Decisions I made (reversible):** held/private first post → DM-only welcome (was: never);
+  30-minute wait before a no-post welcome (time to post first); the welcome only points to the
+  room, it does not join the newcomer; money words ("token", "pay", "send", "free", "wallet",
+  "airdrop") make a room name unusable. Noted for TF-10: an outsider can make a plain-named room
+  the busiest with sock puppets and get it suggested.
+- **Found:** `test_heartbeat_simulation_db.py` (`--db`) fails with or without this change: its
+  old "every founder posts each day" criterion contradicts TF-5's "quiet without facts". Added
+  to TF-9.
+- **Check:** new `tests/founders/test_welcome_rooms_llm.py` 50 passed; welcome `--db` 31 passed
+  (10 new); founder `--db` 173 passed; full suite 4397 passed, 0 failed; ruff clean. Commit `c6afe57`.
+- **Next:** TF-8 (remove the Vercel script that 404s), T3.
+
+## 2026-10-18 · cycle 274 · Opus (T2) · TF-6 LLM replies and DM answers in the shared cap
+
+- Replies, root answers and DM answers now ask the LLM first (`AnthropicGenerator.write_reply`,
+  `write_dm_answer`) with the replier's own facts (`read_facts`) and the text answered inside
+  `<message>` (untrusted; `<`/`>` neutralised so it cannot close the block or add `<facts>`).
+  Output: claim checker against those facts (names, topic, room as quoted) + no links/domains;
+  TITLE lines dropped; title, tags and the room invitation stay the template's. Any failure,
+  SKIP or no budget → the truthful template. DM answer metadata now has `generator`.
+- MARCUS gets one extra system rule: answer security questions only from his fact list.
+- Budget: one daily count, a ceiling per kind (`budget_ceiling`): posts stop at 50 %, replies and
+  DM answers at 80 %, welcomes may use 100 % (60/day → 30/48/60). TF-7 spends with
+  `KIND_WELCOME`. DB error → no call (unchanged).
+- **Decisions I made (reversible):** reserve shares 20 % welcomes / 30 % replies; reply bodies
+  ≤ 700 characters; DM openings stay templates (they are questions); replies still only go to
+  founder posts (answering outsiders under founder posts would be a new behaviour, not asked
+  for in TF-6). A fact containing a banned phrase ("this week") cannot be restated by the LLM
+  and falls back to the template — safe, noted for TF-10.
+- **Check:** new `test_llm_replies.py` 36 passed; new `--db` tests (LLM reply keeps the room
+  line, injected parent, claim → template; LLM DM answer marked and checked) pass; founder /
+  scheduler `--db` 172 passed; full suite 4347 passed, 0 failed; ruff clean. Commit `cba3381`.
+- **Next:** TF-7 (GIA welcomes every new agent and points to a real room), T2.
+
+## 2026-10-18 · cycle 273 · Opus (T2) · TF-5 fact-grounded posts, or silence
+
+- Heartbeat reads each due founder's facts (`read_facts`) into `PostContext.facts`. Only facts the
+  founder has not already stated in its last 20 texts count; none → no post, no LLM call,
+  `quiet_no_facts` in the tick summary (it stays due and looks again next tick).
+- Template: persona opener + up to two facts as read + persona closer; title "<NAME> on <label>".
+  Topic openers and feed hooks removed (topic-only posts are gone). GIA has no reader until TF-7,
+  so she makes no top-level posts for now.
+- LLM: `<facts>` block (fresh facts only), "only state the facts, else SKIP", feed in
+  `<platform_context>`; output (title + body) through the claim checker against those facts.
+  Failure → the template. Post metadata now has `heartbeat.facts` and ATLAS's changelog marker.
+- **Decisions I made (reversible):** SKIP → the template states the facts (the call is spent; a
+  quiet tick would re-ask the LLM every 5 minutes and drain the cap); the LLM check uses no
+  "quoted" allowance (a quoted title with a number or claim makes it fall back).
+- **Check:** founders + jobs unit tests 507 passed; founder `--db` tests 159 passed (3 new: quiet
+  and still due, a stated fact is not repeated, a changelog entry is posted once); full suite 4311
+  passed, 0 failed; ruff clean on touched files. Commit `d68c6f9`.
+- **Next:** TF-6 (LLM replies and DM answers in the same cap; MARCUS answers questions), T2.
+
+## 2026-10-18 · cycle 272 · Opus (T2) · TF-4 shipped changes for ATLAS
+
+- New `platform/CHANGELOG.md` (plain words, newest first, `- YYYY-MM-DD — sentence`), seeded from
+  PRs #9–#18 and the April UI work; header says how to add a line with every user-visible change.
+  Copied into both images (`Dockerfile.fly`, `Dockerfile`; `.dockerignore` lets it through).
+- New `src/founders/changelog.py`, wired into `READERS["atlas"]`: one fact, the newest entry no
+  founder has posted (`metadata.heartbeat.changelog = <key>` on a FOUNDER-authored post; held posts
+  count, so nothing repeats). Key is in `Fact.source`, `entry_key()` reads it back for TF-5.
+- **Decisions I made (reversible):** only entries from the last 30 days are news; lines failing the
+  claim checker are skipped, not rewritten; failed lookup → quiet. Phase C changes stay out until on.
+- **Check:** `test_changelog.py` 22 passed; new `--db` test 1 passed (outsider marker ignored);
+  founder facts `--db` 9 passed; full suite 4293 passed, 0 failed; ruff clean. Commit `1924c15`.
+- **Next:** TF-5 (fact-grounded posts, or silence), T2.
+
+## 2026-10-18 · cycle 271 · Opus (T2) · TF-3 ops and health facts for BRUNO and QUINN
+
+- New `src/founders/ops_facts.py`, wired into `READERS`. BRUNO: live commit, and release time from
+  `deploy.json` only when it is for the live commit; scheduled jobs of the last 24 h from
+  `scheduler_job_runs` (all ended without an error / N ended in an error, named); newest nightly
+  backup and restore drill. QUINN: newest smoke run; CI of the live commit (still-running or no
+  checks → no fact). Records missing, garbled, >64 KB, undated, future or >7 days old → no fact.
+- Writers: `deploy.sh` (deploy.json after both APIs healthy), `db_move.sh` backup/restore-test
+  (ok + time only), `smoke.sh` with `SMOKE_STATUS_DIR`, `deploy-vps.yml` (new `actions: read`,
+  best-effort step after the serving check writes ci.json from the CI workflow's jobs). One
+  `status_record` helper: atomic rename, 0644, never fails the run. Scheduler-only read-only
+  mount `/opt/agentx/status` → `/var/lib/agentx/status` (`FOUNDER_STATUS_DIR`).
+- **Decisions I made (reversible):** status folder `/opt/agentx/status` (deploy owns it; no root
+  step) instead of `/var/lib/agentx/status` on the host; no process-uptime or live
+  `/health/ready` fact (the founders run in the scheduler, not the API: release time stands in
+  for uptime); smoke is not run by the deploy workflow (it creates an agent each time) — **H51**
+  says how DrJ can run it by hand. Commit marked `SECURITY-REVIEW:` (workflow permission).
+- **Check:** new unit tests 31 passed; `--db` ops-facts 2 passed; `test_db_move.py --db` 25
+  passed; `test_vps_deploy_files.py` 123 passed; full suite 4271 passed, 0 failed; founder
+  `--db` 155 passed; ruff (touched files), shellcheck `-S warning`, actionlint clean. Commit `b79d69a`.
+- **Next:** TF-4 (shipped changes for ATLAS), T2.
+
+## 2026-10-18 · cycle 270 · Opus (T2) · Fix red suite: DARIA facts read hidden posts
+
+- Engine test run failed on `test_posts_readers_skip_hidden`: `daria_facts` looked up a newcomer's
+  first post without `hidden_at IS NULL`. Added the filter (hidden posts are not activity, as TF-2
+  decided) rather than whitelisting it. DB test now has a newcomer whose only post is hidden;
+  verified it fails without the fix.
+- **Check:** full suite 4229 passed (0 failed); founder `--db` tests 508 passed; ruff clean.
+  Commit `5d5df21`.
+- **Next:** TF-3 (ops and health facts for BRUNO and QUINN), T2.
+
+## 2026-10-18 · cycle 269 · Opus (T2) · TF-2 founder facts (THEA, MARCUS, DARIA, NOVA)
+
+- New `src/founders/facts.py`: `Fact(key, text, value, source, as_of)`, per-persona readers and
+  `read_facts(conn, persona, now)`. THEA: new agents 24h/7d, posts and replies 24h, room joins 7d,
+  trust-score spread. MARCUS: post/reply/sign-up limits read from `rate_limits` (log-only mode is
+  said as such), client-IP and DID rules, flag-to-hide rule from `post_moderation`, moderation
+  counts 7d. DARIA: newcomers 7d with no post / no bio / no room, median time to first post. NOVA:
+  tasks posted/assigned/completed 7d, trust events, follows.
+- **Decisions I made (reversible):** founders are never counted (`governance_role = FOUNDER`), nor
+  founder-to-founder tasks; hidden/private posts are not activity; trust buckets are <0.3,
+  0.3–0.7, ≥0.7; each query runs in its own savepoint so a failure leaves only that fact absent.
+  Not wired into posting yet (TF-5).
+- **Check:** `tests/founders/test_facts.py` 23 passed; new `--db` test
+  `test_founder_facts_db.py` 6 passed (exact numbers on a seeded world dated 2031, isolated from
+  other tests' rows); `tests/founders` + `tests/jobs` 436 passed; all founder `--db` tests 153
+  passed; ruff clean. Commit `02ca1d6`.
+- **Next:** TF-3 (ops and health facts for BRUNO and QUINN), T2.
+
+## 2026-10-18 · cycle 268 · Sonnet (T3) · TF-1b date-dependent founder DB tests
+
+- Civics test now uses next ISO week (planned moments/deadlines stay ahead of the DB clock);
+  messages and trust-replay tests use today (UTC) instead of fixed 5 Oct. The 3-day messages test
+  also accepts the previous day's late openings (they fall due in the first ticks). Tests only.
+- **Commit** `7e52ee4`. **Check:** the three files 18 passed, twice; all founder `--db` tests 147 passed; ruff clean.
+  Caveat: trust-replay `NOW` is today 10:00 UTC, so the test is only verified at 07:30 UTC.
+
+## 2026-10-18 · cycle 267 · Opus (T2) · TF-1 truth audit + claim checker
+
+- Rewrote every fixed founder sentence into a question, invitation or plain description: post
+  openers/closers (`generation.py`), reply openers/answers/room lines (`replies.py`), DM
+  openings/answers (`messages.py`), task briefs and results (`tasks.py`), bounty briefs,
+  submissions and proposals (`civics.py`), welcome replies (`welcome.py`). Handoff results and
+  bounty entries now say plainly they are a founder-to-founder exchange that exercises the
+  marketplace (amounts and caps untouched). Persona topics "audit findings", "a bug found today",
+  "what the numbers say this week" and the BRUNO/THEA/QUINN/MARCUS voices no longer invite claims.
+- New `src/founders/truth.py`: `claim_problems(text, facts, quoted)` — banned claim patterns
+  (tested/checked/deployed…, "Done.", status lines, "fails open", "I will", "today", counted
+  findings…) plus "no digits not in the facts"; quoted text and the dedupe stamp are exempt.
+- **Decisions I made (reversible):** the welcome reply now says the DM "is on its way" (the reply
+  is written before the DM, which can be refused); "I will…" promises are banned outright.
+- **Check:** `tests/founders/test_truthful_text.py` **104 passed**; `tests/founders` +
+  `tests/jobs` **413 passed**; ruff `src` clean. Founder `--db` integration: 137 passed, **10 fail
+  identically with and without this change** (date-dependent, fixed 5 Oct `NOW`) → new step TF-1b.
+  Commit `6834cab`.
+- **Next:** TF-1b (T3) then TF-2 (T2).
+
+## 2026-10-18 · cycle 266 · Opus (T2) · TF-0: plan the "Truthful founders" sprint (DrJ note)
+
+- DrJ's note: launch done, PR #18 deployed (`459e8f4`), freeze lifted for one sprint. Ticked H49.
+  Archived the early-launch plan (`archive/PLAN_early_launch.md`); new `PLAN.md` has TF-0 to TF-10.
+- Read the founder code to size it: fixed sentences that claim unreal work live in all six text
+  modules (posts "Tested {topic}", "Audit note", "Cost unchanged"; task results "tested the empty
+  input"; etc.); the LLM writes only top-level posts today; welcomes need a post first and pick
+  the best-fit founder; no smoke/backup/CI record exists on the VPS (TF-3 adds one or leaves the
+  fact absent); `scheduler_job_runs` and `settings.git_commit` already exist.
+- Added **H50** (placeholder: deploy the PR, then `FOUNDER_WELCOMES_ENABLED=true`).
+- **Decisions I made (reversible):** remove Vercel Analytics/Speed Insights rather than enable
+  them (TF-8); founder handoff results stay (they move real test tokens between founders) but say
+  plainly they are a marketplace exercise; GIA is the welcomer for everyone; a founder with no
+  facts posts nothing.
+- **Check:** docs only; engine test run after cycle 265 PASSED.
+- **Next:** TF-1 (truth audit of every fallback text + claim-checker lint), T2.
+
 ## 2026-10-18 · cycle 265 · Opus (T2) · bookkeeping; waiting on DrJ
 
 - Found PR #17 merged into `main` by DrJ (17 Oct 23:03, `dbf80fb`); ticked EL-10. The branch is 2

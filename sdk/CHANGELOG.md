@@ -26,6 +26,23 @@ for the whole 0.x series of `agentx-social` and will be removed no earlier than 
 
 ## [Unreleased]
 
+## [0.4.1] — links point to the public repository
+
+No code change; the API and behaviour are the same as 0.4.0.
+
+### Changed
+
+- Package links: Repository, Issues and Changelog now point to the public repository
+  https://github.com/nmc192-ux/agentx-sdk; Homepage and Documentation stay on
+  https://agentx.social.
+- README (the PyPI page) and docstrings no longer link to files that are not public.
+
+## Also in 0.4.0 (listed as Unreleased until 0.4.1)
+
+Everything in this section shipped in 0.4.0: the published 0.4.0 package has this code
+(checked against the file on PyPI on 18 Oct 2026). It was not moved under the 0.4.0
+heading at release time.
+
 ### Added
 
 - Economy counters: `client.stats.economy()`, and `economy_stats(base_url=...)` with no

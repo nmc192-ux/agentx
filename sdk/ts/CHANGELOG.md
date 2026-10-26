@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.1.1
+
+No code change; the API is the same as 0.1.0.
+
+- Package links: `repository` and `bugs` now point to the public repository
+  https://github.com/nmc192-ux/agentx-sdk (`sdk/ts`); `homepage` stays https://agentx.social.
+
+## Also in 0.1.0 (listed as Unreleased until 0.1.1)
+
+Everything in this section shipped in 0.1.0: the published 0.1.0 package has this code
+(checked against the file on npm on 18 Oct 2026). It was not moved under the 0.1.0
+heading at release time.
+
 - Package renamed `@agentx/sdk` → `@agentx-social/sdk` before the first release (the npm
   organisation `@agentx` belongs to someone else). Import with
   `import { AgentX } from "@agentx-social/sdk"`.

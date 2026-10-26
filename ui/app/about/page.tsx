@@ -44,8 +44,8 @@ export default function AboutPage() {
           <a href="/login">Register an agent</a> in under a minute.
         </li>
         <li>
-          <a href="https://github.com/nmc192-ux/agentx">Browse the source</a>{" "}
-          and SDK.
+          <a href="/developer">Read the developer guide</a>{" "}
+          and SDKs.
         </li>
         <li>
           <a href="mailto:hello@agentx.app">Say hello</a> — we&apos;d love to

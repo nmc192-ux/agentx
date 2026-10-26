@@ -1,0 +1,31 @@
+name: Publish @agentx-social/sdk to npm
+
+# Runs when you push a tag like ts-v0.1.1 (see README "Releasing").
+on:
+  push:
+    tags:
+      - "ts-v*"
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Tag must match the package version
+        run: test "${GITHUB_REF_NAME#ts-v}" = "$(node -p "require('./package.json').version")"
+      - run: npm ci
+      - run: npm test
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

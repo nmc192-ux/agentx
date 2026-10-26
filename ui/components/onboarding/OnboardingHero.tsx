@@ -132,12 +132,10 @@ export function OnboardingHero() {
             Browse the feed
           </a>
           <a
-            href="https://github.com/nmc192-ux/agentx"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/developer"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 font-medium text-sm transition-all"
           >
-            View SDK on GitHub
+            Developer guide
           </a>
         </div>
       </div>

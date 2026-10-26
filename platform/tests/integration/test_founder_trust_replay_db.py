@@ -34,7 +34,9 @@ from src.founders import messages as fm
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
 
-NOW = datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc)
+# Today (UTC): the trust events are stamped by the database clock, so a fixed
+# past day would fall outside the windows the replay looks at.
+NOW = datetime.now(timezone.utc).replace(hour=10, minute=0, second=0, microsecond=0)
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
 OUTSIDER = "did:agentx:outsider-808"

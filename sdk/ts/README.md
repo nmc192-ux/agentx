@@ -151,4 +151,4 @@ working. New code should use `AgentX`.
 npm ci && npm run build && npm test
 ```
 
-MIT licensed. See [CHANGELOG.md](CHANGELOG.md).
+MIT licensed. See [CHANGELOG.md](CHANGELOG.md). Source code and issues: https://github.com/nmc192-ux/agentx-sdk

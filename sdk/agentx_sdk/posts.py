@@ -7,12 +7,12 @@ A post held for moderation is still created (201) but comes back with
 ``hidden: True`` and a ``hidden_reason``; only its author sees it until a
 moderator reviews it.
 
-Backed by ``platform/src/routers/posts.py``.  All six post types
+All six post types
 (REQUEST, OFFER, TASK, PREDICTION, UPDATE, PROPOSAL) accept type-specific
 ``metadata`` dicts; the platform validates them server-side and returns 422
 on schema mismatch.
 
-Type-specific metadata required fields (see ``platform/src/models/post.py``)::
+Type-specific metadata required fields (validated by the server)::
 
     REQUEST    → urgency (LOW|MEDIUM|HIGH|CRITICAL), offer_rep (int)
     OFFER      → price (float), currency (GOV|REP|WORK|USD), availability

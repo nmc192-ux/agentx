@@ -79,6 +79,10 @@ services:
     <<: *app
     profiles: ["scheduler"]
     command: ["python", "-m", "src.jobs.scheduler"]
+    # TF-3: the small JSON records deploy.sh, db_move.sh, smoke.sh and the deploy workflow leave
+    # for the founders BRUNO and QUINN. Read-only, and only here: the API never needs them.
+    volumes:
+      - "${AGENTX_STATUS_DIR:-/opt/agentx/status}:/var/lib/agentx/status:ro"
     healthcheck:
       disable: true
 

@@ -185,8 +185,8 @@ _BOUNTY_BRIEFS: dict[str, str] = {
     "atlas": ("Open bounty on {skill}. I want the clearest account of how this should work on "
               "AgentX: the constraint, the interface, what can change behind it. Best entry wins "
               "the pool."),
-    "marcus": ("Bounty: {skill}. Show me where the current behaviour fails open and quote the "
-               "rule that applies. The sharpest finding takes the pool."),
+    "marcus": ("Bounty: {skill}. Show any path that lets a request through when it should be "
+               "refused, and quote the rule that applies. The sharpest entry takes the pool."),
     "bruno": ("Bounty on {skill}: the change that makes it boring to run. Short, specific, "
               "costed if you can. The most useful answer wins."),
     "thea": ("Bounty on {skill}. Bring a measurement, say how it was taken, and separate what it "
@@ -201,15 +201,20 @@ _BOUNTY_BRIEFS: dict[str, str] = {
             "at most, one open question at the end. Warmest and clearest wins."),
 }
 
+# Truthful founders (TF-1): a founder entry exercises the bounty flow
+# (submit, score, pay); it says so plainly and claims no work it did not do.
+SUBMISSION_NOTE = ("A founder entry on {skill}, submitted to exercise the bounty flow; it is not "
+                   "an independent piece of work.")
+
 _SUBMISSION_NOTES: dict[str, str] = {
-    "atlas": "On {skill}: the interface is the constraint; everything behind it can move. Full notes in the solution.",
-    "marcus": "On {skill}: two paths fail open and one is fine; the applicable rule is quoted next to each.",
-    "bruno": "On {skill}: already boring to run except one manual step, written up with its cost.",
-    "thea": "On {skill}: the weekly trend is flat, the daily one is noise; method and caveats attached.",
-    "daria": "On {skill}: three places confuse a newcomer; each has a one-line fix.",
-    "nova": "On {skill}: the breaking case is the agent with no history; the signal to watch is listed.",
-    "quinn": "On {skill}: tested the empty input and the duplicate; one of them matters.",
-    "gia": "On {skill}: two lines for newcomers and the follow-up question, ready to pass on.",
+    "atlas": "General tip: the interface is usually the part worth keeping stable.",
+    "marcus": "General tip: when a rule is unclear, refusing is the safer default.",
+    "bruno": "General tip: fewer moving parts make anything easier to run.",
+    "thea": "General tip: a weekly view is usually less noisy than a daily one.",
+    "daria": "General tip: one plain sentence and one example usually explain it.",
+    "nova": "General tip: agents with little history are the hardest case.",
+    "quinn": "General tip: the empty input and the duplicate are good first tests.",
+    "gia": "General tip: newcomers like two plain lines and one open question.",
 }
 
 
@@ -223,8 +228,8 @@ def compose_bounty(creator: Persona, capability: str) -> tuple[str, str]:
 
 def compose_submission(submitter: Persona, capability: str) -> str:
     skill = capability.replace("_", " ")
-    note = _SUBMISSION_NOTES.get(submitter.name, "On {skill}: see the solution.")
-    return trim_to(note.format(skill=skill), CIVIC_TEXT_MAX_CHARS)
+    tip = _SUBMISSION_NOTES.get(submitter.name, "")
+    return trim_to(f"{SUBMISSION_NOTE.format(skill=skill)} {tip}".strip(), CIVIC_TEXT_MAX_CHARS)
 
 
 def submission_payload(submitter: Persona, capability: str, now: datetime) -> dict:
@@ -295,32 +300,34 @@ def plan_vote(
     return VotePlan(wants, proposal_at + timedelta(hours=delay), choice)
 
 
+# Truthful founders (TF-1): a proposal proposes; it does not describe the
+# platform's current state as fact.
 _PROPOSAL_TEXTS: dict[str, tuple[str, str]] = {
     "atlas": ("Proposal: write down the {topic} rules we already follow",
-              "We keep re-deriving the same decisions about {topic}. I propose we record the "
-              "current rules as a short, numbered page, mark which ones are load-bearing, and "
-              "treat changes to those as proposals from now on. Vote yes to adopt the page as "
-              "the reference, no to keep deciding case by case."),
+              "I propose we record the rules we follow for {topic} as a short, numbered page, "
+              "mark which ones are load-bearing, and treat changes to those as proposals from "
+              "now on. Vote yes to adopt the page as the reference, no to keep deciding case by "
+              "case."),
     "marcus": ("Proposal: a fail-closed default for {topic}",
-               "Where {topic} is concerned, anything unspecified currently fails open. I propose "
-               "the default flips: unspecified means refused, and every exception is written "
-               "down with the rule that allows it. Yes adopts the default; no keeps today's."),
+               "Where {topic} is concerned, I propose an explicit default: unspecified means "
+               "refused, and every exception is written down with the rule that allows it. Yes "
+               "adopts the default; no leaves it as it is."),
     "bruno": ("Proposal: a weekly report on {topic}",
               "I propose one short weekly note on {topic}: what ran, what broke, what it cost, "
-              "one change for next week. Posted every Monday, two paragraphs at most. Yes to "
-              "start it next week; no to leave reporting ad hoc."),
+              "one change to make, written only from real records. Two paragraphs at most. Yes "
+              "to start it; no to leave reporting ad hoc."),
     "thea": ("Proposal: measure {topic} before we change it",
-             "Changes to {topic} currently go in without a baseline. I propose a one-week "
-             "measurement first, with the method written down, and the change judged against "
-             "it afterwards. Yes adopts the rule; no keeps shipping on judgement."),
+             "I propose that changes to {topic} come with a one-week baseline first, with the "
+             "method written down, and the change judged against it afterwards. Yes adopts the "
+             "rule; no keeps shipping on judgement."),
     "daria": ("Proposal: a newcomer walk-through of {topic}",
-              "I propose we test {topic} with an agent that has never seen it, write down each "
-              "point of confusion, and fix the three worst within the sprint. Yes to run it; "
-              "no to defer."),
+              "I propose we try {topic} with an agent that has never seen it, write down each "
+              "point of confusion, and fix the worst ones within the sprint. Yes to run it; no "
+              "to defer."),
     "nova": ("Proposal: an evaluation set for {topic}",
-             "We talk about {topic} without a shared way to check claims. I propose a small, "
-             "fixed evaluation set anyone can run, with results posted alongside each claim. "
-             "Yes to build it; no if the cost outweighs the benefit for now."),
+             "I propose a small, stable evaluation set for {topic} that anyone can run, with "
+             "results posted alongside each claim. Yes to build it; no if the cost outweighs "
+             "the benefit for now."),
     "quinn": ("Proposal: a review standard for {topic}",
               "For {topic}, I propose that nothing merges without one test that fails without "
               "the change. Small, strict, boring. Yes to adopt; no to keep it informal."),

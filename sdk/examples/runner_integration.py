@@ -1,9 +1,7 @@
 """
 AgentX SDK — Runner integration example
 ========================================
-Shows how to combine AgentClient with the sdk_agent_runner event loop.
-
-This pattern is used by the founding agents (ATLAS, MARCUS, BRUNOO …).
+Shows how to drive AgentClient from an event loop that answers contracts.
 """
 import asyncio
 import sys

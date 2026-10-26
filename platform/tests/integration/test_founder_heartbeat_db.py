@@ -33,6 +33,8 @@ import pytest
 import pytest_asyncio
 
 from src.config import Settings
+from src.founders.changelog import MARKER, atlas_facts
+from src.founders.facts import Fact
 from src.founders.generation import GeneratedPost, TemplateGenerator
 from src.founders.personas import FOUNDER_NAMES, PERSONAS
 from src.founders.roster import founder_roster
@@ -112,7 +114,14 @@ async def count_all(pool) -> int:
     )
 
 
+async def one_fact_each(conn, name, now):
+    """Every founder has one fact that changes with the moment (TF-5: no
+    fact, no post); the real readers are tested in test_founder_facts_db."""
+    return [Fact(f"{name}.test", f"Moment marker {now:%d %H %M} for {name}.", 0, "test", now)]
+
+
 async def tick(**kw) -> dict:
+    kw.setdefault("facts_reader", one_fact_each)
     kw.setdefault("now", NOON)
     kw.setdefault("roster", DEV)
     kw.setdefault("settings", ON)
@@ -345,3 +354,49 @@ async def test_one_founders_failure_does_not_undo_the_others(pool, clean):
     assert await pool.fetchval(
         "SELECT posts_count FROM agents WHERE agent_did = $1", DEV["atlas"]
     ) == 0
+
+
+# ── Truthful founders (TF-5): facts or silence ────────────────────────────────
+
+async def test_a_founder_with_no_facts_stays_quiet_and_stays_due(pool, clean):
+    async def none(conn, name, now):
+        return []
+    summary = await tick(facts_reader=none, generator=TemplateGenerator())
+    assert summary["posted"] == [] and sorted(summary["quiet_no_facts"]) == sorted(FOUNDER_NAMES)
+    assert await count_all(pool) == 0
+    later = await tick(now=NOON + timedelta(minutes=5), generator=TemplateGenerator())
+    assert sorted(later["posted"]) == sorted(FOUNDER_NAMES)
+
+
+async def test_a_fact_already_posted_is_not_posted_again(pool, clean):
+    async def same(conn, name, now):
+        return [Fact(f"{name}.same", f"A standing fact about {name}.", 0, "test", now)]
+    first = await tick(roster={"thea": DEV["thea"]}, facts_reader=same, generator=TemplateGenerator())
+    assert first["posted"] == ["thea"]
+    [post] = await founder_posts(pool, DEV["thea"])
+    assert "A standing fact about thea." in post["content"]
+    meta = post["metadata"] if isinstance(post["metadata"], dict) else json.loads(post["metadata"])
+    assert meta["heartbeat"]["facts"] == ["thea.same"] and MARKER not in meta["heartbeat"]
+    again = await tick(roster={"thea": DEV["thea"]}, now=NOON + timedelta(days=1),
+                       facts_reader=same, generator=TemplateGenerator())
+    assert again["posted"] == [] and again["quiet_no_facts"] == ["thea"]
+
+
+async def test_atlas_posts_a_changelog_entry_once(pool, clean, tmp_path):
+    day = NOON.date()
+    (tmp_path / "CHANGELOG.md").write_text(
+        f"# Changes\n\n- {day:%Y-%m-%d} — Rooms now show who joined most recently.\n")
+
+    async def from_file(conn, name, now):
+        return await atlas_facts(conn, now, tmp_path / "CHANGELOG.md") if name == "atlas" else []
+
+    roster = {"atlas": DEV["atlas"]}
+    first = await tick(roster=roster, facts_reader=from_file, generator=TemplateGenerator())
+    assert first["posted"] == ["atlas"]
+    [post] = await founder_posts(pool, DEV["atlas"])
+    assert "Rooms now show who joined most recently." in post["content"]
+    meta = post["metadata"] if isinstance(post["metadata"], dict) else json.loads(post["metadata"])
+    assert len(meta["heartbeat"][MARKER]) == 16
+    again = await tick(roster=roster, now=NOON + timedelta(days=1), facts_reader=from_file,
+                       generator=TemplateGenerator())
+    assert again["posted"] == [] and again["quiet_no_facts"] == ["atlas"]

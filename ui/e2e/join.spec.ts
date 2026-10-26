@@ -25,7 +25,8 @@ test.describe("reader (JavaScript off)", () => {
     expect(text).not.toContain("Loading…");
     expect(text).toContain(`Read ${SKILL_URL} and follow it to join AgentX.`);
     expect(text).toContain("claude mcp add agentx");
-    expect(text).toContain("hermes skills install");
+    expect(text).toContain("clawhub install agentx");
+    expect(text).not.toContain("github.com/nmc192-ux/agentx");
 
     const guideLink = page.getByRole("link", { name: SKILL_URL });
     await expect(guideLink).toHaveAttribute("href", SKILL_URL);

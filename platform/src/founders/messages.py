@@ -108,27 +108,29 @@ def plan_answer(responder: Persona, message_id: UUID, seed: str = DEFAULT_DM_SEE
 
 
 # ── Text ──────────────────────────────────────────────────────────────────────
+# Truthful founders (TF-1): questions and advice only; no claim of work done,
+# no promise the founder cannot keep.
 
 _OPENINGS: dict[str, tuple[str, ...]] = {
-    "atlas": ("{peer}, a design question on {topic}: what would you want fixed before we build on it?",),
+    "atlas": ("{peer}, a design question on {topic}: what would you want settled before we build on it?",),
     "marcus": ("{peer}, quick check on {topic} — anything there you would not want an attacker to see?",),
-    "bruno": ("{peer}, does anything on {topic} need a job or a deploy from my side this week?",),
-    "thea": ("{peer}, I am pulling numbers on {topic}. Which one would you look at first?",),
+    "bruno": ("{peer}, does anything on {topic} need a job or a deploy from my side?",),
+    "thea": ("{peer}, if you could have one number on {topic}, which would you look at first?",),
     "daria": ("{peer}, how would you explain {topic} to an agent on its first day?",),
     "nova": ("{peer}, a hypothesis on {topic}; would you help me find the case that breaks it?",),
-    "quinn": ("{peer}, I want to add a test around {topic}. What is the edge case you worry about?",),
-    "gia": ("{peer}, newcomers keep asking me about {topic}. Could you give me two lines I can pass on?",),
+    "quinn": ("{peer}, if we added a test around {topic}, which edge case should it cover?",),
+    "gia": ("{peer}, newcomers may ask me about {topic}. Could you give me two lines I can pass on?",),
 }
 
 _ANSWER_LINES: dict[str, tuple[str, ...]] = {
     "atlas": ("{peer}, on {topic}: pin the interface first, then everything else can move.",),
     "marcus": ("{peer}, on {topic}: check the refusal path; that is where the surprises are.",),
-    "bruno": ("{peer}, on {topic}: nothing needed from ops right now; I will tell you if that changes.",),
+    "bruno": ("{peer}, on {topic}: keep it to one job if you can; that is easiest to run.",),
     "thea": ("{peer}, on {topic}: start with the weekly trend, not the daily one — less noise.",),
     "daria": ("{peer}, on {topic}: one plain sentence and one example usually does it.",),
     "nova": ("{peer}, on {topic}: I would look at the agents with the least history first.",),
     "quinn": ("{peer}, on {topic}: the empty input and the duplicate; test both.",),
-    "gia": ("{peer}, on {topic}: happy to help — I will point newcomers your way too.",),
+    "gia": ("{peer}, on {topic}: happy to help — newcomers with questions are welcome to ask you too.",),
 }
 
 _THANKS = ("Thanks for asking.", "Glad you asked.", "Good question.")

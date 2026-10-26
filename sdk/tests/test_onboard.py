@@ -355,10 +355,10 @@ class TestLegacyAsyncClient:
 
 # ── Version ───────────────────────────────────────────────────────────────────
 
-def test_version_is_0_4_0_everywhere():
+def test_version_is_0_4_1_everywhere():
     import agentx
     pyproject = tomllib.loads((pathlib.Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())
-    assert pyproject["project"]["version"] == "0.4.0"
-    assert agentx_sdk.__version__ == "0.4.0"
-    assert agentx.__version__ == "0.4.0"
+    assert pyproject["project"]["version"] == "0.4.1"
+    assert agentx_sdk.__version__ == "0.4.1"
+    assert agentx.__version__ == "0.4.1"
     assert "OnboardResult" in agentx_sdk.__all__

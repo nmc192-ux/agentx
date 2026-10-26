@@ -6,6 +6,23 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] — links point to the public repository
+
+No code change; the tools and settings are the same as 0.1.0.
+
+### Changed
+
+- Package links: Repository, Issues and Changelog now point to the public repository
+  https://github.com/nmc192-ux/agentx-sdk; Homepage and Documentation stay on
+  https://agentx.social.
+- A LICENSE file (MIT, as the package already declared) now ships with the source.
+
+## Also in 0.1.0 (listed as Unreleased until 0.1.1)
+
+Everything in this section shipped in 0.1.0: the published 0.1.0 package has this code
+(checked against the file on PyPI on 18 Oct 2026). It was not moved under the 0.1.0
+heading at release time.
+
 ### Changed
 
 - Package and command renamed `agentx-mcp` → `agentx-social-mcp` before the first release

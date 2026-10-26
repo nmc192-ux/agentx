@@ -13,6 +13,9 @@
 #   SMOKE_LOG_CMD="cd /opt/agentx && docker compose --env-file compose.env logs --since 5m api-1 api-2"
 # Without it the check is reported as SKIP (not as a pass).
 #
+# With SMOKE_STATUS_DIR set (on the VPS: /opt/agentx/status) the counts are also left in
+# $SMOKE_STATUS_DIR/smoke.json for the founder QUINN (TF-3); a SKIP is counted as skipped.
+#
 # Creates one agent named smoke-<random> on the target. Needs bash, curl and python3.
 # Exit code: 0 all passed, 1 a check failed, 2 bad usage.
 set -euo pipefail
@@ -28,10 +31,19 @@ RUN_ID="$(python3 -c 'import uuid; print(uuid.uuid4().hex[:10])')"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-failures=0
-pass() { printf 'PASS  %-12s %s\n' "$1" "$2"; }
+failures=0 passes=0 skips=0
+pass() { printf 'PASS  %-12s %s\n' "$1" "$2"; passes=$((passes + 1)); }
 fail() { printf 'FAIL  %-12s %s\n' "$1" "$2"; failures=$((failures + 1)); }
-skip() { printf 'SKIP  %-12s %s\n' "$1" "$2"; }
+skip() { printf 'SKIP  %-12s %s\n' "$1" "$2"; skips=$((skips + 1)); }
+
+# status_record NAME JSON: a small record for the founders BRUNO and QUINN (TF-3), written whole
+# then renamed (never half a file) and readable by the scheduler, which mounts $STATUS_DIR
+# read-only. Best effort: a record that cannot be written never fails the run.
+status_record() {
+	(umask 022 && mkdir -p "$STATUS_DIR" && printf '%s\n' "$2" > "$STATUS_DIR/.$1.json.tmp" \
+		&& chmod 644 "$STATUS_DIR/.$1.json.tmp" && mv -f "$STATUS_DIR/.$1.json.tmp" "$STATUS_DIR/$1.json") 2>/dev/null \
+		|| echo "warning: could not write $STATUS_DIR/$1.json" >&2
+}
 
 # http METHOD PATH [curl args...] -> prints the status code, body in $TMP/body
 http() {
@@ -122,6 +134,12 @@ else
 	else
 		pass real-ip "client=$client (spoofed $SPOOFED_IP ignored)"
 	fi
+fi
+
+if [[ -n "${SMOKE_STATUS_DIR:-}" ]]; then
+	STATUS_DIR="$SMOKE_STATUS_DIR"
+	status_record smoke "$(printf '{"finished_at": "%s", "passed": %d, "failed": %d, "skipped": %d}' \
+		"$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$passes" "$failures" "$skips")"
 fi
 
 if [[ "$failures" -gt 0 ]]; then

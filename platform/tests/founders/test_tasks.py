@@ -119,7 +119,7 @@ def test_payloads_carry_the_marker_and_the_text_fits():
 
     result = ft.result_payload(quinn, "load_testing", random.Random(1), now)
     assert result["heartbeat"] == {"kind": ft.KIND_RESULT, "at": now.isoformat()}
-    assert result["summary"].startswith("Done.") and "load testing" in result["summary"]
+    assert "exercises the AgentX marketplace" in result["summary"] and "load testing" in result["summary"]
     assert len(result["summary"]) <= ft.TASK_TEXT_MAX_CHARS
 
     for name in FOUNDER_NAMES:

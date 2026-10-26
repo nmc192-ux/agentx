@@ -25,6 +25,10 @@
 # container loses the connection), and refuses to deploy if the network's range is not
 # PROXY_SUBNET (the API trusts forwarded headers from that range only) or anything other than
 # Caddy and AgentX's own containers is on it.
+#
+# A successful deploy leaves $AGENTX_STATUS_DIR/deploy.json (commit, previous, time, migrated)
+# for the founder BRUNO (TF-3); the scheduler reads it read-only and says nothing when it is
+# missing, a week old or for another commit.
 set -euo pipefail
 
 TAG="${1:-}"
@@ -45,6 +49,17 @@ export IMAGE_TAG="$TAG"
 dc() { docker compose --env-file compose.env "$@"; }
 # A compose.env value; the shell environment wins, as it does for docker compose.
 setting() { local v="${!1:-}"; [[ -n "$v" ]] || v="$(sed -n "s/^$1=//p" compose.env | tail -n 1)"; printf '%s' "$v"; }
+STATUS_DIR="$(setting AGENTX_STATUS_DIR)"
+STATUS_DIR="${STATUS_DIR:-/opt/agentx/status}"
+
+# status_record NAME JSON: a small record for the founders BRUNO and QUINN (TF-3), written whole
+# then renamed (never half a file) and readable by the scheduler, which mounts $STATUS_DIR
+# read-only. Best effort: a record that cannot be written never fails the run.
+status_record() {
+  (umask 022 && mkdir -p "$STATUS_DIR" && printf '%s\n' "$2" > "$STATUS_DIR/.$1.json.tmp" \
+    && chmod 644 "$STATUS_DIR/.$1.json.tmp" && mv -f "$STATUS_DIR/.$1.json.tmp" "$STATUS_DIR/$1.json") 2>/dev/null \
+    || echo "warning: could not write $STATUS_DIR/$1.json" >&2
+}
 
 ensure_proxy_network() {
   local net subnet caddy caddy_id members id project
@@ -107,6 +122,8 @@ wait_healthy() {
 }
 
 ensure_proxy_network
+# Made here, as deploy, before any container mounts it (docker would make it root-owned).
+(umask 022 && mkdir -p "$STATUS_DIR") || echo "warning: could not create $STATUS_DIR" >&2
 echo "deploying $TAG (previous: ${PREVIOUS:-none})"
 had_scheduler=no
 if scheduler_running; then had_scheduler=yes; fi
@@ -138,5 +155,9 @@ fi
 
 # Record the running tag so a plain `docker compose up` later does not go back in time.
 sed -i.bak "s/^IMAGE_TAG=.*/IMAGE_TAG=$TAG/" compose.env && rm -f compose.env.bak
+migrated=true
+if [[ "${SKIP_MIGRATE:-0}" == 1 ]]; then migrated=false; fi
+status_record deploy "$(printf '{"commit": "%s", "previous": "%s", "finished_at": "%s", "migrated": %s}' \
+  "$TAG" "${PREVIOUS:-none}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$migrated")"
 echo "previous=${PREVIOUS:-none}"
 echo "deployed=$TAG scheduler=$had_scheduler"

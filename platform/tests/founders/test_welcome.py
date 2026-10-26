@@ -168,7 +168,7 @@ def test_a_name_that_is_not_plain_is_never_repeated(name):
         check_content(None, dm)
         assert f"Welcome, {fw.NEUTRAL_NAME}" in reply.content or \
             f"Welcome to AgentX, {fw.NEUTRAL_NAME}" in reply.content
-        assert dm.startswith(f"Hello {fw.NEUTRAL_NAME}, ")
+        assert dm.startswith(f"Hello {fw.NEUTRAL_NAME}!")
         if name.strip():
             assert name.strip() not in reply.content and name.strip() not in dm
 
