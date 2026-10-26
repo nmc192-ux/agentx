@@ -8,6 +8,7 @@
 #   cd /opt/agentx && bash ops.sh welcomes off    # H50 step 4: and off again
 #   cd /opt/agentx && bash ops.sh disk-report     # where the disk space goes (changes nothing)
 #   cd /opt/agentx && bash ops.sh disk-cleanup    # old AgentX images + dangling layers only
+#   cd /opt/agentx && bash ops.sh build-cache-clear  # Docker build cache only (next build is slower once)
 #   cd /opt/agentx && bash ops.sh alerts-setup    # H37 step 3: ntfy topic, watchdog cron, first run
 #   cd /opt/agentx && bash ops.sh alerts-test     # one test notification to the phone
 #   cd /opt/agentx && bash ops.sh import-report   # H47 steps 1-4: backup, Neon dump, side db, DRY RUN
@@ -272,8 +273,19 @@ cmd_disk_cleanup() {
   disk_summary
 }
 
+cmd_build_cache_clear() {
+  # Docker's build cache (layers kept only to speed up the next `docker build` on this VPS; no
+  # container, image, volume or backup uses it). The next build here starts from scratch once.
+  say "== before"
+  disk_summary
+  docker builder prune -a -f | tail -n 1
+  say "== after"
+  disk_summary
+}
+
 case "${1:-}" in
   status) cmd_status ;;
+  build-cache-clear) cmd_build_cache_clear ;;
   disk-report) cmd_disk_report ;;
   disk-cleanup) cmd_disk_cleanup ;;
   welcomes) shift; cmd_welcomes "${1:-}" ;;
@@ -281,5 +293,5 @@ case "${1:-}" in
   alerts-test) cmd_alerts_test ;;
   import-report) cmd_import_report ;;
   import-apply) cmd_import_apply ;;
-  *) echo "usage: ops.sh status|disk-report|disk-cleanup|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
+  *) echo "usage: ops.sh status|disk-report|disk-cleanup|build-cache-clear|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
 esac

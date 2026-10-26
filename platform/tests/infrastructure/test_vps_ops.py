@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO / ".github" / "workflows" / "vps-ops.yml"
 OPS = REPO / "deploy" / "vps" / "ops.sh"
 COMPOSE = REPO / "deploy" / "vps" / "docker-compose.yml"
-TASKS = ["status", "disk-report", "disk-cleanup", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
+TASKS = ["status", "disk-report", "disk-cleanup", "build-cache-clear", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
 
 
 def _wf() -> dict:
@@ -197,3 +197,13 @@ class TestDiskCleanup:
         r = subprocess.run(["bash", str(OPS), "disk-cleanup"], env=env, capture_output=True, text=True)
         assert r.returncode != 0 and "nothing removed" in r.stderr
         assert "rmi" not in (tmp_path / "docker.log").read_text() if (tmp_path / "docker.log").exists() else True
+
+
+class TestBuildCacheClear:
+    def test_only_prunes_the_build_cache(self, tmp_path):
+        env = TestDiskCleanup()._setup(tmp_path)
+        r = subprocess.run(["bash", str(OPS), "build-cache-clear"], env=env, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        log = (tmp_path / "docker.log").read_text().splitlines()
+        changes = [c for c in log if not c.startswith("system df")]
+        assert changes == ["builder prune -a -f"]
