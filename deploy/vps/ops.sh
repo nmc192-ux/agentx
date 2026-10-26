@@ -6,6 +6,8 @@
 #   cd /opt/agentx && bash ops.sh status          # what is running and switched on (changes nothing)
 #   cd /opt/agentx && bash ops.sh welcomes on     # H50 step 2: founder welcomes on (rolls api-1, api-2, scheduler)
 #   cd /opt/agentx && bash ops.sh welcomes off    # H50 step 4: and off again
+#   cd /opt/agentx && bash ops.sh disk-report     # where the disk space goes (changes nothing)
+#   cd /opt/agentx && bash ops.sh disk-cleanup    # old AgentX images + dangling layers only
 #   cd /opt/agentx && bash ops.sh alerts-setup    # H37 step 3: ntfy topic, watchdog cron, first run
 #   cd /opt/agentx && bash ops.sh alerts-test     # one test notification to the phone
 #   cd /opt/agentx && bash ops.sh import-report   # H47 steps 1-4: backup, Neon dump, side db, DRY RUN
@@ -226,12 +228,58 @@ cmd_import_apply() {
   bash db_move.sh backup
 }
 
+disk_summary() {
+  say "== disk"
+  df -h / "$BACKUP_DIR" 2>/dev/null | awk 'NR==1 || !seen[$0]++'
+  say "== docker"
+  docker system df 2>/dev/null || true
+}
+
+cmd_disk_report() {  # changes nothing
+  disk_summary
+  say "== AgentX images (current tag first is kept, plus the previous one for rollback)"
+  docker images --format '{{.Repository}}:{{.Tag}}  {{.Size}}  {{.CreatedSince}}' \
+    "$(env_value compose.env AGENTX_IMAGE)" 2>/dev/null || true
+  say "== dangling images: $(docker images -q -f dangling=true | wc -l)"
+  say "== backups folder"
+  du -sh "$BACKUP_DIR" 2>/dev/null || true
+  ls -1t "$BACKUP_DIR" 2>/dev/null | head -n 30 | while read -r f; do
+    say "$(du -h "$BACKUP_DIR/$f" | cut -f1)  $f"
+  done
+  say "== largest folders under /opt/agentx and /var/backups"
+  du -xsh /opt/agentx /var/backups/* 2>/dev/null | sort -rh | head -n 10
+}
+
+cmd_disk_cleanup() {
+  # Removes only: AgentX image tags other than the running one and the previous deploy's (kept
+  # for rollback), and dangling images (untagged layers nobody uses). Never another project's
+  # tagged images, containers, volumes or networks; never a backup.
+  local repo current previous ref tag
+  repo="$(env_value compose.env AGENTX_IMAGE)"
+  current="$(env_value compose.env IMAGE_TAG)"
+  [[ "$repo" == ghcr.io/*/agentx-platform && "$current" =~ ^[0-9a-f]{40}$ ]] \
+    || die "compose.env has no AgentX image and tag; nothing removed"
+  previous="$(sed -n 's/.*"previous": "\([0-9a-f]\{40\}\)".*/\1/p' status/deploy.json 2>/dev/null | head -n 1)"
+  say "keeping $repo:$current (running) and ${previous:-no previous tag} (rollback)"
+  disk_summary
+  docker images --format '{{.Repository}}:{{.Tag}}' "$repo" | while read -r ref; do
+    tag="${ref##*:}"
+    if [[ "$tag" == "$current" || ( -n "$previous" && "$tag" == "$previous" ) ]]; then continue; fi
+    if docker rmi "$ref" >/dev/null 2>&1; then say "removed $ref"; else say "kept $ref (in use)"; fi
+  done
+  docker image prune -f | tail -n 1
+  say "== after"
+  disk_summary
+}
+
 case "${1:-}" in
   status) cmd_status ;;
+  disk-report) cmd_disk_report ;;
+  disk-cleanup) cmd_disk_cleanup ;;
   welcomes) shift; cmd_welcomes "${1:-}" ;;
   alerts-setup) cmd_alerts_setup ;;
   alerts-test) cmd_alerts_test ;;
   import-report) cmd_import_report ;;
   import-apply) cmd_import_apply ;;
-  *) echo "usage: ops.sh status|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
+  *) echo "usage: ops.sh status|disk-report|disk-cleanup|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
 esac
