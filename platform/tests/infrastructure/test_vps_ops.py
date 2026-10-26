@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO / ".github" / "workflows" / "vps-ops.yml"
 OPS = REPO / "deploy" / "vps" / "ops.sh"
 COMPOSE = REPO / "deploy" / "vps" / "docker-compose.yml"
-TASKS = ["status", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
+TASKS = ["status", "disk-report", "disk-cleanup", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
 
 
 def _wf() -> dict:
@@ -156,3 +156,44 @@ class TestWelcomes:
     @pytest.mark.parametrize("value", ["maybe", "true", ""])
     def test_bad_value_refused(self, tmp_path, value):
         assert _run(tmp_path, "welcomes", value).returncode != 0
+
+
+CUR, PREV, OLD = "a" * 40, "b" * 40, "c" * 40
+REPO_IMG = "ghcr.io/nmc192-ux/agentx-platform"
+
+
+class TestDiskCleanup:
+    def _setup(self, tmp: Path) -> dict:
+        bin_dir = tmp / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "docker").write_text(
+            "#!/usr/bin/env bash\n"
+            'echo "$*" >> "$FAKE_LOG"\n'
+            'case "$1 $2" in\n'
+            f'  "images --format") printf "{REPO_IMG}:{CUR}\\n{REPO_IMG}:{PREV}\\n{REPO_IMG}:{OLD}\\n" ;;\n'
+            '  "image prune") echo "Total reclaimed space: 0B" ;;\n'
+            "esac\n"
+        )
+        (bin_dir / "docker").chmod(0o755)
+        (tmp / "compose.env").write_text(f"AGENTX_IMAGE={REPO_IMG}\nIMAGE_TAG={CUR}\n")
+        (tmp / "status").mkdir()
+        (tmp / "status" / "deploy.json").write_text(f'{{"commit": "{CUR}", "previous": "{PREV}"}}\n')
+        return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "AGENTX_DIR": str(tmp),
+                "FAKE_LOG": str(tmp / "docker.log"), "BACKUP_DIR": str(tmp)}
+
+    def test_keeps_running_and_previous_removes_only_old_agentx(self, tmp_path):
+        env = self._setup(tmp_path)
+        r = subprocess.run(["bash", str(OPS), "disk-cleanup"], env=env, capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        rmi = [line for line in (tmp_path / "docker.log").read_text().splitlines() if line.startswith("rmi")]
+        assert rmi == [f"rmi {REPO_IMG}:{OLD}"]
+        log = (tmp_path / "docker.log").read_text()
+        assert "image prune -f" in log and "-a" not in log.split("image prune", 1)[1].splitlines()[0]
+        assert "system prune" not in log and "volume" not in log and "builder" not in log
+
+    def test_refuses_without_agentx_image(self, tmp_path):
+        env = self._setup(tmp_path)
+        (tmp_path / "compose.env").write_text("IMAGE_TAG=abc\n")
+        r = subprocess.run(["bash", str(OPS), "disk-cleanup"], env=env, capture_output=True, text=True)
+        assert r.returncode != 0 and "nothing removed" in r.stderr
+        assert "rmi" not in (tmp_path / "docker.log").read_text() if (tmp_path / "docker.log").exists() else True

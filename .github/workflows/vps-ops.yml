@@ -7,6 +7,8 @@ name: VPS ops
 # text input.
 #
 #   status         what runs and what is switched on (changes nothing)
+#   disk-report    where the disk space goes (changes nothing)
+#   disk-cleanup   removes old AgentX image tags (keeps running + previous) and dangling layers
 #   welcomes-on    H50 step 2: founder welcomes on (rolls api-1, api-2, scheduler; no new image)
 #   welcomes-off   H50 step 4
 #   alerts-setup   H37 step 3: ntfy topic + watchdog cron. A NEW topic appears in the run's
@@ -28,6 +30,8 @@ on:
         default: status
         options:
           - status
+          - disk-report
+          - disk-cleanup
           - welcomes-on
           - welcomes-off
           - alerts-setup
@@ -58,7 +62,7 @@ jobs:
       - name: Check the task name
         run: |
           case "$TASK" in
-            status|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply) ;;
+            status|disk-report|disk-cleanup|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply) ;;
             *) echo "::error::unknown task"; exit 1 ;;
           esac
 
