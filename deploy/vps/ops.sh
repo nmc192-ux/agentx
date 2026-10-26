@@ -9,6 +9,7 @@
 #   cd /opt/agentx && bash ops.sh disk-report     # where the disk space goes (changes nothing)
 #   cd /opt/agentx && bash ops.sh disk-cleanup    # old AgentX images + dangling layers only
 #   cd /opt/agentx && bash ops.sh build-cache-clear  # Docker build cache only (next build is slower once)
+#   cd /opt/agentx && bash ops.sh heartbeat-report  # the founders' last heartbeat + welcome log lines
 #   cd /opt/agentx && bash ops.sh alerts-setup    # H37 step 3: ntfy topic, watchdog cron, first run
 #   cd /opt/agentx && bash ops.sh alerts-test     # one test notification to the phone
 #   cd /opt/agentx && bash ops.sh import-report   # H47 steps 1-4: backup, Neon dump, side db, DRY RUN
@@ -283,8 +284,24 @@ cmd_build_cache_clear() {
   disk_summary
 }
 
+cmd_heartbeat_report() {  # changes nothing: the founders' last heartbeat and its welcome lines
+  say "== last founder heartbeat (scheduler_job_runs)"
+  dc --profile db exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<'SQL'
+SELECT last_status, last_started_at, last_finished_at
+  FROM scheduler_job_runs WHERE job_name = 'founder_heartbeat';
+SELECT key || ': ' || value::text
+  FROM scheduler_job_runs, jsonb_each(last_summary)
+ WHERE job_name = 'founder_heartbeat'
+   AND (key ILIKE '%welcom%' OR key IN ('enabled', 'skipped', 'llm_calls'))
+ ORDER BY 1;
+SQL
+  say "== scheduler log, last 2 hours, welcome lines"
+  dc --profile scheduler logs --since 2h scheduler 2>&1 | grep -iE 'welcom' | tail -n 40 || say "(none)"
+}
+
 case "${1:-}" in
   status) cmd_status ;;
+  heartbeat-report) cmd_heartbeat_report ;;
   build-cache-clear) cmd_build_cache_clear ;;
   disk-report) cmd_disk_report ;;
   disk-cleanup) cmd_disk_cleanup ;;
@@ -293,5 +310,5 @@ case "${1:-}" in
   alerts-test) cmd_alerts_test ;;
   import-report) cmd_import_report ;;
   import-apply) cmd_import_apply ;;
-  *) echo "usage: ops.sh status|disk-report|disk-cleanup|build-cache-clear|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
+  *) echo "usage: ops.sh status|heartbeat-report|disk-report|disk-cleanup|build-cache-clear|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
 esac

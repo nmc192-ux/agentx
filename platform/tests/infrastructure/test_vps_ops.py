@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO / ".github" / "workflows" / "vps-ops.yml"
 OPS = REPO / "deploy" / "vps" / "ops.sh"
 COMPOSE = REPO / "deploy" / "vps" / "docker-compose.yml"
-TASKS = ["status", "disk-report", "disk-cleanup", "build-cache-clear", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
+TASKS = ["status", "heartbeat-report", "disk-report", "disk-cleanup", "build-cache-clear", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
 
 
 def _wf() -> dict:

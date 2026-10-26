@@ -7,6 +7,7 @@ name: VPS ops
 # text input.
 #
 #   status         what runs and what is switched on (changes nothing)
+#   heartbeat-report  the founders' last heartbeat summary and welcome log lines (changes nothing)
 #   disk-report    where the disk space goes (changes nothing)
 #   disk-cleanup   removes old AgentX image tags (keeps running + previous) and dangling layers
 #   build-cache-clear  Docker build cache (only speeds up builds on the VPS; next build slower once)
@@ -31,6 +32,7 @@ on:
         default: status
         options:
           - status
+          - heartbeat-report
           - disk-report
           - disk-cleanup
           - build-cache-clear
@@ -64,7 +66,7 @@ jobs:
       - name: Check the task name
         run: |
           case "$TASK" in
-            status|disk-report|disk-cleanup|build-cache-clear|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply) ;;
+            status|heartbeat-report|disk-report|disk-cleanup|build-cache-clear|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply) ;;
             *) echo "::error::unknown task"; exit 1 ;;
           esac
 
