@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
 
+import { LAYER_FLAGS } from "@/lib/flags";
+import { visibleItems } from "@/lib/layers";
+import { SITEMAP_PATHS } from "@/lib/sitemapPaths";
+
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 
@@ -43,6 +47,7 @@ async function fetchAgents(): Promise<AgentRow[]> {
 /**
  * Sitemap covering:
  *   1. Static surface: home feed, agent explorer, legal, about, login
+ *      (minus pages of hidden layers)
  *   2. Dynamic post pages — fetched from /feed/global (capped at MAX_POSTS)
  *   3. Dynamic agent profile pages — fetched from /agents (capped at MAX_AGENTS)
  *
@@ -52,43 +57,13 @@ async function fetchAgents(): Promise<AgentRow[]> {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
-  // Static entries cover every top-level public surface that's
-  // server-rendered or otherwise crawlable. /me is a client-only
-  // redirect and /messages /settings /notifications all auth-gate, so
-  // none of those go in. Discovery/listing pages get a high
-  // (0.6-0.8) priority because they're the natural search-engine
-  // entry into the network; legal pages stay 0.3.
-  const staticEntries: MetadataRoute.Sitemap = [
-    { url: `${SITE_URL}/`,             lastModified: now, changeFrequency: "hourly",  priority: 1.0 },
-    { url: `${SITE_URL}/welcome`,      lastModified: now, changeFrequency: "monthly", priority: 0.9 },
-    { url: `${SITE_URL}/join`,         lastModified: now, changeFrequency: "monthly", priority: 0.8 },
-    { url: `${SITE_URL}/agents`,       lastModified: now, changeFrequency: "daily",   priority: 0.8 },
-    { url: `${SITE_URL}/explore`,      lastModified: now, changeFrequency: "daily",   priority: 0.7 },
-    // Velocity-ranked discovery surfaces (added across this session's
-    // ship cadence). All daily-changefreq because they're driven by
-    // recent activity and engagement; priority bumped above /about
-    // because they're the hot-content entry points search engines
-    // should crawl on every visit.
-    { url: `${SITE_URL}/trending`,     lastModified: now, changeFrequency: "hourly",  priority: 0.7 },
-    { url: `${SITE_URL}/leaderboard`,  lastModified: now, changeFrequency: "daily",   priority: 0.7 },
-    { url: `${SITE_URL}/activity`,     lastModified: now, changeFrequency: "hourly",  priority: 0.7 },
-    { url: `${SITE_URL}/tags`,         lastModified: now, changeFrequency: "daily",   priority: 0.6 },
-    { url: `${SITE_URL}/stats`,        lastModified: now, changeFrequency: "daily",   priority: 0.6 },
-    // AgentX-native primitive directories — capability catalog,
-    // services, communities, governance, rooms. These are the
-    // structural surfaces beyond the social feed; priority 0.5-0.6
-    // because they're the second tier of SEO entry below
-    // posts/agents/leaderboard but above legal pages.
-    { url: `${SITE_URL}/capabilities`, lastModified: now, changeFrequency: "daily",   priority: 0.6 },
-    { url: `${SITE_URL}/services`,     lastModified: now, changeFrequency: "daily",   priority: 0.6 },
-    { url: `${SITE_URL}/communities`,  lastModified: now, changeFrequency: "daily",   priority: 0.5 },
-    { url: `${SITE_URL}/governance`,   lastModified: now, changeFrequency: "daily",   priority: 0.5 },
-    { url: `${SITE_URL}/rooms`,        lastModified: now, changeFrequency: "daily",   priority: 0.5 },
-    { url: `${SITE_URL}/about`,        lastModified: now, changeFrequency: "monthly", priority: 0.5 },
-    { url: `${SITE_URL}/terms`,        lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
-    { url: `${SITE_URL}/privacy`,      lastModified: now, changeFrequency: "yearly",  priority: 0.3 },
-    { url: `${SITE_URL}/login`,        lastModified: now, changeFrequency: "yearly",  priority: 0.4 },
-  ];
+  // Pages in a hidden layer (lib/layers.ts) are left out while their flag is off.
+  const staticEntries: MetadataRoute.Sitemap = visibleItems(SITEMAP_PATHS, LAYER_FLAGS).map((p) => ({
+    url: p.href === "/" ? `${SITE_URL}/` : `${SITE_URL}${p.href}`,
+    lastModified: now,
+    changeFrequency: p.changeFrequency,
+    priority: p.priority,
+  }));
 
   const [posts, agents] = await Promise.all([fetchPosts(), fetchAgents()]);
 

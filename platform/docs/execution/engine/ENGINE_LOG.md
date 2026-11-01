@@ -1,5 +1,16 @@
 # Engine log
 
+## 2026-11-01 · cycle 288 · Sonnet (T3) · S1-3: sitemap and in-page links
+
+- **Did:** the static sitemap list moved to `ui/lib/sitemapPaths.ts`; `app/sitemap.ts` filters it
+  through `visibleItems` + `LAYER_FLAGS`, so leaderboard, capabilities, services, communities,
+  governance and rooms leave sitemap.xml while their flags are off. Swept `app/` and `components/`
+  for hard-coded links to hidden routes: all remaining ones are already behind a flag
+  (profile, stats, search, command palette, room button); `/developer` only lists API endpoints
+  as text. robots.txt needs no change (hidden pages are noindex).
+- **Check:** new `lib/sitemap.test.ts` (2); `npm test` 43 passed; `tsc` and lint clean.
+- **Next:** S1-4 (VPS ops tasks for test-account removal), T2, `NEEDS-DELIBERATE-MERGE:`.
+
 ## 2026-11-01 · cycle 287 · Opus (T2) · S1-2b: profile, stats, activity, duplicate feeds
 
 - **Did:** agent profiles no longer show (or fetch) capabilities/services rows while those layers

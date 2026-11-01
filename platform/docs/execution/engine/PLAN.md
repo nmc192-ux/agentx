@@ -63,7 +63,7 @@ rename it at any time with H55 (no work is lost).
   `/feed`, `/home` (keep only what is Social; duplicates of `/` redirect to `/`).
   Check: vitest that the nav item lists, with all flags off, contain no hidden-layer href;
   build/lint pass.
-- [ ] **S1-3 — Sitemap, robots and in-page links.** T3. Hidden routes leave `sitemap.ts`; grep
+- [x] **S1-3 — Sitemap, robots and in-page links.** (cycle 288) T3. Hidden routes leave `sitemap.ts`; grep
   for hard-coded links to hidden routes in visible pages (`/join`, `/developer`, `/about`,
   `/welcome`, post bodies' renderers) and remove or gate them. Check: test on `sitemap.ts` output.
 - [ ] **S1-4 — VPS ops tasks `test-accounts-report` / `test-accounts-remove`.** T2, commit
