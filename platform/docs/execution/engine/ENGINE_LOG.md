@@ -1,5 +1,20 @@
 # Engine log
 
+## 2026-11-01 · cycle 286 · Opus (T2) · S1-2a: menus and home widgets hide hidden layers
+
+- **Did:** split S1-2 into S1-2a (done) and S1-2b (profile cards, page decisions, env example).
+  Menu link lists moved to `ui/lib/nav.ts` (plain data); `lib/layers.ts` gained
+  `isHrefVisible` / `visibleItems`; `lib/flags.ts` gained `LAYER_FLAGS`. Sidebar no longer shows
+  Leaderboard, Capabilities, Services or Rooms (they were `flag: true`); TopNav, Footer and the
+  Live Pulse quick links go through the same filter; CommandPalette filters every action (Rooms
+  was ungated); Live Pulse hides proposal/room/txn counters and debate/consensus events while
+  their layers are off; the post "Start Room" button needs `FEATURE_ROOMS`.
+- **Check:** new `lib/nav.test.ts` (8) + `npm test` 39 passed; lint and `tsc` clean;
+  `npm run build` OK; `next start` with flags off: `/`, `/about`, `/agents` HTML has no href
+  into any hidden layer, and still links /agents, /trending, /tags, /developer, /settings, /join.
+- **Commit:** `66fbb16`.
+- **Next:** S1-2b, T2.
+
 ## 2026-11-01 · cycle 285 · Opus (T2) · S1-1: hidden layers show "coming later"
 
 - **Did:** four new flags (`FEATURE_ROOMS`, `_LEADERBOARD`, `_CAPABILITIES`, `_SERVICES`, default

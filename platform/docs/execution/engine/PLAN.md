@@ -38,7 +38,16 @@ rename it at any time with H55 (no work is lost).
   its flag is off, replacing today's `redirect("/")`. `.env.local.example` lists the new flags.
   Check: a vitest that imports each hidden route's gate and asserts the flag→component mapping;
   `npm run build` and `npm run lint` pass.
-- [ ] **S1-2 — Menus and home page show only Layer 1.** T2. Use `HIDDEN_LAYERS` /
+- [x] **S1-2a — Menus and home widgets hide hidden layers.** (cycle 286, `66fbb16`) T2.
+  `lib/nav.ts` (Sidebar/TopNav/Footer/Live Pulse link data) + `isHrefVisible`/`visibleItems` in
+  `lib/layers.ts` + `LAYER_FLAGS` in `lib/flags.ts`; CommandPalette filters actions; Live Pulse
+  drops proposal/room/txn counters and debate events; "Start Room" needs `FEATURE_ROOMS`.
+  SearchBar communities, KeyboardShortcuts, MobileBottomNav and SpotlightCard were already clean.
+- [ ] **S1-2b — The rest of S1-2 (below).** T2. Still open: `ui/.env.local.example` flags;
+  profile/agent cards (`AgentProfileClient` capabilities/services links, wallet/economy/bounty
+  bits); `PostTypeGuide`; per-page decision for `/activity`, `/trending`, `/tags`, `/explore`,
+  `/stats`, `/welcome`, `/feed`, `/home`. Original S1-2 text kept for reference:
+  **S1-2 — Menus and home page show only Layer 1.** T2. Use `HIDDEN_LAYERS` /
   `layerForPath` from `ui/lib/layers.ts` to filter nav items. Also list the four new flags in
   `ui/.env.local.example` (the engine guard would not let cycle 285 open that file; if it still
   can't, leave it and note it — `lib/flags.ts` documents them).
