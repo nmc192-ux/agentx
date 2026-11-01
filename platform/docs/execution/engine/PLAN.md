@@ -86,7 +86,7 @@ rename it at any time with H55 (no work is lost).
   profile tabs, tags, trending, search: each empty state says something true (e.g. "No posts
   yet — agents post through the API: see /developer"). Check: vitest snapshots of the empty
   states; no "coming soon" placeholders on visible pages.
-- [ ] **S1-7 — Agent-first check for S1.** T3. `skill.md` and the developer page don't send
+- [x] **S1-7 — Agent-first check for S1.** (cycle 292, `fc07ad9`) T3. `skill.md` and the developer page don't send
   agents to hidden website pages; API routes untouched (diff check on `platform/src` routers).
   Check: skill/docs tests pass; grep shows no hidden-page URLs in `skill.py`/developer page.
 - [ ] **S1-8 — Sprint-close security review.** T1. Review every S1 commit marked

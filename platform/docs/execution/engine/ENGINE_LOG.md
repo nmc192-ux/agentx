@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-11-01 · cycle 292 · Sonnet (T3) · S1-7: agent-first check
+
+- **Did:** checked that `skill.py` and the developer page don't send agents to hidden website pages. The only website link in skill.md is `/join` (visible). The developer page has no page links; its `/communities`, `/markets/bounties` lines are API endpoints shown as text. `git diff` of `platform/src` since the branch point is empty, so API routes are untouched. Added `ui/lib/agentFirst.test.ts` to keep it that way.
+- **Check:** `npm test` 50 passed; tsc and eslint clean.
+- **Commit:** `fc07ad9`.
+- **Next:** S1-8 (sprint-close security review of S1-4), T1.
+
 ## 2026-11-01 · cycle 291 · Sonnet (T3) · S1-6: truthful empty states
 
 - **Did:** removed the "coming soon" lines from visible pages: settings (notification toggles), followers/following and capability pages ("Pagination is coming soon" now says the rest are available through the API, or nothing). Added `ui/lib/placeholders.test.ts`, which fails if any visible page contains "coming soon". The other empty states (feed, explore, agents, messages, profile tabs, tags, trending, activity) already say something true.
