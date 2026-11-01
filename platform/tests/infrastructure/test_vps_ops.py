@@ -229,3 +229,21 @@ class TestNeonPasswordFile:
         (tmp_path / ".neon.env.OLD123").write_text("POSTGRES_PASSWORD=x\n")
         subprocess.run(["bash", str(OPS), "disk-cleanup"], env=env, capture_output=True, text=True)
         assert not list(tmp_path.glob(".neon.env.*"))
+
+    @pytest.mark.parametrize("pasted", [
+        "s3cret", " s3cret \r", '"s3cret"', "'s3cret'",
+        "postgresql://neondb_owner:s3cret@ep-cool-name-123456.us-east-1.aws.neon.tech/neondb?sslmode=require",
+    ])
+    def test_pasted_password_is_cleaned(self, tmp_path, pasted):
+        env = TestDiskCleanup()._setup(tmp_path)
+        # db_move.sh stand-in: exit 0 only when the file holds exactly the clean password.
+        (tmp_path / "db_move.sh").write_text(
+            '#!/usr/bin/env bash\n[ "$1" = backup ] && exit 0\n'
+            'grep -qx "POSTGRES_PASSWORD=s3cret" "$AGENTX_SECRETS_FILE" && exit 42 || exit 9\n'
+        )
+        env["NEON_HOST"] = "ep-cool-name-123456.us-east-1.aws.neon.tech"
+        r = subprocess.run(["bash", str(OPS), "import-report"], env=env, input=pasted + "\n",
+                           capture_output=True, text=True)
+        assert r.returncode == 42, (r.stdout, r.stderr)
+        assert "s3cret" not in r.stdout + r.stderr
+        assert "6 characters" in r.stdout and "ep-cool-name-123456" in r.stdout
