@@ -20,6 +20,12 @@ import { agentXWs, type WsMessage } from "@/lib/websocket";
 import { getToken } from "@/lib/auth";
 import type { PulseData } from "@/types";
 import { LIVE_POLL_MS, pollWhileVisible } from "@/lib/poll";
+import { FEATURE_ECONOMY, FEATURE_GOVERNANCE, FEATURE_ROOMS, LAYER_FLAGS } from "@/lib/flags";
+import { visibleItems } from "@/lib/layers";
+import { PULSE_QUICK_LINKS } from "@/lib/nav";
+
+// Hidden layers (lib/layers.ts) drop out while their flag is off.
+const QUICK_LINKS = visibleItems(PULSE_QUICK_LINKS, LAYER_FLAGS);
 
 // ── Animated counter ─────────────────────────────────────────────────────────
 function Ticker({ value }: { value: number }) {
@@ -89,6 +95,9 @@ function eventFromWs(msg: WsMessage): ActivityEvent | null {
     const did = (d?.agent_did as string) ?? "";
     return { id, type: "trust", label: `Trust updated: ${did.split(":").pop()?.slice(0, 14) ?? "agent"}`, color: "#3B82F6", ts: Date.now() };
   }
+  if (!FEATURE_GOVERNANCE && (msg.type === "DEBATE_UPDATE" || msg.type === "CONSENSUS_REACHED")) {
+    return null;
+  }
   if (msg.type === "DEBATE_UPDATE") {
     return { id, type: "debate", label: "Debate phase advanced", color: "#F97316", ts: Date.now() };
   }
@@ -148,12 +157,18 @@ export function LivePulseSidebar() {
           <>
             <StatRow icon={Users}         label="Active Agents"  value={pulse.agents_active}      color="#3B82F6" />
             <StatRow icon={MessageSquare} label="Posts / hr"     value={pulse.posts_last_hour}    color="#22C55E" />
-            <StatRow icon={Vote}          label="Open Proposals" value={pulse.active_proposals}   color="#F97316" />
-            <StatRow icon={DoorOpen}      label="Active Rooms"   value={pulse.active_rooms}       color="#A855F7" />
-            <StatRow icon={TrendingUp}    label="Txns (24h)"     value={pulse.transactions_24h}   color="#F59E0B" />
+            {FEATURE_GOVERNANCE && (
+              <StatRow icon={Vote}        label="Open Proposals" value={pulse.active_proposals}   color="#F97316" />
+            )}
+            {FEATURE_ROOMS && (
+              <StatRow icon={DoorOpen}    label="Active Rooms"   value={pulse.active_rooms}       color="#A855F7" />
+            )}
+            {FEATURE_ECONOMY && (
+              <StatRow icon={TrendingUp}  label="Txns (24h)"     value={pulse.transactions_24h}   color="#F59E0B" />
+            )}
           </>
         ) : (
-          Array.from({ length: 5 }).map((_, i) => (
+          Array.from({ length: 2 + Number(FEATURE_GOVERNANCE) + Number(FEATURE_ROOMS) + Number(FEATURE_ECONOMY) }).map((_, i) => (
             <div key={i} className="h-7 rounded bg-slate-800 animate-pulse my-1" />
           ))
         )}
@@ -237,12 +252,7 @@ export function LivePulseSidebar() {
 
       {/* Quick links */}
       <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: "Graph",      href: "/graph",      color: "#06B6D4" },
-          { label: "Governance", href: "/governance", color: "#F97316" },
-          { label: "Rooms",      href: "/rooms",      color: "#A855F7" },
-          { label: "Explore",    href: "/explore",    color: "#22C55E" },
-        ].map(({ label, href, color }) => (
+        {QUICK_LINKS.map(({ label, href, color }) => (
           <Link
             key={href}
             href={href}

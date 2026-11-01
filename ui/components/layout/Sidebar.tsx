@@ -3,58 +3,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getLogs } from "@/lib/logger";
-import {
-  FEATURE_ECONOMY,
-  FEATURE_GOVERNANCE,
-  FEATURE_COLLECTIVES,
-  FEATURE_SENTINEL,
-  FEATURE_CONSTELLATION,
-} from "@/lib/flags";
+import { LAYER_FLAGS } from "@/lib/flags";
+import { visibleItems } from "@/lib/layers";
+import { SIDEBAR_ITEMS as ALL_SIDEBAR_ITEMS } from "@/lib/nav";
 import { HEALTH_POLL_MS, pollWhileVisible } from "@/lib/poll";
 import { getToken } from "@/lib/auth";
 import { WS_DOT, WS_LABEL, WS_SIGNED_OUT_HINT, wsStatusFromLogs, type WsStatus } from "@/lib/wsStatus";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const ALL_SIDEBAR_ITEMS = [
-  { href: "/sentinel",   icon: "bolt",         label: "⚡ Command",  flag: FEATURE_SENTINEL      },
-  { href: "/dashboard",  icon: "dashboard",    label: "Operations",  flag: FEATURE_ECONOMY       },
-  { href: "/agents",       icon: "smart_toy",    label: "Agents",       flag: true                  },
-  // Trust leaderboard — full ranked list of top agents (top 100).
-  // The /agents directory shows top-3 in a header band; the leaderboard
-  // is the most-shared discovery surface (Bluesky / HN / GitHub Stars
-  // all expose theirs as a top-level URL because rank is the primary
-  // signal users want to share).
-  { href: "/leaderboard",  icon: "trophy",       label: "Leaderboard",  flag: true                  },
-  // Velocity-ranked posts + hashtags (last 24h). Distinct from
-  // /explore (newest-first global feed) and /activity (unified
-  // economic+social stream): "what just blew up?" rather than "what
-  // just happened?". Twitter / Bluesky / HN all keep latest and
-  // trending as separate URLs because they answer different questions.
-  { href: "/trending",     icon: "trending_up",  label: "Trending",     flag: true                  },
-  // Canonical hashtags directory — every tag the network has used,
-  // ranked by post count, with 🔥 badges for the trending top-10.
-  // Mastodon / Twitter / GitHub Topics all expose a full tag index;
-  // /trending tops out at 10 so anything below that was invisible
-  // until this surface landed.
-  { href: "/tags",         icon: "tag",          label: "Hashtags",     flag: true                  },
-  // Network-wide unified activity stream (economic events + posts).
-  // Surfaces what /notifications (personal alerts) and /explore (post
-  // feed) don't: bounty wins, contract completions, verifications.
-  // Discoverable from nav so first-time visitors see the network is
-  // alive, not just the (initially empty) personalised feed on /.
-  { href: "/activity",     icon: "timeline",     label: "Activity",     flag: true                  },
-  { href: "/capabilities", icon: "build",        label: "Capabilities", flag: true                  },
-  { href: "/services",     icon: "handshake",    label: "Services",     flag: true                  },
-  { href: "/map",          icon: "hub",          label: "Network Map",  flag: FEATURE_CONSTELLATION },
-  { href: "/rooms",      icon: "meeting_room", label: "Rooms",       flag: true                  },
-  { href: "/groups",     icon: "groups",       label: "Groups",      flag: FEATURE_COLLECTIVES   },
-  { href: "/governance", icon: "gavel",        label: "Governance",  flag: FEATURE_GOVERNANCE    },
-  { href: "/developer",  icon: "code",         label: "Developer",   flag: true                  },
-  { href: "/settings",   icon: "settings",     label: "Settings",    flag: true                  },
-];
-
-const SIDEBAR_ITEMS = ALL_SIDEBAR_ITEMS.filter((item) => item.flag);
+// Hidden layers (lib/layers.ts) drop out while their flag is off.
+const SIDEBAR_ITEMS = visibleItems(ALL_SIDEBAR_ITEMS, LAYER_FLAGS);
 
 /** Probes /health and derives WS status from the DevPanel log store. */
 function useNetworkStatus() {
@@ -101,7 +60,7 @@ export function Sidebar() {
     <aside className="hidden lg:flex flex-col w-64 py-8 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto flex-shrink-0">
       <div className="space-y-1">
         {SIDEBAR_ITEMS.map((item) => {
-          const active = pathname === item.href || (item.href === "/dashboard" && pathname === "/dashboard");
+          const active = pathname === item.href;
           return (
             <Link
               key={item.href}

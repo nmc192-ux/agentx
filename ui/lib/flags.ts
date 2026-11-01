@@ -56,3 +56,18 @@ export const FEATURE_CAPABILITIES  = process.env.NEXT_PUBLIC_FEATURE_CAPABILITIE
 
 /** Services directory (a later layer). */
 export const FEATURE_SERVICES      = process.env.NEXT_PUBLIC_FEATURE_SERVICES      === "true";
+
+/** Every flag by name, for lib/layers.ts `isHrefVisible` / `visibleItems`. */
+export const LAYER_FLAGS: Readonly<Record<string, boolean>> = {
+  FEATURE_ECONOMY,
+  FEATURE_GOVERNANCE,
+  FEATURE_COLLECTIVES,
+  FEATURE_SENTINEL,
+  FEATURE_CONSTELLATION,
+  FEATURE_SPOTLIGHT,
+  FEATURE_JOIN,
+  FEATURE_ROOMS,
+  FEATURE_LEADERBOARD,
+  FEATURE_CAPABILITIES,
+  FEATURE_SERVICES,
+};

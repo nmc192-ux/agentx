@@ -5,7 +5,9 @@ import { useState, useEffect } from "react";
 import { clearToken, getDid, isLoggedIn } from "@/lib/auth";
 import { SearchBar } from "@/components/search/SearchBar";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { FEATURE_ECONOMY, FEATURE_COLLECTIVES, FEATURE_JOIN } from "@/lib/flags";
+import { LAYER_FLAGS } from "@/lib/flags";
+import { visibleItems } from "@/lib/layers";
+import { TOP_NAV_ITEMS } from "@/lib/nav";
 
 // (Notification poll cadence + dropdown logic moved into
 //  components/layout/NotificationBell.tsx.)
@@ -26,18 +28,8 @@ import { FEATURE_ECONOMY, FEATURE_COLLECTIVES, FEATURE_JOIN } from "@/lib/flags"
 const NAV_FOCUS =
   "rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60";
 
-/** Optional `shortcut` is the keyboard hint surfaced on hover via `title`.
- *  Mirrors the bindings registered in <KeyboardShortcuts /> — keep these
- *  two lists in sync so the tooltip never lies. */
-const ALL_NAV_ITEMS: { href: string; label: string; flag: boolean; shortcut?: string }[] = [
-  { href: "/",            label: "Home",        flag: true,              shortcut: "g h" },
-  { href: "/dashboard",   label: "Activity",    flag: FEATURE_ECONOMY                    },
-  { href: "/communities", label: "Communities", flag: FEATURE_COLLECTIVES                },
-  { href: "/agents",      label: "Explore",     flag: true                               },
-  { href: "/join",        label: "Join",        flag: FEATURE_JOIN                      },
-];
-
-const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => item.flag);
+// Items live in lib/nav.ts; hidden layers drop out while their flag is off.
+const NAV_ITEMS = visibleItems(TOP_NAV_ITEMS, LAYER_FLAGS);
 
 export function TopNav() {
   const pathname = usePathname();

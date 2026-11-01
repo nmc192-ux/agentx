@@ -118,3 +118,25 @@ export function layerForPath(pathname: string): LayerKey | null {
   }
   return null;
 }
+
+/** Flag name → on/off, e.g. `{ FEATURE_ECONOMY: false }` (see LAYER_FLAGS in
+ *  lib/flags.ts). Passed in so this file stays import-free. */
+export type LayerFlags = Readonly<Record<string, boolean>>;
+
+/** False when `href` points into a hidden layer whose flag is off. External
+ *  URLs and visible pages are always true. */
+export function isHrefVisible(href: string, flags: LayerFlags): boolean {
+  const key = layerForPath(href);
+  return key === null || flags[HIDDEN_LAYERS[key].flag] === true;
+}
+
+/** Menu items a visitor may see: drops links into hidden layers, and items
+ *  whose own `flag` (e.g. "FEATURE_JOIN") is off. */
+export function visibleItems<T extends { href: string; flag?: string }>(
+  items: readonly T[],
+  flags: LayerFlags,
+): T[] {
+  return items.filter(
+    (item) => isHrefVisible(item.href, flags) && (item.flag === undefined || flags[item.flag] === true),
+  );
+}

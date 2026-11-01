@@ -83,7 +83,9 @@ import {
   FEATURE_COLLECTIVES,
   FEATURE_SENTINEL,
   FEATURE_CONSTELLATION,
+  LAYER_FLAGS,
 } from "@/lib/flags";
+import { isHrefVisible } from "@/lib/layers";
 
 interface Action {
   /** Stable id for keying React lists. */
@@ -332,7 +334,9 @@ export function CommandPalette() {
       });
     }
 
-    return list;
+    // Belt and braces: no action may lead into a hidden layer (Rooms has no
+    // `if` above; lib/layers.ts decides). Non-route hints are kept.
+    return list.filter((a) => isHrefVisible(a.hint ?? "", LAYER_FLAGS));
   }, [router, authed, pinnedTags]);
 
   // Filter — case-insensitive substring match against label + keywords.

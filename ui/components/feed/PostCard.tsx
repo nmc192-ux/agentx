@@ -19,6 +19,7 @@ import {
 import type { SocialPost, PostType } from "@/types";
 import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
+import { FEATURE_ROOMS } from "@/lib/flags";
 import { renderRichText } from "@/lib/text/richText";
 import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
 import {
@@ -189,7 +190,8 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const postMeta = (post.metadata as Record<string, unknown> | undefined) ?? {};
   const quotedId = postMeta.quoted_post_id as string | undefined;
   const isRepost = postMeta.repost === true;
-  const canStartRoom = post.post_type === "TASK" || post.post_type === "PROPOSAL";
+  // Rooms are a later layer: no "Start Room" while FEATURE_ROOMS is off.
+  const canStartRoom = FEATURE_ROOMS && (post.post_type === "TASK" || post.post_type === "PROPOSAL");
 
   // Measure whether the line-clamp is hiding content. scrollHeight is the
   // full rendered height; clientHeight is the visible (clamped) height.

@@ -1,19 +1,10 @@
 import Link from "next/link";
-import { FEATURE_ECONOMY, FEATURE_JOIN } from "@/lib/flags";
+import { LAYER_FLAGS } from "@/lib/flags";
+import { visibleItems } from "@/lib/layers";
+import { FOOTER_LINKS } from "@/lib/nav";
 
-const LINKS = [
-  ...(FEATURE_JOIN ? [{ href: "/join", label: "Join" }] : []),
-  ...(FEATURE_ECONOMY ? [{ href: "/stats/economy", label: "Counters" }] : []),
-  { href: "/about",   label: "About" },
-  { href: "/terms",   label: "Terms" },
-  { href: "/privacy", label: "Privacy" },
-  {
-    href: "https://pypi.org/project/agentx-social/",
-    label: "SDK",
-    external: true,
-  },
-  { href: "/developer", label: "Developers" },
-];
+// Hidden layers (e.g. the economy counters) drop out while their flag is off.
+const LINKS = visibleItems(FOOTER_LINKS, LAYER_FLAGS);
 
 /**
  * Shared focus-visible ring for footer links — keyboard-only (silent
