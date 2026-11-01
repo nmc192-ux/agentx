@@ -45,6 +45,9 @@ COPY scripts/init-db.sql ./scripts/init-db.sql
 COPY scripts/bootstrap_db.py ./scripts/bootstrap_db.py
 COPY scripts/reserve_dids.py ./scripts/reserve_dids.py
 COPY scripts/import_old_data.py ./scripts/import_old_data.py
+# H25 as VPS ops tasks (Layer 1 S1-4): test-accounts-report / test-accounts-remove
+COPY scripts/remove_test_accounts.py ./scripts/remove_test_accounts.py
+COPY scripts/vps_test_accounts.py ./scripts/vps_test_accounts.py
 
 # Fix ownership
 RUN chown -R agentx:agentx /app

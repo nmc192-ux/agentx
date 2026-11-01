@@ -14,6 +14,8 @@
 #   cd /opt/agentx && bash ops.sh alerts-test     # one test notification to the phone
 #   cd /opt/agentx && bash ops.sh import-report   # H47 steps 1-4: backup, Neon dump, side db, DRY RUN
 #   cd /opt/agentx && bash ops.sh import-apply    # H47 steps 5-6: apply, release reservations, tidy, backup
+#   cd /opt/agentx && bash ops.sh test-accounts-report  # H25 step 1: list + DRY RUN (changes nothing)
+#   cd /opt/agentx && bash ops.sh test-accounts-remove  # H25 step 2: backup, remove exactly the report's list
 #
 # Switches live in /opt/agentx/ops.env (owner deploy, chmod 600), which docker-compose.yml loads
 # AFTER settings.env and BEFORE /etc/agentx/api.env: a line DrJ writes by hand in api.env always
@@ -22,6 +24,13 @@
 # import-report reads Neon's DIRECT host from NEON_HOST and the Neon password from stdin (one
 # line); the password goes into a temporary chmod-600 file for db_move.sh and is removed on exit.
 # It is never printed and never put on a command line.
+#
+# test-accounts-report runs scripts/remove_test_accounts.py (through vps_test_accounts.py, which
+# takes the connection from the app settings) as `show` and as a dry run, and keeps the addresses
+# the dry run would remove in test_accounts.dids. test-accounts-remove takes a backup and then
+# removes exactly those addresses (named with --did, so a test account that appeared after the
+# report is never touched); the script re-checks every rule and refuses the whole run if one
+# account fails. The list is used once and expires after a day.
 #
 # Pinned by platform/tests/infrastructure/test_vps_ops.py.
 set -euo pipefail
@@ -34,6 +43,8 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 OLD_DB="agentx_old"
 OPS_SWITCHES="FOUNDER_WELCOMES_ENABLED"
 NEON_TMP=""
+TEST_DIDS="${AGENTX_TEST_DIDS:-$PWD/test_accounts.dids}"
+TEST_DIDS_MAX_AGE_MIN=1440
 PROJECT=agentx
 
 dc() { docker compose --env-file compose.env "$@"; }
@@ -311,6 +322,52 @@ SQL
   dc --profile scheduler logs --since 2h scheduler 2>&1 | grep -iE 'welcom' | tail -n 40 || say "(none)"
 }
 
+test_accounts() {  # test_accounts ARGS...: the reviewed removal script, app database, in migrate
+  dc --profile migrate run --rm migrate python scripts/vps_test_accounts.py "$@"
+}
+
+cmd_test_accounts_report() {  # changes nothing on the database
+  local out tmp n
+  rm -f "$TEST_DIDS"
+  say "== 1. test accounts (reads only)"
+  test_accounts show
+  say "== 2. DRY RUN (changes nothing; this is what test-accounts-remove will do)"
+  out="$(test_accounts remove)" || { printf '%s\n' "$out"; die "the dry run refused; nothing was changed and no list was kept"; }
+  printf '%s\n' "$out"
+  tmp="$(mktemp "$TEST_DIDS.XXXXXX")"
+  chmod 600 "$tmp"
+  printf '%s\n' "$out" | sed -n 's/^  \(did:agentx:[A-Za-z0-9._-]*\)  .*/\1/p' > "$tmp"
+  n="$(wc -l < "$tmp" | tr -d ' ')"
+  if [[ "$n" == 0 ]]; then
+    rm -f "$tmp"
+    say "== nothing to remove; test-accounts-remove has nothing to do"
+    return 0
+  fi
+  grep -q "^DRY RUN: $n test account(s) would be removed" <<< "$out" \
+    || { rm -f "$tmp"; die "the dry run's count does not match the $n addresses read; no list was kept"; }
+  mv -f "$tmp" "$TEST_DIDS"
+  say "== kept the $n address(es) above for test-accounts-remove (valid for 24 hours)"
+}
+
+cmd_test_accounts_remove() {
+  local did dids=() args=()
+  [[ -f "$TEST_DIDS" ]] || die "no list from test-accounts-report: run it first and read it"
+  [[ -n "$(find "$TEST_DIDS" -mmin "-$TEST_DIDS_MAX_AGE_MIN" 2>/dev/null)" ]] \
+    || { rm -f "$TEST_DIDS"; die "the test-accounts-report list is older than 24 hours: run the report again"; }
+  while IFS= read -r did; do
+    [[ "$did" =~ ^did:agentx:[A-Za-z0-9._-]+$ ]] || { rm -f "$TEST_DIDS"; die "the kept list is damaged: run the report again"; }
+    dids+=("$did"); args+=(--did "$did")
+  done < "$TEST_DIDS"
+  (( ${#dids[@]} > 0 )) || { rm -f "$TEST_DIDS"; die "the kept list is empty: run the report again"; }
+  rm -f "$TEST_DIDS"   # used once, whatever happens next
+  say "== 1. fresh backup"
+  bash db_move.sh backup
+  say "== 2. remove ${#dids[@]} test account(s): ${dids[*]}"
+  test_accounts remove "${args[@]}" --apply --by "DrJ (VPS ops)"
+  say "== 3. check (should list none of the above)"
+  test_accounts show
+}
+
 rm -f "$PWD"/.neon.env.* 2>/dev/null || true   # never leave a Neon password file behind
 
 case "${1:-}" in
@@ -324,5 +381,7 @@ case "${1:-}" in
   alerts-test) cmd_alerts_test ;;
   import-report) cmd_import_report ;;
   import-apply) cmd_import_apply ;;
-  *) echo "usage: ops.sh status|heartbeat-report|disk-report|disk-cleanup|build-cache-clear|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply" >&2; exit 2 ;;
+  test-accounts-report) cmd_test_accounts_report ;;
+  test-accounts-remove) cmd_test_accounts_remove ;;
+  *) echo "usage: ops.sh status|heartbeat-report|disk-report|disk-cleanup|build-cache-clear|welcomes on|off|alerts-setup|alerts-test|import-report|import-apply|test-accounts-report|test-accounts-remove" >&2; exit 2 ;;
 esac

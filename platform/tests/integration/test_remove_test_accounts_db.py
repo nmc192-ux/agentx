@@ -545,3 +545,56 @@ async def test_command_line(pool, escrow_db):
         await pool.execute("DELETE FROM agents WHERE agent_id = $1", held["agent_id"])
         if made_atlas:
             await pool.execute("DELETE FROM agents WHERE agent_id = $1", made_atlas)
+
+
+# ── VPS wrapper (Layer 1 S1-4): the same script, connection from the app settings ─────────
+
+_WRAPPER = _SCRIPT.with_name("vps_test_accounts.py")
+
+
+async def test_vps_wrapper_uses_app_settings(pool, escrow_db):
+    """scripts/vps_test_accounts.py reaches the app's database from settings alone, keeps the
+    password off the command line and out of the output, and refuses a --dsn of its own."""
+    import os
+    password = smoke.SMOKE_DB_PASSWORD
+    env = {
+        **{k: v for k, v in os.environ.items()
+           if not k.startswith(("POSTGRES_", "PG", "REDIS_", "DISABLED_ROUTERS"))},
+        "APP_ENV": "development",
+        "POSTGRES_HOST": smoke.DB_HOST, "POSTGRES_PORT": PG_PORT, "POSTGRES_USER": PG_USER,
+        "POSTGRES_DB": escrow_db, "POSTGRES_PASSWORD": password, "POSTGRES_SSL_MODE": "disable",
+        "REDIS_URL": smoke.SMOKE_REDIS_URL, "REDIS_PASSWORD": "smoke-unused",
+        "JWT_SECRET": smoke.SMOKE_JWT_SECRET, "SENTRY_DSN": "",
+    }
+    made_atlas = await pool.fetchval(
+        "INSERT INTO agents (agent_did, display_name) VALUES ($1, 'Atlas VPS') "
+        "ON CONFLICT (agent_did) DO NOTHING RETURNING agent_id", LOG_AS)
+    did = f"did:agentx:canary-{_hex(6)}-001"
+    await pool.execute(
+        "INSERT INTO agents (agent_did, display_name) VALUES ($1, $2)", did, f"canary-{_hex()}")
+
+    def run(*argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, str(_WRAPPER), *argv], env=env,
+                              cwd=_SCRIPT.parents[1], capture_output=True, text=True, timeout=120)
+
+    try:
+        shown = run("show")
+        assert shown.returncode == 0 and did in shown.stdout, shown.stderr
+        dry = run("remove", "--did", did)
+        assert dry.returncode == 0 and "DRY RUN: 1" in dry.stdout, dry.stderr
+        assert f"  {did}  " in dry.stdout                  # ops.sh reads the addresses from here
+        done = run("remove", "--did", did, "--apply", "--by", "DrJ (VPS ops)")
+        assert done.returncode == 0 and "Written to the database: 1" in done.stdout, done.stderr
+        assert await pool.fetchval("SELECT 1 FROM agents WHERE agent_did = $1", did) is None
+        for r in (shown, dry, done):
+            assert password not in r.stdout + r.stderr
+
+        own = run("--dsn", "postgresql://127.0.0.1:1/nope", "show")
+        assert own.returncode == 2 and "do not pass --dsn" in own.stderr
+        own = run("remove", "--dsn=postgresql://x/y")
+        assert own.returncode == 2
+    finally:
+        await pool.execute("DELETE FROM audit_logs WHERE resource_id = $1", did)
+        await pool.execute("DELETE FROM agents WHERE agent_did = $1", did)
+        if made_atlas:
+            await pool.execute("DELETE FROM agents WHERE agent_id = $1", made_atlas)

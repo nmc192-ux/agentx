@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parents[3]
 WORKFLOW = REPO / ".github" / "workflows" / "vps-ops.yml"
 OPS = REPO / "deploy" / "vps" / "ops.sh"
 COMPOSE = REPO / "deploy" / "vps" / "docker-compose.yml"
-TASKS = ["status", "heartbeat-report", "disk-report", "disk-cleanup", "build-cache-clear", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply"]
+TASKS = ["status", "heartbeat-report", "disk-report", "disk-cleanup", "build-cache-clear", "welcomes-on", "welcomes-off", "alerts-setup", "alerts-test", "import-report", "import-apply", "test-accounts-report", "test-accounts-remove"]
 
 
 def _wf() -> dict:
@@ -247,3 +247,124 @@ class TestNeonPasswordFile:
         assert r.returncode == 42, (r.stdout, r.stderr)
         assert "s3cret" not in r.stdout + r.stderr
         assert "6 characters" in r.stdout and "ep-cool-name-123456" in r.stdout
+
+
+A = "did:agentx:canary-aaa111-001"
+B = "did:agentx:sdk-canary-bbb222-001"
+DRY_RUN = (
+    "Test accounts to remove: 2\n"
+    f"  {A}  'canary-x'  MEMBER ACTIVE  signed up 2026-04-02\n"
+    "      own rows deleted: posts 1\n"
+    f"  {B}  'sdk-canary-y'  MEMBER ACTIVE  signed up 2026-04-03\n"
+    "      own rows deleted: none\n"
+    "DRY RUN: 2 test account(s) would be removed. Nothing was changed; add --apply to write.\n"
+)
+
+
+class TestTestAccounts:
+    """H25 as two VPS ops tasks (Layer 1 S1-4): report keeps the dry run's list; remove takes a
+    backup and removes exactly that list, once, within a day; anything off removes nothing."""
+
+    def _setup(self, tmp: Path, dry_run: str = DRY_RUN, dry_exit: int = 0) -> dict:
+        bin_dir = tmp / "bin"
+        bin_dir.mkdir()
+        (tmp / "dry.txt").write_text(dry_run)
+        (bin_dir / "docker").write_text(
+            "#!/usr/bin/env bash\n"
+            'echo "$*" >> "$FAKE_LOG"\n'
+            'case "$*" in\n'
+            '  *"vps_test_accounts.py show"*) echo "Test accounts: 2" ;;\n'
+            '  *"vps_test_accounts.py remove"*--apply*) echo "Written to the database: 2 test account(s) removed." ;;\n'
+            f'  *"vps_test_accounts.py remove") cat "$AGENTX_DIR/dry.txt"; exit {dry_exit} ;;\n'
+            "esac\n"
+        )
+        (bin_dir / "docker").chmod(0o755)
+        (tmp / "db_move.sh").write_text('#!/usr/bin/env bash\necho "db_move $*" >> "$FAKE_LOG"\n')
+        (tmp / "compose.env").write_text("IMAGE_TAG=abc\n")
+        return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "AGENTX_DIR": str(tmp),
+                "FAKE_LOG": str(tmp / "docker.log")}
+
+    def _ops(self, env: dict, task: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["bash", str(OPS), task], env=env, capture_output=True, text=True)
+
+    def _log(self, tmp: Path) -> list[str]:
+        f = tmp / "docker.log"
+        return f.read_text().splitlines() if f.exists() else []
+
+    def test_report_changes_nothing_and_keeps_the_list(self, tmp_path):
+        env = self._setup(tmp_path)
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode == 0, r.stderr
+        assert "DRY RUN: 2" in r.stdout
+        assert not any("--apply" in c or c.startswith("db_move") for c in self._log(tmp_path))
+        kept = tmp_path / "test_accounts.dids"
+        assert kept.read_text().splitlines() == [A, B]
+        assert stat.S_IMODE(kept.stat().st_mode) == 0o600
+
+    def test_remove_backs_up_then_removes_exactly_the_list_once(self, tmp_path):
+        env = self._setup(tmp_path)
+        assert self._ops(env, "test-accounts-report").returncode == 0
+        r = self._ops(env, "test-accounts-remove")
+        assert r.returncode == 0, r.stderr
+        log = self._log(tmp_path)
+        backup = log.index("db_move backup")
+        (apply,) = [i for i, c in enumerate(log) if "--apply" in c]
+        assert backup < apply
+        assert log[apply].endswith(
+            f"python scripts/vps_test_accounts.py remove --did {A} --did {B} --apply --by DrJ (VPS ops)")
+        assert "show" in log[-1]
+        assert not (tmp_path / "test_accounts.dids").exists()
+        again = self._ops(env, "test-accounts-remove")           # used once
+        assert again.returncode != 0 and "run it first" in again.stderr
+        assert sum("--apply" in c for c in self._log(tmp_path)) == 1
+
+    def test_remove_without_a_report_does_nothing(self, tmp_path):
+        env = self._setup(tmp_path)
+        r = self._ops(env, "test-accounts-remove")
+        assert r.returncode != 0 and "test-accounts-report" in r.stderr
+        assert self._log(tmp_path) == []
+
+    def test_remove_refuses_an_old_list(self, tmp_path):
+        env = self._setup(tmp_path)
+        assert self._ops(env, "test-accounts-report").returncode == 0
+        kept = tmp_path / "test_accounts.dids"
+        old = kept.stat().st_mtime - 25 * 3600
+        os.utime(kept, (old, old))
+        before = self._log(tmp_path)
+        r = self._ops(env, "test-accounts-remove")
+        assert r.returncode != 0 and "older than 24 hours" in r.stderr
+        assert self._log(tmp_path) == before and not kept.exists()
+
+    @pytest.mark.parametrize("line", [
+        "did:agentx:x; rm -rf /", "--apply", "did:agentx:a b", "", "did:other:abc",
+    ])
+    def test_remove_refuses_a_damaged_list(self, tmp_path, line):
+        env = self._setup(tmp_path)
+        (tmp_path / "test_accounts.dids").write_text(f"{A}\n{line}\n")
+        r = self._ops(env, "test-accounts-remove")
+        assert r.returncode != 0 and "damaged" in r.stderr
+        assert self._log(tmp_path) == []
+
+    def test_refused_dry_run_keeps_no_list(self, tmp_path):
+        env = self._setup(tmp_path, dry_run="", dry_exit=1)
+        (tmp_path / "test_accounts.dids").write_text(f"{A}\n")      # left from an earlier report
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode != 0 and "refused" in r.stderr
+        assert not (tmp_path / "test_accounts.dids").exists()
+
+    def test_count_mismatch_keeps_no_list(self, tmp_path):
+        env = self._setup(tmp_path, dry_run=DRY_RUN.replace("DRY RUN: 2", "DRY RUN: 3"))
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode != 0 and "does not match" in r.stderr
+        assert not list(tmp_path.glob("test_accounts.dids*"))
+
+    def test_nothing_to_remove_keeps_no_list(self, tmp_path):
+        env = self._setup(tmp_path, dry_run="No test accounts found; nothing to remove.\n")
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode == 0 and "nothing to remove" in r.stdout
+        assert not list(tmp_path.glob("test_accounts.dids*"))
+
+    def test_image_carries_both_scripts(self):
+        dockerfile = (REPO / "platform" / "Dockerfile.fly").read_text()
+        for name in ("remove_test_accounts.py", "vps_test_accounts.py"):
+            assert f"COPY scripts/{name} ./scripts/{name}" in dockerfile

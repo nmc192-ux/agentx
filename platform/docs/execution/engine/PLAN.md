@@ -66,13 +66,15 @@ rename it at any time with H55 (no work is lost).
 - [x] **S1-3 — Sitemap, robots and in-page links.** (cycle 288) T3. Hidden routes leave `sitemap.ts`; grep
   for hard-coded links to hidden routes in visible pages (`/join`, `/developer`, `/about`,
   `/welcome`, post bodies' renderers) and remove or gate them. Check: test on `sitemap.ts` output.
-- [ ] **S1-4 — VPS ops tasks `test-accounts-report` / `test-accounts-remove`.** T2, commit
+- [x] **S1-4 — VPS ops tasks `test-accounts-report` / `test-accounts-remove`.** (cycle 289) T2, commit
   prefix `NEEDS-DELIBERATE-MERGE:` (wraps a reviewed script that deletes production rows; the
   script itself is not changed). Add both to `deploy/vps/ops.sh` and the task list in
   `.github/workflows/vps-ops.yml` (dry run = report; remove requires the report's exact count as
   a confirmation input, mirroring `import-apply`). Check: shell tests / bats-style pytest of the
   ops.sh argument handling, `remove_test_accounts.py` tests (35) still pass; rewrite H25 as a
-  two-click VPS-ops item. **[human] afterwards: H25.**
+  two-click VPS-ops item. **[human] afterwards: H25.** Built with the report's address list
+  (kept on the VPS, used once, 24 h) instead of a typed count: the workflow keeps no free-text
+  input, and `--did` per address is stricter than a count.
 - [ ] **S1-5 — Dead-end sweep (automated).** T2. A Playwright (or fetch-based) crawl of the local
   site with all `NEXT_PUBLIC_FEATURE_*` off and seeded local data: every internal link from
   every visible page returns a working page (no 404/500, no "coming later" reachable from a

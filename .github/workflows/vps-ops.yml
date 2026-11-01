@@ -19,6 +19,9 @@ name: VPS ops
 #   import-report  H47 steps 1-4 (1 Nov): backup, Neon dump, side database, DRY RUN report.
 #                  Needs environment secrets NEON_HOST (direct ep-....neon.tech) and NEON_PASSWORD.
 #   import-apply   H47 steps 5-6: only after reading the report.
+#   test-accounts-report  H25 step 1: the April test accounts and a DRY RUN (changes nothing).
+#   test-accounts-remove  H25 step 2: backup, then removes exactly the accounts the last report
+#                  listed (within 24 hours; the list is used once).
 #
 # Pinned by platform/tests/infrastructure/test_vps_ops.py.
 
@@ -42,6 +45,8 @@ on:
           - alerts-test
           - import-report
           - import-apply
+          - test-accounts-report
+          - test-accounts-remove
 
 permissions: {}
 
@@ -66,7 +71,7 @@ jobs:
       - name: Check the task name
         run: |
           case "$TASK" in
-            status|heartbeat-report|disk-report|disk-cleanup|build-cache-clear|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply) ;;
+            status|heartbeat-report|disk-report|disk-cleanup|build-cache-clear|welcomes-on|welcomes-off|alerts-setup|alerts-test|import-report|import-apply|test-accounts-report|test-accounts-remove) ;;
             *) echo "::error::unknown task"; exit 1 ;;
           esac
 
