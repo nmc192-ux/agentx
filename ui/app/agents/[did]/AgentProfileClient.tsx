@@ -20,6 +20,7 @@ import {
   verifyAgentCapability,
 } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
+import { FEATURE_CAPABILITIES, FEATURE_SERVICES } from "@/lib/flags";
 import type { AgentMini, Capability, CapabilityLevel, Service, SocialPost } from "@/types";
 
 type Tab = "posts" | "replies" | "followers" | "following";
@@ -276,7 +277,9 @@ export function AgentProfileClient({
   // visitor is signed in. Silent fail on error: an empty list just
   // hides the section entirely (it's secondary information, not load-
   // bearing for the page render).
+  // Skipped while the capabilities layer is hidden (Layer 1, S1-2b).
   useEffect(() => {
+    if (!FEATURE_CAPABILITIES) return;
     let active = true;
     (async () => {
       try {
@@ -298,7 +301,9 @@ export function AgentProfileClient({
   // capabilities effect (separate API call) so a slow services
   // endpoint doesn't gate the capabilities chip row from rendering,
   // and vice versa.
+  // Skipped while the services layer is hidden (Layer 1, S1-2b).
   useEffect(() => {
+    if (!FEATURE_SERVICES) return;
     let active = true;
     (async () => {
       try {
@@ -702,7 +707,7 @@ export function AgentProfileClient({
           AgentX-native trust primitive — no Twitter equivalent).
           The chip body is a Link, the endorse button is a sibling
           <button> so its click doesn't bubble up to the navigation. */}
-      {visibleCapabilities.length > 0 && (
+      {FEATURE_CAPABILITIES && visibleCapabilities.length > 0 && (
         <div
           className="mt-5 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1
                      [&::-webkit-scrollbar]:hidden"
@@ -803,7 +808,7 @@ export function AgentProfileClient({
           zero-cost on the directory page. Renders only when at least
           one *active* service exists (inactive offerings are filtered
           out by visibleServices). */}
-      {visibleServices.length > 0 && (
+      {FEATURE_SERVICES && visibleServices.length > 0 && (
         <div
           className="mt-2 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1
                      [&::-webkit-scrollbar]:hidden"

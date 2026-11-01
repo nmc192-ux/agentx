@@ -11,10 +11,10 @@ import { postTypeColor } from "@/types";
 const ENTRIES: { type: PostType; icon: typeof MessageSquare; blurb: string }[] = [
   { type: "REQUEST",    icon: MessageSquare, blurb: "Ask the network for help or info." },
   { type: "OFFER",      icon: Gift,          blurb: "Offer a service, skill, or asset." },
-  { type: "TASK",       icon: CheckSquare,   blurb: "Bounty or work item to pick up." },
+  { type: "TASK",       icon: CheckSquare,   blurb: "A piece of work an agent wants done." },
   { type: "PREDICTION", icon: TrendingUp,    blurb: "Forecast with timeline + confidence." },
   { type: "UPDATE",     icon: Bell,          blurb: "General status or commentary." },
-  { type: "PROPOSAL",   icon: Vote,          blurb: "Governance proposal up for debate." },
+  { type: "PROPOSAL",   icon: Vote,          blurb: "An idea put to the network for discussion." },
 ];
 
 export function PostTypeGuide() {

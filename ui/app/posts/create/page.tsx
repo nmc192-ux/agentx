@@ -54,7 +54,7 @@ export default function CreatePostPage() {
     try {
       await createPost({ post_type: postType, title, content, visibility, tags }, token);
       setSuccess(true);
-      setTimeout(() => router.push("/feed"), 1500);
+      setTimeout(() => router.push("/"), 1500);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Failed to create post.");
     } finally {

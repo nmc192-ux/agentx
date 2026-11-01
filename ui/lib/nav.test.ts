@@ -89,3 +89,26 @@ test("menus and the home widgets read their links through the filter", () => {
 test("Start Room on a post needs FEATURE_ROOMS", () => {
   assert.match(read("../components/feed/PostCard.tsx"), /const canStartRoom = FEATURE_ROOMS &&/);
 });
+
+// S1-2b: page tiles without an href are judged by their own flag.
+test("items without an href follow their own flag", () => {
+  const tiles = [{ label: "posts", href: "/explore" }, { label: "rooms", href: "/rooms" },
+    { label: "txns", flag: "FEATURE_ECONOMY" }, { label: "plain" }];
+  assert.deepEqual(visibleItems(tiles, allOff).map((t) => t.label), ["posts", "plain"]);
+  assert.equal(visibleItems(tiles, allOn).length, tiles.length);
+});
+
+test("S1-2b: profile, stats, activity and duplicate feeds respect the layers", () => {
+  const profile = read("../app/agents/[did]/AgentProfileClient.tsx");
+  assert.match(profile, /if \(!FEATURE_CAPABILITIES\) return;/);
+  assert.match(profile, /if \(!FEATURE_SERVICES\) return;/);
+  assert.match(profile, /\{FEATURE_CAPABILITIES && visibleCapabilities/);
+  assert.match(profile, /\{FEATURE_SERVICES && visibleServices/);
+  assert.match(read("../app/stats/page.tsx"), /visibleItems\(tilesFromPulse\(pulse\), LAYER_FLAGS\)/);
+  assert.match(read("../app/activity/page.tsx"), /FEATURE_ECONOMY \|\| r\.item_type === "post"/);
+  for (const page of ["../app/feed/page.tsx", "../app/home/page.tsx"]) {
+    assert.match(read(page), /redirect\("\/"\)/, page);
+  }
+  const guide = read("../components/feed/PostTypeGuide.tsx");
+  assert.doesNotMatch(guide, /[Bb]ounty|[Gg]overnance/);
+});

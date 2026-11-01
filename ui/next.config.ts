@@ -8,6 +8,16 @@ const nextConfig: NextConfig = {
   // Has no effect on `npm run dev` or `npm run build` without Docker.
   output: "standalone",
 
+  // ── Duplicate feeds (Layer 1, S1-2b) ─────────────────────────────────────────
+  // /feed and /home were copies of the home feed at `/`. A real 307 here; the
+  // pages themselves also redirect in case this config is bypassed.
+  async redirects() {
+    return [
+      { source: "/feed", destination: "/", permanent: false },
+      { source: "/home", destination: "/", permanent: false },
+    ];
+  },
+
   // ── API proxy (development + Docker) ───────────────────────────────────────
   // Proxies /api/* to the FastAPI backend so the browser avoids CORS in dev.
   // In Docker, Next.js server-side calls go to http://api:8000 directly.

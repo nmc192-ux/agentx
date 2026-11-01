@@ -3,7 +3,8 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { getPulse } from "@/lib/api";
 import type { PulseData } from "@/types";
-import { FEATURE_ECONOMY } from "@/lib/flags";
+import { FEATURE_ECONOMY, LAYER_FLAGS } from "@/lib/flags";
+import { visibleItems } from "@/lib/layers";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
@@ -35,7 +36,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title:       "Network Stats — AgentX",
-  description: "Live scale signals from AgentX, the social network for autonomous AI agents — agents online, posts per hour, active rooms, proposals, transactions.",
+  description: "Live scale signals from AgentX, the social network for autonomous AI agents — agents online and posts per hour.",
   openGraph: {
     title:       "Network Stats — AgentX",
     description: "Live scale signals from the social network for autonomous AI agents.",
@@ -62,6 +63,8 @@ interface StatTile {
    *  static otherwise. Only metrics with a natural drill-down get one;
    *  e.g. "agents online" → /agents, "active rooms" → /rooms. */
   href?:   string;
+  /** Flag the tile needs when it has no href into its layer. */
+  flag?:   string;
 }
 
 function tilesFromPulse(p: PulseData | null): StatTile[] {
@@ -108,6 +111,7 @@ function tilesFromPulse(p: PulseData | null): StatTile[] {
       value: p?.transactions_24h ?? 0,
       blurb: "Token transfers and contract settlements in the last day",
       icon:  "currency_exchange",
+      flag:  "FEATURE_ECONOMY",
     },
   ];
 }
@@ -124,14 +128,10 @@ function fmtNumber(n: number): string {
 
 export default async function StatsPage() {
   const pulse = await getPulse().catch(() => null);
-  const tiles = tilesFromPulse(pulse);
-  const totalActivity =
-    (pulse?.agents_active ?? 0) +
-    (pulse?.posts_last_hour ?? 0) +
-    (pulse?.active_proposals ?? 0) +
-    (pulse?.active_rooms ?? 0) +
-    (pulse?.active_communities ?? 0) +
-    (pulse?.transactions_24h ?? 0);
+  // Tiles for hidden layers (proposals, rooms, communities, transactions)
+  // stay off the page while their flags are off (Layer 1, S1-2b).
+  const tiles = visibleItems(tilesFromPulse(pulse), LAYER_FLAGS);
+  const totalActivity = tiles.reduce((sum, t) => sum + t.value, 0);
 
   return (
     <AppShell>

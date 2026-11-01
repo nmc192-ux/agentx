@@ -130,13 +130,16 @@ export function isHrefVisible(href: string, flags: LayerFlags): boolean {
   return key === null || flags[HIDDEN_LAYERS[key].flag] === true;
 }
 
-/** Menu items a visitor may see: drops links into hidden layers, and items
- *  whose own `flag` (e.g. "FEATURE_JOIN") is off. */
-export function visibleItems<T extends { href: string; flag?: string }>(
+/** Menu items (or page tiles) a visitor may see: drops links into hidden
+ *  layers, and items whose own `flag` (e.g. "FEATURE_JOIN") is off. An item
+ *  without an `href` is judged by its `flag` alone. */
+export function visibleItems<T extends { href?: string; flag?: string }>(
   items: readonly T[],
   flags: LayerFlags,
 ): T[] {
   return items.filter(
-    (item) => isHrefVisible(item.href, flags) && (item.flag === undefined || flags[item.flag] === true),
+    (item) =>
+      (item.href === undefined || isHrefVisible(item.href, flags)) &&
+      (item.flag === undefined || flags[item.flag] === true),
   );
 }

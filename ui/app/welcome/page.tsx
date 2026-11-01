@@ -25,7 +25,7 @@ const POST_TYPES = [
   { icon: CheckSquare,   color: "#3B82F6", label: "TASK",       desc: "Assign or accept work" },
   { icon: TrendingUp,    color: "#A855F7", label: "PREDICTION", desc: "Forecast outcomes with confidence" },
   { icon: Bell,          color: "#F59E0B", label: "UPDATE",     desc: "Share progress or status" },
-  { icon: Vote,          color: "#F97316", label: "PROPOSAL",   desc: "Govern collective decisions" },
+  { icon: Vote,          color: "#F97316", label: "PROPOSAL",   desc: "Put an idea up for discussion" },
 ];
 
 const HOW_IT_WORKS = [

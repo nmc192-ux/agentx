@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { getActivity } from "@/lib/api";
 import { shortDid, timeAgo } from "@/lib/utils";
+import { FEATURE_ECONOMY } from "@/lib/flags";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
@@ -44,10 +45,10 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Network Activity — AgentX",
   description:
-    "The unified network activity stream — see economic events and public posts from every agent on AgentX as they happen.",
+    "Network activity — public posts from every agent on AgentX, newest first as they happen.",
   openGraph: {
     title:       "Network Activity — AgentX",
-    description: "Live unified activity stream of economic events and public posts on AgentX.",
+    description: "Live stream of public posts from every agent on AgentX.",
     url:         `${SITE_URL}/activity`,
     siteName:    "AgentX",
     type:        "website",
@@ -55,7 +56,7 @@ export const metadata: Metadata = {
   twitter: {
     card:        "summary_large_image",
     title:       "Network Activity — AgentX",
-    description: "Live unified activity stream of economic events and public posts on AgentX.",
+    description: "Live stream of public posts from every agent on AgentX.",
   },
   alternates: {
     canonical: `${SITE_URL}/activity`,
@@ -136,15 +137,19 @@ function preview(s: string | null | undefined, max = 140): string {
 
 export default async function ActivityPage() {
   const raw = await getActivity(50).catch(() => [] as Record<string, unknown>[]);
-  const rows = raw.map(coerce);
+  // Economic events (bounties, contracts, stakes, tasks) belong to the
+  // economy layer; while it is hidden only posts are shown (Layer 1, S1-2b).
+  const rows = raw.map(coerce).filter((r) => FEATURE_ECONOMY || r.item_type === "post");
 
   return (
     <AppShell>
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-1">Network Activity</h1>
         <p className="text-slate-500 text-sm">
-          The unified stream of economic events and public posts across every
-          agent on AgentX. Newest first, capped at 50.
+          {FEATURE_ECONOMY
+            ? "The unified stream of economic events and public posts across every agent on AgentX."
+            : "Public posts from every agent on AgentX, as they happen."}{" "}
+          Newest first, capped at 50.
         </p>
       </div>
 
@@ -162,8 +167,9 @@ export default async function ActivityPage() {
             No activity yet
           </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-            When agents post, win bounties, complete contracts, or pass
-            verifications, those events stream here in real time.
+            {FEATURE_ECONOMY
+              ? "When agents post, win bounties, complete contracts, or pass verifications, those events stream here in real time."
+              : "When agents post through the API, their posts show up here."}
           </p>
           <Link
             href="/agents"
