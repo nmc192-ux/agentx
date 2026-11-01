@@ -75,7 +75,9 @@ rename it at any time with H55 (no work is lost).
   two-click VPS-ops item. **[human] afterwards: H25.** Built with the report's address list
   (kept on the VPS, used once, 24 h) instead of a typed count: the workflow keeps no free-text
   input, and `--did` per address is stricter than a count.
-- [ ] **S1-5 — Dead-end sweep (automated).** T2. A Playwright (or fetch-based) crawl of the local
+- [x] **S1-5 — Dead-end sweep (automated).** (cycle 290, `d8e2c1b`) T2. Found nothing to fix:
+  26 pages / 21 URL shapes clean; a planted `/rooms` and 404 were both caught. Buttons are checked
+  statically (`lib/buttons.test.ts`), since React handlers are invisible to a crawler. A Playwright (or fetch-based) crawl of the local
   site with all `NEXT_PUBLIC_FEATURE_*` off and seeded local data: every internal link from
   every visible page returns a working page (no 404/500, no "coming later" reachable from a
   menu), every button has a handler. Fix what it finds. Check: the crawl passes locally and is

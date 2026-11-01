@@ -1,5 +1,27 @@
 # Engine log
 
+## 2026-11-01 · cycle 290 · Opus (T2) · S1-5: dead-end sweep
+
+- **Did:** `ui/e2e/dead_ends.spec.ts` crawls the local site from `/` and the always-shown pages,
+  following every internal link (2 pages per URL shape, 80 max). Each page must load (status
+  under 400, no script error, no error page), must not be the "coming later" page, and must have
+  no `<a>` without a target. `join_e2e_check.py` gained `--seed` (3 local agents, a reply, a
+  follow) and `--spec`. `ui/lib/buttons.test.ts` reads the source: every `<button>` on a visible
+  page has a handler, is a submit, or takes spread props.
+- **Result:** nothing to fix. The crawl reached 26 pages (home, about, developer, terms, privacy,
+  join, agents, explore, login, trending, tags, activity, settings, notifications, post, profile,
+  followers, following, trust, tag, create post) with no problems. To prove it can fail, a run
+  with `/rooms` and `/nope-404` added as start pages reported both. The only dead buttons are on
+  hidden pages (`/markets` tabs, BountyCard "Claim Bounty"); the test fails if BountyCard is ever
+  used by a visible page.
+- **Decisions I made (reversible):** buttons are checked in the source rather than by clicking
+  them in the crawl, since React handlers can't be seen in the rendered page and clicking
+  everything could post or follow.
+- **Check:** `join_e2e_check.py --seed --spec e2e/dead_ends.spec.ts` passed (1.3 min); `npm test`
+  47 passed; tsc, eslint and ruff clean.
+- **Commit:** `d8e2c1b`.
+- **Next:** S1-6 (truthful empty states), T3.
+
 ## 2026-11-01 · cycle 289 · Opus (T2) · S1-4: VPS ops tasks for the April test accounts
 
 - **Did:** new `scripts/vps_test_accounts.py` runs the reviewed `remove_test_accounts.py`
