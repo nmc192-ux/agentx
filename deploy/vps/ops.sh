@@ -201,7 +201,15 @@ cmd_import_report() {
   [[ "$host" =~ ^ep-[a-z0-9-]+\.[a-z0-9.-]+\.neon\.tech$ ]] || die "NEON_HOST must be Neon's direct host (ep-....neon.tech)"
   [[ "$host" != *-pooler* ]] || die "NEON_HOST is the -pooler host; give the direct one"
   IFS= read -r password || true
+  # A pasted secret often carries a line ending, spaces or quotes, or is the whole connection
+  # string; Neon passwords have none of those. Keep only the password itself.
+  password="${password//$'\r'/}"
+  if [[ "$password" == postgres*://*:*@* ]]; then password="${password#*://*:}"; password="${password%%@*}"; fi
+  password="${password#"${password%%[![:space:]\"\']*}"}"
+  password="${password%"${password##*[![:space:]\"\']}"}"
   [[ -n "$password" ]] || die "no Neon password on stdin"
+  # Never the password: only its shape, so a wrong paste can be told apart from a wrong value.
+  say "neon endpoint: ${host%%.*}; password: ${#password} characters, npg_ prefix: $([[ "$password" == npg_* ]] && echo yes || echo no)"
   say "== 1. backup of the live database"
   bash db_move.sh backup
   say "== 2. dump Neon (read only)"
