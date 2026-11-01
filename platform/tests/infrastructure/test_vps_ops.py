@@ -207,3 +207,25 @@ class TestBuildCacheClear:
         log = (tmp_path / "docker.log").read_text().splitlines()
         changes = [c for c in log if not c.startswith("system df")]
         assert changes == ["builder prune -a -f"]
+
+
+class TestNeonPasswordFile:
+    def test_failed_dump_leaves_no_password_file(self, tmp_path):
+        env = TestDiskCleanup()._setup(tmp_path)
+        (tmp_path / "db_move.sh").write_text(
+            '#!/usr/bin/env bash\n[ "$1" = backup ] && exit 0\n'
+            'grep -q "^POSTGRES_PASSWORD=s3cret$" "$AGENTX_SECRETS_FILE" || exit 9\nexit 1\n'
+        )
+        (tmp_path / ".neon.env.OLD123").write_text("POSTGRES_PASSWORD=left-from-before\n")
+        env["NEON_HOST"] = "ep-cool-name-123456.us-east-1.aws.neon.tech"
+        r = subprocess.run(["bash", str(OPS), "import-report"], env=env, input="s3cret\n",
+                           capture_output=True, text=True)
+        assert r.returncode != 0
+        assert "unbound variable" not in r.stderr
+        assert not list(tmp_path.glob(".neon.env.*"))
+
+    def test_any_task_sweeps_a_leftover_file(self, tmp_path):
+        env = TestDiskCleanup()._setup(tmp_path)
+        (tmp_path / ".neon.env.OLD123").write_text("POSTGRES_PASSWORD=x\n")
+        subprocess.run(["bash", str(OPS), "disk-cleanup"], env=env, capture_output=True, text=True)
+        assert not list(tmp_path.glob(".neon.env.*"))

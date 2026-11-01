@@ -33,6 +33,7 @@ BACKUP_DIR="${BACKUP_DIR:-/var/backups/agentx}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 OLD_DB="agentx_old"
 OPS_SWITCHES="FOUNDER_WELCOMES_ENABLED"
+NEON_TMP=""
 PROJECT=agentx
 
 dc() { docker compose --env-file compose.env "$@"; }
@@ -196,7 +197,7 @@ old_db_exists() {
 }
 
 cmd_import_report() {
-  local host="${NEON_HOST:-}" password tmp dump
+  local host="${NEON_HOST:-}" password dump
   [[ "$host" =~ ^ep-[a-z0-9-]+\.[a-z0-9.-]+\.neon\.tech$ ]] || die "NEON_HOST must be Neon's direct host (ep-....neon.tech)"
   [[ "$host" != *-pooler* ]] || die "NEON_HOST is the -pooler host; give the direct one"
   IFS= read -r password || true
@@ -204,13 +205,16 @@ cmd_import_report() {
   say "== 1. backup of the live database"
   bash db_move.sh backup
   say "== 2. dump Neon (read only)"
-  tmp="$(mktemp "$PWD/.neon.env.XXXXXX")"
-  trap 'rm -f "$tmp"' EXIT
-  chmod 600 "$tmp"
-  printf 'POSTGRES_PASSWORD=%s\n' "$password" > "$tmp"
+  # The password file is global (NEON_TMP) so the EXIT trap still sees it after this function
+  # returns or fails; any file a crashed earlier run left behind is removed first.
+  rm -f "$PWD"/.neon.env.*
+  NEON_TMP="$(mktemp "$PWD/.neon.env.XXXXXX")"
+  trap 'rm -f "$NEON_TMP"' EXIT
+  chmod 600 "$NEON_TMP"
+  printf 'POSTGRES_PASSWORD=%s\n' "$password" > "$NEON_TMP"
   unset password
-  AGENTX_SECRETS_FILE="$tmp" SRC_HOST="$host" bash db_move.sh dump
-  rm -f "$tmp"
+  AGENTX_SECRETS_FILE="$NEON_TMP" SRC_HOST="$host" bash db_move.sh dump
+  rm -f "$NEON_TMP"
   dump="$(ls -1t "$BACKUP_DIR"/neon-*.dump | head -n 1)"
   say "dump: $(basename "$dump")"
   say "== 3. restore into the side database $OLD_DB (the live database is not touched)"
@@ -298,6 +302,8 @@ SQL
   say "== scheduler log, last 2 hours, welcome lines"
   dc --profile scheduler logs --since 2h scheduler 2>&1 | grep -iE 'welcom' | tail -n 40 || say "(none)"
 }
+
+rm -f "$PWD"/.neon.env.* 2>/dev/null || true   # never leave a Neon password file behind
 
 case "${1:-}" in
   status) cmd_status ;;
