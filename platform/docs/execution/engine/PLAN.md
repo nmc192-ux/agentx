@@ -29,7 +29,7 @@ rename it at any time with H55 (no work is lost).
 
 - [x] **S1-0 — Decompose S1 into this plan; seed H55; branch decision.** T2 (planning).
   Check: this file + `HUMAN_ACTIONS.md` H55 committed and pushed.
-- [ ] **S1-1 — Layer flags and the "coming later" page.** T2 (new UI feature).
+- [x] **S1-1 — Layer flags and the "coming later" page.** (cycle 285, `fd86852`) T2 (new UI feature).
   Add flags in `ui/lib/flags.ts` for the hidden pages that have none (`FEATURE_ROOMS`,
   `FEATURE_LEADERBOARD`, `FEATURE_CAPABILITIES`, `FEATURE_SERVICES`; tasks/wallets/dashboard/stats
   economy under `FEATURE_ECONOMY`; communities under `FEATURE_COLLECTIVES`; graph/map under
@@ -38,7 +38,10 @@ rename it at any time with H55 (no work is lost).
   its flag is off, replacing today's `redirect("/")`. `.env.local.example` lists the new flags.
   Check: a vitest that imports each hidden route's gate and asserts the flag→component mapping;
   `npm run build` and `npm run lint` pass.
-- [ ] **S1-2 — Menus and home page show only Layer 1.** T2.
+- [ ] **S1-2 — Menus and home page show only Layer 1.** T2. Use `HIDDEN_LAYERS` /
+  `layerForPath` from `ui/lib/layers.ts` to filter nav items. Also list the four new flags in
+  `ui/.env.local.example` (the engine guard would not let cycle 285 open that file; if it still
+  can't, leave it and note it — `lib/flags.ts` documents them).
   Sidebar, TopNav, MobileBottomNav, Footer, CommandPalette, SearchBar suggestions, keyboard
   shortcuts and the home right column (`LivePulseSidebar`, `PostTypeGuide`, spotlight card) show
   no link or widget for a hidden layer; profile/agent cards hide wallet/economy/bounty bits.

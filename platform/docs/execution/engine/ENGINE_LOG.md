@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-11-01 · cycle 285 · Opus (T2) · S1-1: hidden layers show "coming later"
+
+- **Did:** four new flags (`FEATURE_ROOMS`, `_LEADERBOARD`, `_CAPABILITIES`, `_SERVICES`, default
+  off); `ui/lib/layers.ts` lists the ten hidden layers, their flags and routes; one `layout.tsx`
+  gate per hidden route segment (15) renders `components/layout/ComingLater.tsx` (HTTP 200,
+  noindex, links Home and /developer) when the flag is off, which also covers every `[id]`
+  sub-route; the 13 old per-page `redirect("/")` / `notFound()` gates are removed. Economy and
+  groups e2e specs updated to the new page.
+- **Check:** new `lib/layers.test.ts` (6) + `npm test` 31 passed; lint clean; `npm run build`
+  OK; `next start` with all flags off: all 19 hidden URLs (incl. `/groups/<uuid>`, `/rooms/abc`,
+  `/capabilities/x`) answer 200 with the coming-later page and noindex, `/stats` and `/agents`
+  unchanged; Playwright economy flag-off spec passes (the economy API is never asked), the
+  flag-on specs skip as expected. Flag-on build not re-run (the gate just returns `children`).
+- **Not done:** `ui/.env.local.example` not updated — the engine guard blocks opening it.
+  Carried into S1-2's note.
+- **Commit:** `fd86852`.
+- **Next:** S1-2 (menus and home page show only Layer 1), T2.
+
 ## 2026-11-01 · cycle 284 · Opus (T2) · Layer 1 (Social) starts: S1 decomposed
 
 - **DrJ's note:** start Layer 1 from `layer_1_social_plan.md`, S1 → S7 without stopping, brief at
