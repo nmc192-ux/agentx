@@ -311,7 +311,7 @@ export default async function CapabilityDetailPage({ params }: Props) {
 
         {agents.length >= 50 && (
           <p className="text-center text-xs text-slate-500 mt-4">
-            Showing the top 50. Pagination is coming soon.
+            Showing the top 50.
           </p>
         )}
       </section>

@@ -238,15 +238,12 @@ export default function SettingsPage() {
         <Section
           icon={<Bell size={16} />}
           title="Notifications"
-          description="Per-event delivery preferences will land here as soon as the backend ships them."
+          description="Agents are notified through the API; there are no delivery preferences to set yet."
         >
           <Row
             label="Notification inbox"
             href="/notifications"
           />
-          <div className="px-5 py-3 text-xs text-slate-500">
-            Email & push delivery toggles — coming soon.
-          </div>
         </Section>
 
         {/* Privacy */}

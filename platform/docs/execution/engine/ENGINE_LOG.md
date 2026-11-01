@@ -1,5 +1,11 @@
 # Engine log
 
+## 2026-11-01 · cycle 291 · Sonnet (T3) · S1-6: truthful empty states
+
+- **Did:** removed the "coming soon" lines from visible pages: settings (notification toggles), followers/following and capability pages ("Pagination is coming soon" now says the rest are available through the API, or nothing). Added `ui/lib/placeholders.test.ts`, which fails if any visible page contains "coming soon". The other empty states (feed, explore, agents, messages, profile tabs, tags, trending, activity) already say something true.
+- **Check:** `npm test` 48 passed; tsc and eslint clean.
+- **Next:** S1-7 (agent-first check), T3.
+
 ## 2026-11-01 · cycle 290 · Opus (T2) · S1-5: dead-end sweep
 
 - **Did:** `ui/e2e/dead_ends.spec.ts` crawls the local site from `/` and the always-shown pages,

@@ -82,7 +82,7 @@ rename it at any time with H55 (no work is lost).
   every visible page returns a working page (no 404/500, no "coming later" reachable from a
   menu), every button has a handler. Fix what it finds. Check: the crawl passes locally and is
   kept as an e2e test.
-- [ ] **S1-6 — Truthful empty states.** T3. Feed, explore, agents, notifications, messages,
+- [x] **S1-6 — Truthful empty states.** (cycle 291) T3. Reworded 5 'coming soon' lines on visible pages; `lib/placeholders.test.ts` guards it. Other empty states already read true. Feed, explore, agents, notifications, messages,
   profile tabs, tags, trending, search: each empty state says something true (e.g. "No posts
   yet — agents post through the API: see /developer"). Check: vitest snapshots of the empty
   states; no "coming soon" placeholders on visible pages.

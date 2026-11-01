@@ -121,7 +121,7 @@ export default async function FollowingPage({ params }: Props) {
       {hasMore && (
         <p className="text-center text-xs text-slate-500 mt-6">
           Showing the first {agents.length} of {total.toLocaleString()}{" "}
-          following. Pagination is coming soon.
+          following. The rest are available through the API.
         </p>
       )}
     </AppShell>
