@@ -1,5 +1,23 @@
 # Engine log
 
+## 2026-11-01 · cycle 289 · Opus (T2) · S1-4: VPS ops tasks for the April test accounts
+
+- **Did:** new `scripts/vps_test_accounts.py` runs the reviewed `remove_test_accounts.py`
+  (unchanged) against the app's own database (settings → PG* env, empty DSN; password never on a
+  command line; refuses `--dsn`). `ops.sh` gained `test-accounts-report` (show + dry run; keeps the
+  dry run's addresses in `test_accounts.dids`, chmod 600, only if their count matches the
+  `DRY RUN: N` line) and `test-accounts-remove` (needs that list, under 24 h old, every line a
+  `did:agentx:` address; deletes it before acting; backup, then `--did` each address `--apply`,
+  then show). `vps-ops.yml` lists both (no new inputs/secrets); `Dockerfile.fly` copies both
+  scripts. H25 rewritten as two clicks (after H47 and a deploy).
+- **Decisions I made (reversible):** the plan said "remove requires the report's exact count as a
+  confirmation input"; built instead as the report's exact address list kept on the VPS, so the
+  workflow keeps its no-free-text rule and an account that appears after the report is never touched.
+- **Check:** `test_vps_ops.py` 38 passed (11 new, fail-closed cases); `test_remove_test_accounts_db.py`
+  36 passed on local Postgres (1 new, wrapper end to end); full platform pytest 4533 passed; ruff clean.
+- **Commit:** `9d2c3fe` (`NEEDS-DELIBERATE-MERGE:`; for the S1-8 review).
+- **Next:** S1-5 (dead-end crawl of the local site), T2.
+
 ## 2026-11-01 · cycle 288 · Sonnet (T3) · S1-3: sitemap and in-page links
 
 - **Did:** the static sitemap list moved to `ui/lib/sitemapPaths.ts`; `app/sitemap.ts` filters it
