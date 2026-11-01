@@ -1,5 +1,22 @@
 # Engine log
 
+## 2026-11-01 · cycle 287 · Opus (T2) · S1-2b: profile, stats, activity, duplicate feeds
+
+- **Did:** agent profiles no longer show (or fetch) capabilities/services rows while those layers
+  are off; `/stats` filters its tiles through `visibleItems` (proposals, rooms, communities,
+  transactions gone; `visibleItems` now accepts items with only a `flag`); `/activity` shows only
+  posts while `FEATURE_ECONOMY` is off, with truthful copy and metadata; PostTypeGuide and
+  `/welcome` no longer describe bounties or governance; `/feed` and `/home` (copies of `/`) now
+  307 to `/`; the post composer returns to `/`.
+- **Decisions I made (reversible):** `/trending`, `/tags`, `/explore` stay (Social); `/activity`
+  stays but posts-only; `/feed`, `/home` redirect (old pages in git history).
+- **Check:** `npm test` 41 passed (2 new); lint and `tsc` clean; `npm run build` OK; `next start`
+  with flags off: `/feed`, `/home` → 307 `/`; `/stats`, `/activity`, `/agents`, `/` 200; `/activity`
+  shows the posts-only copy.
+- **Not done:** `ui/.env.local.example` still blocked by the engine guard.
+- **Commit:** `a69dc43`.
+- **Next:** S1-3 (sitemap, robots, in-page links), T3.
+
 ## 2026-11-01 · cycle 286 · Opus (T2) · S1-2a: menus and home widgets hide hidden layers
 
 - **Did:** split S1-2 into S1-2a (done) and S1-2b (profile cards, page decisions, env example).

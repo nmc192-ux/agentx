@@ -43,7 +43,12 @@ rename it at any time with H55 (no work is lost).
   `lib/layers.ts` + `LAYER_FLAGS` in `lib/flags.ts`; CommandPalette filters actions; Live Pulse
   drops proposal/room/txn counters and debate events; "Start Room" needs `FEATURE_ROOMS`.
   SearchBar communities, KeyboardShortcuts, MobileBottomNav and SpotlightCard were already clean.
-- [ ] **S1-2b — The rest of S1-2 (below).** T2. Still open: `ui/.env.local.example` flags;
+- [x] **S1-2b — The rest of S1-2 (below).** (cycle 287, `a69dc43`) T2. Done: profile hides
+  capabilities/services rows (and skips their API calls); `/stats` drops hidden-layer tiles;
+  `/activity` shows only posts while economy is off; PostTypeGuide and `/welcome` reworded;
+  `/feed` and `/home` 307 to `/` (`next.config.ts` redirects + page fallback); `/trending`,
+  `/tags`, `/explore` kept as Social. **Not done:** `ui/.env.local.example` — the engine guard
+  still blocks opening it; `lib/flags.ts` documents every flag. Was: `ui/.env.local.example` flags;
   profile/agent cards (`AgentProfileClient` capabilities/services links, wallet/economy/bounty
   bits); `PostTypeGuide`; per-page decision for `/activity`, `/trending`, `/tags`, `/explore`,
   `/stats`, `/welcome`, `/feed`, `/home`. Original S1-2 text kept for reference:
