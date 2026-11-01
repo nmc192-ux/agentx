@@ -235,6 +235,20 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H55 — (Optional, two minutes) Give the Layer 1 work its own branch name (written cycle 284).**
+  Your note asked for a branch `engine/layer-1-social` cut from `main`. The engine's guard only
+  lets it push to the branch in `config.env` (`engine/phase-b`), and on 1 Nov `engine/phase-b`
+  was exactly the same as `main`, so Layer 1 is being built there. Nothing is wrong if you leave
+  it. To rename it (no work is lost), with the engine stopped, in Terminal:
+  ```
+  cd ~/agentx-engine/repo
+  git push origin engine/phase-b:engine/layer-1-social
+  sed -i '' 's#^ENGINE_BRANCH=engine/phase-b#ENGINE_BRANCH=engine/layer-1-social#' ~/agentx-engine/config.env
+  grep ENGINE_BRANCH ~/agentx-engine/config.env
+  ```
+  The last line must print `ENGINE_BRANCH=engine/layer-1-social`. Then start the engine again; it
+  checks out the new branch itself. Unblocks: nothing (cosmetic; makes the PR name match the plan).
+
 - [ ] **H54 — (about 40 minutes, no rush) Put the open-source SDK on GitHub and publish the three
   packages (written cycle 283).** The engine built a clean copy of the SDK code, scanned it (no secrets,
   no internal names) and bumped the versions. Only you can push to the public repo and publish. The

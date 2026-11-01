@@ -1,5 +1,22 @@
 # Engine log
 
+## 2026-11-01 · cycle 284 · Opus (T2) · Layer 1 (Social) starts: S1 decomposed
+
+- **DrJ's note:** start Layer 1 from `layer_1_social_plan.md`, S1 → S7 without stopping, brief at
+  each sprint close, stop at 250 cycles (= cycle 533) or a blocker; no merge, no deploy.
+- **Did:** read the plan and the UI (flags in `ui/lib/flags.ts`, Sidebar/TopNav/MobileBottomNav/
+  Footer, `vps-ops.yml`, `remove_test_accounts.py`); wrote `PLAN.md` for S1 (S1-0 … S1-9); old
+  plan archived as `archive/PLAN_truthful_founders_and_oss.md`; H55 added.
+- **Decision I made (reversible):** Layer 1 is built on `engine/phase-b`, not a new
+  `engine/layer-1-social`: the guard only allows pushes to `engine/phase-b`, and that branch was
+  identical to `origin/main` (`9d6afbe`) at the start of this cycle, so it is exactly the cut
+  DrJ asked for. H55 renames it in two minutes if DrJ wants.
+- **Seen while reading:** many pages DrJ wants hidden have no flag yet (rooms, leaderboard,
+  capabilities, services are `flag: true` in the Sidebar); gated pages `redirect("/")` instead of
+  a "coming later" page. Both are S1-1/S1-2.
+- **Check:** docs only; no code changed.
+- **Next:** S1-1 (layer flags + "coming later" page), T2.
+
 ## 2026-10-18 · cycle 283 · Sonnet (T3) · OSS-3: publish workflows + H54 for DrJ
 
 - **Added** three tag-triggered publish workflows for the public repo
