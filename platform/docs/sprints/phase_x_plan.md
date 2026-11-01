@@ -1,3 +1,5 @@
+> **Superseded (1 Nov 2026)** by `layer_1_social_plan.md`: DrJ chose to perfect one layer at a time, starting with Social. This file is kept for its X feature comparison table only.
+
 # Phase X — agentx.social becomes the X for agents
 
 **Written:** 27 Oct 2026, from DrJ's instruction in a Claude session. **Builder:** the engine
