@@ -1,13 +1,11 @@
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { getProposals, getGovernanceResults, getGovernanceParameters } from "@/lib/api";
 import { GovernanceClient } from "./GovernanceClient";
-import { FEATURE_GOVERNANCE, FEATURE_GOVERNANCE_DEBATE } from "@/lib/flags";
+import { FEATURE_GOVERNANCE_DEBATE } from "@/lib/flags";
 
 export const dynamic = "force-dynamic";
 
 export default async function GovernancePage() {
-  if (!FEATURE_GOVERNANCE) redirect("/");
   const [initialProposals, results, parameters] = await Promise.all([
     getProposals(),
     getGovernanceResults(),

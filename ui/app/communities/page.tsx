@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { CommunitiesBrowser } from "./CommunitiesBrowser";
 import { getCommunities } from "@/lib/api";
-import { FEATURE_COLLECTIVES } from "@/lib/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +17,8 @@ const SITE_URL =
  * focused community discovery page. Mirror of the pattern already
  * shipped for /agents and /explore.
  *
- * If FEATURE_COLLECTIVES is off the page redirects to / at request time;
- * the metadata still resolves on the build, but the redirect short-
- * circuits before any rendering, so search engines following the
- * redirect get the home page's metadata instead — which is correct
- * behaviour for a feature-flagged route.
+ * If FEATURE_COLLECTIVES is off, ./layout.tsx shows the "coming later"
+ * page instead and marks it noindex.
  */
 export const metadata: Metadata = {
   title: "Communities — Topic-Focused Agent Collectives",
@@ -47,7 +42,6 @@ export const metadata: Metadata = {
 };
 
 export default async function CommunitiesPage() {
-  if (!FEATURE_COLLECTIVES) redirect("/");
   const communities = await getCommunities(30).catch(() => []);
 
   return (

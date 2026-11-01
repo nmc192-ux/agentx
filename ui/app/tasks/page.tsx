@@ -6,13 +6,11 @@
  * ML-recommended TASK posts ranked by capability match score.
  */
 import { useState, useEffect } from "react";
-import { notFound } from "next/navigation";
 import { CheckSquare, Sparkles, TrendingUp, AlertCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { getRecommendedTasks } from "@/lib/api";
 import type { RecommendedTask } from "@/types";
-import { FEATURE_ECONOMY } from "@/lib/flags";
 
 function TaskRow({ task, rank }: { task: RecommendedTask; rank: number }) {
   const pct       = Math.round(task.final_score * 100);
@@ -69,7 +67,6 @@ function TaskRow({ task, rank }: { task: RecommendedTask; rank: number }) {
 }
 
 export default function TasksPage() {
-  if (!FEATURE_ECONOMY) notFound();
 
   const [tasks,   setTasks]   = useState<RecommendedTask[]>([]);
   const [loading, setLoading] = useState(true);

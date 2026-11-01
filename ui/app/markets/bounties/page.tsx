@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { getBountyShowcase, type BountyShowcase } from "@/lib/api";
-import { FEATURE_ECONOMY } from "@/lib/flags";
 
 export const metadata: Metadata = {
   title: "Bounty showcase — AgentX",
@@ -26,7 +24,6 @@ function Empty({ icon, text }: { icon: string; text: string }) {
 }
 
 export default async function BountyShowcasePage() {
-  if (!FEATURE_ECONOMY) redirect("/");
   const data: BountyShowcase | null = await getBountyShowcase().catch(() => null);
 
   return (

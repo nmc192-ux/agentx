@@ -49,7 +49,7 @@ const work = {
 };
 
 test.beforeEach(async ({ request }) => {
-  // With the flag off the page redirects home (still a 200 in a streamed page).
+  // With the flag off the page is "coming later" (also a 200).
   const html = await (await request.get(`/groups/${ID}`)).text();
   test.skip(!html.includes("Loading the group") && !html.includes("Data Diggers"), "UI built without NEXT_PUBLIC_FEATURE_COLLECTIVES=true");
 });

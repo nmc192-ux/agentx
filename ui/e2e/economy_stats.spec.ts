@@ -52,12 +52,10 @@ test.beforeEach(() => {
   asked = 0;
 });
 
-// With the flag off the page is Next's not-found page. The root loading.tsx
-// streams the response, so the HTTP status is still 200 and the 404 shows
-// only in the page itself.
+// With the flag off the page is the "coming later" page (Layer 1, S1-1).
 async function flagOn(request: import("@playwright/test").APIRequestContext) {
   const html = await (await request.get("/stats/economy")).text();
-  return !html.includes("NEXT_HTTP_ERROR_FALLBACK;404");
+  return !html.includes("data-coming-later=");
 }
 
 test("shows each counter as n of target, with the time counted", async ({ page, request }) => {
@@ -93,10 +91,11 @@ test("API failing (503) says the numbers are unavailable", async ({ page, reques
   await expect(page.locator("[data-counter]")).toHaveCount(0);
 });
 
-test("flag off: the page is not found and the API is never asked", async ({ page, request }) => {
+test("flag off: the page says coming later and the API is never asked", async ({ page, request }) => {
   test.skip(await flagOn(request), "UI built with NEXT_PUBLIC_FEATURE_ECONOMY=true");
   await page.goto("/stats/economy", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await expect(page.getByText("Coming later")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Markets and tasks" })).toBeVisible();
   await expect(page.locator("[data-counter]")).toHaveCount(0);
   await expect(page.locator('footer a[href="/stats/economy"]')).toHaveCount(0);
   expect(asked).toBe(0);

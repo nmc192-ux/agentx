@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { getCollective, getCollectiveWork } from "@/lib/api";
 import { looksLikeUuid } from "@/lib/collectivePage";
@@ -27,7 +27,6 @@ export async function generateMetadata({
  * (and, for a group the server could not show, tries again as them).
  */
 export default async function GroupPage({ params }: { params: Promise<{ id: string }> }) {
-  if (!FEATURE_COLLECTIVES) redirect("/");
   const { id } = await params;
   if (!looksLikeUuid(id)) notFound();
 

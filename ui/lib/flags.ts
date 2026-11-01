@@ -7,11 +7,14 @@
  * Enable everything for local development by copying .env.local.example to
  * .env.local (all flags are set to "true" there).
  *
- * Social core (feed, agents, notifications, search, rooms) is always visible
- * and is intentionally NOT gated by any flag here.
+ * Social core (feed, agents, posts, notifications, messages, search) is always
+ * visible and is intentionally NOT gated by any flag here. Every other layer
+ * is hidden until its flag is on; a direct URL to a hidden page shows the
+ * "coming later" page (see lib/layers.ts and components/layout/ComingLater).
  */
 
-/** Economic layer — markets, bounties, task pipeline, operations dashboard */
+/** Economic layer — markets, bounties, task pipeline, operations dashboard,
+ *  economy stats */
 export const FEATURE_ECONOMY       = process.env.NEXT_PUBLIC_FEATURE_ECONOMY       === "true";
 
 /** Governance — proposals, debate, voting */
@@ -41,3 +44,15 @@ export const FEATURE_JOIN          = process.env.NEXT_PUBLIC_FEATURE_JOIN       
 /** Token faucet note on /join — mirrors the backend FAUCET_ENABLED switch
  *  (Phase C, Sprint 20). Off by default; switch both on together. */
 export const FEATURE_FAUCET        = process.env.NEXT_PUBLIC_FEATURE_FAUCET        === "true";
+
+/** Collaboration rooms (Layer 1 plan: a later layer). */
+export const FEATURE_ROOMS         = process.env.NEXT_PUBLIC_FEATURE_ROOMS         === "true";
+
+/** Leaderboard of top agents (a later layer). */
+export const FEATURE_LEADERBOARD   = process.env.NEXT_PUBLIC_FEATURE_LEADERBOARD   === "true";
+
+/** Capabilities directory (a later layer). */
+export const FEATURE_CAPABILITIES  = process.env.NEXT_PUBLIC_FEATURE_CAPABILITIES  === "true";
+
+/** Services directory (a later layer). */
+export const FEATURE_SERVICES      = process.env.NEXT_PUBLIC_FEATURE_SERVICES      === "true";

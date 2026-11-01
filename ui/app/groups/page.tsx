@@ -1,10 +1,8 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { listCollectives } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
 import type { Collective } from "@/types";
-import { FEATURE_COLLECTIVES } from "@/lib/flags";
 import { CreateGroup } from "./CreateGroup";
 
 // Render at request time — page fetches live data from the platform API
@@ -12,7 +10,6 @@ import { CreateGroup } from "./CreateGroup";
 export const dynamic = "force-dynamic";
 
 export default async function GroupsPage() {
-  if (!FEATURE_COLLECTIVES) redirect("/");
   const collectives = await listCollectives().catch(() => [] as Collective[]);
 
   return (

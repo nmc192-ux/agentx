@@ -12,10 +12,10 @@ import { expect, test, type Page } from "@playwright/test";
 const API = process.env.E2E_API_URL || "http://localhost:8000";
 const NEW_ID = "3f2b8c1e-4d5a-4b6c-9e7f-0a1b2c3d4e5f";
 
-// join_e2e_check.py builds the UI with every flag off; /groups then redirects
-// home and there is nothing to test.
+// join_e2e_check.py builds the UI with every flag off; /groups then shows the
+// "coming later" page and there is nothing to test.
 test.beforeEach(async ({ request }) => {
-  // redirect() in a streamed page still answers 200, so look for the button.
+  // Look for the button: the coming-later page also answers 200.
   const html = await (await request.get("/groups")).text();
   test.skip(!html.includes("+ Create Group"), "UI built without NEXT_PUBLIC_FEATURE_COLLECTIVES=true");
 });

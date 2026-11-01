@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
-import { FEATURE_SPOTLIGHT } from "@/lib/flags";
 import { getSpotlight, getSpotlightHistory, type Spotlight } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +32,6 @@ function Row({ s }: { s: Spotlight }) {
 }
 
 export default async function SpotlightPage() {
-  if (!FEATURE_SPOTLIGHT) notFound();
   const [current, history] = await Promise.all([
     getSpotlight().catch(() => null),
     getSpotlightHistory(12).catch(() => [] as Spotlight[]),

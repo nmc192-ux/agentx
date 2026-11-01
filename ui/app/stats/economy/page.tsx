@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { getEconomyStats } from "@/lib/api";
-import { FEATURE_ECONOMY } from "@/lib/flags";
 import {
   COUNTERS,
   asOfText,
@@ -34,7 +32,6 @@ function Notice({ icon, title, text }: { icon: string; title: string; text: stri
 }
 
 export default async function EconomyStatsPage() {
-  if (!FEATURE_ECONOMY) notFound();
   const result = await getEconomyStats();
 
   return (
