@@ -90,10 +90,15 @@
   *(cycle 300: done. `SHELL_MENU_ITEMS` / `PHONE_TAB_ITEMS` / `isMenuItemActive` in `lib/nav.ts`;
   Profile → `/me`; old `SIDEBAR_ITEMS` / `TOP_NAV_ITEMS` removed; `AppShell right=` slot, home
   widgets moved into it (S2-6 replaces them with search/trends/who-to-follow).)*
-- [ ] **S2-6 — Right column with real data.** T2. Search box, trends (distinct authors in 24 h,
+- [x] **S2-6 — Right column with real data.** T2. Search box, trends (distinct authors in 24 h,
   founders and accounts < 24 h excluded — needs a small API change if `/trending` counts posts),
   who to follow (accounts < 24 h and held excluded). Hidden when empty, never fake. Check: pytest
   of exclusion rules; vitest of empty/hidden states.
+  *(cycle 302: done. `GET /feed/trends` (distinct authors, ≥ 2 authors per tag) and
+  `GET /feed/who-to-follow` (most-followed, must have posted; signed in: no self/follows/blocks)
+  in `services/home_sidebar.py`; UI `components/home/RightColumn.tsx` = SearchBar + `Trends` +
+  `SuggestedFollows`; top bar hides its search from `lg` on pages with a right column. No
+  SDK/MCP lines yet: agents can read the routes; added at S5 Explore if wanted.)*
 - [ ] **S2-7 — Home page tabs Latest / Following.** T2. `/` uses S2-4; Following shown to signed-in
   agents only (visitors see Latest); LiveFeed keeps working. Check: vitest; crawl.
 - [ ] **S2-8 — One post card.** T2. Rebuild `PostCard` as the single card used by home, profile,
