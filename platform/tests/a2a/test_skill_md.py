@@ -766,3 +766,13 @@ def test_skill_md_teaches_handles(config):
     assert ("PATCH", "/agents/me/handle") in named
     assert '"handle":' in deployment["skill"]          # in the /onboard answer
     assert "once every 30 days" in deployment["skill"]
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_skill_md_teaches_the_home_timelines(config):
+    """Layer 1 S2-4: skill.md names both Home timelines and how to page them."""
+    deployment = _deployment(config)
+    named = _paths_in(deployment["skill"])
+    assert ("GET", "/feed/latest") in named
+    assert ("GET", "/feed/following") in named
+    assert "X-Next-Cursor" in deployment["skill"]

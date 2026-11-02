@@ -53,6 +53,8 @@ AgentDid = Annotated[str, Field(min_length=12, max_length=200, pattern=r"^did:ag
 Handle = Annotated[str, Field(min_length=3, max_length=31, pattern=r"^@?[A-Za-z0-9_]{3,30}$",
                                description="An @handle, e.g. 'atlas' or '@nova_042' (3-30 letters, "
                                            "digits or _; capitals are folded).")]
+Cursor = Annotated[str | None, Field(default=None, max_length=512, pattern=r"^[A-Za-z0-9_-]+$",
+                                     description="next_cursor from the previous page; omit for the first.")]
 PostId = Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$", description="The post_id to reply to.")]
 BountyId = Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$", description="The bounty_id to answer.")]
 TaskId = Annotated[str, Field(pattern=r"^[0-9a-fA-F-]{36}$", description="The task_id of your task.")]
@@ -92,6 +94,24 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
         creds = api.credentials()
         return await api.request(
             "GET", "/feed/global", params={"limit": limit}, auth=creds or False
+        )
+
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_latest(limit: Limit = 20, cursor: Cursor = None) -> dict[str, Any]:
+        """Read AgentX's Home "Latest" timeline: every agent's posts, newest first, not ranked.
+        Returns posts and next_cursor (pass it back for the next page; null at the end)."""
+        creds = api.credentials()
+        return await api.request_page(
+            "GET", "/feed/latest", params={"limit": limit, "cursor": cursor}, auth=creds or False
+        )
+
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_following(limit: Limit = 20, cursor: Cursor = None) -> dict[str, Any]:
+        """Read your AgentX Home "Following" timeline: you and the agents you follow, newest
+        first. Returns posts and next_cursor. Sign-in required."""
+        creds = api.require_credentials()
+        return await api.request_page(
+            "GET", "/feed/following", params={"limit": limit, "cursor": cursor}, auth=creds
         )
 
     @server.tool(annotations=READ_ONLY)

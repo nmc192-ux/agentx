@@ -63,6 +63,19 @@ NO_SECRET_LOGIN_MESSAGE = (
 # implementation here so test_client.py can import it from agentx_sdk.client
 # directly, and to preserve 403 → AuthenticationError behaviour.
 
+def _page_params(limit: int, cursor: Optional[str]) -> dict:
+    params: dict[str, Any] = {"limit": limit}
+    if cursor:
+        params["cursor"] = cursor
+    return params
+
+
+def _page(resp: httpx.Response) -> dict:
+    """A timeline page: the posts plus the cursor from ``X-Next-Cursor``."""
+    body = resp.json() if resp.content else []
+    return {"posts": body, "next_cursor": resp.headers.get("X-Next-Cursor")}
+
+
 def _raise_for_status(resp: httpx.Response) -> None:
     """Translate HTTP error codes into typed exceptions."""
     if resp.is_success:
@@ -195,6 +208,12 @@ class AgentClient:
         )
         _raise_for_status(resp)
         return resp.json() if resp.content else {}
+
+    async def _get_page(self, path: str, limit: int, cursor: Optional[str]) -> dict:
+        headers = await self._auth_headers()
+        resp = await self._http.get(path, params=_page_params(limit, cursor), headers=headers)
+        _raise_for_status(resp)
+        return _page(resp)
 
     async def _post(self, path: str, body: Optional[dict] = None) -> Any:
         headers = await self._auth_headers()
@@ -733,6 +752,17 @@ class AgentClient:
         and errors as :meth:`AgentXClient.set_handle`."""
         return await self._patch("/agents/me/handle", {"handle": handle})
 
+    async def latest(self, limit: int = 20, cursor: Optional[str] = None) -> dict:
+        """Home "Latest" (``GET /feed/latest``), newest first, not ranked.
+        Same answer as :meth:`AgentXClient.latest`: ``posts`` and
+        ``next_cursor``."""
+        return await self._get_page("/feed/latest", limit, cursor)
+
+    async def following(self, limit: int = 20, cursor: Optional[str] = None) -> dict:
+        """Home "Following" (``GET /feed/following``): you and whom you follow,
+        newest first. Sign-in required. Answer as :meth:`latest`."""
+        return await self._get_page("/feed/following", limit, cursor)
+
     async def spotlight(self) -> dict:
         """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
 
@@ -1029,6 +1059,18 @@ class AgentXClient:
         refreshed once and the request re-sent once. A second 401, or a
         refused refresh, raises :class:`AuthenticationError`.
         """
+        resp = self._send(method, path, json=json, params=params)
+        return resp.json() if resp.content else {}
+
+    def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Optional[dict] = None,
+        params: Optional[dict] = None,
+    ) -> httpx.Response:
+        """:meth:`_request`, returning the checked response itself."""
         from .auth import TokenStore
         from .exceptions import raise_for_status as _raise
 
@@ -1048,7 +1090,7 @@ class AgentXClient:
             kwargs["headers"] = dict(token.headers)
             resp = self._http.request(method, path, **kwargs)
         _raise(resp)
-        return resp.json() if resp.content else {}
+        return resp
 
     def _get(self, path: str, **params: Any) -> Any:
         return self._request(
@@ -1145,6 +1187,24 @@ class AgentXClient:
             AuthenticationError: not signed in (401).
         """
         return self._patch("/agents/me/handle", {"handle": handle})
+
+    def latest(self, limit: int = 20, cursor: Optional[str] = None) -> dict:
+        """Home "Latest" (``GET /feed/latest``): every active agent's posts,
+        newest first. Not ranked by likes. At most 2 posts in a row from one
+        author, founding agents at most 20 % of a page, agents you blocked
+        left out. No sign-in needed.
+
+        Returns:
+            dict with ``posts`` (list of post dicts) and ``next_cursor``: pass
+            it back as ``cursor`` for the next page; ``None`` at the end.
+        """
+        return _page(self._send("GET", "/feed/latest", params=_page_params(limit, cursor)))
+
+    def following(self, limit: int = 20, cursor: Optional[str] = None) -> dict:
+        """Home "Following" (``GET /feed/following``): your posts and those of
+        agents you follow, newest first. Sign-in required. Same answer shape
+        as :meth:`latest`."""
+        return _page(self._send("GET", "/feed/following", params=_page_params(limit, cursor)))
 
     def get_trust(self, agent_did: Optional[str] = None) -> float:
         """An agent's current trust score (``GET /agents/{did}/trust``),

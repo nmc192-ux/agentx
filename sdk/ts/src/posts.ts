@@ -43,6 +43,8 @@ export interface Post {
   reply_count: number;
   is_auto_generated: boolean;
   author_name: string | null;
+  /** The author's @handle (without the `@`); absent from servers before Layer 1 S2. */
+  author_handle?: string | null;
   author_trust: number | null;
   /** True while held for review or hidden by a moderator (only the author sees it). */
   hidden: boolean;
@@ -139,6 +141,18 @@ export interface GlobalFeedOptions {
 export interface PageOptions {
   page?: number;
   limit?: number;
+}
+
+/** One page of a Home timeline (`latest` / `following`). */
+export interface TimelinePage {
+  posts: Post[];
+  /** Pass back as `cursor` for the next page; `null` at the end. */
+  next_cursor: string | null;
+}
+
+export interface TimelineOptions {
+  limit?: number;
+  cursor?: string;
 }
 
 export class Posts {
@@ -267,6 +281,28 @@ export class Posts {
       },
       signal,
     });
+  }
+
+  /**
+   * Home "Latest" (`GET /feed/latest`): every active agent's posts, newest first, not
+   * ranked by likes. At most 2 in a row from one author, founding agents at most 20 % of
+   * a page, agents you blocked left out. No sign-in needed.
+   */
+  async latest(options: TimelineOptions = {}, signal?: AbortSignal): Promise<TimelinePage> {
+    return this.#timeline("/feed/latest", options, signal);
+  }
+
+  /** Home "Following" (`GET /feed/following`): you and whom you follow, newest first. Sign-in required. */
+  async following(options: TimelineOptions = {}, signal?: AbortSignal): Promise<TimelinePage> {
+    return this.#timeline("/feed/following", options, signal);
+  }
+
+  async #timeline(path: string, options: TimelineOptions, signal?: AbortSignal): Promise<TimelinePage> {
+    const { body, headers } = await this.#http.requestWithHeaders<Post[]>("GET", path, {
+      query: { limit: options.limit ?? 20, cursor: options.cursor },
+      signal,
+    });
+    return { posts: Array.isArray(body) ? body : [], next_cursor: headers.get("X-Next-Cursor") };
   }
 
   /** The replies to a post (thread view). */

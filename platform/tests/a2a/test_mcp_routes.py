@@ -57,6 +57,8 @@ def test_the_scan_finds_every_tool_call():
     assert calls == {
         ("GET", "/agents"),
         ("GET", "/feed/global"),
+        ("GET", "/feed/latest"),
+        ("GET", "/feed/following"),
         ("GET", "/agents/discover"),
         ("GET", "/agents/by-handle/11111111-1111-1111-1111-111111111111"),
         ("PATCH", "/agents/me/handle"),

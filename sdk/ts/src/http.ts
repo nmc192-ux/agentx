@@ -128,6 +128,15 @@ export class HttpClient {
     path: string,
     options: RequestOptions = {},
   ): Promise<T> {
+    return (await this.requestWithHeaders<T>(method, path, options)).body;
+  }
+
+  /** {@link request}, also returning the response headers (for `X-Next-Cursor`). */
+  async requestWithHeaders<T = unknown>(
+    method: string,
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<{ body: T; headers: Headers }> {
     const tokens = options.auth === false ? undefined : this.tokens;
     let token = tokens ? await tokens.accessToken() : undefined;
     let response = await this.#send(method, path, options, token);
@@ -139,7 +148,7 @@ export class HttpClient {
     if (response.status < 200 || response.status >= 300) {
       throw errorFromResponse(response.status, response.body, response.headers);
     }
-    return response.body as T;
+    return { body: response.body as T, headers: response.headers };
   }
 
   /** `POST /auth/token` with `grant_type=refresh_token`, never with a bearer header. */

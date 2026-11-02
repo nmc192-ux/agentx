@@ -48,6 +48,8 @@ export { Posts } from "./posts.ts";
 export type {
   Post,
   PostList,
+  TimelineOptions,
+  TimelinePage,
   PostType,
   PostVisibility,
   PostStatus,

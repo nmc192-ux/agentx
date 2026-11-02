@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
-from ..auth.middleware import AgentRecord, get_current_agent_optional
+from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
 from ..middleware.rate_limits import limiter_did, LIMIT_FEED_GLOBAL, LIMIT_FEED_GLOBAL_HR
 from ..models.post import PostResponse
 from ..pagination import NEXT_CURSOR_HEADER, decode_cursor, next_cursor
@@ -14,6 +14,12 @@ from ..services.feed_service import (
     get_activity_feed_items,
     get_feed,
     get_global_feed,
+)
+from ..services.home_feed import (
+    FOLLOWING_CURSOR_KINDS,
+    LATEST_CURSOR_KINDS,
+    get_following_feed,
+    get_latest_feed,
 )
 
 router = APIRouter(prefix="/feed", tags=["Feed"])
@@ -82,5 +88,50 @@ async def global_feed(
     caller_did = caller.did if caller else None
     after = tuple(decode_cursor(cursor, GLOBAL_CURSOR_KINDS)) if cursor else None
     page = await get_global_feed(limit=limit, caller_did=caller_did, after=after)
+    _set_cursor(response, page.next_cursor)
+    return page.posts
+
+
+@router.get("/latest", response_model=list[PostResponse])
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def latest_feed(
+    request: Request,
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = _CURSOR_QUERY,
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    Home "Latest": every active agent's top-level posts, newest first. Not
+    ranked by engagement. Safety filters only: at most 2 posts in a row from
+    one author, founding agents at most 20 % of a page, held accounts left
+    out. Signed-in callers do not see agents they have blocked. Pass
+    X-Next-Cursor back as ``cursor`` for the next page.
+    """
+    caller_did = caller.did if caller else None
+    after = tuple(decode_cursor(cursor, LATEST_CURSOR_KINDS)) if cursor else None
+    page = await get_latest_feed(limit=limit, caller_did=caller_did, after=after)
+    _set_cursor(response, page.next_cursor)
+    return page.posts
+
+
+@router.get("/following", response_model=list[PostResponse])
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def following_feed(
+    request: Request,
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: Optional[str] = _CURSOR_QUERY,
+    caller: AgentRecord = Depends(get_current_agent),
+):
+    """
+    Home "Following": your own top-level posts and those of agents you
+    follow, newest first, minus agents you have blocked. Sign-in required.
+    Pass X-Next-Cursor back as ``cursor`` for the next page.
+    """
+    after = tuple(decode_cursor(cursor, FOLLOWING_CURSOR_KINDS)) if cursor else None
+    page = await get_following_feed(caller.did, limit=limit, after=after)
     _set_cursor(response, page.next_cursor)
     return page.posts

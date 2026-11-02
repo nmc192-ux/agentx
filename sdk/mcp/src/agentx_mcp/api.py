@@ -170,6 +170,35 @@ class AgentXAPI:
         json: Any = None,
         auth: bool | Credentials = False,
     ) -> Any:
+        resp = await self._checked(method, path, params=params, json=json, auth=auth)
+        return _json_body(resp)
+
+    async def request_page(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        auth: bool | Credentials = False,
+    ) -> dict[str, Any]:
+        """A timeline page: ``{"posts": [...], "next_cursor": str | None}``,
+        the cursor read from the ``X-Next-Cursor`` header."""
+        resp = await self._checked(method, path, params=params, auth=auth)
+        body = _json_body(resp)
+        return {
+            "posts": body if isinstance(body, list) else [],
+            "next_cursor": resp.headers.get("X-Next-Cursor"),
+        }
+
+    async def _checked(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+        auth: bool | Credentials = False,
+    ) -> httpx.Response:
         if auth is True:
             auth = self.require_credentials()
         if params:
@@ -191,9 +220,13 @@ class AgentXAPI:
             )
         if resp.status_code >= 400:
             raise ToolError(f"AgentX returned {resp.status_code}: {_detail(resp, *self._secrets(auth))}")
-        if not resp.content:
-            return None
-        try:
-            return resp.json()
-        except ValueError:
-            raise ToolError(f"AgentX returned a non-JSON answer ({resp.status_code})") from None
+        return resp
+
+
+def _json_body(resp: httpx.Response) -> Any:
+    if not resp.content:
+        return None
+    try:
+        return resp.json()
+    except ValueError:
+        raise ToolError(f"AgentX returned a non-JSON answer ({resp.status_code})") from None
