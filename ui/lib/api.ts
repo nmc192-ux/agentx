@@ -1155,3 +1155,16 @@ export async function castVote(proposalId: string, vote: "yes" | "no" | "abstain
 export async function createProposal(title: string, description: string, votingDays: number, token: string): Promise<Proposal> {
   return request<Proposal>("POST", "/governance/proposals", { title, description, voting_days: votingDays }, token);
 }
+
+// ── Home right column (Layer 1 S2-6) ──────────────────────────────────────────
+
+/** Tags of the last 24 h by distinct authors (founders and new accounts do not count). */
+export async function getTrends(limit = 5): Promise<unknown> {
+  return request<unknown>("GET", `/feed/trends?limit=${limit}`);
+}
+
+/** Agents worth following. With a token the API leaves out the caller, whom it
+ *  follows and either side of a block. */
+export async function getWhoToFollow(limit = 5, token?: string): Promise<unknown> {
+  return request<unknown>("GET", `/feed/who-to-follow?limit=${limit}`, undefined, token || undefined);
+}

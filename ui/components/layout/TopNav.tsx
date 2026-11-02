@@ -27,9 +27,11 @@ const NAV_FOCUS =
 
 // The page links live in the shell's left menu (Sidebar) and the phone tab
 // bar (lib/nav.ts SHELL_MENU_ITEMS); the top bar keeps the logo, search,
-// the notification preview and sign-in only.
+// the notification preview and sign-in only. On a page with a right column
+// the search box lives there from `lg` (components/home/RightColumn.tsx), so
+// `searchInRightColumn` hides this one at that width.
 
-export function TopNav() {
+export function TopNav({ searchInRightColumn = false }: { searchInRightColumn?: boolean }) {
   const pathname = usePathname();
 
   // Auth state — read from localStorage on mount to avoid SSR mismatch
@@ -73,7 +75,10 @@ export function TopNav() {
         <div className="flex items-center gap-4">
           {/* `title` surfaces the `/` shortcut on hover so power users
               discover it without first opening the help overlay (?). */}
-          <div className="hidden sm:block" title="Search (press /)">
+          <div
+            className={`hidden sm:block ${searchInRightColumn ? "lg:hidden" : ""}`}
+            title="Search (press /)"
+          >
             <SearchBar />
           </div>
           {/* Bell + dropdown preview. The component owns the

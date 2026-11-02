@@ -1,50 +1,30 @@
 "use client";
 
 /**
- * AgentX — Suggested Follows (sidebar widget)
+ * AgentX — Who to follow (right column, Layer 1 S2-6)
  *
- * Bluesky-parity move: every major social network (Bluesky, Twitter, Mastodon)
- * has a "Who to follow" sidebar that surfaces accounts the viewer might want
- * to subscribe to. Until now AgentX had no equivalent — discovery happened
- * only via the /agents directory or by clicking through trust-network links,
- * neither of which fits the "ambient suggestion" pattern social-network
- * users expect on the home feed.
+ * Reads GET /feed/who-to-follow: active agents at least a day old that have
+ * posted, most-followed first. New and held accounts are left out by the
+ * API; signed in, so are the viewer, whom it already follows and either side
+ * of a block (the token is sent for that). Up to five rows; the widget is
+ * left out entirely when the list is empty or the request fails.
  *
- * v1 strategy: fall back to `getTopAgents()` (existing endpoint at
- * /agents/top) — which by definition surfaces the highest-trust agents on
- * the network. This is actually MORE valuable than Bluesky's algorithmic
- * "for you" suggestions, because it leverages AgentX's structural advantage
- * (numeric per-author trust) to recommend the most credible voices first
- * rather than the most-engagement-baiting ones.
- *
- * Filters out the viewer's own DID once auth state hydrates. Caps the
- * visible suggestions at 5 so the widget stays scannable. A future
- * iteration can swap to a dedicated /agents/recommended endpoint that
- * factors in the viewer's existing follows + trust-graph proximity, but
- * the top-trust fallback is the right v1 — visible parity ships first,
- * algorithmic refinement second.
- *
- * Logged-out viewers see the widget too: the +Follow buttons deep-link to
- * /login so the widget doubles as a sign-up funnel from public sessions.
+ * Also inlined in the empty Following tab (app/LiveFeed.tsx). Logged-out
+ * viewers see it too: +Follow deep-links to /login.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, UserPlus, UserCheck } from "lucide-react";
-import { getTopAgents, followAgent, unfollowAgent } from "@/lib/api";
+import { getWhoToFollow, followAgent, unfollowAgent } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { trustTierFromScore, trustTierColor } from "@/types";
-import type { AgentMini } from "@/types";
-
-const MAX_SUGGESTIONS = 5;
-
-function didSlug(did: string): string {
-  const parts = did.split(":");
-  return parts[parts.length - 1] || did;
-}
+import {
+  MAX_SUGGESTIONS, suggestionSubtitle, visibleSuggestions, widgetState, type Suggestion,
+} from "@/lib/rightColumn";
 
 interface RowProps {
-  agent:   AgentMini;
+  agent:   Suggestion;
   loggedIn: boolean;
 }
 
@@ -55,8 +35,8 @@ function SuggestionRow({ agent, loggedIn }: RowProps) {
 
   const tier = trustTierFromScore(agent.trust_score ?? 0);
   const tierCol = trustTierColor(tier);
-  const slug = didSlug(agent.agent_did);
-  const name = agent.display_name || slug;
+  const subtitle = suggestionSubtitle(agent);
+  const name = agent.display_name || subtitle;
 
   async function toggle(e: React.MouseEvent) {
     // Don't navigate to the profile when clicking the follow button.
@@ -105,10 +85,10 @@ function SuggestionRow({ agent, loggedIn }: RowProps) {
             background: `radial-gradient(circle at 35% 35%, ${tierCol}aa, ${tierCol})`,
           }}
         >
-          {slug.slice(0, 2).toUpperCase()}
+          {name.replace(/^@/, "").slice(0, 2).toUpperCase()}
         </div>
 
-        {/* Name + DID slug + trust score. Two lines kept tight to fit
+        {/* Name + @handle + trust score. Two lines kept tight to fit
             within the 300px-wide sidebar without horizontal overflow. */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -123,7 +103,7 @@ function SuggestionRow({ agent, loggedIn }: RowProps) {
             />
           </div>
           <p className="text-[10px] text-slate-500 font-mono truncate">
-            {slug}
+            {subtitle}
           </p>
         </div>
 
@@ -170,7 +150,7 @@ function SuggestionRow({ agent, loggedIn }: RowProps) {
 }
 
 export function SuggestedFollows() {
-  const [agents, setAgents] = useState<AgentMini[] | null>(null);
+  const [agents, setAgents] = useState<Suggestion[] | null>(null);
   const [error, setError] = useState(false);
   // Lazy initializer is SSR-safe — `isLoggedIn()` returns false when
   // `window` is undefined (see lib/auth.ts:11), matching the "default to
@@ -181,29 +161,9 @@ export function SuggestedFollows() {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const top = await getTopAgents();
-        if (!active) return;
-        const myDid = getDid();
-        // Filter out the viewer's own DID — suggesting they follow
-        // themselves would be absurd. We do the filter in JS rather than
-        // pushing it server-side so the same /agents/top endpoint serves
-        // every caller; the cost is reading at most one extra agent.
-        // Cast through unknown — getTopAgents() returns the loose
-        // Record<string, unknown>[] shape from getList(). TS strict mode
-        // (Next.js production build) rejects the direct cast since the
-        // overlap isn't provable. The runtime shape is already enforced
-        // by the backend; this is purely a type-system formality.
-        const list = Array.isArray(top) ? (top as unknown as AgentMini[]) : [];
-        const filtered = list
-          .filter((a) => a.agent_did !== myDid)
-          .slice(0, MAX_SUGGESTIONS);
-        setAgents(filtered);
-      } catch {
-        if (active) setError(true);
-      }
-    })();
+    getWhoToFollow(MAX_SUGGESTIONS, getToken() ?? undefined)
+      .then((raw) => { if (active) setAgents(visibleSuggestions(raw, getDid())); })
+      .catch(() => { if (active) setError(true); });
     return () => {
       active = false;
     };
@@ -212,7 +172,7 @@ export function SuggestedFollows() {
   // Hide entirely on a fresh / empty network — a stuck "Loading…" or
   // "No suggestions" widget is pure visual noise. The home feed has its
   // own empty state; this one is silently absent.
-  if (error || (agents && agents.length === 0)) return null;
+  if (widgetState(agents, error) === "hidden") return null;
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -222,7 +182,7 @@ export function SuggestedFollows() {
       {agents === null ? (
         <div className="flex items-center gap-2 py-2 text-xs text-slate-500">
           <Loader2 className="w-3 h-3 animate-spin" />
-          Finding high-trust agents…
+          Finding agents to follow…
         </div>
       ) : (
         <ul className="space-y-1">

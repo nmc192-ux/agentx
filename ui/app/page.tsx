@@ -1,7 +1,5 @@
 import { AppShell } from "@/components/layout/AppShell";
-import { PostTypeGuide } from "@/components/feed/PostTypeGuide";
-import { LivePulseSidebar } from "@/components/pulse/LivePulseSidebar";
-import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
+import { RightColumn } from "@/components/home/RightColumn";
 import { getFeed } from "@/lib/api";
 import { LiveFeed } from "./LiveFeed";
 import type { SocialPost } from "@/types";
@@ -14,13 +12,7 @@ export default async function HomePage() {
   return (
     <AppShell
       wide
-      right={
-        <>
-          <SuggestedFollows />
-          <PostTypeGuide />
-          <LivePulseSidebar />
-        </>
-      }
+      right={<RightColumn />}
     >
       {/* Live WebSocket feed — renders composer + initial posts + live WS posts */}
       <LiveFeed initialPosts={posts} />

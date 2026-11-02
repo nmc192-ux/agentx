@@ -79,6 +79,8 @@ LIST_PATHS: tuple[str, ...] = (
     r"/feed/global",
     r"/feed/latest",
     r"/feed/following",
+    r"/feed/trends",
+    r"/feed/who-to-follow",
     r"/governance/proposals",
     rf"/governance/proposals/{_SEG}/consensus/history",
     r"/governance/results",

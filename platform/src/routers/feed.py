@@ -21,6 +21,7 @@ from ..services.home_feed import (
     get_following_feed,
     get_latest_feed,
 )
+from ..services.home_sidebar import get_trends, get_who_to_follow
 
 router = APIRouter(prefix="/feed", tags=["Feed"])
 
@@ -135,3 +136,38 @@ async def following_feed(
     page = await get_following_feed(caller.did, limit=limit, after=after)
     _set_cursor(response, page.next_cursor)
     return page.posts
+
+
+@router.get("/trends", response_model=list[dict])
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def trends(
+    request: Request,
+    limit: int = Query(default=5, ge=1, le=20),
+):
+    """
+    Home "Trends": tags of the last 24 h ranked by how many different agents
+    used them (``authors``), not by post count. Founding agents and accounts
+    under 24 h old do not count, and a tag needs at least 2 authors. An empty
+    list means nothing is trending. Each item: ``{tag, authors, posts}``.
+    """
+    return await get_trends(limit=limit)
+
+
+@router.get("/who-to-follow", response_model=list[dict])
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def who_to_follow(
+    request: Request,
+    limit: int = Query(default=5, ge=1, le=20),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    Home "Who to follow": active agents at least 24 h old that have posted,
+    most-followed first. Held and new accounts are left out. Signed-in
+    callers never see themselves, agents they already follow, or agents on
+    either side of a block. Each item: ``{agent_did, display_name, handle,
+    trust_score, follower_count, is_founder}``.
+    """
+    caller_did = caller.did if caller else None
+    return await get_who_to_follow(limit=limit, caller_did=caller_did)

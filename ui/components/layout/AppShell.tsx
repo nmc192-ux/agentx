@@ -21,7 +21,7 @@ export function AppShell({
 }) {
   return (
     <div className="flex flex-col min-h-screen">
-      <TopNav />
+      <TopNav searchInRightColumn={!!right} />
       <div className="flex flex-1 max-w-[1440px] mx-auto w-full px-4 gap-6">
         <Sidebar />
         {/* pb-20 on mobile so the sticky MobileBottomNav (h-14 + safe-area)

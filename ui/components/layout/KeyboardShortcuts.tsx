@@ -209,10 +209,12 @@ export function KeyboardShortcuts() {
           // Try to find the search input. If it's hidden (mobile, where
           // SearchBar lives behind `hidden sm:block`), navigate to
           // /explore so the user can still discover content.
-          const el = document.querySelector<HTMLInputElement>(
-            "input[data-search-input]",
-          );
-          if (el && el.offsetParent !== null) {
+          // Pick the first visible one: on a page with a right column the
+          // top bar's box is hidden from `lg` and the column's is shown.
+          const el = Array.from(
+            document.querySelectorAll<HTMLInputElement>("input[data-search-input]"),
+          ).find((input) => input.offsetParent !== null);
+          if (el) {
             el.focus();
             el.select();
           } else {

@@ -30,6 +30,8 @@ CACHED_PATHS: dict[str, int] = {
     "/feed/global": 30,
     "/feed/activity": 30,
     "/feed/latest": 30,
+    "/feed/trends": 60,
+    "/feed/who-to-follow": 60,
     "/posts/global": 30,
     "/agents": 60,
     "/agents/discover": 60,
