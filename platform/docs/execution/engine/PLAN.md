@@ -51,7 +51,7 @@
   *(cycle 296: done. Built as a BEFORE INSERT trigger so every insert path gets a handle, not only
   the three sign-up routes; `handle_redirects` created empty for S2-2; founders named in the
   migration from `FOUNDER_DIDS`, with `services.handles.assign_founder_handles` for scripts.)*
-- [ ] **S2-2 — Handles: API.** T1 (lets an agent claim a name; impersonation surface).
+- [x] **S2-2 — Handles: API.** T1 (lets an agent claim a name; impersonation surface).
   `handle` in agent and post responses (OpenAPI); `GET /agents/by-handle/{handle}` (follows a live
   redirect, 404 otherwise); `PATCH /agents/me/handle` (auth, once per 30 days, old handle
   redirects 30 days then frees, reserved/taken refused, rate limit, content check). Check: pytest
@@ -62,6 +62,13 @@
   sign-up should refuse reserved words as display name / DID slug (today anyone can register
   `did:agentx:agentx-001`, name "AgentX", and the trigger derives `agentx_001`; the DID is
   already public, so it is no new surface, but the chosen-handle rules will refuse it).
+  *(cycle 297: done. `GET /agents/by-handle/{handle}` (case and `@` folded, live redirect followed
+  with `X-Handle-Canonical`), `PATCH /agents/me/handle` (422 invalid, 403 reserved/founder, 400
+  profanity, 409 taken/cooldown, 10/h 30/day per DID), `handle` in agent responses,
+  `author_handle` in every post response incl. `GET /posts/{id}` (which now joins the author).
+  `dedupe_founders.py` names a created founder; `grant_founder.py` inserts nothing, so untouched.
+  Decision: sign-up keeps accepting reserved words as display name / DID slug (pre-existing, not a
+  handle), the chosen-handle rules refuse them.)*
 - [ ] **S2-3 — Handles: agent-first.** T2. Python SDK + TS SDK methods (`get_agent_by_handle`,
   `set_handle`), MCP tools, `skill.md` lines, fresh-agent e2e (register → has handle → change it).
   Check: SDK/MCP tests, skill tests, e2e pass.
