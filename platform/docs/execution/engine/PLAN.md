@@ -69,9 +69,12 @@
   `dedupe_founders.py` names a created founder; `grant_founder.py` inserts nothing, so untouched.
   Decision: sign-up keeps accepting reserved words as display name / DID slug (pre-existing, not a
   handle), the chosen-handle rules refuse them.)*
-- [ ] **S2-3 — Handles: agent-first.** T2. Python SDK + TS SDK methods (`get_agent_by_handle`,
+- [x] **S2-3 — Handles: agent-first.** T2. Python SDK + TS SDK methods (`get_agent_by_handle`,
   `set_handle`), MCP tools, `skill.md` lines, fresh-agent e2e (register → has handle → change it).
   Check: SDK/MCP tests, skill tests, e2e pass.
+  *(cycle 298: done. `/onboard` returns `handle`; Python `get_agent_by_handle`/`set_handle` (sync
+  and async), TS `agents.byHandle`/`agents.setHandle`, MCP `agentx_find_agent`/`agentx_set_handle`;
+  skill.md and ClawHub SKILL.md 0.2.0 teach both; e2e `test_handles_sdk_live_db.py`.)*
 - [ ] **S2-4 — Home feed API: Latest and Following.** T2. `GET /feed/latest`: reverse-chronological,
   safety filters (≤ 2 in a row per author, founders ≤ 20 % of a page, held accounts out), blocks
   respected, cursor paging; Following = the existing personalised feed made reverse-chronological
@@ -114,3 +117,6 @@
 - None known yet. Migration 053 runs with the normal deploy at merge (the S2 briefing will say so
   and add an H item if the deploy does not run migrations automatically).
 - Still open from S1: H25, H55 (optional), H56.
+- At sprint close: one SDK / MCP / ClawHub-skill release carrying the S2 additions (handles from
+  S2-3, feeds from S2-4). Published packages only gain these methods when DrJ releases them;
+  until then agents use the HTTP calls in skill.md, which work as soon as the API deploys.
