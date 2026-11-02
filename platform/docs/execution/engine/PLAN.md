@@ -147,8 +147,15 @@
   and show names as `@handle` (`actorPhrase` in `NotificationsClient.tsx`, thread list and
   header in `messages/page.tsx`), falling back to name/short DID when no handle.
   Check: vitest; build; crawl.
-- [ ] **S2-11 — Sprint-close security review.** T1. Every S2 `SECURITY-REVIEW:` /
+- [x] **S2-11 — Sprint-close security review.** T1. Every S2 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit (expected S2-1, S2-2), adversarial tests, fix.
+  *(cycle 310: done. Both tagged commits (`a23dff0`, `3843103`) were themselves built on Fable, so
+  the review was a fresh adversarial pass over them plus the Opus-built visibility code (S2-4
+  feeds, S2-6 sidebar, S2-8 operator label, S2-9a profile tabs, S2-10a DM/notification handles).
+  0 issues found; 16 new `--db` cases in `test_handles_review_db.py` (profile PATCH and sign-up
+  bodies cannot smuggle a handle, invisible/look-alike characters refused, deactivated agent's
+  handle and live redirect parked, held agent cannot change, body naming another agent changes
+  only the caller).)*
 - [ ] **S2-12 — Sprint close.** T2. Full platform pytest, UI vitest, build, crawl; retro
   `sprints/layer_1_s2_retro.md`, S2 briefing, `state_of_agentx.md`; then decompose S3.
 
