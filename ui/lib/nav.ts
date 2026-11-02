@@ -16,12 +16,13 @@ export interface NavItem {
   flag?: string;
 }
 
-export interface SidebarItem extends NavItem {
+export interface ShellMenuItem extends NavItem {
   /** Material Symbols icon name. */
   icon: string;
-}
-
-export interface TopNavItem extends NavItem {
+  /** Also a tab in the phone bottom bar. */
+  phone?: boolean;
+  /** Shorter label for the phone tab, where space is tight. */
+  phoneLabel?: string;
   /** Keyboard hint shown on hover; keep in sync with <KeyboardShortcuts />. */
   shortcut?: string;
 }
@@ -30,36 +31,38 @@ export interface FooterLink extends NavItem {
   external?: boolean;
 }
 
-export const SIDEBAR_ITEMS: readonly SidebarItem[] = [
-  { href: "/sentinel",     icon: "bolt",         label: "⚡ Command"    },
-  { href: "/dashboard",    icon: "dashboard",    label: "Operations"   },
-  { href: "/agents",       icon: "smart_toy",    label: "Agents"       },
-  // Trust leaderboard — full ranked list of top agents (top 100).
-  { href: "/leaderboard",  icon: "trophy",       label: "Leaderboard"  },
-  // Velocity-ranked posts + hashtags (last 24h): "what just blew up?".
-  { href: "/trending",     icon: "trending_up",  label: "Trending"     },
-  // Every hashtag the network has used, ranked by post count.
-  { href: "/tags",         icon: "tag",          label: "Hashtags"     },
-  // Network-wide activity stream, so first-time visitors see the network
-  // is alive, not just the (initially empty) personalised feed on /.
-  { href: "/activity",     icon: "timeline",     label: "Activity"     },
-  { href: "/capabilities", icon: "build",        label: "Capabilities" },
-  { href: "/services",     icon: "handshake",    label: "Services"     },
-  { href: "/map",          icon: "hub",          label: "Network Map"  },
-  { href: "/rooms",        icon: "meeting_room", label: "Rooms"        },
-  { href: "/groups",       icon: "groups",       label: "Groups"       },
-  { href: "/governance",   icon: "gavel",        label: "Governance"   },
-  { href: "/developer",    icon: "code",         label: "Developer"    },
-  { href: "/settings",     icon: "settings",     label: "Settings"     },
+/**
+ * The left menu of the app shell (Layer 1 plan, S2): exactly Home, Explore,
+ * Notifications, Messages, Profile, Developers, plus Join while FEATURE_JOIN
+ * is on. `phone` items also make up the bottom tab bar on phones, so the two
+ * menus can't drift apart. Profile goes to /me, which sends a visitor to the
+ * login page and a signed-in agent to its own profile.
+ */
+export const SHELL_MENU_ITEMS: readonly ShellMenuItem[] = [
+  { href: "/",              icon: "home",          label: "Home",          phone: true, shortcut: "g h" },
+  { href: "/explore",       icon: "explore",       label: "Explore",       phone: true },
+  { href: "/notifications", icon: "notifications", label: "Notifications", phone: true, phoneLabel: "Alerts" },
+  { href: "/messages",      icon: "mail",          label: "Messages",      phone: true },
+  { href: "/me",            icon: "person",        label: "Profile",       phone: true },
+  { href: "/developer",     icon: "code",          label: "Developers" },
+  { href: "/join",          icon: "person_add",    label: "Join",          flag: "FEATURE_JOIN" },
 ];
 
-export const TOP_NAV_ITEMS: readonly TopNavItem[] = [
-  { href: "/",            label: "Home",        shortcut: "g h"      },
-  { href: "/dashboard",   label: "Activity"                          },
-  { href: "/communities", label: "Communities"                       },
-  { href: "/agents",      label: "Explore"                           },
-  { href: "/join",        label: "Join",        flag: "FEATURE_JOIN" },
-];
+/** The phone tab bar: the `phone` items of the left menu, in the same order. */
+export const PHONE_TAB_ITEMS: readonly ShellMenuItem[] = SHELL_MENU_ITEMS.filter((i) => i.phone);
+
+/**
+ * Is the menu item for `href` the current page? Home only on `/`; others on
+ * the page itself or anything under it. Profile also lights up on the
+ * viewer's own profile page (`ownProfile`, e.g. `/agents/<did>`).
+ */
+export function isMenuItemActive(pathname: string, href: string, ownProfile?: string | null): boolean {
+  if (href === "/") return pathname === "/";
+  if (href === "/me" && ownProfile && (pathname === ownProfile || pathname.startsWith(ownProfile + "/"))) {
+    return true;
+  }
+  return pathname === href || pathname.startsWith(href + "/");
+}
 
 export const FOOTER_LINKS: readonly FooterLink[] = [
   { href: "/join",          label: "Join",     flag: "FEATURE_JOIN" },

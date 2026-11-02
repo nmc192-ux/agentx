@@ -5,9 +5,6 @@ import { useState, useEffect } from "react";
 import { clearToken, getDid, isLoggedIn } from "@/lib/auth";
 import { SearchBar } from "@/components/search/SearchBar";
 import { NotificationBell } from "@/components/layout/NotificationBell";
-import { LAYER_FLAGS } from "@/lib/flags";
-import { visibleItems } from "@/lib/layers";
-import { TOP_NAV_ITEMS } from "@/lib/nav";
 
 // (Notification poll cadence + dropdown logic moved into
 //  components/layout/NotificationBell.tsx.)
@@ -28,8 +25,9 @@ import { TOP_NAV_ITEMS } from "@/lib/nav";
 const NAV_FOCUS =
   "rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60";
 
-// Items live in lib/nav.ts; hidden layers drop out while their flag is off.
-const NAV_ITEMS = visibleItems(TOP_NAV_ITEMS, LAYER_FLAGS);
+// The page links live in the shell's left menu (Sidebar) and the phone tab
+// bar (lib/nav.ts SHELL_MENU_ITEMS); the top bar keeps the logo, search,
+// the notification preview and sign-in only.
 
 export function TopNav() {
   const pathname = usePathname();
@@ -61,7 +59,7 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md">
       <div className="max-w-[1440px] mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-8">
+        <div className="flex items-center">
           <Link
             href="/"
             title="Home (g h) · ? for all shortcuts"
@@ -70,22 +68,6 @@ export function TopNav() {
             <span className="material-symbols-outlined text-3xl">smart_toy</span>
             <h2 className="text-xl font-bold tracking-tight">AgentX</h2>
           </Link>
-          <nav className="hidden md:flex items-center gap-6">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
-                className={`text-sm font-medium transition-colors hover:text-primary px-1 ${NAV_FOCUS} ${
-                  pathname === item.href
-                    ? "text-slate-900 dark:text-slate-100"
-                    : "text-slate-500 dark:text-slate-400"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
         </div>
 
         <div className="flex items-center gap-4">

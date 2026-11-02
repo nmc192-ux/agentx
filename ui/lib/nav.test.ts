@@ -6,13 +6,13 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { HIDDEN_LAYERS, isHrefVisible, layerForPath, visibleItems, type LayerKey } from "./layers.ts";
-import { FOOTER_LINKS, PULSE_QUICK_LINKS, SIDEBAR_ITEMS, TOP_NAV_ITEMS } from "./nav.ts";
+import { FOOTER_LINKS, PHONE_TAB_ITEMS, PULSE_QUICK_LINKS, SHELL_MENU_ITEMS, isMenuItemActive } from "./nav.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const layerFlags = Object.values(HIDDEN_LAYERS).map((l) => l.flag);
 const allOff = Object.fromEntries([...layerFlags.map((f) => [f, false]), ["FEATURE_JOIN", true]]);
 const allOn = Object.fromEntries([...layerFlags, "FEATURE_JOIN"].map((f) => [f, true]));
-const lists = { SIDEBAR_ITEMS, TOP_NAV_ITEMS, FOOTER_LINKS, PULSE_QUICK_LINKS };
+const lists = { SHELL_MENU_ITEMS, PHONE_TAB_ITEMS, FOOTER_LINKS, PULSE_QUICK_LINKS };
 
 test("with all layer flags off, no menu links into a hidden layer", () => {
   for (const [name, list] of Object.entries(lists)) {
@@ -24,29 +24,71 @@ test("with all layer flags off, no menu links into a hidden layer", () => {
 
 test("the menus did link to hidden layers, so the filter is doing the work", () => {
   const hidden = Object.values(lists).flat().filter((i) => layerForPath(i.href) !== null);
-  for (const href of ["/rooms", "/leaderboard", "/capabilities", "/services", "/dashboard",
-    "/communities", "/stats/economy", "/governance", "/graph"]) {
+  for (const href of ["/stats/economy", "/governance", "/graph", "/rooms"]) {
     assert.ok(hidden.some((i) => i.href === href), `${href} is not in any menu`);
   }
 });
 
-test("Social links stay; turning a layer on brings its links back", () => {
-  const sidebar = visibleItems(SIDEBAR_ITEMS, allOff).map((i) => i.href);
-  for (const href of ["/agents", "/trending", "/tags", "/developer", "/settings"]) {
-    assert.ok(sidebar.includes(href), `${href} missing`);
-  }
+test("turning a layer on brings its links back", () => {
   for (const [name, list] of Object.entries(lists)) {
     assert.equal(visibleItems(list, allOn).length, list.length, name);
   }
   const roomsOn = { ...allOff, FEATURE_ROOMS: true };
-  assert.ok(visibleItems(SIDEBAR_ITEMS, roomsOn).some((i) => i.href === "/rooms"));
-  assert.ok(!visibleItems(SIDEBAR_ITEMS, roomsOn).some((i) => i.href === "/governance"));
+  assert.ok(visibleItems(PULSE_QUICK_LINKS, roomsOn).some((i) => i.href === "/rooms"));
+  assert.ok(!visibleItems(PULSE_QUICK_LINKS, roomsOn).some((i) => i.href === "/governance"));
+});
+
+// S2-5: the shell's left menu is exactly the plan's list; the phone tab bar
+// mirrors it.
+test("left menu is exactly Home, Explore, Notifications, Messages, Profile, Developers (+ Join)", () => {
+  assert.deepEqual(visibleItems(SHELL_MENU_ITEMS, allOff).map((i) => i.label),
+    ["Home", "Explore", "Notifications", "Messages", "Profile", "Developers", "Join"]);
+  assert.deepEqual(visibleItems(SHELL_MENU_ITEMS, { ...allOff, FEATURE_JOIN: false }).map((i) => i.label),
+    ["Home", "Explore", "Notifications", "Messages", "Profile", "Developers"]);
+  assert.deepEqual(SHELL_MENU_ITEMS.map((i) => i.href),
+    ["/", "/explore", "/notifications", "/messages", "/me", "/developer", "/join"]);
+  for (const item of SHELL_MENU_ITEMS) {
+    assert.equal(layerForPath(item.href), null, `${item.href} is in a hidden layer`);
+    assert.ok(item.icon, `${item.href} has no icon`);
+  }
+});
+
+test("phone tab bar is the left menu's first five items, same order, same targets", () => {
+  assert.deepEqual(PHONE_TAB_ITEMS.map((i) => i.href), SHELL_MENU_ITEMS.slice(0, 5).map((i) => i.href));
+  assert.ok(PHONE_TAB_ITEMS.length <= 5, "more than five tabs do not fit a phone");
+  for (const t of PHONE_TAB_ITEMS) {
+    const m = SHELL_MENU_ITEMS.find((i) => i.href === t.href)!;
+    assert.equal(t.icon, m.icon);
+  }
+});
+
+test("isMenuItemActive: Home exact, others by prefix, Profile also on the viewer's own page", () => {
+  assert.equal(isMenuItemActive("/", "/"), true);
+  assert.equal(isMenuItemActive("/explore", "/"), false);
+  assert.equal(isMenuItemActive("/messages/abc", "/messages"), true);
+  assert.equal(isMenuItemActive("/messagesx", "/messages"), false);
+  const own = "/agents/did%3Aagentx%3Anova-001";
+  assert.equal(isMenuItemActive(own, "/me", own), true);
+  assert.equal(isMenuItemActive(own + "/trust", "/me", own), true);
+  assert.equal(isMenuItemActive("/agents/did%3Aagentx%3Aatlas-001", "/me", own), false);
+  assert.equal(isMenuItemActive(own, "/me", null), false);
+  assert.equal(isMenuItemActive("/me", "/me", null), true);
+});
+
+test("the shell renders the menus from lib/nav.ts; the top bar has no page links", () => {
+  assert.match(read("../components/layout/MobileBottomNav.tsx"), /visibleItems\(PHONE_TAB_ITEMS, LAYER_FLAGS\)/);
+  const top = read("../components/layout/TopNav.tsx");
+  assert.doesNotMatch(top, /TOP_NAV_ITEMS|<nav\b/);
+  const shell = read("../components/layout/AppShell.tsx");
+  assert.match(shell, /<Sidebar \/>/);
+  assert.match(shell, /<MobileBottomNav \/>/);
+  assert.match(shell, /right\?: React\.ReactNode/);
 });
 
 test("an item's own flag is honoured (Join can be switched off)", () => {
   const joinOff = { ...allOff, FEATURE_JOIN: false };
-  assert.ok(!visibleItems(TOP_NAV_ITEMS, joinOff).some((i) => i.href === "/join"));
-  assert.ok(visibleItems(TOP_NAV_ITEMS, allOff).some((i) => i.href === "/join"));
+  assert.ok(!visibleItems(SHELL_MENU_ITEMS, joinOff).some((i) => i.href === "/join"));
+  assert.ok(visibleItems(SHELL_MENU_ITEMS, allOff).some((i) => i.href === "/join"));
 });
 
 test("isHrefVisible: sub-routes and query strings are hidden too; external URLs are not", () => {
@@ -68,8 +110,7 @@ test("LAYER_FLAGS in flags.ts names every layer flag and FEATURE_JOIN", () => {
 
 test("menus and the home widgets read their links through the filter", () => {
   const uses: Record<string, RegExp> = {
-    "../components/layout/Sidebar.tsx": /visibleItems\(ALL_SIDEBAR_ITEMS, LAYER_FLAGS\)/,
-    "../components/layout/TopNav.tsx": /visibleItems\(TOP_NAV_ITEMS, LAYER_FLAGS\)/,
+    "../components/layout/Sidebar.tsx": /visibleItems\(SHELL_MENU_ITEMS, LAYER_FLAGS\)/,
     "../components/layout/Footer.tsx": /visibleItems\(FOOTER_LINKS, LAYER_FLAGS\)/,
     "../components/pulse/LivePulseSidebar.tsx": /visibleItems\(PULSE_QUICK_LINKS, LAYER_FLAGS\)/,
     "../components/layout/CommandPalette.tsx": /isHrefVisible\(a\.hint \?\? "", LAYER_FLAGS\)/,
