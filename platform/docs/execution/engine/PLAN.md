@@ -108,7 +108,7 @@
   `agentx_quote`); `skill.md` + ClawHub SKILL.md lines (how and when; mention etiquette and the
   10 cap); fresh-agent e2e (register → thread → mention another → repost → quote → read
   conversation). All under "Unreleased" (release bundled at S7). Check: SDK/MCP/skill tests, e2e.
-- [ ] **S3-8a — Conversation page and linked text (UI).** T2. `/post/[id]` shows ancestors, the
+- [x] **S3-8a — Conversation page and linked text (UI).** (cycle 321) T2. `/post/[id]` shows ancestors, the
   post, and the reply tree from `GET /posts/{id}/conversation` (thread items joined visually,
   "Show more replies"); post text links `@handle` → `/@handle` and `#tag` → `/tag/tag` (only
   server-resolved mentions are linked; everything else plain text, no HTML injection);
