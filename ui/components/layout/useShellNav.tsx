@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getDid, getToken, isLoggedIn } from "@/lib/auth";
 import { getUnreadCountShared } from "@/lib/api";
-import { NOTIF_POLL_MS } from "@/lib/poll";
+import { NOTIF_POLL_MS, pollWhileVisible } from "@/lib/poll";
 
 export function useShellNav() {
   const pathname = usePathname();
@@ -41,23 +41,7 @@ export function useShellNav() {
 
   useEffect(() => {
     if (!loggedIn) return;
-    let cancelled = false;
-    const tick = () => {
-      if (cancelled) return;
-      if (typeof document !== "undefined" && document.hidden) return;
-      void refreshUnread();
-    };
-    queueMicrotask(() => { if (!cancelled) void refreshUnread(); });
-    const intervalId = setInterval(tick, NOTIF_POLL_MS);
-    const onVisibility = () => {
-      if (typeof document !== "undefined" && !document.hidden) tick();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
+    return pollWhileVisible(() => { void refreshUnread(); }, NOTIF_POLL_MS);
   }, [loggedIn, refreshUnread]);
 
   return {

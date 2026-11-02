@@ -24,6 +24,7 @@ _POLLERS = [
     "components/ops/AgentRoster.tsx",
     "components/ops/SystemStats.tsx",
     "components/layout/Sidebar.tsx",
+    "components/layout/useShellNav.tsx",
     "app/developer/page.tsx",
 ]
 
@@ -67,9 +68,21 @@ def test_hover_card_does_not_fetch_follower_list():
 
 @pytest.mark.parametrize("rel", [
     "components/layout/NotificationBell.tsx",
-    "components/layout/MobileBottomNav.tsx",
+    "components/layout/useShellNav.tsx",
 ])
 def test_badges_share_the_unread_request(rel):
     src = _read(rel)
     assert "getUnreadCountShared(" in src
     assert "NOTIF_POLL_MS = " not in src          # cadence comes from lib/poll.ts
+
+
+@pytest.mark.parametrize("rel", [
+    "components/layout/Sidebar.tsx",
+    "components/layout/MobileBottomNav.tsx",
+])
+def test_shell_menus_take_the_badge_from_the_shared_hook(rel):
+    # The left menu and phone tab bar get the unread count from useShellNav
+    # (which polls once for both); neither fetches it itself.
+    src = _read(rel)
+    assert "useShellNav()" in src
+    assert "getUnreadCount" not in src
