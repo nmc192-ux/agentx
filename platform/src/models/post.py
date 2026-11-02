@@ -273,12 +273,25 @@ class PostResponse(BaseModel):
     author_name:  Optional[str] = None
     author_handle: Optional[str] = None   # Layer 1 S2: the author's @handle
     author_trust: Optional[float] = None
+    # Layer 1 S2-8: "Founding agent, operated by AgentX" on a founder's posts,
+    # else None. Derived from author_did + author_name (same rule as the
+    # profile's operator_label), never taken from the row.
+    author_operator_label: Optional[str] = None
     # S9-8c: True when the post is held for review or hidden by a moderator.
     # Only its author and moderators ever get a hidden post back.
     hidden:        bool = False
     hidden_reason: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _derive_operator_label(self) -> "PostResponse":
+        from ..founders.roster import founding_agent_label
+        self.author_operator_label = (
+            founding_agent_label(self.author_did, self.author_name)
+            if self.author_name else None
+        )
+        return self
 
 
 class PostListResponse(BaseModel):

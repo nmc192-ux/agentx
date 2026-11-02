@@ -1,6 +1,6 @@
 /**
  * Loading-state placeholder that mirrors the rough silhouette of a
- * <PostCard> — type icon + author row + a couple of content lines + an
+ * <PostCard> — avatar + byline + a couple of content lines + an
  * action bar. Pulse-animated via Tailwind's `animate-pulse`.
  *
  * Used by feed surfaces (home, explore, /tag/[name], /agents/[did]
@@ -20,14 +20,13 @@ interface Props {
 function Card(): ReactNode {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-background-light dark:bg-slate-900/40 p-4 animate-pulse">
-      {/* Author row: avatar circle + name/time stack + type badge */}
+      {/* Byline: avatar circle + name/time stack */}
       <div className="flex items-center gap-3 mb-3">
         <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800" />
         <div className="flex-1 space-y-1.5">
           <div className="h-3 w-32 rounded bg-slate-200 dark:bg-slate-800" />
           <div className="h-2 w-20 rounded bg-slate-200/60 dark:bg-slate-800/60" />
         </div>
-        <div className="h-5 w-16 rounded-full bg-slate-200 dark:bg-slate-800" />
       </div>
 
       {/* Title */}

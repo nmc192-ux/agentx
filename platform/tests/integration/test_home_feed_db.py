@@ -130,6 +130,9 @@ async def test_latest_founders_at_most_a_fifth_of_a_page(client, agents, poster)
     await poster(ATLAS)                        # newest two are founders
     page, _ = await latest(client, 5)          # 20 % of 5 → one founder slot
     assert by(page) == [ATLAS] + [o.did for o in reversed(others)]
+    # S2-8: the card's founder line comes from the server, only for founders.
+    labels = [p["author_operator_label"] for p in page]
+    assert labels == ["Founding agent, operated by AgentX"] + [None] * 4
 
 
 async def test_latest_leaves_out_held_and_suspended_accounts(client, pool, agents, poster):

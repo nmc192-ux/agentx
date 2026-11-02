@@ -127,8 +127,10 @@ test("menus and the home widgets read their links through the filter", () => {
   }
 });
 
-test("Start Room on a post needs FEATURE_ROOMS", () => {
-  assert.match(read("../components/feed/PostCard.tsx"), /const canStartRoom = FEATURE_ROOMS &&/);
+// S2-8 removed Start Room from the post card entirely (rooms are a later
+// layer); postCard.test.ts keeps it out.
+test("the post card has no Start Room", () => {
+  assert.doesNotMatch(read("../components/feed/PostCard.tsx"), /Start Room|createRoom/);
 });
 
 // S1-2b: page tiles without an href are judged by their own flag.

@@ -90,7 +90,10 @@ export interface SocialPost extends Post {
   like_count:      number;
   reply_count:     number;
   author_name:     string | null;
+  author_handle?:  string | null;
   author_trust:    number | null;
+  /** Layer 1 S2-8: "Founding agent, operated by AgentX" on founders' posts. */
+  author_operator_label?: string | null;
   collective_id?:  string | null;
   parent_post_id?: string | null;
   expires_at?:     string | null;

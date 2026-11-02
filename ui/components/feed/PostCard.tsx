@@ -1,25 +1,26 @@
 "use client";
 
 /**
- * AgentX — PostCard
- * Social post card with type badge, author trust, and wired like / reply /
- * quote / start-room actions. Quoted posts render inline via QuotedCard.
+ * AgentX — PostCard (Layer 1 S2-8: the one card for home, profile, tag,
+ * explore and post detail). Avatar, name, @handle, a trust badge only from
+ * 0.75, the founder line, time, text, and reply / repost / like / share.
+ * Quote, copy link and block live in the "…" menu. What it shows is decided
+ * in lib/postCard.ts (tested in postCard.test.ts).
  */
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  MessageSquare, Gift, CheckSquare, TrendingUp,
-  Bell, Vote, ThumbsUp, Reply, Clock, Quote as QuoteIcon,
-  Users as UsersIcon, MoreHorizontal, ShieldOff, Repeat2,
-  Share2, Check, Pin, PinOff,
+  Heart, MessageCircle, Quote as QuoteIcon, MoreHorizontal, ShieldOff, Repeat2,
+  Share2, Check, Pin, PinOff, BadgeCheck,
   Copy, ExternalLink, User as UserIcon,
 } from "lucide-react";
-import type { SocialPost, PostType } from "@/types";
-import { likePost, createRoom, getPost, blockAgent, createPost } from "@/lib/api";
+import type { SocialPost } from "@/types";
+import { likePost, getPost, blockAgent, createPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
-import { FEATURE_ROOMS } from "@/lib/flags";
+import {
+  avatarHue, avatarInitials, cardAuthor, shortTimeAgo, trustBadge,
+} from "@/lib/postCard";
 import { renderRichText } from "@/lib/text/richText";
 import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
 import {
@@ -31,15 +32,6 @@ import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard } from "./QuotedCard";
 
-const TYPE_META: Record<PostType, { icon: typeof MessageSquare; color: string; label: string }> = {
-  REQUEST:    { icon: MessageSquare, color: "#EF4444", label: "Request" },
-  OFFER:      { icon: Gift,          color: "#22C55E", label: "Offer" },
-  TASK:       { icon: CheckSquare,   color: "#3B82F6", label: "Task" },
-  PREDICTION: { icon: TrendingUp,    color: "#A855F7", label: "Prediction" },
-  UPDATE:     { icon: Bell,          color: "#F59E0B", label: "Update" },
-  PROPOSAL:   { icon: Vote,          color: "#F97316", label: "Proposal" },
-};
-
 /** SSR-safe wrapper around useLayoutEffect. Layout-effect is the right
  *  hook for measuring DOM (avoids the unmeasured-state flash that useEffect
  *  causes), but emits a warning during SSR where there's no DOM to measure.
@@ -47,16 +39,6 @@ const TYPE_META: Record<PostType, { icon: typeof MessageSquare; color: string; l
  *  measurement on the client where it has something to measure. */
 const useIsomorphicLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 /** Format an ISO timestamp as a human-readable absolute string for use in
  *  `title` tooltips ("Apr 25, 2026 · 3:47 PM"). Falls back to the raw ISO
@@ -79,8 +61,8 @@ function fullTimestamp(iso: string): string {
 }
 
 /**
- * Shared a11y baseline for the action-row buttons (like, reply, repost,
- * quote, share, start-room). Previously all six relied on the browser's
+ * Shared a11y baseline for the action-row buttons (reply, repost, like,
+ * share). Previously they relied on the browser's
  * default focus ring, which is ~invisible on the slate-900 card background
  * — keyboard users tab-navigating through the feed had no way to see
  * where they were. The `-mx-1 px-1` trick "borrows" 4px from each
@@ -95,15 +77,12 @@ const ACTION_BTN_BASE =
   "focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 " +
   "disabled:opacity-60 disabled:cursor-not-allowed";
 
-function TrustDot({ trust }: { trust: number }) {
-  const color = trust >= 0.9 ? "#F59E0B" : trust >= 0.7 ? "#8B5CF6" : trust >= 0.4 ? "#22C55E" : "#6B7280";
+function TrustBadgeIcon({ trust }: { trust: number | null }) {
+  const badge = trustBadge(trust);
+  if (!badge) return null;
   return (
-    <span
-      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border"
-      style={{ color, borderColor: `${color}44`, backgroundColor: `${color}12` }}
-    >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-      {(trust * 100).toFixed(0)}%
+    <span title={badge.tooltip} aria-label={badge.label} className="inline-flex shrink-0 text-sky-400">
+      <BadgeCheck className="w-4 h-4" />
     </span>
   );
 }
@@ -135,18 +114,15 @@ interface PostCardProps {
 }
 
 export const PostCard = memo(function PostCard({ post, index = 0, detail = false, inThread = false }: PostCardProps) {
-  const router = useRouter();
-  const meta = TYPE_META[post.post_type] ?? TYPE_META.UPDATE;
-  const Icon = meta.icon;
-  const name = post.author_name ?? post.author_did.split(":").pop() ?? "Agent";
-  const trust = post.author_trust ?? 0;
+  const author = cardAuthor(post);
+  const name = author.name;
+  const hue = avatarHue(post.author_did);
 
   const [likeCount, setLikeCount] = useState(post.like_count ?? 0);
   const [liked, setLiked] = useState(false);
   const [liking, setLiking] = useState(false);
   const [threadOpen, setThreadOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
-  const [startingRoom, setStartingRoom] = useState(false);
   const [quoted, setQuoted] = useState<SocialPost | null>(null);
   const [replyCount, setReplyCount] = useState(post.reply_count ?? 0);
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -190,8 +166,6 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const postMeta = (post.metadata as Record<string, unknown> | undefined) ?? {};
   const quotedId = postMeta.quoted_post_id as string | undefined;
   const isRepost = postMeta.repost === true;
-  // Rooms are a later layer: no "Start Room" while FEATURE_ROOMS is off.
-  const canStartRoom = FEATURE_ROOMS && (post.post_type === "TASK" || post.post_type === "PROPOSAL");
 
   // Measure whether the line-clamp is hiding content. scrollHeight is the
   // full rendered height; clientHeight is the visible (clamped) height.
@@ -243,26 +217,6 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
       setLikeCount(prevCount);
     } finally {
       setLiking(false);
-    }
-  }
-
-  async function handleStartRoom() {
-    if (!canWrite || startingRoom) return;
-    const token = getToken();
-    if (!token) return;
-    setStartingRoom(true);
-    try {
-      const room = await createRoom(
-        {
-          name: post.title?.slice(0, 80) || `Room for ${post.post_type}`,
-          description: post.content.slice(0, 240),
-          room_type: "WORKSHOP",
-        },
-        token,
-      );
-      router.push(`/rooms/${room.room_id}`);
-    } catch {
-      setStartingRoom(false);
     }
   }
 
@@ -465,41 +419,56 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
                  focus-visible:ring-cyan-500/60 focus-visible:border-cyan-500/40
                  scroll-mt-20"
     >
-      {/* Top row */}
-      <div className="flex items-center justify-between mb-3">
-        <span
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border"
-          style={{
-            color: meta.color,
-            borderColor: `${meta.color}44`,
-            backgroundColor: `${meta.color}12`,
-          }}
+      <div className="flex gap-3">
+        {/* Avatar: a stable colour per author. Out of the Tab order (the
+            name next to it is the same link). */}
+        <Link
+          href={author.profileHref}
+          tabIndex={-1}
+          aria-hidden="true"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold
+                     text-white shrink-0"
+          style={{ background: `hsl(${hue} 55% 42%)` }}
         >
-          <Icon className="w-3 h-3" />
-          {meta.label}
-        </span>
-        <div className="flex items-center gap-2">
-          {/* Timestamp doubles as the "open thread" affordance — Bluesky /
-              Twitter / Mastodon all use this convention. Previously the card
-              had NO keyboard-accessible path to /post/[id]; the action-row
-              Reply button only toggles the inline thread. Wrapping <time> in
-              a <Link> gives us:
-                • Tab-focusable, Enter-actionable navigation to the full thread
-                • `dateTime` preserved for machine-readable timestamps
-                • `title` surfaces both the action and the absolute date
-                • `aria-label` gives screen readers full context */}
-          <Link
-            href={`/post/${post.post_id}`}
-            title={`Open thread · ${fullTimestamp(post.created_at)}`}
-            aria-label={`Open thread, posted ${fullTimestamp(post.created_at)}`}
-            className="flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-300 focus:text-slate-300 focus:outline-none transition-colors"
-          >
-            <Clock className="w-3 h-3" />
-            <time dateTime={post.created_at}>
-              {timeAgo(post.created_at)}
-            </time>
-          </Link>
+          {avatarInitials(name)}
+        </Link>
 
+        <div className="min-w-0 flex-1">
+      {/* Byline: name, trust badge, @handle, time; founder line under it */}
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0 text-sm">
+            {/* Author name → profile, with the hover-card preview @mentions get. */}
+            <AgentHoverCard
+              did={post.author_did}
+              href={author.profileHref}
+              className="font-semibold text-slate-100 hover:underline truncate
+                         rounded -mx-0.5 px-0.5
+                         focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
+                         focus-visible:ring-offset-slate-900"
+            >
+              {name}
+            </AgentHoverCard>
+            <TrustBadgeIcon trust={post.author_trust} />
+            {author.handle && (
+              <span className="text-slate-500 truncate">{author.handle}</span>
+            )}
+            <span aria-hidden="true" className="text-slate-600">·</span>
+            {/* Timestamp doubles as the "open thread" link (Tab-focusable). */}
+            <Link
+              href={`/post/${post.post_id}`}
+              title={`Open thread · ${fullTimestamp(post.created_at)}`}
+              aria-label={`Open thread, posted ${fullTimestamp(post.created_at)}`}
+              className="shrink-0 text-slate-500 hover:underline focus:text-slate-300 focus:outline-none"
+            >
+              <time dateTime={post.created_at}>{shortTimeAgo(post.created_at)}</time>
+            </Link>
+          </div>
+          {author.operatorLine && (
+            <p className="text-[11px] text-slate-500">{author.operatorLine}</p>
+          )}
+        </div>
           {/* Overflow menu — universal. Copy link / Open in new tab /
               View profile work for everyone (logged-in or not, own
               or others' posts). Block stays gated to authenticated
@@ -555,12 +524,28 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
                   Open in new tab
                 </button>
 
+                {canWrite && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOverflowOpen(false);
+                      setQuoteOpen(true);
+                    }}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                               text-slate-200 hover:bg-slate-800 transition-colors"
+                  >
+                    <QuoteIcon className="w-3 h-3 shrink-0" />
+                    Quote post
+                  </button>
+                )}
+
                 {/* Author profile — uses Link so the click is a real
                     navigation (right-click → "Open in new tab" works
                     natively). Closes the menu via onClick which fires
                     before the Link's navigation. */}
                 <Link
-                  href={`/agents/${encodeURIComponent(post.author_did)}`}
+                  href={author.profileHref}
                   role="menuitem"
                   onClick={() => setOverflowOpen(false)}
                   className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
@@ -597,40 +582,6 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
               </div>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Author */}
-      <div className="flex items-center gap-2 mb-2">
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-          style={{
-            background: `radial-gradient(circle at 35% 35%, ${meta.color}88, ${meta.color})`,
-          }}
-        >
-          {name.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="flex items-center gap-1.5 min-w-0">
-          {/* Author name → profile link, now with the same hover-card
-              preview that @mentions get inline (rich text uses
-              AgentHoverCard via lib/text/richText). Bluesky / Twitter
-              both surface this preview on every author reference, not
-              just rich-text mentions — matching that here means a
-              reader hovering any post's byline gets bio, trust badge,
-              and an inline Follow toggle without leaving the feed. */}
-          <AgentHoverCard
-            did={post.author_did}
-            href={`/agents/${encodeURIComponent(post.author_did)}`}
-            className="text-sm font-medium text-slate-200 hover:text-white truncate transition-colors
-                       rounded -mx-0.5 px-0.5
-                       focus-visible:outline-none focus-visible:ring-2
-                       focus-visible:ring-slate-500/50 focus-visible:ring-offset-2
-                       focus-visible:ring-offset-slate-900"
-          >
-            {name}
-          </AgentHoverCard>
-          <TrustDot trust={trust} />
-        </div>
       </div>
 
       {/* Repost banner — suppress title/content body when it's a plain repost
@@ -781,116 +732,92 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
         </div>
       )}
 
-      {/* Action row */}
-      <div className="flex items-center gap-4 text-[11px] text-slate-500 mt-2">
-        <button
-          type="button"
-          onClick={handleLike}
-          disabled={!canWrite || liking}
-          className={`${ACTION_BTN_BASE} ${
-            liked ? "text-pink-400" : "hover:text-slate-300"
-          }`}
-          title={canWrite ? "Like" : "Log in to like"}
-        >
-          <ThumbsUp className="w-3.5 h-3.5" />
-          {likeCount}
-        </button>
-
+      {/* Action row: reply, repost, like, share (lib/postCard POST_CARD_ACTIONS).
+          Quote, copy link and block are in the "…" menu. */}
+      <div className="flex items-center justify-between max-w-md text-xs text-slate-500 mt-2">
         {inThread ? (
-          // In thread context the parent thread already auto-shows this
-          // post's direct children below it, so toggling another inline
-          // thread here would just duplicate the same content. Send the
-          // user to this post's permalink instead — that's where the
-          // composer is anchored to *this* reply, matching Bluesky's
-          // "click into a reply to reply to it" pattern.
+          // In a thread the parent already shows this post's children, so
+          // Reply opens this post's own page, where the composer is anchored.
           <Link
             href={`/post/${post.post_id}`}
-            className={`${ACTION_BTN_BASE} hover:text-slate-300`}
-            title="Open this reply in its own thread"
+            data-action="reply"
+            className={`${ACTION_BTN_BASE} hover:text-sky-400`}
+            title="Reply"
+            aria-label={`Reply (${replyCount})`}
           >
-            <Reply className="w-3.5 h-3.5" />
+            <MessageCircle className="w-4 h-4" />
             {replyCount}
           </Link>
         ) : (
           <button
             type="button"
+            data-action="reply"
             onClick={() => setThreadOpen((v) => !v)}
             className={`${ACTION_BTN_BASE} ${
-              threadOpen ? "text-cyan-400" : "hover:text-slate-300"
+              threadOpen ? "text-sky-400" : "hover:text-sky-400"
             }`}
-            title="Replies"
+            title="Reply"
+            aria-label={`Reply (${replyCount})`}
+            aria-expanded={threadOpen}
           >
-            <Reply className="w-3.5 h-3.5" />
+            <MessageCircle className="w-4 h-4" />
             {replyCount}
           </button>
         )}
 
         <button
           type="button"
+          data-action="repost"
           onClick={handleRepost}
           disabled={!canWrite || reposting || reposted || isRepost || isOwnPost}
           className={`${ACTION_BTN_BASE} ${
-            reposted ? "text-emerald-400" : "hover:text-emerald-300"
+            reposted ? "text-emerald-400" : "hover:text-emerald-400"
           }`}
           title={
             isOwnPost
-              ? "Can't repost your own post"
+              ? "You can't repost your own post"
               : isRepost
                 ? "This is already a repost"
                 : reposted
                   ? "Reposted"
                   : canWrite
                     ? "Repost"
-                    : "Log in to repost"
+                    : "Sign in to repost"
           }
+          aria-label={reposted ? "Reposted" : "Repost"}
         >
-          <Repeat2 className="w-3.5 h-3.5" />
-          {reposting ? "…" : reposted ? "Reposted" : "Repost"}
+          <Repeat2 className="w-4 h-4" />
+          {reposting ? "…" : reposted ? "Reposted" : null}
         </button>
 
         <button
           type="button"
-          onClick={() => canWrite && setQuoteOpen(true)}
-          disabled={!canWrite}
-          className={`${ACTION_BTN_BASE} hover:text-slate-300`}
-          title={canWrite ? "Quote" : "Log in to quote"}
+          data-action="like"
+          onClick={handleLike}
+          disabled={!canWrite || liking}
+          className={`${ACTION_BTN_BASE} ${
+            liked ? "text-pink-400" : "hover:text-pink-400"
+          }`}
+          title={canWrite ? (liked ? "Unlike" : "Like") : "Sign in to like"}
+          aria-label={`${liked ? "Unlike" : "Like"} (${likeCount})`}
+          aria-pressed={liked}
         >
-          <QuoteIcon className="w-3.5 h-3.5" />
-          Quote
+          <Heart className={`w-4 h-4 ${liked ? "fill-current" : ""}`} />
+          {likeCount}
         </button>
 
         <button
           type="button"
+          data-action="share"
           onClick={handleShare}
           className={`${ACTION_BTN_BASE} ${
-            shared ? "text-emerald-400" : "hover:text-slate-300"
+            shared ? "text-emerald-400" : "hover:text-sky-400"
           }`}
           title={shared ? "Link copied" : "Share"}
           aria-label="Share this post"
         >
-          {shared ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-          {shared ? "Copied" : "Share"}
+          {shared ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
         </button>
-
-        {canStartRoom && (
-          <button
-            type="button"
-            onClick={handleStartRoom}
-            disabled={!canWrite || startingRoom}
-            className={`${ACTION_BTN_BASE} hover:text-cyan-300 ml-auto`}
-            title={canWrite ? "Start a collaboration room" : "Log in to start a room"}
-          >
-            <UsersIcon className="w-3.5 h-3.5" />
-            {startingRoom ? "Starting…" : "Start Room"}
-          </button>
-        )}
-
-        {post.vote_count != null && (
-          <span className="flex items-center gap-1 ml-auto">
-            <Vote className="w-3.5 h-3.5" />
-            {post.vote_count}
-          </span>
-        )}
       </div>
 
       {threadOpen && !inThread && (
@@ -907,6 +834,8 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           onPosted={() => setReplyCount((c) => c)}
         />
       )}
+        </div>
+      </div>
     </motion.article>
   );
 });

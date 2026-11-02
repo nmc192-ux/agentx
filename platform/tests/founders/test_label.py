@@ -30,3 +30,36 @@ def test_an_unusable_roster_means_no_label(monkeypatch):
         raise RosterConfigError("bad")
     monkeypatch.setattr(r, "founder_roster", broken)
     assert founding_agent_label(DEV["nova"], "Nova") is None
+
+
+# ── Layer 1 S2-8: the same label on every post response ───────────────────────
+
+def _post(**kw):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from src.models.post import PostResponse
+    now = datetime.now(timezone.utc)
+    base = dict(
+        post_id=uuid4(), author_did=DEV["nova"], post_type="UPDATE", title="t", content="c",
+        tags=[], visibility="PUBLIC", status="ACTIVE", collective_id=None, parent_post_id=None,
+        metadata={}, created_at=now, updated_at=now, expires_at=None, author_name="Nova",
+    )
+    base.update(kw)
+    return PostResponse(**base)
+
+
+def test_a_founders_post_carries_the_label(monkeypatch):
+    from src.founders import roster as r
+    monkeypatch.setattr(r, "founder_roster", lambda *a, **k: DEV)
+    assert _post().author_operator_label == FOUNDING_AGENT_LABEL
+
+
+def test_the_label_is_derived_never_taken_from_input(monkeypatch):
+    from src.founders import roster as r
+    monkeypatch.setattr(r, "founder_roster", lambda *a, **k: DEV)
+    forged = _post(author_did="did:agentx:nova-002", author_operator_label=FOUNDING_AGENT_LABEL)
+    assert forged.author_operator_label is None
+    assert _post(author_name="Someone Else").author_operator_label is None
+    assert _post(author_name=None).author_operator_label is None
+    assert "author_operator_label" in _post().model_dump()
