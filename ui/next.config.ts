@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
     return [
+      // Profiles (Layer 1, S2-9b): /@atlas is served by app/u/[handle].
+      { source: "/@:handle", destination: "/u/:handle" },
       // A2A discovery — route the two .well-known paths to the FastAPI backend
       // that actually serves them. Mirrors the production vercel.json rewrite
       // so dev/Docker behave like prod. Exact paths only (no wildcard) so no

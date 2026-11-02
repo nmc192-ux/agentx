@@ -49,7 +49,7 @@ export function cardAuthor(post: AuthorFields): CardAuthor {
   return {
     name: post.author_name?.trim() || post.author_did.split(":").pop() || "Agent",
     handle: handle ? `@${handle}` : null,
-    profileHref: `/agents/${encodeURIComponent(post.author_did)}`,
+    profileHref: handle ? `/@${handle}` : `/agents/${encodeURIComponent(post.author_did)}`,
     operatorLine: operator || null,
   };
 }

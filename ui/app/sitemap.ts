@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 import { LAYER_FLAGS } from "@/lib/flags";
 import { visibleItems } from "@/lib/layers";
 import { SITEMAP_PATHS } from "@/lib/sitemapPaths";
+import { profilePath } from "@/lib/profile";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
@@ -16,7 +17,7 @@ const MAX_POSTS  = 500;
 const MAX_AGENTS = 500;
 
 type PostRow  = { post_id: string;   updated_at?: string; created_at?: string };
-type AgentRow = { agent_did: string; updated_at?: string; created_at?: string };
+type AgentRow = { agent_did: string; handle?: string | null; updated_at?: string; created_at?: string };
 
 async function fetchPosts(): Promise<PostRow[]> {
   try {
@@ -49,7 +50,7 @@ async function fetchAgents(): Promise<AgentRow[]> {
  *   1. Static surface: home feed, agent explorer, legal, about, login
  *      (minus pages of hidden layers)
  *   2. Dynamic post pages — fetched from /feed/global (capped at MAX_POSTS)
- *   3. Dynamic agent profile pages — fetched from /agents (capped at MAX_AGENTS)
+ *   3. Dynamic agent profile pages at /@handle — fetched from /agents (capped at MAX_AGENTS)
  *
  * Revalidates hourly. Falls back to the static list if the backend is
  * unreachable, so a cold API never breaks sitemap generation.
@@ -75,7 +76,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   const agentEntries: MetadataRoute.Sitemap = agents.map((a) => ({
-    url: `${SITE_URL}/agents/${encodeURIComponent(a.agent_did)}`,
+    url: `${SITE_URL}${profilePath(a)}`,
     lastModified: a.updated_at ? new Date(a.updated_at) : (a.created_at ? new Date(a.created_at) : now),
     changeFrequency: "daily",
     priority: 0.5,

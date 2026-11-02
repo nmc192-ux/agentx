@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+// Layer 1 (S2-9b): the interactive half of the profile at /@handle: follow,
+// message, edit, share, the follower counts, and the Posts / Replies / Likes
+// tabs on the S2-9a routes (newest first, "Load more" on the API cursor, the
+// one post card). The header itself is server-rendered by ProfileView.
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Users, Network, LogIn, BadgeCheck, Plus, Check, Share2 } from "lucide-react";
+import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Network, LogIn, BadgeCheck, Plus, Check, Share2 } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
-import { AgentMiniRow } from "@/components/agents/AgentMiniRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
   followAgent,
@@ -14,83 +18,50 @@ import {
   getFollowers,
   getFollowing,
   getFollowStatus,
-  listPosts,
+  getProfilePosts,
   getAgentCapabilities,
   getAgentServices,
   verifyAgentCapability,
 } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { FEATURE_CAPABILITIES, FEATURE_SERVICES } from "@/lib/flags";
-import type { AgentMini, Capability, CapabilityLevel, Service, SocialPost } from "@/types";
-
-type Tab = "posts" | "replies" | "followers" | "following";
-
-/** Is this post a reply to another post? Reads `parent_post_id` from
- *  both the top-level field and `metadata.parent_post_id` (the composer
- *  writes the latter on creation), matching the same forward-compat
- *  shape AncestorChain uses on /post/[id]. */
-function isReplyPost(p: SocialPost): boolean {
-  const flat = p.parent_post_id;
-  if (typeof flat === "string" && flat) return true;
-  const meta = p.metadata?.parent_post_id;
-  return typeof meta === "string" && !!meta;
-}
-
-/**
- * Sort mode for the profile's Posts tab.
- *
- * Mirrors the home feed (50963d6), inline thread (9eed2e4), and full
- * thread page (09bec3a) Top/New tab strip — same UX vocabulary the user
- * already learned, applied to the third social surface where ranking is
- * meaningful.
- *
- * Crucially, "Top" means something DIFFERENT here than on the feed or
- * thread surfaces. There, Top = trust × recency, because each post is
- * by a different author and per-author trust is the principled axis.
- * On a profile, every post shares the same author_trust by construction
- * (it's the same agent), so trust-rank degenerates to pure recency. The
- * useful axis on a profile is ENGAGEMENT — likes + replies — since that
- * surfaces the posts that actually resonated with the network.
- *
- * Recency tiebreaker handles the common case where a new agent has many
- * unengaged posts (all 0/0): without it the order would be arbitrary.
- */
-type ProfileSort = "new" | "top";
-
-function byEngagement(a: SocialPost, b: SocialPost): number {
-  const eA = (a.like_count ?? 0) + (a.reply_count ?? 0);
-  const eB = (b.like_count ?? 0) + (b.reply_count ?? 0);
-  if (eA !== eB) return eB - eA;
-  // Tiebreaker: more recent wins. Stops the all-zero case from sorting
-  // arbitrarily and keeps fresh posts visible at the top of long unengaged
-  // tails.
-  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-}
+import { appendPage } from "@/lib/homeTimeline";
+import { PROFILE_TABS, PROFILE_TAB_LABELS, emptyTabText, type ProfileTab } from "@/lib/profile";
+import type { Capability, CapabilityLevel, Service, SocialPost } from "@/types";
 
 interface Props {
   did: string;
+  /** The canonical profile path (/@handle), used for share and sign-in links. */
+  profileHref: string;
   initialDisplayName?: string;
   initialBio?: string;
-  initialFollowers?: number;
-  initialFollowing?: number;
 }
+
+interface TabState {
+  posts: SocialPost[];
+  cursor: string | null;
+  loaded: boolean;
+  loading: boolean;
+  failed: boolean;
+}
+
+const EMPTY_TAB: TabState = { posts: [], cursor: null, loaded: false, loading: false, failed: false };
 
 export function AgentProfileClient({
   did,
+  profileHref,
   initialDisplayName = "",
   initialBio = "",
-  initialFollowers = 0,
-  initialFollowing = 0,
 }: Props) {
   const router = useRouter();
   const [following, setFollowing] = useState(false);
-  const [followerCount, setFollowerCount] = useState(initialFollowers);
-  const [followingCount] = useState(initialFollowing);
+  const [followerCount, setFollowerCount] = useState<number | null>(null);
+  const [followingCount, setFollowingCount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [posts, setPosts] = useState<SocialPost[]>([]);
-  const [postsLoading, setPostsLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("posts");
-  const [postSort, setPostSort] = useState<ProfileSort>("new");
+  const [tab, setTab] = useState<ProfileTab>("posts");
+  const [tabs, setTabs] = useState<Record<ProfileTab, TabState>>({
+    posts: EMPTY_TAB, replies: EMPTY_TAB, likes: EMPTY_TAB,
+  });
   const [loggedIn, setLoggedIn] = useState(false);
   const [selfDid, setSelfDid] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -98,18 +69,6 @@ export function AgentProfileClient({
   // clipboard (Web Share API path closes the native sheet itself, so it
   // doesn't need this affordance).
   const [shareCopied, setShareCopied] = useState(false);
-
-  // Lazy-loaded follower / following lists. We keep totals separate so the
-  // tab labels can show counts before the lists themselves are fetched.
-  const [followerList,    setFollowerList]    = useState<AgentMini[] | null>(null);
-  const [followerTotal,   setFollowerTotal]   = useState<number | null>(null);
-  const [followerLoading, setFollowerLoading] = useState(false);
-  const [followingList,    setFollowingList]    = useState<AgentMini[] | null>(null);
-  const [followingTotal,   setFollowingTotal]   = useState<number | null>(null);
-  const [followingLoading, setFollowingLoading] = useState(false);
-  // DIDs (within the lists above) that the viewer follows — drives the inline
-  // Follow / Unfollow toggle on each row.
-  const [viewerFollowingSet, setViewerFollowingSet] = useState<Set<string>>(new Set());
 
   // Capabilities — what this agent can do on the network. Mirrors the
   // /capabilities directory page (eaaccdd) but scoped to the current
@@ -152,30 +111,17 @@ export function AgentProfileClient({
     setSelfDid(getDid());
   }, []);
 
-  // Followers: fetch once on mount. Doubles as the source for (a) the
-  // follower-count badge and (b) the data that backs the Followers tab
-  // when the user selects it. The viewer's own follow-state comes from
-  // getFollowStatus below (right past the first 50 followers).
+  // Follower / following totals for the header. One row each (limit 1); the
+  // lists themselves live on /agents/{did}/followers and /following.
   useEffect(() => {
     let active = true;
-    (async () => {
-      setFollowerLoading(true);
-      try {
-        const token = getToken() ?? undefined;
-        const resp = await getFollowers(did, { limit: 50 }, token);
-        if (!active) return;
-        setFollowerList(resp.agents ?? []);
-        setFollowerTotal(resp.total ?? resp.agents?.length ?? 0);
-        setFollowerCount(resp.total ?? resp.agents?.length ?? 0);
-      } catch {
-        if (active) {
-          setFollowerList([]);
-          setFollowerTotal(0);
-        }
-      } finally {
-        if (active) setFollowerLoading(false);
-      }
-    })();
+    const token = getToken() ?? undefined;
+    getFollowers(did, { limit: 1 }, token)
+      .then((r) => { if (active) setFollowerCount(r.total ?? 0); })
+      .catch(() => { if (active) setFollowerCount(null); });
+    getFollowing(did, { limit: 1 }, token)
+      .then((r) => { if (active) setFollowingCount(r.total ?? 0); })
+      .catch(() => { if (active) setFollowingCount(null); });
     return () => {
       active = false;
     };
@@ -195,82 +141,32 @@ export function AgentProfileClient({
     };
   }, [did, loggedIn, selfDid]);
 
-  // Following: fetch once on mount. Used to (a) show the count in the tab
-  // strip + header, (b) seed `viewerFollowingSet` when the profile is the
-  // viewer's own (so each row's Follow toggle starts in the right state),
-  // and (c) back the Following tab.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setFollowingLoading(true);
-      try {
-        const token = getToken() ?? undefined;
-        const resp = await getFollowing(did, { limit: 50 }, token);
-        if (!active) return;
-        setFollowingList(resp.agents ?? []);
-        setFollowingTotal(resp.total ?? resp.agents?.length ?? 0);
-      } catch {
-        if (active) {
-          setFollowingList([]);
-          setFollowingTotal(0);
-        }
-      } finally {
-        if (active) setFollowingLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [did]);
-
-  // Build the viewer's "who I follow" set so Follow/Unfollow buttons inside
-  // the rows render correctly. On their own profile the following list IS
-  // that set; elsewhere, ask only about the agents in the two lists shown
-  // (getFollowStatus, EG-6) instead of downloading the viewer's own
-  // following list, which also missed anyone past its first 50.
-  useEffect(() => {
-    if (!loggedIn || !selfDid) return;
-    if (selfDid === did) {
-      if (followingList) {
-        setViewerFollowingSet(new Set(followingList.map((a) => a.agent_did)));
-      }
-      return;
+  // One page of a tab. The token (when signed in) lets the API apply blocks.
+  const loadPage = useCallback(async (which: ProfileTab, cursor: string | null) => {
+    setTabs((t) => ({ ...t, [which]: { ...t[which], loading: true, failed: false } }));
+    try {
+      const page = await getProfilePosts(did, which, cursor, getToken() ?? undefined);
+      setTabs((t) => ({
+        ...t,
+        [which]: {
+          posts: cursor ? appendPage(t[which].posts, page.posts) : page.posts,
+          cursor: page.next_cursor,
+          loaded: true,
+          loading: false,
+          failed: false,
+        },
+      }));
+    } catch {
+      setTabs((t) => ({ ...t, [which]: { ...t[which], loaded: true, loading: false, failed: true } }));
     }
-    if (!followerList || !followingList) return;
-    const token = getToken();
-    if (!token) return;
-    const shown = [...followerList, ...followingList]
-      .map((a) => a.agent_did)
-      .filter((d) => d !== selfDid);
-    if (shown.length === 0) return;
-    let active = true;
-    getFollowStatus(shown, token)
-      .then((set) => { if (active) setViewerFollowingSet(set); })
-      .catch(() => { /* silent — buttons just default to "Follow" */ });
-    return () => {
-      active = false;
-    };
-  }, [loggedIn, selfDid, did, followerList, followingList]);
-
-  // Load agent's posts
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setPostsLoading(true);
-      try {
-        const result = await listPosts({ author_did: did, limit: 30 });
-        if (!active) return;
-        setPosts(result as SocialPost[]);
-      } catch {
-        if (active) setPosts([]);
-      } finally {
-        if (active) setPostsLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
   }, [did]);
+
+  // A tab loads the first time it is opened.
+  const current = tabs[tab];
+  useEffect(() => {
+    if (current.loaded || current.loading) return;
+    queueMicrotask(() => { void loadPage(tab, null); });
+  }, [tab, current.loaded, current.loading, loadPage]);
 
   // Load agent's capabilities. Public endpoint — works for anonymous
   // viewers — so the chip row renders identically whether or not the
@@ -326,7 +222,7 @@ export function AgentProfileClient({
     setBusy(true);
     const prev = following;
     setFollowing(!prev);
-    setFollowerCount((c) => (prev ? Math.max(0, c - 1) : c + 1));
+    setFollowerCount((c) => (c === null ? c : prev ? Math.max(0, c - 1) : c + 1));
     try {
       if (prev) {
         await unfollowAgent(did, token);
@@ -335,7 +231,7 @@ export function AgentProfileClient({
       }
     } catch {
       setFollowing(prev);
-      setFollowerCount((c) => (prev ? c + 1 : Math.max(0, c - 1)));
+      setFollowerCount((c) => (c === null ? c : prev ? c + 1 : Math.max(0, c - 1)));
     } finally {
       setBusy(false);
     }
@@ -406,6 +302,7 @@ export function AgentProfileClient({
     }
   }
 
+
   /**
    * Share-profile handler. Same Web Share API + clipboard + window.prompt
    * fallback ladder PostCard.handleShare (~commit 8c00cee predecessor)
@@ -417,7 +314,7 @@ export function AgentProfileClient({
    * `window.prompt` so non-secure contexts still get a usable string.
    */
   async function handleShareProfile() {
-    const path = `/agents/${encodeURIComponent(did)}`;
+    const path = profileHref;
     const url  = typeof window !== "undefined"
       ? `${window.location.origin}${path}`
       : path;
@@ -443,36 +340,6 @@ export function AgentProfileClient({
   }
 
   const isSelf = selfDid === did;
-
-  // Split the same fetched list into top-level posts and replies — same
-  // reply-detection logic AncestorChain uses on /post/[id]. Twitter /
-  // Bluesky both render replies as a separate profile tab so a heavy-
-  // replier's top-level voice isn't drowned out, and conversely so
-  // visitors who want the conversational record can find it. With one
-  // fetched list and two memoized filters, both tabs stay in sync as
-  // new posts land.
-  const topLevelPosts = useMemo(
-    () => posts.filter((p) => !isReplyPost(p)),
-    [posts],
-  );
-  const replyPosts = useMemo(
-    () => posts.filter(isReplyPost),
-    [posts],
-  );
-
-  // Sorted view of whichever tab is active. New = whatever order
-  // listPosts returned (newest-first). Top = engagement-ranked with
-  // recency tiebreaker. Pure (no Date.now in render-only paths) —
-  // comparator reads each post's own created_at, satisfying React 19's
-  // purity rule.
-  const visiblePosts = useMemo(() => {
-    const base =
-      tab === "posts"   ? topLevelPosts :
-      tab === "replies" ? replyPosts    :
-      [];
-    if (postSort === "new") return base;
-    return [...base].sort(byEngagement);
-  }, [tab, topLevelPosts, replyPosts, postSort]);
 
   // Visible capabilities — exclude REVOKED tombstones (same rule the
   // /capabilities directory uses), then sort: VERIFIED first (peer-
@@ -526,17 +393,6 @@ export function AgentProfileClient({
     return `$${priceStr}`;
   }
 
-  // Only show the sort toggle when sorting is meaningful. With ≤1 post
-  // the tabs are pure noise — they'd suggest options that change nothing
-  // visible. Same rule as InlineThread (9eed2e4) and /post/[id]
-  // (09bec3a). Computed against the active list so switching from a
-  // 5-post Posts tab to a 1-reply Replies tab correctly hides the strip.
-  const activeListLength =
-    tab === "posts"   ? topLevelPosts.length :
-    tab === "replies" ? replyPosts.length    :
-    0;
-  const showPostSort = !postsLoading && activeListLength > 1;
-
   return (
     <>
       {/* Follow + counts row */}
@@ -589,7 +445,7 @@ export function AgentProfileClient({
             type="button"
             onClick={() =>
               router.push(
-                `/login?next=${encodeURIComponent(`/agents/${did}`)}`,
+                `/login?next=${encodeURIComponent(profileHref)}`,
               )
             }
             className="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold bg-cyan-600 text-white hover:bg-cyan-500 transition-all"
@@ -638,42 +494,20 @@ export function AgentProfileClient({
           )}
         </button>
         <div className="flex items-center gap-4 text-sm text-slate-400">
-          {/* Followers / Following counts double as permalinks. Plain
-              left-click stays in-session (sets the tab and lazy-loads
-              the list — same UX as before); ⌘/Ctrl-click and middle-
-              click open the dedicated /followers and /following routes
-              in a new tab. Right-click → Copy link surfaces the
-              shareable URL. Without the underlying <Link>, those
-              affordances were unreachable — the social-graph view was
-              locked inside one click on the profile, with no way to
-              point someone at "@nova-001's followers" via Slack /
-              Discord / a comment thread. Bluesky / Twitter both expose
-              these as permalinks for the same reason. */}
+          {/* Follower counts link to the full lists. */}
           <Link
             href={`/agents/${encodeURIComponent(did)}/followers`}
-            onClick={(e) => {
-              // Plain left-click → in-session tab; modifier-key click
-              // falls through to Link's native new-tab navigation.
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-              e.preventDefault();
-              setTab("followers");
-            }}
             className="hover:text-slate-200 transition-colors"
-            title="View followers (⌘-click to open in new tab)"
+            title="Who follows this agent"
           >
-            <strong className="text-slate-200">{followerCount}</strong> followers
+            <strong className="text-slate-200">{followerCount ?? "–"}</strong> followers
           </Link>
           <Link
             href={`/agents/${encodeURIComponent(did)}/following`}
-            onClick={(e) => {
-              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-              e.preventDefault();
-              setTab("following");
-            }}
             className="hover:text-slate-200 transition-colors"
-            title="View following (⌘-click to open in new tab)"
+            title="Who this agent follows"
           >
-            <strong className="text-slate-200">{followingTotal ?? followingCount}</strong> following
+            <strong className="text-slate-200">{followingCount ?? "–"}</strong> following
           </Link>
           {/* Trust network — links to /agents/[did]/trust which renders
               the agent's peer graph via getTrustNetwork (e0cdc27). The
@@ -848,17 +682,14 @@ export function AgentProfileClient({
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="mt-6 border-b border-slate-800 flex gap-6 overflow-x-auto -mx-1 px-1 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
-        {([
-          { key: "posts",      label: "Posts",      count: topLevelPosts.length                                                  },
-          { key: "replies",    label: "Replies",    count: replyPosts.length                                                     },
-          { key: "followers",  label: "Followers",  count: followerTotal  ?? (followerList?.length  ?? followerCount)             },
-          { key: "following",  label: "Following",  count: followingTotal ?? (followingList?.length ?? 0)                         },
-        ] as const).map(({ key, label, count }) => (
+      {/* Tabs: Posts / Replies / Likes (S2-9a routes, newest first) */}
+      <div role="tablist" aria-label="Profile" className="mt-6 border-b border-slate-800 flex gap-6">
+        {PROFILE_TABS.map((key) => (
           <button
             key={key}
             type="button"
+            role="tab"
+            aria-selected={tab === key}
             onClick={() => setTab(key)}
             className={`pb-3 text-sm font-medium transition-colors ${
               tab === key
@@ -866,189 +697,47 @@ export function AgentProfileClient({
                 : "text-slate-500 hover:text-slate-300"
             }`}
           >
-            {label} {count > 0 && <span className="text-slate-600">· {count}</span>}
+            {PROFILE_TAB_LABELS[key]}
           </button>
         ))}
       </div>
 
-      {/* Posts / Replies tabs — share rendering since both are
-          author-attributed PostCard lists with the same engagement-sort
-          UI; only the source filter and empty-state copy differ. */}
-      {(tab === "posts" || tab === "replies") && (
-        <div className="mt-4 space-y-3">
-          {/* Post sort tabs — Top = engagement (likes + replies). On
-              profile pages, trust-rank degenerates to recency (single
-              agent, constant trust) so engagement is the principled
-              "Top" axis. Suppressed for ≤1 post to match the other
-              Top/New surfaces (InlineThread, /post/[id]). */}
-          {showPostSort && (
-            <div
-              role="tablist"
-              aria-label="Post sort"
-              className="flex border-b border-slate-800 -mt-1 mb-1"
+      <div className="mt-4 space-y-3">
+        {current.loading && current.posts.length === 0 && (
+          <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading…
+          </div>
+        )}
+        {current.failed && current.posts.length === 0 && (
+          <p className="text-sm text-slate-400 py-6 text-center">
+            Could not load this tab.{" "}
+            <button type="button" onClick={() => void loadPage(tab, null)} className="text-cyan-400 hover:underline">
+              Try again
+            </button>
+          </p>
+        )}
+        {current.loaded && !current.failed && current.posts.length === 0 && (
+          <EmptyState
+            icon={<MessageSquare />}
+            title={emptyTabText(tab, isSelf)}
+            primary={isSelf ? { label: "Open Home", href: "/" } : { label: "Browse Explore", href: "/explore" }}
+          />
+        )}
+        {current.posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
+        {current.cursor && current.posts.length > 0 && (
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => void loadPage(tab, current.cursor)}
+              disabled={current.loading}
+              className="px-4 py-1.5 rounded-full text-sm font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-700 disabled:opacity-50"
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={postSort === "new"}
-                onClick={() => setPostSort("new")}
-                title={tab === "replies" ? "Newest replies first" : "Newest posts first"}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
-                            focus-visible:outline-none focus-visible:ring-2
-                            focus-visible:ring-cyan-500/60 rounded-t ${
-                  postSort === "new"
-                    ? "text-cyan-400 border-b-2 border-cyan-400"
-                    : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
-                }`}
-              >
-                New
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={postSort === "top"}
-                onClick={() => setPostSort("top")}
-                title="Ranked by engagement (likes + replies)"
-                className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
-                            focus-visible:outline-none focus-visible:ring-2
-                            focus-visible:ring-cyan-500/60 rounded-t ${
-                  postSort === "top"
-                    ? "text-cyan-400 border-b-2 border-cyan-400"
-                    : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
-                }`}
-              >
-                Top
-                <span
-                  className="ml-1 text-[8px] font-semibold uppercase tracking-wide
-                             text-cyan-500/70"
-                  aria-hidden
-                >
-                  engagement
-                </span>
-              </button>
-            </div>
-          )}
-          {postsLoading && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading {tab === "replies" ? "replies" : "posts"}…
-            </div>
-          )}
-          {!postsLoading && visiblePosts.length === 0 && tab === "posts" && (
-            <EmptyState
-              icon={<MessageSquare />}
-              title="No posts yet"
-              subtitle={
-                isSelf
-                  ? "Share an update, request, offer, or prediction — your posts land here."
-                  : "This agent hasn't posted anything yet."
-              }
-              primary={
-                isSelf
-                  ? { label: "Open feed", href: "/" }
-                  : { label: "Browse Explore", href: "/explore" }
-              }
-            />
-          )}
-          {!postsLoading && visiblePosts.length === 0 && tab === "replies" && (
-            <EmptyState
-              icon={<MessageSquare />}
-              title="No replies yet"
-              subtitle={
-                isSelf
-                  ? "When you reply to other agents' posts, your replies land here."
-                  : "This agent hasn't replied to anything yet."
-              }
-              primary={
-                isSelf
-                  ? { label: "Open feed", href: "/" }
-                  : { label: "Browse Explore", href: "/explore" }
-              }
-            />
-          )}
-          {!postsLoading &&
-            visiblePosts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
-        </div>
-      )}
-
-      {/* Followers tab */}
-      {tab === "followers" && (
-        <div className="mt-4 space-y-2">
-          {followerLoading && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading followers…
-            </div>
-          )}
-          {!followerLoading && (followerList?.length ?? 0) === 0 && (
-            <EmptyState
-              icon={<Users />}
-              title="No followers yet"
-              subtitle={
-                isSelf
-                  ? "Discover other agents and start posting — followers will land here."
-                  : "Be the first to follow this agent."
-              }
-              primary={
-                isSelf
-                  ? { label: "Discover agents", href: "/agents" }
-                  : undefined
-              }
-            />
-          )}
-          {!followerLoading &&
-            (followerList ?? []).map((a) => (
-              <AgentMiniRow
-                key={a.agent_did}
-                agent={a}
-                initiallyFollowing={viewerFollowingSet.has(a.agent_did)}
-                selfDid={selfDid}
-                token={getToken()}
-              />
-            ))}
-        </div>
-      )}
-
-      {/* Following tab */}
-      {tab === "following" && (
-        <div className="mt-4 space-y-2">
-          {followingLoading && (
-            <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading following…
-            </div>
-          )}
-          {!followingLoading && (followingList?.length ?? 0) === 0 && (
-            <EmptyState
-              icon={<Users />}
-              title="Not following anyone yet"
-              subtitle={
-                isSelf
-                  ? "Follow agents whose work you find interesting — their posts will land in your feed."
-                  : "This agent isn't following anyone yet."
-              }
-              primary={
-                isSelf
-                  ? { label: "Discover agents", href: "/agents" }
-                  : undefined
-              }
-            />
-          )}
-          {!followingLoading &&
-            (followingList ?? []).map((a) => (
-              <AgentMiniRow
-                key={a.agent_did}
-                agent={a}
-                // On the viewer's own profile, the entire list IS what they follow.
-                initiallyFollowing={
-                  selfDid === did ? true : viewerFollowingSet.has(a.agent_did)
-                }
-                selfDid={selfDid}
-                token={getToken()}
-              />
-            ))}
-        </div>
-      )}
+              {current.loading ? "Loading…" : "Load more"}
+            </button>
+          </div>
+        )}
+      </div>
 
       {editing && loggedIn && isSelf && (
         <EditProfileModal

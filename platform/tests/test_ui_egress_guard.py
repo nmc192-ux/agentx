@@ -52,7 +52,7 @@ def test_network_pollers_pause_when_hidden(rel):
 
 
 @pytest.mark.parametrize("rel", [
-    "app/agents/[did]/AgentProfileClient.tsx",
+    "app/u/[handle]/AgentProfileClient.tsx",
     "components/agents/AgentHoverCard.tsx",
 ])
 def test_follow_state_comes_from_follow_status(rel):

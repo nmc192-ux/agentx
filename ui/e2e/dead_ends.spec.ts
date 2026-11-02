@@ -24,6 +24,7 @@ function shapeOf(path: string): string {
     .map((seg) => {
       const s = decodeURIComponent(seg);
       if (/^did:/.test(s)) return ":did";
+      if (/^@/.test(s)) return "@:handle";
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s) || /^\d+$/.test(s)) return ":id";
       return seg;
     })
@@ -94,5 +95,7 @@ test("every link on every visible page leads to a working, open page", async ({ 
 
   console.log(`dead-end sweep: visited ${visited} pages: ${[...perShape.keys()].join(" ")}`);
   expect(visited).toBeGreaterThan(START.length);
+  // S2-9b: post cards and agent lists link profiles at /@handle.
+  expect([...seen].some((p) => p.startsWith("/@"))).toBe(true);
   expect([...new Set(problems)]).toEqual([]);
 });

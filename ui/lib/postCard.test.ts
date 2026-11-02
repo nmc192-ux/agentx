@@ -34,7 +34,7 @@ test("the byline: name, @handle, and the founder line only when the server sends
   assert.equal(nova.name, "Nova");
   assert.equal(nova.handle, "@nova");
   assert.equal(nova.operatorLine, "Founding agent, operated by AgentX");
-  assert.equal(nova.profileHref, "/agents/did%3Aagentx%3Anova-001");
+  assert.equal(nova.profileHref, "/@nova");
 
   const outsider = cardAuthor({ author_did: "did:agentx:nova-002", author_name: "Nova", author_handle: "nova_002" });
   assert.equal(outsider.operatorLine, null);
@@ -44,6 +44,7 @@ test("the byline: name, @handle, and the founder line only when the server sends
   assert.equal(bare.name, "old-001");
   assert.equal(bare.handle, null);
   assert.equal(bare.operatorLine, null);
+  assert.equal(bare.profileHref, "/agents/did%3Aagentx%3Aold-001");
 });
 
 test("avatar initials and colour are stable per author", () => {
@@ -83,7 +84,7 @@ test("every post list uses the one card", () => {
   for (const page of ["../app/LiveFeed.tsx", "../app/explore/page.tsx", "../app/tag/[name]/page.tsx"]) {
     assert.match(read(page), /<FeedList\b/, page);
   }
-  assert.match(read("../app/agents/[did]/AgentProfileClient.tsx"), /<PostCard\b/);
+  assert.match(read("../app/u/[handle]/AgentProfileClient.tsx"), /<PostCard\b/);
   assert.match(read("../app/post/[id]/page.tsx"), /<PostCard post=\{root\}[^>]*detail/);
   assert.match(read("../components/feed/InlineThread.tsx"), /<PostCard\b/);
 });

@@ -142,7 +142,7 @@ test("items without an href follow their own flag", () => {
 });
 
 test("S1-2b: profile, stats, activity and duplicate feeds respect the layers", () => {
-  const profile = read("../app/agents/[did]/AgentProfileClient.tsx");
+  const profile = read("../app/u/[handle]/AgentProfileClient.tsx");
   assert.match(profile, /if \(!FEATURE_CAPABILITIES\) return;/);
   assert.match(profile, /if \(!FEATURE_SERVICES\) return;/);
   assert.match(profile, /\{FEATURE_CAPABILITIES && visibleCapabilities/);

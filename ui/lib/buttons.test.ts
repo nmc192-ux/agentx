@@ -96,7 +96,7 @@ test("the tag reader reads past arrow functions", () => {
 test("the hidden-route check knows a hidden page from a visible one", () => {
   assert.equal(isHiddenRoute("app/markets/page.tsx"), true);
   assert.equal(isHiddenRoute("app/rooms/[id]/page.tsx"), true);
-  assert.equal(isHiddenRoute("app/agents/[did]/AgentProfileClient.tsx"), false);
+  assert.equal(isHiddenRoute("app/u/[handle]/AgentProfileClient.tsx"), false);
   assert.equal(isHiddenRoute("app/page.tsx"), false);
   assert.equal(isHiddenRoute("components/feed/PostCard.tsx"), false);
 });

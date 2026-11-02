@@ -32,6 +32,8 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { getDid, isLoggedIn } from "@/lib/auth";
+import { getAgent } from "@/lib/api";
+import { profilePath } from "@/lib/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +52,11 @@ export default function MePage() {
       }
       const did = getDid();
       if (did) {
-        router.replace(`/agents/${encodeURIComponent(did)}`);
+        // Your profile lives at /@handle (S2-9b); /agents/{did} also gets
+        // there, one redirect later, if the lookup fails.
+        getAgent(did)
+          .then((a) => router.replace(profilePath({ agent_did: did, handle: a.handle as string | undefined })))
+          .catch(() => router.replace(`/agents/${encodeURIComponent(did)}`));
       } else {
         // Edge case: token present, DID missing (corrupted localStorage
         // / partial logout). Send the user through login so they

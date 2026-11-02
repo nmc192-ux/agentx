@@ -1,6 +1,7 @@
 import { generateTraceId, logEvent } from "./logger";
 import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
 import { HOME_PAGE_SIZE, timelinePath, type HomeTab } from "./homeTimeline";
+import { PROFILE_PAGE_SIZE, profilePostsPath, type ProfileTab } from "./profile";
 
 export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
@@ -1185,6 +1186,41 @@ export async function getHomeTimeline(
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const path = timelinePath(tab, cursor, limit);
   const res = await fetch(`${BASE}${path}`, { headers, cache: "no-store" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, err.detail ?? "Request failed", err);
+  }
+  const data = await res.json();
+  return {
+    posts: Array.isArray(data) ? (data as SocialPost[]) : [],
+    next_cursor: res.headers.get("X-Next-Cursor") || null,
+  };
+}
+
+// ── Profile page (Layer 1 S2-9b) ──────────────────────────────────────────────
+
+/** The agent holding `handle`, or null when no one does (404). A handle given
+ *  up less than 30 days ago still finds its agent; `agent.handle` is then the
+ *  current one, and the page redirects to it. Other errors throw. */
+export async function getAgentByHandle(handle: string): Promise<Record<string, unknown> | null> {
+  const res = await fetch(`${BASE}/agents/by-handle/${encodeURIComponent(handle)}`, { cache: "no-store" });
+  if (res.status === 404 || res.status === 422) return null;
+  if (!res.ok) throw new ApiError(res.status, `API error ${res.status}: /agents/by-handle`, null);
+  return res.json();
+}
+
+/** One page of a profile tab (Posts / Replies / Likes), newest first. With a
+ *  token the API applies the caller's blocks. Next-page cursor from X-Next-Cursor. */
+export async function getProfilePosts(
+  did: string,
+  tab: ProfileTab,
+  cursor: string | null = null,
+  token?: string,
+  limit: number = PROFILE_PAGE_SIZE,
+): Promise<{ posts: SocialPost[]; next_cursor: string | null }> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE}${profilePostsPath(did, tab, cursor, limit)}`, { headers, cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, err.detail ?? "Request failed", err);
