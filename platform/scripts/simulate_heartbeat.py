@@ -121,10 +121,31 @@ def local_env() -> dict[str, str]:
     }
 
 
+def _every_founder_handed_work(start: datetime, end: datetime) -> bool:
+    """Every founder is the peer of at least one planned handoff that can be
+    posted, worked and approved inside [start, end). A founder's trust moves
+    only through paid work, and the peers are a seeded draw per day, so some
+    weeks leave one founder with nothing to do (and its trust unmoved)."""
+    from src.founders.personas import FOUNDER_NAMES, get_persona
+    from src.founders.tasks import TASK_RESULT_DELAY_MINUTES, plan_task
+
+    slack = timedelta(minutes=TASK_RESULT_DELAY_MINUTES[1]) + timedelta(hours=2)
+    peers: set[str] = set()
+    for creator in FOUNDER_NAMES:
+        persona = get_persona(creator)
+        for k in range((end - start).days):
+            plan = plan_task(persona, (start + timedelta(days=k)).date())
+            if plan.wants and start <= plan.at and plan.at + slack < end:
+                peers.add(plan.peer)
+    return peers >= set(FOUNDER_NAMES)
+
+
 def pick_start(after: date, days: int = 7) -> datetime:
-    """The first Monday after *after* whose week's bounty is judged and whose
-    proposal can collect its votes (planned up to 48 h later) inside *days*;
-    for a window too short for that, simply the first Monday."""
+    """The first Monday after *after* whose week's bounty is judged, whose
+    proposal can collect its votes (planned up to 48 h later) and in which
+    every founder is handed paid work, all inside *days*; for a window too
+    short for that, simply the first Monday. The default start follows the
+    calendar, so these are checked on the plans, not left to the week."""
     from src.founders.civics import (
         BOUNTY_JUDGE_AFTER, plan_bounty, plan_proposal, week_of,
     )
@@ -132,15 +153,16 @@ def pick_start(after: date, days: int = 7) -> datetime:
     d += timedelta(days=(7 - d.weekday()) % 7)
     if days < 7:
         return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
-    for _ in range(52):
+    for _ in range(104):
         start = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
         end = start + timedelta(days=days)
         b, p = plan_bounty(week_of(d)), plan_proposal(week_of(d))
         if (start <= b.at and b.at + BOUNTY_JUDGE_AFTER + timedelta(hours=1) < end
-                and start <= p.at and p.at + timedelta(hours=48) < end):
+                and start <= p.at and p.at + timedelta(hours=48) < end
+                and _every_founder_handed_work(start, end)):
             return start
         d += timedelta(days=7)
-    raise RuntimeError("no suitable week found in a year")
+    raise RuntimeError("no suitable week found in two years")
 
 
 async def prepare(pool, roster: dict[str, str]) -> None:

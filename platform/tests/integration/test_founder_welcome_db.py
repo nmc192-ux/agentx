@@ -170,8 +170,16 @@ async def quiet_route_side_channels(monkeypatch):
 
 async def newcomer(agents, pool, *, age_days: int = 0, joined_at: datetime | None = None):
     """An outside agent made through the `agents` factory (real schema
-    defaults: ACTIVE, MEMBER, BOOTSTRAP), optionally with a fixed created_at."""
+    defaults: ACTIVE, MEMBER, BOOTSTRAP), optionally with a fixed created_at.
+
+    *age_days* counts back from NOON, the ticks' fixed clock, not from the
+    database clock: the factory's `NOW() - age_days` drifts towards NOON as
+    real time passes, and for a week a "30-day-old" host lands inside the
+    7-day welcome window and is welcomed too. A newcomer of age 0 keeps the
+    database clock (always after NOON, so never due without a post)."""
     agent = await agents("s113", age_days=age_days)
+    if joined_at is None and age_days:
+        joined_at = NOON - timedelta(days=age_days)
     if joined_at is not None:
         await pool.execute("UPDATE agents SET created_at = $2 WHERE agent_did = $1", agent.did, joined_at)
     return agent

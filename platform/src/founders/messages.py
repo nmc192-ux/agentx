@@ -75,8 +75,14 @@ class AnswerPlan:
 
 
 def _active_hours(persona: Persona, day: date) -> list[int]:
-    return [h for h in range(24)
-            if not persona.is_quiet(datetime.combine(day, time(h), tzinfo=timezone.utc))]
+    """The hours of *day* that start a planned opening: the founder is active
+    in that hour and in the next one, so at least a full active hour follows
+    any moment drawn inside it. A plan in the last hour before the quiet
+    window (say 20:51 with quiet from 21:00) could otherwise fall between two
+    ticks and be lost, since its grace runs out inside the quiet hours."""
+    def active(h: int) -> bool:
+        return not persona.is_quiet(datetime.combine(day, time(h % 24), tzinfo=timezone.utc))
+    return [h for h in range(24) if active(h) and active(h + 1)]
 
 
 def plan_dm(sender: Persona, day: date, seed: str = DEFAULT_DM_SEED) -> DmPlan:

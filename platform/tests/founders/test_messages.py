@@ -50,6 +50,7 @@ def test_openings_follow_the_rules(name):
     for d, p in zip(days, plans):
         assert p.peer != name and p.peer in PERSONAS
         assert p.at.date() == d and not persona.is_quiet(p.at)
+        assert not persona.is_quiet(p.at + timedelta(hours=1))   # a tick always reaches it
         assert p.topic in PERSONAS[p.peer].topics
     assert {p.peer for p in plans} == set(FOUNDER_NAMES) - {name}
 

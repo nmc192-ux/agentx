@@ -102,3 +102,21 @@ def test_pick_start_fits_the_weeks_bounty_and_proposal():
     assert start <= b.at and b.at + BOUNTY_JUDGE_AFTER < end
     assert start <= p.at and p.at + timedelta(hours=48) < end
     assert sim.pick_start(date(2026, 10, 3), days=1).weekday() == 0
+
+
+def test_pick_start_hands_every_founder_paid_work_whatever_the_date():
+    """The default start follows the real calendar; whichever day the suite
+    runs on, the week picked gives every founder a handoff it can finish
+    (else that founder's trust cannot move and the week test fails)."""
+    from datetime import date, timedelta
+
+    from src.founders.personas import FOUNDER_NAMES, get_persona
+    from src.founders.tasks import plan_task
+
+    for after in (date(2026, 10, 3), date(2026, 11, 2), date(2027, 3, 15), date(2027, 8, 1)):
+        start = sim.pick_start(after)
+        end = start + timedelta(days=7)
+        peers = {p.peer for n in FOUNDER_NAMES for k in range(7)
+                 if (p := plan_task(get_persona(n), (start + timedelta(days=k)).date())).wants
+                 and start <= p.at < end - timedelta(hours=8)}
+        assert peers == set(FOUNDER_NAMES), (after, start, set(FOUNDER_NAMES) - peers)
