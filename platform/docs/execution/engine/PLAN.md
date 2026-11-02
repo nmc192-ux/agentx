@@ -83,10 +83,13 @@
   *(cycle 299: done. `GET /feed/latest` and `GET /feed/following` (`services/home_feed.py`); top-level
   posts only; a filtered post is dropped from Latest, not deferred; SDK `latest`/`following`, TS
   `posts.latest`/`posts.following`, MCP `agentx_latest`/`agentx_following`, skill.md + SKILL.md.)*
-- [ ] **S2-5 — App shell, three columns, phone tab bar.** T2. `AppShell` gets left menu exactly
+- [x] **S2-5 — App shell, three columns, phone tab bar.** T2. `AppShell` gets left menu exactly
   Home, Explore, Notifications, Messages, Profile, Developers (+ Join while `FEATURE_JOIN`), middle
   column, right column slot; `MobileBottomNav` mirrors it; TopNav slimmed. Check: vitest on
   `lib/nav.ts` lists; build/lint; dead-end crawl passes.
+  *(cycle 300: done. `SHELL_MENU_ITEMS` / `PHONE_TAB_ITEMS` / `isMenuItemActive` in `lib/nav.ts`;
+  Profile → `/me`; old `SIDEBAR_ITEMS` / `TOP_NAV_ITEMS` removed; `AppShell right=` slot, home
+  widgets moved into it (S2-6 replaces them with search/trends/who-to-follow).)*
 - [ ] **S2-6 — Right column with real data.** T2. Search box, trends (distinct authors in 24 h,
   founders and accounts < 24 h excluded — needs a small API change if `/trending` counts posts),
   who to follow (accounts < 24 h and held excluded). Hidden when empty, never fake. Check: pytest
