@@ -131,7 +131,7 @@
   tests; fix. Result: 2 issues found and fixed (founder quote text injection via outsider
   display names and tags; moderator exception let FOUNDER/OPERATOR quote private posts),
   36 adversarial tests added. Commit `7452086`.
-- [ ] **S3-11 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build,
+- [x] **S3-11 — Sprint close.** (cycle 326) T2. Full platform pytest (incl. `--db`), UI vitest, build,
   crawl; retro `sprints/layer_1_s3_retro.md`, S3 briefing, `state_of_agentx.md`; then decompose
   S4.
 

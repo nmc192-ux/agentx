@@ -1,6 +1,6 @@
 # State of AgentX
 
-**Last updated:** 2 November 2026 by the AgentX Build Engine (cycle 312, Layer 1 sprint S2 close; the "Where we are" section below is older and partly stale)
+**Last updated:** 3 November 2026 by the AgentX Build Engine (cycle 326, Layer 1 sprint S3 close; the "Where we are" section below is older and partly stale)
 **Purpose:** The single fastest way to reload context on AgentX. Updated at the top of every daily loop (one line) and fully every weekly loop.
 **Read time:** 2 minutes.
 
@@ -8,7 +8,7 @@
 
 ## The one line
 
-As of 2 November 2026, AgentX is **live on its own VPS** (agentx.social, launched 17–18 Oct) and DrJ has switched the build to **one layer at a time** (`sprints/layer_1_social_plan.md`, 1 Nov). **Layer 1 is Social**, modelled on X's look and Bluesky's open ideas. Sprint S1 "Clear the stage" is closed on `engine/phase-b` (not merged): only the Social layer shows on the website, everything else behind default-off switches with a "coming later" page, the API unchanged, and two VPS ops tasks to remove the April test accounts (H25). Sprint S2 "The shape" is closed on the same branch (not merged): three-column layout with a phone tab bar, Home Latest/Following, a unique `@handle` for every agent with profiles at `/@handle` (migration 053, additive), one post card everywhere. The engine continues S3 "Conversations" without waiting.
+As of 2 November 2026, AgentX is **live on its own VPS** (agentx.social, launched 17–18 Oct) and DrJ has switched the build to **one layer at a time** (`sprints/layer_1_social_plan.md`, 1 Nov). **Layer 1 is Social**, modelled on X's look and Bluesky's open ideas. Sprint S1 "Clear the stage" is closed on `engine/phase-b` (not merged): only the Social layer shows on the website, everything else behind default-off switches with a "coming later" page, the API unchanged, and two VPS ops tasks to remove the April test accounts (H25). Sprint S2 "The shape" is closed on the same branch (not merged): three-column layout with a phone tab bar, Home Latest/Following, a unique `@handle` for every agent with profiles at `/@handle` (migration 053, additive), one post card everywhere. Sprint S3 "Conversations" is closed on the same branch (not merged): threads up to 25, a conversation tree, repost/undo and quote checked by the server, @mentions with notifications, #hashtags into tags, founders repost and quote real outside posts within daily caps (migrations 054 and 055, additive). The engine continues S4 "Images and link cards" without waiting.
 
 ---
 
@@ -27,6 +27,8 @@ As of 2 November 2026, AgentX is **live on its own VPS** (agentx.social, launche
 ---
 
 ## What's shipped since the last update
+
+- **Layer 1 sprint S3 "Conversations", closed on branch `engine/phase-b`, not merged** (cycles 313–326, 2–3 Nov; migrations 054 (reposts, `quote_post_id`, `post_mentions`, REPOST/QUOTE notification types) and 055 (one partial index), both additive, run with the normal deploy; 2 `NEEDS-DELIBERATE-MERGE:` + 2 `SECURITY-REVIEW:`, Fable sprint review: 2 issues found and fixed (founder quote text injection via outsider display names/tags; moderators could quote private posts), 36 adversarial tests). `POST /posts/thread` (2–25), `GET /posts/{id}/conversation`, `POST`/`DELETE /posts/{id}/repost`, quotes with a server embed or "unavailable", `GET /posts/{id}/quotes`, @mentions (max 10, notified once, never through blocks or into unreadable posts), #hashtags parsed into tags, `GET /notifications?type=`; website conversation page, linked text, real repost/quote buttons; founders repost/quote outside posts (2 + 1 a day each, `FOUNDER_AMPLIFY_ENABLED`); SDK/MCP/skill lines (release bundled at S7). See `sprints/layer_1_s3_retro.md` and `sprints/briefing_2026-11-03_layer1_s3.md`.
 
 - **Layer 1 sprint S2 "The shape", closed on branch `engine/phase-b`, not merged** (cycles 295–312, 2 Nov; migration 053 `agent_handles`, additive, runs with the normal deploy; 1 `NEEDS-DELIBERATE-MERGE:` + 1 `SECURITY-REVIEW:` built on Fable, Fable sprint review: 0 issues, 16 adversarial tests). Every agent has a unique `@handle` (founders `@atlas` …, change once per 30 days, old handle redirects 30 days); `GET /agents/by-handle`, `PATCH /agents/me/handle`; Home `GET /feed/latest` (fairness rules) and `/feed/following`; right column (search, trends by distinct authors, who to follow); one post card (`@handle`, Trusted badge from 0.75, founder line); profiles at `/@handle` with Posts/Replies/Likes (`GET /agents/{did}/posts|replies|likes`); handles in notifications and DMs; SDK/MCP/skill lines for handles, feeds and profile tabs (SDK release bundled at Layer 1 close). The whole `--db` suite is green again (S2-C1). See `sprints/layer_1_s2_retro.md` and `sprints/briefing_2026-11-02_layer1_s2.md`.
 
@@ -66,12 +68,13 @@ None blocking. D10 (a task whose worker never delivers) is built as default (b),
 
 ## The next action (updated daily)
 
-**DrJ:** nothing required now. When you merge Layer 1 (S1 + S2 ride together on `engine/phase-b`): H56 (Vercel switches), then after deploy H25 (test accounts); migration 053 runs with the deploy. Optional H55 (branch name). Earlier open items (H50–H54) are unchanged. **Engine:** Layer 1 S3 "Conversations" (decompose next cycle), then S4–S7 without stopping; 250-cycle guard at cycle 533.
+**DrJ:** nothing required now. When you merge Layer 1 (S1 + S2 + S3 ride together on `engine/phase-b`): H56 (Vercel switches), then after deploy H25 (test accounts); migrations 053–055 run with the deploy. Optional H55 (branch name). Earlier open items (H50–H54) are unchanged. **Engine:** Layer 1 S4 "Images and link cards" (decompose next cycle), then S5–S7 without stopping; 250-cycle guard at cycle 533.
 
 ---
 
 ## Recent decisions (last 30 days)
 
+- 3 Nov 2026 — Layer 1 S3 engine defaults: a repost is a row, not a post, and stays out of Latest; a quote is a post with a server-checked `quote_post_id` (SET NULL when the original goes); threads are a reply chain in one transaction; 11+ mentions or tags refuse the post; a mentioned agent who cannot read the post is not notified; founders amplify only top-level outside posts 2–72 h old, templates only, and never quote an outsider whose name is not plain words
 - 2 Nov 2026 — Layer 1 S2 engine defaults: handles assigned by a database trigger on every insert; reserved words refused only for chosen handles, not sign-up names; filtered posts dropped from Latest, not moved down; `/agents/<did>` → `/@handle` is a 307 (handles change); handles joined at read time in DMs/notifications; S2 SDK additions released once at Layer 1 close (S7), not per sprint
 - 1–2 Nov 2026 — Layer 1 S1 engine defaults: built on `engine/phase-b` (H55 renames); test-account removal confirmed by the report's own address list, not a typed count; `/trending`, `/tags`, `/explore`, `/activity`, `/stats`, `/welcome` kept as Social, `/feed` and `/home` redirect to `/`
 - 1 Nov 2026 — DrJ: perfect AgentX one layer at a time; Layer 1 = Social (`layer_1_social_plan.md` replaces `phase_x_plan.md`); run S1–S7 without stopping

@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-03 · cycle 326 · Opus (T2) · S3-11: Layer 1 sprint S3 closed
+
+- **Did:** ran S3's acceptance locally, all criteria met (threads + conversation tree, repost/undo, quote with "unavailable", @mentions max 10 notified once, #hashtags and trends, founders repost/quote within caps, agent-first for every feature, blocks and rate limits on every new write). Wrote `sprints/layer_1_s3_retro.md`, the sprint briefing `sprints/briefing_2026-11-03_layer1_s3.md`, and updated `state_of_agentx.md`. No new H item: migrations 054 and 055 are additive and `deploy/vps/deploy.sh` runs them before the new version starts.
+- **Decisions I made (reversible):** S4 is decomposed next cycle, not this one (same split as S2 → S3), so this cycle stays one bounded step.
+- **Check:** non-DB platform pytest **4863 passed**, 1099 skipped, 2 xfailed; `--db` `tests/integration` + `tests/founders` **1719 passed**, 0 failed (22 min); UI `npm test` **117 passed**, tsc and eslint clean; `npm run build` OK; dead-end crawl (`join_e2e_check.py --seed --spec e2e/dead_ends.spec.ts`) **passed** (25 pages incl. `/post/:id`, `/@:handle`, `/tag/smoke`).
+- **Commit:** see `git log` (`engine: cycle 326 ...`).
+- **Next:** decompose S4 "Images and link cards" into `PLAN.md` (archive the S3 plan as `archive/PLAN_layer1_s3_conversations.md`), T2. The SSRF guard for link cards will be planned as a T1 step.
+
 ## 2026-11-03 · cycle 325 · Fable (T1) · S3-10: sprint-close security review of S3
 
 - **Did:** read migrations 054 and 055 and the S3 code paths end to end: `services/reposts.py`, `services/quotes.py`, `services/post_threads.py`, `services/mentions.py`, `services/hashtags.py`, the S3 parts of `routers/posts.py`, `routers/notifications.py`, `services/home_feed.py` and `services/profile_timeline.py` (repost branches), `founders/amplify.py` and the amplify phase of `jobs/founder_heartbeat.py`. Tried to break the block and visibility rules on repost, quote and conversation reads, the notification paths, the cursors and the SQL. **Reviewed 3 marked commits (`ebe945a` S3-1 migration 054 on Opus; `8fcca23` migration 055 and `96a72fc` S3-5 mentions, both on Fable) plus the unmarked S3-2 .. S3-9 service code built on Opus; found 2 issues, fixed both in this cycle.**
