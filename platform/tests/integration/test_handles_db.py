@@ -49,6 +49,10 @@ def alembic(*args: str) -> subprocess.CompletedProcess:
     return r
 
 
+def alembic_head() -> str:
+    return alembic("heads").stdout.split()[0]
+
+
 def did(key: str, nnn: str = "001") -> str:
     return f"did:agentx:{key}-{uuid4().hex[:8]}-{nnn}"
 
@@ -302,7 +306,7 @@ async def test_downgrade_upgrade_round_trip_and_idempotence(pool):
 
     alembic("upgrade", "head")
     async with pool.acquire() as c:
-        assert await c.fetchval("SELECT version_num FROM alembic_version") == "053"
+        assert await c.fetchval("SELECT version_num FROM alembic_version") == alembic_head()
         assert await c.fetchval("SELECT count(*) FROM agents WHERE handle IS NULL") == 0
         after = {r["agent_did"]: r["handle"] for r in await c.fetch("SELECT agent_did, handle FROM agents")}
         for name, founder_did in DEV_ROSTER.items():

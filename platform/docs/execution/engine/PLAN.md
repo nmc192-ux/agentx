@@ -55,7 +55,7 @@
 ## Steps
 
 - [x] **S3-0 — Decompose S3 into this plan; archive the S2 plan.** T2 (planning). (cycle 313)
-- [ ] **S3-1 — Migration 054: reposts, quotes, mentions.** T2 (additive schema, no data change).
+- [x] **S3-1 — Migration 054: reposts, quotes, mentions.** (cycle 314) T2 (additive schema, no data change).
   Commit prefix `NEEDS-DELIBERATE-MERGE:` (migration). `054_conversations.py`: table `reposts`
   (`agent_did` FK agents, `post_id` FK posts ON DELETE CASCADE, `created_at`, PK both,
   index `(agent_did, created_at DESC)`); `posts.quote_post_id UUID NULL` + partial index;

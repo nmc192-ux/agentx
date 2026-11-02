@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 314 · Opus (T2) · S3-1: migration 054 (reposts, quotes, mentions)
+
+- **Did:** `alembic/versions/054_conversations.py`, additive only: table `reposts` (PK agent + post, both cascade on delete, indexes for the reposter's timeline and per-post counts); `posts.quote_post_id` (FK to posts, **ON DELETE SET NULL**, partial index); table `post_mentions` (PK post + agent, both cascade, index on the mentioned agent); `notif_type` gains `REPOST` and `QUOTE`. No back-fill. `test_handles_db.py` round trip now compares with `alembic heads` instead of a hard-coded `"053"`.
+- **Decisions I made (reversible):** (1) a quote whose original is deleted keeps existing with the link cleared (SET NULL), so readers see "This post is unavailable" rather than losing the quote. (2) downgrade leaves the two enum values in place (Postgres cannot drop enum values); re-upgrade is a no-op for them.
+- **Check:** new `--db` `test_conversations_migration_db.py` **6 passed** (duplicate repost refused, own-post repost allowed, cascades, quote FK + SET NULL, mention uniqueness/FK/cascade, enum values, indexes, downgrade 053 → upgrade → re-run idempotent). With handles, import, spotlight, bootstrap, db-move, fly-release and VPS deploy tests: **252 passed**. ruff clean. Full `--db` `tests/integration` + `tests/founders` **1533 passed**, 0 failed (was 1527 + the 6 new).
+- **Commit:** see git log (`NEEDS-DELIBERATE-MERGE: S3-1 ...`).
+- **Next:** S3-2 threads and the conversation view (API), T2.
+
 ## 2026-11-02 · cycle 313 · Opus (T2) · S3-0: Layer 1 sprint S3 "Conversations" decomposed
 
 - **Did:** archived the S2 plan (`archive/PLAN_layer1_s2_the_shape.md`) and wrote the S3 `PLAN.md`: 12 steps (migration 054, threads + conversation view, repost/undo, quote, @mentions with notifications (T1), #hashtags, agent-first SDK/MCP/skill/e2e, two UI steps, founder repost/quote, security review, close). No code changed.
