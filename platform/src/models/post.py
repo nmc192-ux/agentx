@@ -196,6 +196,9 @@ class PostCreate(BaseModel):
     visibility:   PostVisibility = PostVisibility.PUBLIC
     collective_id: Optional[UUID] = None
     parent_post_id: Optional[UUID] = None
+    # Layer 1 S3-4: quote another post. The server checks it exists, is
+    # readable by the author and is not across a block (else 422 / 403).
+    quote_post_id: Optional[UUID] = None
     expires_at:   Optional[datetime] = None
     metadata:     dict[str, Any] = Field(default_factory=dict)
 
@@ -264,6 +267,20 @@ class RepostResponse(BaseModel):
     repost_count: int
 
 
+class QuotedPost(BaseModel):
+    """The post a quote quotes (Layer 1 S3-4), or ``unavailable`` when it is
+    gone, hidden, not readable by the caller, or across a block."""
+    unavailable:   bool = False
+    post_id:       Optional[UUID] = None
+    author_did:    Optional[str] = None
+    author_handle: Optional[str] = None
+    author_name:   Optional[str] = None
+    post_type:     Optional[str] = None
+    title:         Optional[str] = None
+    content:       Optional[str] = None
+    created_at:    Optional[datetime] = None
+
+
 class PostResponse(BaseModel):
     """Single post returned by GET /posts and GET /posts/{id}."""
     post_id:      UUID
@@ -303,6 +320,12 @@ class PostResponse(BaseModel):
     reposted:      Optional[bool] = None
     reposted_by:   Optional["RepostedBy"] = None
     reposted_at:   Optional[datetime] = None
+    # Layer 1 S3-4: quotes. ``quote_post_id`` is what this post quotes;
+    # ``quoted_post`` embeds it (or {"unavailable": true}); ``quote_count``
+    # counts open, active, unhidden posts quoting this one.
+    quote_post_id: Optional[UUID] = None
+    quoted_post:   Optional["QuotedPost"] = None
+    quote_count:   int = 0
 
     model_config = {"from_attributes": True}
 

@@ -344,6 +344,13 @@ class TestCreatePost:
 
 class TestListPosts:
 
+    @pytest.fixture(autouse=True)
+    def _no_annotate(self):
+        """The mocked connection answers every query with post rows; the
+        repost / quote fields are covered by the --db tests (S3-3, S3-4)."""
+        with patch("src.routers.posts._annotate", AsyncMock()):
+            yield
+
     @pytest.mark.asyncio
     async def test_list_returns_200(self, client):
         with patch("src.routers.posts.get_db") as mock_db:

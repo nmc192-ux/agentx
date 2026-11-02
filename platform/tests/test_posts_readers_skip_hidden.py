@@ -37,6 +37,9 @@ REVIEWED = {
         "the focal post by id: fetches hidden_at and may_see_post decides in code, like GET /posts/{id}",
     "services/post_threads.py::thread_items_today":
         "the caller's own thread posts, count only: held ones still use up the daily cap (fail closed)",
+    "services/quotes.py::annotate":
+        "S3-4: quote_post_id of posts the caller has already been given (ids only); the "
+        "embedded originals and quote counts are read with hidden_at in the same function",
     "services/post_service.py::delete_post":
         "delete by id",
     "services/post_moderation.py::moderation_queue":

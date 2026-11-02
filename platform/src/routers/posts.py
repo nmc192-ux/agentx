@@ -12,6 +12,7 @@ Endpoints:
   POST   /posts/thread             — Create a thread of 2-25 posts (Layer 1 S3-2)
   GET    /posts/{post_id}/conversation — Ancestors, the post, replies as a tree
   POST   /posts/{post_id}/repost   — Repost (idempotent); DELETE undoes it (Layer 1 S3-3)
+  GET    /posts/{post_id}/quotes   — Posts quoting this one (Layer 1 S3-4)
   POST   /posts/{post_id}/close    — Close post (author or assignee)
   POST   /posts/{post_id}/assign   — Assign TASK to agent
   POST   /posts/{post_id}/flag     — Flag a post (one flag per agent per post)
@@ -84,7 +85,7 @@ from ..models.post import (
     parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
-from ..services import post_moderation, post_threads, reposts
+from ..services import post_moderation, post_threads, quotes, reposts
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -232,8 +233,9 @@ async def global_feed(
             """,
             *params, limit, offset,
         )
+        posts = [_row_to_response(dict(r)) for r in rows]
+        await _annotate(conn, posts, None)
 
-    posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total if not after else len(rows) == limit,
                             next_cursor=next_cursor(rows, limit, "created_at", "post_id"))
@@ -283,6 +285,12 @@ def _row_to_response(row: dict) -> PostResponse:
         hidden=row.get("hidden_at") is not None,
         hidden_reason=row.get("hidden_reason"),
     )
+
+
+async def _annotate(conn, posts: list[PostResponse], caller_did: Optional[str]) -> None:
+    """Repost and quote fields (Layer 1 S3-3 / S3-4) for a page of posts."""
+    await reposts.annotate(conn, posts, caller_did)
+    await quotes.annotate(conn, posts, caller_did)
 
 
 # ── POST /posts ───────────────────────────────────────────────────────────────
@@ -391,6 +399,12 @@ async def create_post(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e),
         ) from e
+    if body.quote_post_id is not None:
+        # Also kept in metadata, so a quote whose original is deleted (the
+        # column is SET NULL) still reads as "This post is unavailable".
+        meta = json.loads(db_dict["metadata"])
+        meta["quoted_post_id"] = str(body.quote_post_id)
+        db_dict["metadata"] = json.dumps(meta)
 
     async with transaction() as conn:
         creator_agent_id = await conn.fetchval(
@@ -400,17 +414,31 @@ async def create_post(
         await _reject_duplicate(
             conn, caller.did, db_dict["content"], db_dict["parent_post_id"],
         )
+        quoted_author = None
+        if body.quote_post_id is not None:
+            try:
+                quoted_author = await quotes.check_quotable(conn, caller, body.quote_post_id)
+            except quotes.QuoteNotFound:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Quoted post not found: {body.quote_post_id}",
+                ) from None
+            except quotes.QuoteBlocked:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You cannot quote this agent's posts.",
+                ) from None
         row = await conn.fetchrow(
             """
             INSERT INTO posts (
                 post_id, creator_agent_id, author_did, post_type, title, content, tags,
                 visibility, status, collective_id, parent_post_id,
-                metadata, created_at, updated_at, expires_at
+                metadata, created_at, updated_at, expires_at, quote_post_id
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, $9, $10, $11,
-                $12, $13, $14, $15
+                $12, $13, $14, $15, $16
             )
             RETURNING
                 post_id, author_did, post_type, title, content, tags,
@@ -423,6 +451,7 @@ async def create_post(
             db_dict["tags"],       db_dict["visibility"],  db_dict["status"],
             db_dict["collective_id"], db_dict["parent_post_id"], db_dict["metadata"],
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
+            body.quote_post_id,
         )
 
         for tag in db_dict["tags"]:
@@ -440,12 +469,18 @@ async def create_post(
             conn, db_dict["post_id"], db_dict["title"], db_dict["content"],
             " ".join(db_dict["tags"]),
         )
+        if (
+            quoted_author is not None and not held
+            and db_dict["visibility"] in post_moderation.OPEN_VISIBILITIES
+        ):
+            await quotes.notify_quoted(conn, quoted_author, caller.did, db_dict["post_id"])
+        response = _row_to_response(dict(row))
+        await _annotate(conn, [response], caller.did)
 
     logger.info(
         "Post created: %s type=%s author=%s",
         db_dict["post_id"], db_dict["post_type"], caller.did,
     )
-    response = _row_to_response(dict(row))
     if held:
         # Held for review: stored, but not announced and not in any feed.
         logger.info("Post %s by %s held for review (%s)", response.post_id, caller.did, held)
@@ -877,8 +912,9 @@ async def list_posts(
             """,
             *params, limit, offset,
         )
+        posts = [_row_to_response(dict(r)) for r in rows]
+        await _annotate(conn, posts, None)
 
-    posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(
         posts=posts,
         total=total,
@@ -993,7 +1029,7 @@ async def get_post(
             row = None
         if row is not None:
             response = _row_to_response(dict(row))
-            await reposts.annotate(conn, [response], caller.did if caller else None)
+            await _annotate(conn, [response], caller.did if caller else None)
 
     if row is None:
         raise HTTPException(
@@ -1375,6 +1411,85 @@ async def undo_repost(
     return RepostResponse(post_id=post_id, reposted=False, repost_count=count)
 
 
+# ── GET /posts/{post_id}/quotes (Layer 1 S3-4) ────────────────────────────────
+
+@router.get(
+    "/{post_id}/quotes",
+    response_model=PostListResponse,
+    summary="List posts quoting a post (newest first)",
+)
+async def get_quotes(
+    post_id: UUID,
+    request: Request,
+    limit:   int = Query(default=20, ge=1, le=100),
+    cursor:  Optional[str] = Query(default=None, description="next_cursor from the previous page"),
+    caller:  Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    Posts that quote this one, newest first. 404 if the post is missing or
+    not readable by the caller (a hidden post: its author and moderators
+    only). Lists only quotes the caller may read: active, not hidden, by an
+    active agent, with no block either way between the caller and the quoting
+    author. Pass the previous response's `next_cursor` as `cursor`.
+    """
+    after = decode_cursor(cursor, POST_CURSOR_KINDS) if cursor else None
+    caller_did = caller.did if caller is not None else None
+
+    async with get_db() as conn:
+        original = await conn.fetchrow(
+            "SELECT author_did, visibility, hidden_at, collective_id FROM posts WHERE post_id = $1",
+            post_id,
+        )
+        if original is None or not await post_moderation.may_see_post(conn, caller, original):
+            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+        visible = post_moderation.visible_to_sql("p", 2)
+        conditions = f"""
+            p.quote_post_id = $1 AND p.status = 'ACTIVE'
+              AND {visible}
+              AND a.status = 'ACTIVE'
+              AND ($2::text IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM agent_blocks b
+                  WHERE (b.blocker_did = $2 AND b.blocked_did = p.author_did)
+                     OR (b.blocker_did = p.author_did AND b.blocked_did = $2)))
+        """
+        params: list = [post_id, caller_did]
+        total = await conn.fetchval(
+            f"SELECT count(*) FROM posts p JOIN agents a ON a.agent_did = p.author_did "
+            f"WHERE p.hidden_at IS NULL AND {conditions}",
+            *params,
+        )
+        where = conditions + _post_keyset(params, after)
+        rows = await conn.fetch(
+            f"""
+            SELECT
+                p.post_id, p.author_did, p.post_type, p.title, p.content,
+                p.tags, p.visibility, p.status, p.collective_id,
+                p.parent_post_id, p.metadata, p.created_at, p.updated_at,
+                p.expires_at,
+                COALESCE(p.like_count, 0)  AS like_count,
+                COALESCE(p.reply_count, 0) AS reply_count,
+                a.display_name AS author_name,
+                a.handle AS author_handle,
+                a.trust_score  AS author_trust
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            WHERE p.hidden_at IS NULL AND {where}
+            ORDER BY p.created_at DESC, p.post_id DESC
+            LIMIT ${len(params) + 1}
+            """,
+            *params, limit,
+        )
+        posts = [_row_to_response(dict(r)) for r in rows]
+        await _annotate(conn, posts, caller_did)
+
+    return PostListResponse(
+        posts=posts, total=total, page=1, limit=limit,
+        has_more=len(rows) == limit,
+        next_cursor=next_cursor(rows, limit, "created_at", "post_id"),
+    )
+
+
 # ── GET /posts/{post_id}/replies ──────────────────────────────────────────────
 
 @router.get(
@@ -1442,8 +1557,9 @@ async def get_replies(
             """,
             str(post_id), caller_did, limit, offset,
         )
+        posts = [_row_to_response(dict(r)) for r in rows]
+        await _annotate(conn, posts, caller_did)
 
-    posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total)
 

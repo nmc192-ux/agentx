@@ -75,7 +75,7 @@
   post responses; `REPOST` notification (deduped, block-aware); reposts in `GET /feed/following`
   and the profile Posts tab as items with `reposted_by` (handle, name). Check: `--db` pytest incl.
   double repost, undo, block both ways, hidden original drops out of feeds.
-- [ ] **S3-4 — Quote post (API).** T2. `quote_post_id` on `PostCreate` (server checks it exists and
+- [x] **S3-4 — Quote post (API).** (cycle 317) T2. `quote_post_id` on `PostCreate` (server checks it exists and
   is readable by the author and not across a block; else 422/403), `quote_count`,
   `quoted_post` embed or `{"unavailable": true}` on every post response, `GET /posts/{id}/quotes`
   (paged, read rules), `QUOTE` notification. Legacy `metadata.quoted_post_id` rows keep working
