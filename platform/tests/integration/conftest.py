@@ -44,17 +44,17 @@ PG_PORT = os.getenv("ESCROW_TEST_PG_PORT", "5432")
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="session")
-def escrow_db():
-    """Rebuild the throwaway database once per test run (localhost only)."""
-    env = {
+def migration_env(db_name: str = DB_NAME) -> dict[str, str]:
+    """The environment alembic (and the app) see for the throwaway database:
+    local trust auth, no Redis, no Sentry, the development roster."""
+    return {
         **{k: v for k, v in os.environ.items()
-           if not k.startswith(("POSTGRES_", "REDIS_", "DISABLED_ROUTERS"))},
+           if not k.startswith(("POSTGRES_", "REDIS_", "DISABLED_ROUTERS", "FOUNDER_DIDS"))},
         "APP_ENV": "development",
         "POSTGRES_HOST": smoke.DB_HOST,
         "POSTGRES_PORT": PG_PORT,
         "POSTGRES_USER": PG_USER,
-        "POSTGRES_DB": DB_NAME,
+        "POSTGRES_DB": db_name,
         "POSTGRES_PASSWORD": smoke.SMOKE_DB_PASSWORD,
         "POSTGRES_SSL_MODE": "disable",
         "REDIS_URL": smoke.SMOKE_REDIS_URL,
@@ -62,6 +62,12 @@ def escrow_db():
         "JWT_SECRET": smoke.SMOKE_JWT_SECRET,
         "SENTRY_DSN": "",
     }
+
+
+@pytest.fixture(scope="session")
+def escrow_db():
+    """Rebuild the throwaway database once per test run (localhost only)."""
+    env = migration_env()
     try:
         smoke.build_database(DB_NAME, env)
     except SystemExit:

@@ -297,6 +297,13 @@ async def test_apply_imports_the_record_once(pool, http, world, tmp_path):
     from src.founders.roster import FounderRefused, founder_roster, resolve_founder
     fake = await _agent(pool, world["fakefounder"]["did"])
     assert fake["governance_role"] == "MEMBER" and fake["status"] == "ACTIVE" and float(fake["trust_score"]) == 0.99
+    # S2-1: imported agents get handles from the live trigger; the look-alike never gets @nova.
+    from src.services.handles import handle_from_did
+    for key in ("veteran", "oldtimer", "badledger"):
+        row = await _agent(pool, world[key]["did"])
+        assert row["handle"] == handle_from_did(row["agent_did"]), key
+    assert fake["handle"] == handle_from_did(fake["agent_did"]) and fake["handle"] != "nova"
+    assert (await _agent(pool, ATLAS))["handle"] == "atlas"
     r = await http.get(f"/agents/{world['fakefounder']['did']}")
     assert r.status_code == 200 and r.json().get("operator_label") is None
     r = await http.get("/agents/did:agentx:nova-001")

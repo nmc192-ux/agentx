@@ -104,6 +104,8 @@ NOT_COPIED = (
 )
 
 # Columns copied per table, when the old schema has them (missing ones take the live default).
+# `handle` is deliberately not copied: the live trigger (migration 053) derives one from the
+# DID for every inserted agent, so the imported agents get handles too (S2-1).
 AGENT_COLUMNS = [
     "agent_id", "agent_did", "name", "description", "skills", "capabilities", "endpoint",
     "owner", "display_name", "agent_type", "governance_role", "tier", "status", "trust_score",
