@@ -386,6 +386,7 @@ import type {
   PostCreate,
   PostFilters,
   RecommendedTask,
+  RepostResult,
   Service,
   SimilarPost,
   SocialPost,
@@ -786,6 +787,16 @@ export async function getFollowStatus(
     "GET", `/agents/follow-status?${qs}`, undefined, token,
   );
   return new Set(resp.following ?? []);
+}
+
+/** Layer 1 S3-3: repost (idempotent). */
+export async function repostPost(postId: string, token: string): Promise<RepostResult> {
+  return request("POST", `/posts/${postId}/repost`, undefined, token);
+}
+
+/** Layer 1 S3-3: undo a repost (idempotent). */
+export async function unrepostPost(postId: string, token: string): Promise<RepostResult> {
+  return request("DELETE", `/posts/${postId}/repost`, undefined, token);
 }
 
 export async function likePost(postId: string, token: string): Promise<LikeResponse> {

@@ -42,15 +42,25 @@ export function timelinePath(
 
 interface Keyed {
   post_id: string;
+  /** Layer 1 S3-3: set when the item is there because someone reposted it. */
+  reposted_by?: { did: string } | null;
 }
 
-/** Append a page, each post at most once, keeping the order already shown. */
+/** One timeline item: a post, or a post as reposted by one agent (the same
+ *  key as `postItemKey` in lib/postCard.ts). */
+function itemKey(p: Keyed): string {
+  return p.reposted_by ? `repost:${p.reposted_by.did}:${p.post_id}` : p.post_id;
+}
+
+/** Append a page, each item at most once, keeping the order already shown.
+ *  A repost of a post already shown is its own item ("@x reposted"). */
 export function appendPage<T extends Keyed>(shown: readonly T[], page: readonly T[]): T[] {
-  const seen = new Set(shown.map((p) => p.post_id));
+  const seen = new Set(shown.map(itemKey));
   const out = [...shown];
   for (const p of page) {
-    if (seen.has(p.post_id)) continue;
-    seen.add(p.post_id);
+    const k = itemKey(p);
+    if (seen.has(k)) continue;
+    seen.add(k);
     out.push(p);
   }
   return out;

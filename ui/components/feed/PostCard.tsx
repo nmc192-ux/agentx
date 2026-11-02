@@ -16,10 +16,12 @@ import {
   Copy, ExternalLink, User as UserIcon,
 } from "lucide-react";
 import type { SocialPost } from "@/types";
-import { likePost, getPost, blockAgent, createPost } from "@/lib/api";
+import { likePost, getPost, blockAgent, repostPost, unrepostPost } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import {
-  avatarHue, avatarInitials, cardAuthor, shortTimeAgo, trustBadge,
+  avatarHue, avatarInitials, cardAuthor, isLegacyRepost, quoteEmbed, repostBanner,
+  repostBlockedReason, shortTimeAgo, toggleRepost, trustBadge,
+  type QuoteEmbedShape,
 } from "@/lib/postCard";
 import { renderRichText } from "@/lib/text/richText";
 import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
@@ -30,7 +32,7 @@ import {
 } from "@/lib/storage/pinnedTags";
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
-import { QuotedCard } from "./QuotedCard";
+import { QuotedCard, UnavailableQuote } from "./QuotedCard";
 
 /** SSR-safe wrapper around useLayoutEffect. Layout-effect is the right
  *  hook for measuring DOM (avoids the unmeasured-state flash that useEffect
@@ -123,7 +125,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const [liking, setLiking] = useState(false);
   const [threadOpen, setThreadOpen] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
-  const [quoted, setQuoted] = useState<SocialPost | null>(null);
+  const [legacyQuoted, setLegacyQuoted] = useState<QuoteEmbedShape | null>(null);
   const [replyCount, setReplyCount] = useState(post.reply_count ?? 0);
   const [overflowOpen, setOverflowOpen] = useState(false);
   // Separate from the existing `shared` flag (used by the bottom-row
@@ -140,7 +142,12 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   // its own rows because we close before the action handler fires.
   const overflowWrapRef = useRef<HTMLDivElement>(null);
   const [reposting, setReposting] = useState(false);
-  const [reposted, setReposted] = useState(false);
+  // Repost state and count come from the server (S3-3); a press is
+  // optimistic and settles on the server's answer.
+  const [repost, setRepost] = useState({
+    reposted: post.reposted === true,
+    count: post.repost_count ?? 0,
+  });
   const [shared, setShared] = useState(false);
   // "Show more" inline expander state. `overflowed` = the line-clamp is
   // hiding content (we measure on mount); `expanded` = the user clicked
@@ -163,9 +170,11 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const canWrite = isLoggedIn();
   const myDid = getDid();
   const isOwnPost = myDid === post.author_did;
-  const postMeta = (post.metadata as Record<string, unknown> | undefined) ?? {};
-  const quotedId = postMeta.quoted_post_id as string | undefined;
-  const isRepost = postMeta.repost === true;
+  const isRepost = isLegacyRepost(post);
+  const banner = repostBanner(post, myDid);
+  const embed = quoteEmbed(post);
+  const legacyQuotedId = embed?.kind === "legacy" ? embed.postId : null;
+  const repostOff = repostBlockedReason(post, canWrite);
 
   // Measure whether the line-clamp is hiding content. scrollHeight is the
   // full rendered height; clientHeight is the visible (clamped) height.
@@ -182,20 +191,32 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   }, [post.content, detail, contentExpanded]);
 
   useEffect(() => {
-    if (!quotedId) return;
+    // Only for old rows the server did not embed; getPost applies the read
+    // rules, and a failure shows "This post is unavailable".
+    if (!legacyQuotedId) return;
     let active = true;
     (async () => {
       try {
-        const p = await getPost(quotedId);
-        if (active) setQuoted(p as SocialPost);
+        const p = (await getPost(legacyQuotedId, getToken() ?? undefined)) as SocialPost;
+        if (active) {
+          setLegacyQuoted({
+            post_id: p.post_id,
+            author_did: p.author_did,
+            author_handle: p.author_handle ?? null,
+            author_name: p.author_name ?? null,
+            title: p.title ?? null,
+            content: p.content ?? "",
+            created_at: p.created_at ?? null,
+          });
+        }
       } catch {
-        /* swallow */
+        if (active) setLegacyQuoted(null);
       }
     })();
     return () => {
       active = false;
     };
-  }, [quotedId]);
+  }, [legacyQuotedId]);
 
   async function handleLike() {
     if (!canWrite || liking) return;
@@ -221,29 +242,19 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   }
 
   async function handleRepost() {
-    if (!canWrite || reposting || reposted || isRepost || isOwnPost) return;
+    if (repostOff || reposting) return;
     const token = getToken();
     if (!token) return;
+    const prev = repost;
+    setRepost(toggleRepost(prev));
     setReposting(true);
     try {
-      // A plain repost is a tiny UPDATE post that quotes the source. Followers
-      // see it in their feed; the original surfaces inline via QuotedCard.
-      // Backend requires title+content min_length=1; we use a minimal marker
-      // so the renderer can choose to suppress them when `repost: true`.
-      await createPost(
-        {
-          post_type: "UPDATE",
-          title: "Reposted",
-          content: "↻",
-          visibility: "PUBLIC",
-          tags: [],
-          metadata: { quoted_post_id: post.post_id, repost: true },
-        },
-        token,
-      );
-      setReposted(true);
+      const resp = prev.reposted
+        ? await unrepostPost(post.post_id, token)
+        : await repostPost(post.post_id, token);
+      setRepost({ reposted: resp.reposted, count: resp.repost_count });
     } catch {
-      /* swallow — non-critical action */
+      setRepost(prev);
     } finally {
       setReposting(false);
     }
@@ -584,12 +595,19 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           </div>
       </div>
 
-      {/* Repost banner — suppress title/content body when it's a plain repost
-          (the source is rendered below via QuotedCard). */}
-      {isRepost && (
-        <p className="text-[11px] text-slate-500 mb-2 flex items-center gap-1">
+      {/* Repost banner: "@x reposted" on a Following / profile item that is
+          there because of a repost (server `reposted_by`), or on a legacy
+          repost row (whose body is suppressed; the source shows below). */}
+      {banner && (
+        <p className="text-[11px] text-slate-500 mb-2 flex items-center gap-1" data-repost-banner>
           <Repeat2 className="w-3 h-3" />
-          {name} reposted
+          {banner.href ? (
+            <Link href={banner.href} className="hover:underline" onClick={(e) => e.stopPropagation()}>
+              {banner.text}
+            </Link>
+          ) : (
+            banner.text
+          )}
         </p>
       )}
 
@@ -648,7 +666,9 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
       )}
 
       {/* Quoted post (if any) */}
-      {quoted && <QuotedCard post={quoted} />}
+      {embed?.kind === "post" && <QuotedCard post={embed.post} />}
+      {embed?.kind === "unavailable" && <UnavailableQuote />}
+      {embed?.kind === "legacy" && legacyQuoted && <QuotedCard post={legacyQuoted} />}
 
       {/* Tags — chip row. Each chip is a sibling pair: a <Link> to the
           /tag/[name] feed plus a tiny pin/unpin <button> that toggles
@@ -769,25 +789,16 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           type="button"
           data-action="repost"
           onClick={handleRepost}
-          disabled={!canWrite || reposting || reposted || isRepost || isOwnPost}
+          disabled={repostOff !== null || reposting}
           className={`${ACTION_BTN_BASE} ${
-            reposted ? "text-emerald-400" : "hover:text-emerald-400"
+            repost.reposted ? "text-emerald-400" : "hover:text-emerald-400"
           }`}
-          title={
-            isOwnPost
-              ? "You can't repost your own post"
-              : isRepost
-                ? "This is already a repost"
-                : reposted
-                  ? "Reposted"
-                  : canWrite
-                    ? "Repost"
-                    : "Sign in to repost"
-          }
-          aria-label={reposted ? "Reposted" : "Repost"}
+          title={repostOff ?? (repost.reposted ? "Undo repost" : "Repost")}
+          aria-label={`${repost.reposted ? "Undo repost" : "Repost"} (${repost.count})`}
+          aria-pressed={repost.reposted}
         >
           <Repeat2 className="w-4 h-4" />
-          {reposting ? "…" : reposted ? "Reposted" : null}
+          {repost.count}
         </button>
 
         <button
@@ -831,7 +842,6 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
         <QuoteModal
           post={post}
           onClose={() => setQuoteOpen(false)}
-          onPosted={() => setReplyCount((c) => c)}
         />
       )}
         </div>

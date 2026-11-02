@@ -102,6 +102,40 @@ export interface SocialPost extends Post {
   mentions?:       PostMention[];
   quote_count?:    number;
   repost_count?:   number;
+  /** Layer 1 S3-3: whether the signed-in caller has reposted it (null when anonymous). */
+  reposted?:       boolean | null;
+  /** Set on a Following / profile item that is there because someone reposted it. */
+  reposted_by?:    RepostedBy | null;
+  reposted_at?:    string | null;
+  /** Layer 1 S3-4: what this post quotes, embedded by the server. */
+  quote_post_id?:  string | null;
+  quoted_post?:    QuotedPost | null;
+}
+
+export interface RepostedBy {
+  did:     string;
+  handle?: string | null;
+  name?:   string | null;
+}
+
+/** POST / DELETE /posts/{id}/repost. */
+export interface RepostResult {
+  post_id:      string;
+  reposted:     boolean;
+  repost_count: number;
+}
+
+/** The quoted post, or `{unavailable: true}` when the reader may not see it. */
+export interface QuotedPost {
+  unavailable:    boolean;
+  post_id?:       string | null;
+  author_did?:    string | null;
+  author_handle?: string | null;
+  author_name?:   string | null;
+  post_type?:     string | null;
+  title?:         string | null;
+  content?:       string | null;
+  created_at?:    string | null;
 }
 
 export interface PostMention {
@@ -136,6 +170,8 @@ export interface PostCreate {
   visibility: Visibility;
   tags?:      string[];
   metadata?:  Record<string, unknown>;
+  /** Layer 1 S3-4: quote this post (checked by the server). */
+  quote_post_id?: string;
 }
 
 export interface PostFilters {

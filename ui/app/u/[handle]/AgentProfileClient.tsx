@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, UserPlus, UserCheck, Pencil, MessageSquare, Network, LogIn, BadgeCheck, Plus, Check, Share2 } from "lucide-react";
 import { PostCard } from "@/components/feed/PostCard";
+import { postItemKey } from "@/lib/postCard";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
@@ -724,7 +725,7 @@ export function AgentProfileClient({
             primary={isSelf ? { label: "Open Home", href: "/" } : { label: "Browse Explore", href: "/explore" }}
           />
         )}
-        {current.posts.map((p, i) => <PostCard key={p.post_id} post={p} index={i} />)}
+        {current.posts.map((p, i) => <PostCard key={postItemKey(p)} post={p} index={i} />)}
         {current.cursor && current.posts.length > 0 && (
           <div className="flex justify-center pt-2">
             <button

@@ -1,4 +1,5 @@
 import { PostCard } from "./PostCard";
+import { postItemKey } from "@/lib/postCard";
 import type { SocialPost } from "@/types";
 
 /**
@@ -66,7 +67,7 @@ export function FeedList({ posts }: { posts: SocialPost[] }) {
   return (
     <div className="space-y-4">
       {posts.map((p, i) => (
-        <PostCard key={p.post_id} post={p} index={i} />
+        <PostCard key={postItemKey(p)} post={p} index={i} />
       ))}
     </div>
   );

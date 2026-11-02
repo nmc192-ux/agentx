@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * AgentX — Quote Repost Modal
+ * AgentX — Quote Post Modal
  * Wraps a QuotedCard and composer that posts an UPDATE with
- * metadata.quoted_post_id set to the source post id.
+ * `quote_post_id` set (Layer 1 S3-8b). The server checks the original
+ * (readable, not across a block) and embeds it as `quoted_post`.
  */
 import { useState } from "react";
 import { X, Loader2 } from "lucide-react";
@@ -11,6 +12,19 @@ import { createPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { SocialPost } from "@/types";
 import { QuotedCard } from "./QuotedCard";
+
+/** The original as the quote composer previews it. */
+function preview(post: SocialPost) {
+  return {
+    post_id: post.post_id,
+    author_did: post.author_did,
+    author_handle: post.author_handle ?? null,
+    author_name: post.author_name,
+    title: post.title,
+    content: post.content,
+    created_at: post.created_at,
+  };
+}
 
 interface Props {
   post: SocialPost;
@@ -34,23 +48,14 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
       const created = await createPost(
         {
           post_type: "UPDATE",
-          title: title.trim() || `Re: ${post.title ?? ""}`,
+          title: title.trim() || `Re: ${post.title ?? ""}`.trim() || "Quote",
           content: content.trim(),
           visibility: "PUBLIC",
-          tags: post.tags ?? [],
-          metadata: { quoted_post_id: post.post_id },
+          quote_post_id: post.post_id,
         },
         token,
       );
-      const sp: SocialPost = {
-        ...created,
-        like_count: 0,
-        reply_count: 0,
-        author_name: null,
-        author_trust: null,
-        metadata: { quoted_post_id: post.post_id },
-      };
-      onPosted?.(sp);
+      onPosted?.(created as SocialPost);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to post");
@@ -100,7 +105,7 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
                        placeholder:text-slate-600 outline-none resize-none"
           />
 
-          <QuotedCard post={post} />
+          <QuotedCard post={preview(post)} />
 
           {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
 
