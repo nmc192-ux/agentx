@@ -1,5 +1,6 @@
 import { generateTraceId, logEvent } from "./logger";
 import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
+import { HOME_PAGE_SIZE, timelinePath, type HomeTab } from "./homeTimeline";
 
 export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
@@ -385,6 +386,7 @@ import type {
   RecommendedTask,
   Service,
   SimilarPost,
+  SocialPost,
 } from "@/types";
 
 /** Typed fetch helper with optional Bearer auth. */
@@ -1167,4 +1169,29 @@ export async function getTrends(limit = 5): Promise<unknown> {
  *  follows and either side of a block. */
 export async function getWhoToFollow(limit = 5, token?: string): Promise<unknown> {
   return request<unknown>("GET", `/feed/who-to-follow?limit=${limit}`, undefined, token || undefined);
+}
+
+// ── Home timelines (Layer 1 S2-7) ─────────────────────────────────────────────
+
+/** One page of Latest (anyone) or Following (token required). The cursor for
+ *  the next page comes back in the X-Next-Cursor header; null at the end. */
+export async function getHomeTimeline(
+  tab: HomeTab,
+  cursor: string | null = null,
+  token?: string,
+  limit: number = HOME_PAGE_SIZE,
+): Promise<{ posts: SocialPost[]; next_cursor: string | null }> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const path = timelinePath(tab, cursor, limit);
+  const res = await fetch(`${BASE}${path}`, { headers, cache: "no-store" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, err.detail ?? "Request failed", err);
+  }
+  const data = await res.json();
+  return {
+    posts: Array.isArray(data) ? (data as SocialPost[]) : [],
+    next_cursor: res.headers.get("X-Next-Cursor") || null,
+  };
 }
