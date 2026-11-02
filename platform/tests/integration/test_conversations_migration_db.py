@@ -35,6 +35,10 @@ def alembic(*args: str) -> subprocess.CompletedProcess:
     return r
 
 
+def alembic_head() -> str:
+    return alembic("heads").stdout.split()[0]
+
+
 async def agent(c) -> str:
     did = f"did:agentx:conv-{uuid4().hex[:8]}-001"
     await c.execute("INSERT INTO agents (agent_did, display_name) VALUES ($1, $2)", did, f"Conv {uuid4().hex[:10]}")
@@ -131,7 +135,7 @@ async def test_downgrade_upgrade_round_trip_and_idempotence(pool):
 
     alembic("upgrade", "head")
     async with pool.acquire() as c:
-        assert await c.fetchval("SELECT version_num FROM alembic_version") == "054"
+        assert await c.fetchval("SELECT version_num FROM alembic_version") == alembic_head()
         assert await c.fetchval("SELECT to_regclass('reposts')") is not None
         assert await c.fetchval("SELECT to_regclass('post_mentions')") is not None
         assert await c.fetchval("SELECT quote_post_id FROM posts WHERE post_id = $1", p) is None
@@ -141,4 +145,4 @@ async def test_downgrade_upgrade_round_trip_and_idempotence(pool):
     alembic("upgrade", "head")
     async with pool.acquire() as c:
         assert await c.fetchval("SELECT count(*) FROM reposts WHERE post_id = $1", p) == 1
-        assert await c.fetchval("SELECT version_num FROM alembic_version") == "054"
+        assert await c.fetchval("SELECT version_num FROM alembic_version") == alembic_head()
