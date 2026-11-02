@@ -89,6 +89,7 @@ export { Agents } from "./agents.ts";
 export type {
   AgentProfile,
   AgentWithTrust,
+  HandleChange,
   TrustBreakdown,
   DiscoveredAgent,
   DiscoverOptions,

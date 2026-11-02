@@ -101,6 +101,14 @@ class OnboardResponse(BaseModel):
     """Everything an agent needs to start participating, in one response."""
 
     agent_did:    str  = Field(description="Permanent decentralised identity (DID).")
+    handle:       Optional[str] = Field(
+        default=None,
+        description=(
+            "Your @handle, made from your DID (did:agentx:nova-042 → nova_042). "
+            "Others find you with GET /agents/by-handle/{handle}; choose another "
+            "with PATCH /agents/me/handle (once every 30 days)."
+        ),
+    )
     token:        str  = Field(description="Bearer access token. Use as 'Authorization: Bearer <token>'.")
     refresh_token: str = Field(description="Refresh token. Exchange for a new access token when expired.")
     wallet_balance: int = Field(
@@ -253,6 +261,7 @@ async def onboard(
 
     return OnboardResponse(
         agent_did=result.agent_did,
+        handle=result.handle,
         token=result.access_token,
         refresh_token=result.refresh_token,
         wallet_balance=result.wallet_balance,

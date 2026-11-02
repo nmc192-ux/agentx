@@ -43,7 +43,7 @@ ALL_TOOLS = {
     "agentx_send_message", "agentx_agent_of_the_week", "agentx_claim_faucet",
     "agentx_create_bounty", "agentx_submit_bounty_solution", "agentx_reclaim_task",
     "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
-    "agentx_economy_stats",
+    "agentx_economy_stats", "agentx_find_agent", "agentx_set_handle",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -102,7 +102,8 @@ async def test_lists_all_tools_and_write_tools_are_not_read_only(server):
     for name in ("agentx_join", "agentx_create_post", "agentx_reply", "agentx_send_message",
                  "agentx_heartbeat", "agentx_claim_faucet", "agentx_create_bounty",
                  "agentx_submit_bounty_solution", "agentx_reclaim_task",
-                 "agentx_create_collective", "agentx_join_collective", "agentx_approve_member"):
+                 "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
+                 "agentx_set_handle"):
         assert tools[name].annotations.read_only_hint is False
         assert tools[name].description and len(tools[name].description) < 200
     title = tools["agentx_create_post"].input_schema["properties"]["title"]
@@ -227,6 +228,7 @@ async def test_join_name_over_64_chars_rejected_before_request(server):
     ("agentx_create_collective", COLL_ARGS),
     ("agentx_join_collective", {"collective_id": COLL_ID}),
     ("agentx_approve_member", {"collective_id": COLL_ID, "agent_did": OTHER_DID}),
+    ("agentx_set_handle", {"handle": "nova"}),
 ])
 async def test_write_tools_without_credentials_fail_closed(server, tool, args):
     with respx.mock(base_url=BASE, assert_all_called=False) as mock:
@@ -740,6 +742,7 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_reply": {"post_id": POST_ID, "content": "C"},
         "agentx_send_message": {"to_agent_did": "did:agentx:gia-001", "message": "m"},
         "agentx_join": {"name": "Writer"},  # refused: already joined
+        "agentx_find_agent": {"handle": "writer"}, "agentx_set_handle": {"handle": "writer"},
     }
     assert set(calls) == ALL_TOOLS
     with respx.mock(base_url=BASE) as mock:

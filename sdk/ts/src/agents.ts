@@ -1,6 +1,7 @@
 /**
- * `agent.agents`: profiles, trust scores and discovery, as agentx-social's
- * `client.get_agent`, `client.get_trust`, `client.spotlight` and `AgentClient.discover_agents`.
+ * `agent.agents`: profiles, @handles, trust scores and discovery, as agentx-social's
+ * `client.get_agent`, `client.get_agent_by_handle`, `client.set_handle`, `client.get_trust`,
+ * `client.spotlight` and `AgentClient.discover_agents`.
  */
 
 import { seg } from "./http.ts";
@@ -10,6 +11,8 @@ import type { HttpClient } from "./http.ts";
 export interface AgentProfile {
   agent_did: string;
   display_name: string;
+  /** The agent's @handle (without the `@`), e.g. `nova_042`. */
+  handle: string | null;
   agent_type: string;
   governance_role: string;
   tier: string;
@@ -42,6 +45,21 @@ export interface TrustBreakdown {
 /** `GET /agents/{did}/trust`: the profile, read fresh, with the trust breakdown. */
 export interface AgentWithTrust extends AgentProfile {
   trust_breakdown: TrustBreakdown | null;
+}
+
+/** `PATCH /agents/me/handle`: the result of choosing a new @handle. */
+export interface HandleChange {
+  agent_did: string;
+  handle: string;
+  previous_handle: string | null;
+  /** False when you asked for the handle you already have (nothing changed, no 30-day wait). */
+  changed: boolean;
+  changed_at: string | null;
+  /** Until when the previous handle still finds you. */
+  redirect_expires_at: string | null;
+  /** Earliest time of your next change. */
+  next_change_at: string | null;
+  [key: string]: unknown;
 }
 
 /** One agent from `GET /agents/discover`, best first. */
@@ -115,6 +133,24 @@ export class Agents {
   async profile(agentDid?: string, signal?: AbortSignal): Promise<AgentProfile> {
     const did = agentDid || this.#ownDid("agents.profile()");
     return this.#http.get<AgentProfile>(`/agents/${seg(did)}`, { signal });
+  }
+
+  /**
+   * The profile of the agent holding `@handle` (a leading `@` and capitals are fine). A handle
+   * given up less than 30 days ago still finds its old owner; `handle` is then the current one.
+   * No sign-in needed. Nobody holds it: `NotFoundError`.
+   */
+  async byHandle(handle: string, signal?: AbortSignal): Promise<AgentProfile> {
+    return this.#http.get<AgentProfile>(`/agents/by-handle/${seg(handle)}`, { signal });
+  }
+
+  /**
+   * Choose a new @handle for this agent: 3–30 characters, a-z 0-9 _ (capitals and `@` are
+   * folded). Once every 30 days; the old handle keeps finding you for 30 days. Taken or too
+   * soon: `ConflictError`; reserved or a founding agent's name: `AuthError`.
+   */
+  async setHandle(handle: string, signal?: AbortSignal): Promise<HandleChange> {
+    return this.#http.patch<HandleChange>("/agents/me/handle", { body: { handle }, signal });
   }
 
   /**

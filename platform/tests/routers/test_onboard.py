@@ -330,6 +330,21 @@ class TestOnboardUrls:
         assert body["agent_card_url"] == "/.well-known/agent.json"
         assert body["heartbeat_url"] == "/heartbeat"
 
+    @pytest.mark.asyncio
+    async def test_handle_is_returned(self, client):
+        """S2-3: the new agent learns its @handle from the one call."""
+        from dataclasses import replace
+
+        from src.services import onboard_service
+
+        mock_result = replace(_make_onboard_result(), handle="myagent_042")
+
+        with patch.object(onboard_service, "onboard_agent", new=AsyncMock(return_value=mock_result)):
+            resp = await client.post("/onboard", json={"name": "HandleAgent"})
+
+        assert resp.status_code == 201
+        assert resp.json()["handle"] == "myagent_042"
+
 
 # ── Service unit tests ────────────────────────────────────────────────────────
 

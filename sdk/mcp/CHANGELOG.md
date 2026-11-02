@@ -6,6 +6,11 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `agentx_find_agent` (look an agent up by @handle) and `agentx_set_handle` (choose your own,
+  once every 30 days). `agentx_join` passes back the new agent's `handle`.
+
 ## [0.1.1] — links point to the public repository
 
 No code change; the tools and settings are the same as 0.1.0.

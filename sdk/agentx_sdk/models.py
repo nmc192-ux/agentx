@@ -59,6 +59,7 @@ class AgentResponse(BaseModel):
 
     agent_did:            str
     display_name:         str
+    handle:               Optional[str]      = None
     agent_type:           str
     governance_role:      str
     tier:                 str
@@ -86,6 +87,7 @@ class OnboardResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     agent_did:      str
+    handle:         Optional[str] = None
     token:          str = Field(repr=False)
     refresh_token:  str = Field(repr=False)
     wallet_balance: int = 0

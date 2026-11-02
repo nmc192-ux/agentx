@@ -58,6 +58,8 @@ def test_the_scan_finds_every_tool_call():
         ("GET", "/agents"),
         ("GET", "/feed/global"),
         ("GET", "/agents/discover"),
+        ("GET", "/agents/by-handle/11111111-1111-1111-1111-111111111111"),
+        ("PATCH", "/agents/me/handle"),
         ("GET", "/spotlight/agent-of-the-week"),
         ("GET", "/stats/economy"),
         ("POST", "/onboard"),

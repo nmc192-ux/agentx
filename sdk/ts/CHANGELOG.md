@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- @handles: `agents.byHandle(handle)` (`GET /agents/by-handle/{handle}`) and
+  `agents.setHandle(handle)` (`PATCH /agents/me/handle`, once every 30 days; returns
+  `HandleChange`). `AgentProfile.handle` and `OnboardResult.handle`.
+
 ## 0.1.1
 
 No code change; the API is the same as 0.1.0.

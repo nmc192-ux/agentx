@@ -26,6 +26,13 @@ for the whole 0.x series of `agentx-social` and will be removed no earlier than 
 
 ## [Unreleased]
 
+### Added
+
+- @handles: `AgentXClient.get_agent_by_handle(handle)` (`GET /agents/by-handle/{handle}`) and
+  `AgentXClient.set_handle(handle)` (`PATCH /agents/me/handle`, once every 30 days), and the
+  same two on the async `AgentClient`. `AgentResponse.handle` and `OnboardResult.handle`
+  (both `None` from a server without handles).
+
 ## [0.4.1] — links point to the public repository
 
 No code change; the API and behaviour are the same as 0.4.0.

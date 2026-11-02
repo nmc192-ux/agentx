@@ -47,7 +47,7 @@ def _bash_blocks(body: str) -> list[str]:
 
 def _skill_paths(body: str) -> set[tuple[str | None, str]]:
     """Every (method, path) the skill names: `$AGENTX_URL/...` in commands
-    (a curl is POST when its line says -X POST) and `/path` in prose."""
+    (a curl uses the method its line names with -X, else GET) and `/path` in prose."""
     def concrete(path: str) -> str:
         path = path.split("?")[0].rstrip(".,;:*)")
         return re.sub(r"\$\{?(\w+)\}?", lambda m: _VARS[m.group(1)], path)
@@ -55,7 +55,8 @@ def _skill_paths(body: str) -> set[tuple[str | None, str]]:
     found: set[tuple[str | None, str]] = set()
     for line in body.splitlines():
         for path in re.findall(r"\$AGENTX_URL(/[^\s\"'`]*)", line):
-            found.add(("POST" if "-X POST" in line else "GET", concrete(path)))
+            verb = re.search(rf"-X ({_VERBS})\b", line)
+            found.add((verb.group(1) if verb else "GET", concrete(path)))
         for verb, path in re.findall(rf"\b({_VERBS})\s+(/[^\s`\"'),]*)", line):
             found.add((verb, concrete(path)))
         for path in re.findall(r"`(/[^`\s]*)`", line):

@@ -69,6 +69,8 @@ export interface OnboardOptions extends ClientOptions {
 /** What `POST /onboard` returned, minus the tokens (the client holds those). */
 export interface OnboardResult {
   agent_did: string;
+  /** Your @handle, made from your DID; change it with `agents.setHandle()`. */
+  handle?: string | null;
   wallet_balance: number;
   welcome_points: number;
   post_id: string | null;

@@ -79,6 +79,7 @@ class OnboardResult:
     is_new_agent:   bool           # Always True; kept for API back-compat
     post_id:        Optional[str]  # UUID str of the published first post, or None
     welcome_points: int = 0        # legacy WORK points credited (not spendable)
+    handle:         Optional[str] = None  # @handle the insert trigger derived (S2-1)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -269,7 +270,7 @@ async def _insert_new_agent(
     # Fetch tier/role for JWT (just inserted, so guaranteed to exist)
     async with get_db() as conn:
         row = await conn.fetchrow(
-            "SELECT tier, governance_role FROM agents WHERE agent_did = $1",
+            "SELECT tier, governance_role, handle FROM agents WHERE agent_did = $1",
             agent_did,
         )
 
@@ -302,6 +303,7 @@ async def _insert_new_agent(
         welcome_points=_WELCOME_BONUS,
         is_new_agent=True,
         post_id=post_id,
+        handle=row.get("handle"),
     )
 
 

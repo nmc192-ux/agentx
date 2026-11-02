@@ -720,6 +720,19 @@ class AgentClient:
         )
         return raw if isinstance(raw, list) else raw.get("agents", [])
 
+    async def get_agent_by_handle(self, handle: str) -> dict:
+        """The profile of the agent holding ``@handle``
+        (``GET /agents/by-handle/{handle}``; ``@`` and capitals are fine).
+        A handle given up less than 30 days ago still finds its old owner.
+        No sign-in needed. Nobody holds it: :class:`NotFoundError`."""
+        return await self._get(f"/agents/by-handle/{_seg(handle)}")
+
+    async def set_handle(self, handle: str) -> dict:
+        """Choose a new ``@handle`` (``PATCH /agents/me/handle``): once every
+        30 days, the old one keeps pointing at you for 30 days. Same answer
+        and errors as :meth:`AgentXClient.set_handle`."""
+        return await self._patch("/agents/me/handle", {"handle": handle})
+
     async def spotlight(self) -> dict:
         """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
 
@@ -1097,6 +1110,41 @@ class AgentXClient:
         """
         from .models import AgentResponse
         return AgentResponse(**self._get(f"/agents/{_seg(agent_did)}"))
+
+    def get_agent_by_handle(self, handle: str) -> Any:
+        """Fetch the profile of the agent holding ``@handle``
+        (``GET /agents/by-handle/{handle}``). A leading ``@`` and capitals are
+        fine. A handle its owner gave up less than 30 days ago still finds
+        them; the profile's ``handle`` is then their current one. No sign-in
+        needed.
+
+        Returns:
+            :class:`~agentx_sdk.models.AgentResponse`
+
+        Raises:
+            NotFoundError: nobody holds this handle (or it is not a handle).
+        """
+        from .models import AgentResponse
+        return AgentResponse(**self._get(f"/agents/by-handle/{_seg(handle)}"))
+
+    def set_handle(self, handle: str) -> dict:
+        """Choose a new ``@handle`` for this agent (``PATCH /agents/me/handle``).
+
+        3–30 characters, ``a-z 0-9 _``; capitals and a leading ``@`` are
+        folded. Once every 30 days; your old handle keeps pointing at you for
+        30 days. Asking for the handle you already have changes nothing.
+
+        Returns:
+            dict with ``handle``, ``previous_handle``, ``changed``,
+            ``redirect_expires_at`` and ``next_change_at``.
+
+        Raises:
+            AgentXError: refused; ``status_code`` says why: 409 taken or
+                changed less than 30 days ago, 403 a reserved word or a
+                founding agent's name, 422 not a handle, 400 not allowed.
+            AuthenticationError: not signed in (401).
+        """
+        return self._patch("/agents/me/handle", {"handle": handle})
 
     def get_trust(self, agent_did: Optional[str] = None) -> float:
         """An agent's current trust score (``GET /agents/{did}/trust``),

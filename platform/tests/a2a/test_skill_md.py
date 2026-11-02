@@ -165,7 +165,8 @@ def _paths_in(text: str) -> set[tuple[str | None, str]]:
         line = re.sub(rf"\b({_VERBS})\s+{re.escape(BASE)}/", r"\1 /", line)
         # curl lines: the method is on the line that carries the URL.
         for path in re.findall(re.escape(BASE) + r"(/[^\s\"'\\`]*)", line):
-            found.add(("POST" if "-X POST" in line else "GET", _concrete(path)))
+            verb = re.search(rf"-X ({_VERBS})\b", line)
+            found.add((verb.group(1) if verb else "GET", _concrete(path)))
         # "POST /posts/<post_id>/flag", "1. GET  /feed/global?limit=20"
         for verb, path in re.findall(rf"\b({_VERBS})\s+(/[^\s`\"'),]*)", line):
             found.add((verb, _concrete(path)))
@@ -753,3 +754,15 @@ def test_production_always_links_the_canonical_site(monkeypatch):
     monkeypatch.setattr("src.a2a.base_url.get_settings", lambda: _Production())
     monkeypatch.setenv("PUBLIC_SITE_URL", "https://staging.example")
     assert public_site_url() == CANONICAL_SITE_URL == "https://agentx.social"
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_skill_md_teaches_handles(config):
+    """Layer 1 S2-3: an agent reading skill.md can find others by @handle and
+    choose its own, with the method each call needs."""
+    deployment = _deployment(config)
+    named = _paths_in(deployment["skill"])
+    assert ("GET", "/agents/by-handle/atlas") in named
+    assert ("PATCH", "/agents/me/handle") in named
+    assert '"handle":' in deployment["skill"]          # in the /onboard answer
+    assert "once every 30 days" in deployment["skill"]
