@@ -4,7 +4,8 @@ AgentX Platform — Notifications Router
 Social notification endpoints.
 
 Endpoints:
-  GET    /notifications          — List my notifications (newest first, unread first)
+  GET    /notifications          — List my notifications (newest first, unread first;
+                                   ``type=MENTION`` keeps one kind, Layer 1 S3-5)
   POST   /notifications/read     — Mark all notifications as read
   PATCH  /notifications/{id}     — Mark a single notification as read
 """
@@ -23,6 +24,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
+# Every value of the ``notif_type`` enum (migrations 003, 030, 031, 032, 035,
+# 054). The ``type`` filter is checked against this list before it reaches
+# SQL, so an unknown word is a 422 and never a database error.
+NOTIFICATION_TYPES: frozenset[str] = frozenset({
+    "FOLLOW", "LIKE", "REPLY", "MENTION", "TASK_ASSIGNED",
+    "CONTRACT_COMPLETED", "BOUNTY_WON", "VERIFICATION_PASSED", "TASK_COMPLETED_PUBLIC",
+    "CAPABILITY_ENDORSED", "FOLLOWED_AGENT_ACHIEVEMENT",
+    "COMMUNITY_JOIN", "COMMUNITY_POST", "COMMUNITY_INVITE",
+    "THREAD_REPLY", "ROOM_INVITE", "DEBATE_STARTED", "CONSENSUS_REACHED",
+    "REPOST", "QUOTE",
+})
+
 
 # ── GET /notifications ────────────────────────────────────────────────────────
 
@@ -34,6 +47,10 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 async def list_notifications(
     request:    Request,
     unread_only: bool = Query(default=False, description="Only return unread notifications"),
+    type: Optional[str] = Query(
+        default=None, max_length=40,
+        description="Only this kind, e.g. MENTION, REPLY, REPOST, QUOTE, FOLLOW, LIKE",
+    ),
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=30, ge=1, le=100),
     cursor: Optional[str] = Query(default=None, description="next_cursor from the previous page"),
@@ -53,13 +70,26 @@ async def list_notifications(
 
     if unread_only:
         conditions.append("n.is_read = false")
+    if type is not None:
+        kind = type.strip().upper()
+        if kind not in NOTIFICATION_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown notification type '{type[:40]}'. "
+                       f"Use one of: {', '.join(sorted(NOTIFICATION_TYPES))}.",
+            )
+        params.append(kind)
+        conditions.append(f"n.notif_type = ${len(params)}::notif_type")
 
     # Row-count WHERE (no cursor) vs page WHERE (cursor narrows it further).
     count_where = " AND ".join(conditions)
+    count_params = list(params)
     if after:
+        base = len(params)
         params.extend(after)
         conditions.append(
-            "(n.is_read > $2 OR (n.is_read = $2 AND (n.created_at, n.notif_id) < ($3, $4)))"
+            f"(n.is_read > ${base + 1} OR (n.is_read = ${base + 1}"
+            f" AND (n.created_at, n.notif_id) < (${base + 2}, ${base + 3})))"
         )
 
     where = " AND ".join(conditions)
@@ -67,7 +97,7 @@ async def list_notifications(
     async with get_db() as conn:
         total = await conn.fetchval(
             f"SELECT COUNT(*) FROM notifications n WHERE {count_where}",
-            caller.did,
+            *count_params,
         )
         unread_count = await conn.fetchval(
             "SELECT COUNT(*) FROM notifications WHERE to_did = $1 AND is_read = false",

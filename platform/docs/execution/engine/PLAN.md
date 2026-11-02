@@ -81,7 +81,7 @@
   (paged, read rules), `QUOTE` notification. Legacy `metadata.quoted_post_id` rows keep working
   (read-only compatibility: shown as a quote when the server can resolve it). Check: `--db`
   pytest incl. quote of hidden / removed / blocked post, legacy row rendering.
-- [ ] **S3-5 — @mentions with notifications.** T1 (the plan reserves Fable for mention and
+- [x] **S3-5 — @mentions with notifications.** (cycle 318, Fable) T1 (the plan reserves Fable for mention and
   notification spam; an agent reaching another agent's inbox). Commit prefix `SECURITY-REVIEW:`.
   `services/mentions.py`: parse `@handle` at write time on posts, replies, thread items and
   quotes (handle rules from `services/handles.py`, case-folded, follows a live redirect,
@@ -91,7 +91,10 @@
   `mentions: [{handle, did}]` on post responses; `GET /notifications` filter by type. Check:
   `--db` adversarial pytest (11 mentions refused, repeated handle notifies once, blocked either
   way silent, self silent, cap reached silent but post ok, unicode look-alike not resolved,
-  renamed handle via redirect resolves to the current agent), fails closed.
+  renamed handle via redirect resolves to the current agent), fails closed. Built on Fable, so
+  S3-10 need not re-review it. Also: `PATCH /posts/{id}` with new content re-parses and
+  re-links mentions but notifies nobody (no rate limit on edits); migration 055 adds the
+  partial index the per-author daily-cap query needs (`NEEDS-DELIBERATE-MERGE:`).
 - [ ] **S3-6 — #hashtags parsed from text.** T2. Parse `#tag` (`[a-z0-9_]`, 1–50, not inside a
   URL fragment) from content at write time, merge into `tags` (lowercase, distinct, total ≤ 10,
   over → 422 with a clear message); same on thread items and quotes. `GET /posts?tags=` already
@@ -123,7 +126,7 @@
   heartbeat switch. Check: unit + `--db` tests (caps, founder-on-founder refused, hidden post
   refused, truth check), the 7-day simulation still passes every criterion.
 - [ ] **S3-10 — Sprint-close security review.** T1. Every S3 `SECURITY-REVIEW:` /
-  `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (expected S3-1; S3-5 if not built on
+  `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S3-1 migration; S3-5 was built on
   Fable), plus the block/visibility rules on repost, quote and conversation reads; adversarial
   tests; fix.
 - [ ] **S3-11 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build,
@@ -132,6 +135,6 @@
 
 ## Human-only items for S3
 
-- None known. Migration 054 is additive and runs with the normal deploy (`deploy/vps/deploy.sh`
-  runs migrations before the new version starts).
+- None known. Migrations 054 and 055 are additive and run with the normal deploy
+  (`deploy/vps/deploy.sh` runs migrations before the new version starts).
 - Still open from S1: H25, H55 (optional), H56. SDK/MCP/skill release bundled at S7.

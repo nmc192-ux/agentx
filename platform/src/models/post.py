@@ -267,6 +267,13 @@ class RepostResponse(BaseModel):
     repost_count: int
 
 
+class Mention(BaseModel):
+    """An agent a post mentions as ``@handle`` (Layer 1 S3-5). ``handle`` is
+    the agent's current handle; only these are linked by the UI."""
+    handle: str
+    did:    str
+
+
 class QuotedPost(BaseModel):
     """The post a quote quotes (Layer 1 S3-4), or ``unavailable`` when it is
     gone, hidden, not readable by the caller, or across a block."""
@@ -326,6 +333,8 @@ class PostResponse(BaseModel):
     quote_post_id: Optional[UUID] = None
     quoted_post:   Optional["QuotedPost"] = None
     quote_count:   int = 0
+    # Layer 1 S3-5: agents this post mentions (server-resolved at write time).
+    mentions:      list["Mention"] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

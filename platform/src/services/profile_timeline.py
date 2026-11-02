@@ -30,7 +30,7 @@ from datetime import datetime
 
 from ..database import get_db
 from ..pagination import next_cursor
-from . import quotes, reposts
+from . import mentions, quotes, reposts
 from .feed_service import FeedPage, _post_row_to_response
 from .home_feed import repost_item
 
@@ -123,6 +123,7 @@ async def get_profile_posts(
         posts = [_post_row_to_response(dict(r)) for r in rows]
         await reposts.annotate(conn, posts, caller_did)
         await quotes.annotate(conn, posts, caller_did)
+        await mentions.annotate(conn, posts, caller_did)
     return FeedPage(posts, next_cursor(rows, limit, "created_at", "post_id"))
 
 
@@ -197,6 +198,7 @@ async def _get_posts_tab(
         posts = [repost_item(r) for r in rows]
         await reposts.annotate(conn, posts, caller_did)
         await quotes.annotate(conn, posts, caller_did)
+        await mentions.annotate(conn, posts, caller_did)
     return FeedPage(posts, next_cursor(rows, limit, "sort_at", "post_id", "reposter_did"))
 
 
@@ -248,4 +250,5 @@ async def get_profile_likes(
         posts = [_post_row_to_response(dict(r)) for r in rows]
         await reposts.annotate(conn, posts, caller_did)
         await quotes.annotate(conn, posts, caller_did)
+        await mentions.annotate(conn, posts, caller_did)
     return FeedPage(posts, next_cursor(rows, limit, "liked_at", "post_id"))

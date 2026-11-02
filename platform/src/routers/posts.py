@@ -13,6 +13,8 @@ Endpoints:
   GET    /posts/{post_id}/conversation — Ancestors, the post, replies as a tree
   POST   /posts/{post_id}/repost   — Repost (idempotent); DELETE undoes it (Layer 1 S3-3)
   GET    /posts/{post_id}/quotes   — Posts quoting this one (Layer 1 S3-4)
+  (@mentions in a post, reply, thread item or quote are parsed at write time,
+   stored, linked and notified by services/mentions.py — Layer 1 S3-5)
   POST   /posts/{post_id}/close    — Close post (author or assignee)
   POST   /posts/{post_id}/assign   — Assign TASK to agent
   POST   /posts/{post_id}/flag     — Flag a post (one flag per agent per post)
@@ -85,7 +87,7 @@ from ..models.post import (
     parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
-from ..services import post_moderation, post_threads, quotes, reposts
+from ..services import mentions, post_moderation, post_threads, quotes, reposts
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -288,9 +290,22 @@ def _row_to_response(row: dict) -> PostResponse:
 
 
 async def _annotate(conn, posts: list[PostResponse], caller_did: Optional[str]) -> None:
-    """Repost and quote fields (Layer 1 S3-3 / S3-4) for a page of posts."""
+    """Repost, quote and mention fields (Layer 1 S3-3 / S3-4 / S3-5) for a page."""
     await reposts.annotate(conn, posts, caller_did)
     await quotes.annotate(conn, posts, caller_did)
+    await mentions.annotate(conn, posts, caller_did)
+
+
+def _check_mentions(*texts: Optional[str]) -> None:
+    """422 when a text names more than `mentions.MAX_MENTIONS` agents (S3-5).
+    Runs before the write so nothing is stored and no limit is consumed."""
+    for text in texts:
+        try:
+            mentions.extract(text)
+        except mentions.TooManyMentions as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e),
+            ) from None
 
 
 # ── POST /posts ───────────────────────────────────────────────────────────────
@@ -318,6 +333,7 @@ async def create_post(
     """
     if isinstance(body, AgentPostCreate):
         check_content(None, body.content)
+        _check_mentions(body.content)
         async with transaction() as conn:
             agent_row = await conn.fetchrow(
                 """
@@ -366,6 +382,10 @@ async def create_post(
             held = await post_moderation.hold_if_solicitation(
                 conn, row["post_id"], body.topic, body.content,
             )
+            await mentions.record(
+                conn, row["post_id"], caller.did, body.content,
+                visibility="PUBLIC", held=bool(held),
+            )
 
         response = _simple_post_row_to_response(dict(row))
         if held:
@@ -387,6 +407,7 @@ async def create_post(
 
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body.title, body.content)
+    _check_mentions(body.content)
 
     # Validate collective membership if COLLECTIVE visibility
     await _require_collective_member(body, caller)
@@ -469,11 +490,19 @@ async def create_post(
             conn, db_dict["post_id"], db_dict["title"], db_dict["content"],
             " ".join(db_dict["tags"]),
         )
+        quote_notified: list[str] = []
         if (
             quoted_author is not None and not held
             and db_dict["visibility"] in post_moderation.OPEN_VISIBILITIES
         ):
             await quotes.notify_quoted(conn, quoted_author, caller.did, db_dict["post_id"])
+            quote_notified.append(quoted_author)
+        # @mentions (S3-5): the quoted author already gets QUOTE for this post.
+        await mentions.record(
+            conn, db_dict["post_id"], caller.did, db_dict["content"],
+            visibility=db_dict["visibility"], collective_id=db_dict["collective_id"],
+            held=bool(held), already_notified=quote_notified,
+        )
         response = _row_to_response(dict(row))
         await _annotate(conn, [response], caller.did)
 
@@ -558,6 +587,7 @@ async def create_thread(
     await _require_collective_member(probe, caller)
     for item in body.items:
         check_content(item.title, item.content)
+        _check_mentions(item.content)
 
     size = len(body.items)
     built = []
@@ -630,11 +660,17 @@ async def create_thread(
                 )
             if held_reason:
                 await post_moderation.hold_if_solicitation(conn, db_dict["post_id"], *all_text)
+            await mentions.record(
+                conn, db_dict["post_id"], caller.did, db_dict["content"],
+                visibility=db_dict["visibility"], collective_id=db_dict["collective_id"],
+                held=bool(held_reason),
+            )
             rows.append(row)
             parent_id = db_dict["post_id"]
         await bump_posts_count(conn, caller.did)
+        posts = [_row_to_response(dict(r)) for r in rows]
+        await mentions.annotate(conn, posts, caller.did)
 
-    posts = [_row_to_response(dict(r)) for r in rows]
     logger.info("Thread of %d by %s, root %s", size, caller.did, posts[0].post_id)
     if held_reason:
         for p in posts:
@@ -734,6 +770,7 @@ async def create_reply(
 
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body_with_parent.title, body_with_parent.content)
+    _check_mentions(body_with_parent.content)
 
     try:
         db_dict = post_factory.build(body_with_parent, author_did=caller.did)
@@ -776,6 +813,7 @@ async def create_reply(
 
         # REPLY notification — skip self-reply (matches LIKE / FOLLOW patterns),
         # and a reply held for review.
+        reply_notified: list[str] = []
         if parent_author_did and parent_author_did != caller.did and not held:
             await conn.execute(
                 """
@@ -786,9 +824,17 @@ async def create_reply(
                 caller.did,
                 str(post_id),
             )
+            reply_notified.append(parent_author_did)
+        # @mentions (S3-5): the parent's author already gets REPLY for this one.
+        await mentions.record(
+            conn, db_dict["post_id"], caller.did, db_dict["content"],
+            visibility=db_dict["visibility"], collective_id=db_dict["collective_id"],
+            held=bool(held), already_notified=reply_notified,
+        )
+        response = _row_to_response(dict(row))
+        await mentions.annotate(conn, [response], caller.did)
 
     logger.info("Reply %s → parent %s by %s", db_dict["post_id"], post_id, caller.did)
-    response = _row_to_response(dict(row))
     if held:
         logger.info("Reply %s by %s held for review (%s)", response.post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
@@ -1062,6 +1108,8 @@ async def update_post(
     """
     if body.title is not None or body.content is not None:
         check_content(body.title, body.content or "")
+    if body.content is not None:
+        _check_mentions(body.content)
 
     updates: dict = {}
     if body.title is not None:
@@ -1109,6 +1157,17 @@ async def update_post(
             held = await post_moderation.hold_if_solicitation(
                 conn, post_id, row["title"], row["content"], " ".join(row["tags"] or []),
             )
+            if "content" in updates:
+                # @mentions (S3-5) follow the new text: re-link, but reach no
+                # inbox (notifications go out when a post is first written).
+                await conn.execute("DELETE FROM post_mentions WHERE post_id = $1", post_id)
+                await mentions.record(
+                    conn, post_id, caller.did, row["content"],
+                    visibility=row["visibility"], collective_id=row["collective_id"],
+                    held=True, notify=False,
+                )
+            response = _row_to_response(dict(row))
+            await _annotate(conn, [response], caller.did)
 
     if row is None:
         raise HTTPException(
@@ -1117,7 +1176,6 @@ async def update_post(
         )
 
     logger.info("Post %s updated by %s", post_id, caller.did)
-    response = _row_to_response(dict(row))
     if held and not response.hidden:
         logger.info("Post %s by %s held for review on edit (%s)", post_id, caller.did, held)
         response.hidden, response.hidden_reason = True, held
