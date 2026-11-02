@@ -42,6 +42,14 @@ def pg_env(settings) -> dict[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    # The command must come first. The reviewed script takes --dsn only before the command, and
+    # argparse accepts abbreviations there (--ds, --d), so an option in front of the command is
+    # refused outright; after the command, the script's own parser rejects any --dsn.
+    if not args or args[0] not in ("show", "remove"):
+        print("vps_test_accounts: the first argument must be `show` or `remove`; the database "
+              "comes from the app settings and no option may come before the command",
+              file=sys.stderr)
+        return 2
     if any(a == "--dsn" or a.startswith("--dsn=") for a in args):
         print("vps_test_accounts: the database comes from the app settings; do not pass --dsn",
               file=sys.stderr)

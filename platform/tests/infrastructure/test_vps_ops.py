@@ -368,3 +368,109 @@ class TestTestAccounts:
         dockerfile = (REPO / "platform" / "Dockerfile.fly").read_text()
         for name in ("remove_test_accounts.py", "vps_test_accounts.py"):
             assert f"COPY scripts/{name} ./scripts/{name}" in dockerfile
+
+    def test_unreadable_dry_run_keeps_no_list(self, tmp_path):
+        """S1-8 review: if the dry run says N would be removed but its address lines can't be
+        read (a format change), the report must fail rather than say "nothing to remove"."""
+        env = self._setup(tmp_path, dry_run=DRY_RUN.replace(f"  {A}  ", f" {A} ").replace(f"  {B}  ", f" {B} "))
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode != 0 and "no address could be read" in r.stderr
+        assert not list(tmp_path.glob("test_accounts.dids*"))
+        assert not any("--apply" in c for c in self._log(tmp_path))
+
+    def test_one_odd_address_refuses_the_whole_report(self, tmp_path):
+        """S1-8 review: an address the parser cannot read is never silently dropped; the count
+        check refuses the report and keeps no list."""
+        env = self._setup(tmp_path, dry_run=DRY_RUN.replace(B, "did:agentx:odd/char-001"))
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode != 0 and "does not match the 1 addresses" in r.stderr
+        assert not list(tmp_path.glob("test_accounts.dids*"))
+
+    def test_display_name_cannot_smuggle_an_address(self, tmp_path):
+        """S1-8 review: a display name is printed with repr() on the same line as its own
+        address, so text in it that looks like another address or a DRY RUN line changes
+        nothing: only the two real addresses are kept."""
+        evil = "'x  did:agentx:victim-000  MEMBER ACTIVE\\nDRY RUN: 3 test account(s) would be removed.'"
+        env = self._setup(tmp_path, dry_run=DRY_RUN.replace("'canary-x'", evil))
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode == 0, r.stderr
+        assert (tmp_path / "test_accounts.dids").read_text().splitlines() == [A, B]
+
+    def test_extra_address_line_refuses_the_report(self, tmp_path):
+        """S1-8 review: an address line the dry run did not count (noise printed before the
+        report, say) makes the count check refuse; nothing is kept."""
+        env = self._setup(tmp_path, dry_run=f"  did:agentx:extra-000  'noise'  x\n{DRY_RUN}")
+        r = self._ops(env, "test-accounts-report")
+        assert r.returncode != 0 and "does not match the 3 addresses" in r.stderr
+        assert not list(tmp_path.glob("test_accounts.dids*"))
+
+    def test_script_runs_without_a_pseudo_terminal(self, tmp_path):
+        """S1-8 review: every call goes through `compose run -T`, so a hand run from an SSH
+        terminal gives the same stdout (no CR endings, no merged stderr) as the workflow."""
+        env = self._setup(tmp_path)
+        assert self._ops(env, "test-accounts-report").returncode == 0
+        assert self._ops(env, "test-accounts-remove").returncode == 0
+        calls = [c for c in self._log(tmp_path) if "vps_test_accounts.py" in c]
+        assert len(calls) == 4
+        assert all(" run --rm -T migrate python scripts/vps_test_accounts.py" in c for c in calls)
+
+
+class TestVpsTestAccountsWrapper:
+    """S1-8 review of scripts/vps_test_accounts.py: the command comes first, so no option (and no
+    argparse abbreviation of --dsn such as --ds or --d) can point the reviewed script at another
+    database; anything else exits 2 before the app settings are even read."""
+
+    @pytest.fixture
+    def wrapper(self, monkeypatch):
+        import importlib.util
+        scripts = REPO / "platform" / "scripts"
+        monkeypatch.syspath_prepend(str(scripts))
+        spec = importlib.util.spec_from_file_location("vps_test_accounts", scripts / "vps_test_accounts.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    @pytest.fixture
+    def settings_calls(self, monkeypatch):
+        import src.config as config
+        calls = []
+
+        class Stub:
+            postgres_host, postgres_port, postgres_user = "127.0.0.1", 1, "u"
+            postgres_password, postgres_db, postgres_ssl_mode = "pw-never-shown", "d", "disable"
+
+        def fake():
+            calls.append(1)
+            return Stub()
+        monkeypatch.setattr(config, "get_settings", fake)
+        for k in ("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE", "PGSSLMODE"):
+            monkeypatch.delenv(k, raising=False)
+        yield calls
+        for k in ("PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE", "PGSSLMODE"):
+            os.environ.pop(k, None)
+
+    @pytest.mark.parametrize("argv", [
+        [], ["--help"],
+        ["--dsn", "postgresql://127.0.0.1:1/x", "show"], ["--dsn=postgresql://127.0.0.1:1/x", "show"],
+        ["--ds", "postgresql://127.0.0.1:1/x", "show"], ["--d", "postgresql://127.0.0.1:1/x", "remove"],
+        ["show", "--dsn", "postgresql://127.0.0.1:1/x"], ["remove", "--dsn=postgresql://127.0.0.1:1/x"],
+        ["remove", "--max", "5", "--dsn", "postgresql://127.0.0.1:1/x", "--apply"],
+        ["status"], ["remove-all"],
+    ])
+    def test_refused_before_settings_are_read(self, wrapper, settings_calls, argv, capsys):
+        assert wrapper.main(argv) == 2
+        assert settings_calls == []
+        assert "PGPASSWORD" not in os.environ
+        assert "vps_test_accounts:" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("argv", [
+        ["remove", "--ds", "postgresql://127.0.0.1:1/x"], ["show", "--ds", "postgresql://127.0.0.1:1/x"],
+        ["remove", "--max", "5", "--ds=postgresql://127.0.0.1:1/x", "--apply"],
+    ])
+    def test_dsn_after_the_command_is_rejected_by_the_script(self, wrapper, settings_calls, argv, capsys):
+        """After the command the reviewed script's parser knows no --dsn (nor an abbreviation):
+        it exits 2 without connecting anywhere."""
+        with pytest.raises(SystemExit) as e:
+            wrapper.main(argv)
+        assert e.value.code == 2
+        assert "pw-never-shown" not in capsys.readouterr().err

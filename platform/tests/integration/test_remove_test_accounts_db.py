@@ -590,9 +590,15 @@ async def test_vps_wrapper_uses_app_settings(pool, escrow_db):
             assert password not in r.stdout + r.stderr
 
         own = run("--dsn", "postgresql://127.0.0.1:1/nope", "show")
-        assert own.returncode == 2 and "do not pass --dsn" in own.stderr
+        assert own.returncode == 2 and "first argument" in own.stderr
         own = run("remove", "--dsn=postgresql://x/y")
-        assert own.returncode == 2
+        assert own.returncode == 2 and "do not pass --dsn" in own.stderr
+        # S1-8 review: argparse would take --ds / --d as --dsn in front of the command; the
+        # wrapper refuses any option there, and after the command the script knows no --dsn.
+        own = run("--ds", "postgresql://127.0.0.1:1/nope", "show")
+        assert own.returncode == 2 and "first argument" in own.stderr
+        own = run("show", "--ds", "postgresql://127.0.0.1:1/nope")
+        assert own.returncode == 2 and "unrecognized arguments" in own.stderr
     finally:
         await pool.execute("DELETE FROM audit_logs WHERE resource_id = $1", did)
         await pool.execute("DELETE FROM agents WHERE agent_did = $1", did)

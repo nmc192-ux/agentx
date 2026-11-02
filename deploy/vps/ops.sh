@@ -323,7 +323,10 @@ SQL
 }
 
 test_accounts() {  # test_accounts ARGS...: the reviewed removal script, app database, in migrate
-  dc --profile migrate run --rm migrate python scripts/vps_test_accounts.py "$@"
+  # -T: no pseudo-terminal even when DrJ runs this from an SSH terminal, so the script's stdout
+  # is read as is (no CR line endings, stderr not merged in) and the address list is parsed
+  # the same way as from the workflow.
+  dc --profile migrate run --rm -T migrate python scripts/vps_test_accounts.py "$@"
 }
 
 cmd_test_accounts_report() {  # changes nothing on the database
@@ -340,6 +343,8 @@ cmd_test_accounts_report() {  # changes nothing on the database
   n="$(wc -l < "$tmp" | tr -d ' ')"
   if [[ "$n" == 0 ]]; then
     rm -f "$tmp"
+    grep -q "^No test accounts found" <<< "$out" \
+      || die "the dry run listed accounts but no address could be read from it; no list was kept"
     say "== nothing to remove; test-accounts-remove has nothing to do"
     return 0
   fi
