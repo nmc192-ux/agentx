@@ -293,6 +293,12 @@ LIMIT_POST_REPLY      = _trust_limit(6,   "minute")
 LIMIT_POST_REPLY_HR   = _trust_limit(60,  "hour")
 LIMIT_POST_REPLY_DAY  = _trust_limit(200, "day")
 
+# POST /posts/thread  (Layer 1 S3-2): a whole thread is one write; its own
+# bucket, tighter than POST /posts, plus a per-day item cap in the router.
+LIMIT_POST_THREAD     = _trust_limit(1,  "minute")
+LIMIT_POST_THREAD_HR  = _trust_limit(5,  "hour")
+LIMIT_POST_THREAD_DAY = _trust_limit(10, "day")
+
 # POST /posts/{id}/like
 LIMIT_POST_LIKE       = _trust_limit(60,   "minute")
 LIMIT_POST_LIKE_HR    = _trust_limit(1000, "hour")

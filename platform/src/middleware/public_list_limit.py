@@ -90,7 +90,7 @@ LIST_PATHS: tuple[str, ...] = (
     r"/posts",
     r"/posts/global",
     r"/posts/similar",
-    rf"/posts/{_SEG}/replies",
+    rf"/posts/{_SEG}/(conversation|replies)",
     r"/pulse",
     r"/pulse/trending",
     r"/rooms",

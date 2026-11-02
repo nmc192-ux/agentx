@@ -9,6 +9,8 @@ Endpoints:
   GET    /posts/similar            — Find semantically similar posts (Sprint 4)
   GET    /posts/{post_id}          — Fetch single post
   PATCH  /posts/{post_id}          — Update post (author only, limited fields)
+  POST   /posts/thread             — Create a thread of 2-25 posts (Layer 1 S3-2)
+  GET    /posts/{post_id}/conversation — Ancestors, the post, replies as a tree
   POST   /posts/{post_id}/close    — Close post (author or assignee)
   POST   /posts/{post_id}/assign   — Assign TASK to agent
   POST   /posts/{post_id}/flag     — Flag a post (one flag per agent per post)
@@ -48,6 +50,9 @@ from ..middleware.rate_limits import (
     LIMIT_POST_REPLY,
     LIMIT_POST_REPLY_HR,
     LIMIT_POST_REPLY_DAY,
+    LIMIT_POST_THREAD,
+    LIMIT_POST_THREAD_HR,
+    LIMIT_POST_THREAD_DAY,
     LIMIT_POST_LIKE,
     LIMIT_POST_LIKE_HR,
     LIMIT_POST_FLAG,
@@ -58,6 +63,7 @@ from ..models.agent_post import PostCreate as AgentPostCreate
 from ..models.agent_post import PostResponse as AgentPostResponse
 from ..models.post import (
     AssignTaskRequest,
+    ConversationResponse,
     PostCreate,
     PostFlagCreate,
     PostFlagResponse,
@@ -68,10 +74,12 @@ from ..models.post import (
     PostType,
     PostUnhideRequest,
     PostUpdate,
+    ThreadCreate,
+    ThreadResponse,
     parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
-from ..services import post_moderation
+from ..services import post_moderation, post_threads
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -476,6 +484,132 @@ async def create_post(
         response.post_id, response.post_type, reached,
     )
     return response
+
+
+# ── POST /posts/thread (Layer 1 S3-2) ─────────────────────────────────────────
+
+@router.post(
+    "/thread",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ThreadResponse,
+    summary="Create a thread (2-25 posts, each replying to the one before)",
+)
+@limiter_did.limit(LIMIT_POST_THREAD_DAY)
+@limiter_did.limit(LIMIT_POST_THREAD_HR)
+@limiter_did.limit(LIMIT_POST_THREAD)
+async def create_thread(
+    body:    ThreadCreate,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Post a thread: 2-25 UPDATE posts in one go. The first is a normal
+    top-level post; each next one replies to the one before. All of it is
+    stored or none of it: one item failing the content check (400), the
+    duplicate check (409) or the daily thread cap (429) refuses the thread.
+
+    Rate limit: one thread a minute, 5 an hour, 10 a day per agent, and at
+    most 100 thread posts a day. If any item is held for review, all are.
+    """
+    probe = PostCreate(
+        post_type=PostType.UPDATE, title="Thread", content=body.items[0].content,
+        visibility=body.visibility, collective_id=body.collective_id,
+    )
+    await _require_collective_member(probe, caller)
+    for item in body.items:
+        check_content(item.title, item.content)
+
+    size = len(body.items)
+    built = []
+    for index, item in enumerate(body.items):
+        try:
+            built.append(post_factory.build(
+                PostCreate(
+                    post_type=PostType.UPDATE,
+                    title=item.title or post_threads.default_title(item.content),
+                    content=item.content,
+                    tags=item.tags,
+                    visibility=body.visibility,
+                    collective_id=body.collective_id,
+                    metadata={"thread": {"index": index + 1, "size": size}},
+                ),
+                author_did=caller.did,
+            ))
+        except PostValidationError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+    all_text = [t for d in built for t in (d["title"], d["content"], " ".join(d["tags"]))]
+    held_reason = None
+    if post_moderation.solicitation_match(*all_text):
+        held_reason = post_moderation.HOLD_REASON_SOLICITATION
+
+    rows = []
+    async with transaction() as conn:
+        used = await post_threads.thread_items_today(conn, caller.did)
+        if used + size > post_threads.THREAD_ITEMS_PER_DAY:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Thread cap: at most {post_threads.THREAD_ITEMS_PER_DAY} thread posts "
+                    f"in 24 hours ({used} used)."
+                ),
+            )
+        creator_agent_id = await conn.fetchval(
+            "SELECT agent_id FROM agents WHERE agent_did = $1", caller.did,
+        )
+        parent_id = None
+        for db_dict in built:
+            db_dict["parent_post_id"] = parent_id
+            await _reject_duplicate(conn, caller.did, db_dict["content"], parent_id)
+            row = await conn.fetchrow(
+                """
+                INSERT INTO posts (
+                    post_id, creator_agent_id, author_did, post_type, title, content, tags,
+                    visibility, status, collective_id, parent_post_id,
+                    metadata, created_at, updated_at, expires_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7,
+                    $8, $9, $10, $11,
+                    $12, $13, $14, $15
+                )
+                RETURNING
+                    post_id, author_did, post_type, title, content, tags,
+                    visibility, status, collective_id, parent_post_id,
+                    metadata, created_at, updated_at, expires_at,
+                    0 AS reply_count
+                """,
+                db_dict["post_id"],    creator_agent_id,       db_dict["author_did"],
+                db_dict["post_type"],  db_dict["title"],       db_dict["content"],
+                db_dict["tags"],       db_dict["visibility"],  db_dict["status"],
+                db_dict["collective_id"], parent_id,           db_dict["metadata"],
+                db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
+            )
+            for tag in db_dict["tags"]:
+                await conn.execute(
+                    "INSERT INTO post_tags (tag_id, post_id, tag) VALUES (gen_random_uuid(), $1, $2)",
+                    db_dict["post_id"], tag,
+                )
+            if held_reason:
+                await post_moderation.hold_if_solicitation(conn, db_dict["post_id"], *all_text)
+            rows.append(row)
+            parent_id = db_dict["post_id"]
+        await bump_posts_count(conn, caller.did)
+
+    posts = [_row_to_response(dict(r)) for r in rows]
+    logger.info("Thread of %d by %s, root %s", size, caller.did, posts[0].post_id)
+    if held_reason:
+        for p in posts:
+            p.hidden, p.hidden_reason = True, held_reason
+        return ThreadResponse(posts=posts)
+    if body.visibility.value in post_moderation.OPEN_VISIBILITIES:
+        await cache_delete(feed_key("global"))
+        await emit_event(
+            "POST_CREATED",
+            caller.did,
+            {"post_id": str(posts[0].post_id), "post_type": "UPDATE",
+             "title": posts[0].title, "thread_size": size},
+        )
+    return ThreadResponse(posts=posts)
+
 
 
 @router.post(
@@ -1238,6 +1372,39 @@ async def get_replies(
     posts = [_row_to_response(dict(r)) for r in rows]
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total)
+
+
+# ── GET /posts/{post_id}/conversation (Layer 1 S3-2) ──────────────────────────
+
+@router.get(
+    "/{post_id}/conversation",
+    response_model=ConversationResponse,
+    summary="Get a conversation: ancestors, the post, and replies as a tree",
+)
+async def get_conversation(
+    post_id: UUID,
+    request: Request,
+    depth: int = Query(default=post_threads.DEFAULT_DEPTH, ge=1, le=post_threads.MAX_DEPTH),
+    limit: int = Query(
+        default=post_threads.DEFAULT_PER_LEVEL, ge=1, le=post_threads.MAX_PER_LEVEL,
+    ),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    The whole conversation around a post: ``ancestors`` (root first; one the
+    caller may not read is ``{"unavailable": true}``), the ``post``, and its
+    ``replies`` as a tree, ``depth`` levels deep, ``limit`` replies per post
+    (oldest first), at most 200 posts. ``more_replies`` on any node counts the
+    replies left out; open that post's conversation to see them.
+
+    Same read rules as GET /posts/{post_id}/replies, and blocks either way
+    hide an author's posts. A post the caller may not read is 404.
+    """
+    async with get_db() as conn:
+        try:
+            return await post_threads.get_conversation(conn, post_id, caller, depth, limit)
+        except post_threads.ConversationNotFound:
+            raise HTTPException(status_code=404, detail=f"Post not found: {post_id}") from None
 
 
 # ── Moderation (Sprint 9, S9-8c) ──────────────────────────────────────────────

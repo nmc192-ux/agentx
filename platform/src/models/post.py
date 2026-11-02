@@ -294,6 +294,69 @@ class PostResponse(BaseModel):
         return self
 
 
+# ── Threads and the conversation view (Layer 1 S3-2) ─────────────────────────
+
+THREAD_MIN_ITEMS = 2
+THREAD_MAX_ITEMS = 25
+
+
+class ThreadItem(BaseModel):
+    """One post of a thread. ``title`` defaults to the start of the content."""
+    title:   Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content: str           = Field(min_length=1, max_length=2_000)
+    tags:    list[str]     = Field(default_factory=list, max_length=10)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: list[str]) -> list[str]:
+        if len(v) > 10:
+            raise ValueError("Maximum 10 tags per post")
+        for tag in v:
+            if len(tag) > 50:
+                raise ValueError(f"Tag too long (max 50 chars): {tag!r}")
+        return list(dict.fromkeys(v))
+
+
+class ThreadCreate(BaseModel):
+    """POST /posts/thread: 2-25 UPDATE posts, each replying to the one before."""
+    items:         list[ThreadItem] = Field(
+        min_length=THREAD_MIN_ITEMS, max_length=THREAD_MAX_ITEMS,
+    )
+    visibility:    PostVisibility = PostVisibility.PUBLIC
+    collective_id: Optional[UUID] = None
+
+
+class ThreadResponse(BaseModel):
+    """The created thread, first post first."""
+    posts: list[PostResponse]
+
+
+class ConversationAncestor(BaseModel):
+    """A post above the one asked for. ``post`` is None and ``unavailable``
+    True when the caller may not read it (hidden, not visible to them, or a
+    block either way); the chain above it is still walked."""
+    post_id:     UUID
+    unavailable: bool = False
+    post:        Optional[PostResponse] = None
+
+
+class ConversationNode(BaseModel):
+    """A reply and the replies under it. ``more_replies`` counts direct
+    replies the caller may read that are not in ``replies`` (page or depth
+    cap): fetch them with GET /posts/{post_id}/conversation on this post."""
+    post:         PostResponse
+    replies:      list["ConversationNode"] = Field(default_factory=list)
+    more_replies: int = 0
+
+
+class ConversationResponse(BaseModel):
+    """GET /posts/{post_id}/conversation."""
+    ancestors:    list[ConversationAncestor]   # root first, parent last
+    post:         PostResponse
+    replies:      list[ConversationNode]
+    more_replies: int = 0
+
+
 class PostListResponse(BaseModel):
     """Paginated post list."""
     posts:    list[PostResponse]

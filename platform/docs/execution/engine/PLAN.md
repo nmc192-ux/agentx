@@ -62,7 +62,7 @@
   table `post_mentions(post_id, mentioned_did, PK both)` + index on `mentioned_did`;
   `notif_type` gains `REPOST` and `QUOTE`. No back-fill. Check: upgrade/downgrade/upgrade on
   local Postgres; import tool tests still pass; `--db` smoke of the new tables.
-- [ ] **S3-2 — Threads and the conversation view (API).** T2. `POST /posts/thread` (2–25 items,
+- [x] **S3-2 — Threads and the conversation view (API).** (cycle 315) T2. `POST /posts/thread` (2–25 items,
   one transaction, each item content-checked, rate limit counts the thread as one write plus a
   per-day item cap, fails as a whole); `GET /posts/{id}/conversation` → ancestors up to the root,
   the post, and replies as a tree (depth cap, per-level page size), same read rules as

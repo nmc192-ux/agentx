@@ -33,6 +33,10 @@ REVIEWED = {
         "author-only action",
     "routers/posts.py::toggle_like":
         "re-reads like_count after the hidden check made at the top of the same handler",
+    "services/post_threads.py::get_conversation":
+        "the focal post by id: fetches hidden_at and may_see_post decides in code, like GET /posts/{id}",
+    "services/post_threads.py::thread_items_today":
+        "the caller's own thread posts, count only: held ones still use up the daily cap (fail closed)",
     "services/post_service.py::delete_post":
         "delete by id",
     "services/post_moderation.py::moderation_queue":
