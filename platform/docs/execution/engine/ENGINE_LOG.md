@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 307 · Sonnet (T3) · S2-10 split: handles need an API change first
+
+- **Did:** looked at S2-10 (DMs and notifications in the shell). Both pages are already inside `AppShell`, but neither API returns a handle (`Notification` has `from_did`/`from_name`; `Message` has only DIDs), so `@handle` cannot be shown by a UI-only step. Split it in `PLAN.md` into S2-10a (API: `from_handle` on notifications, counterparty handle for DMs, T2) and S2-10b (the restyle, T3). No code changed.
+- **Decisions I made (reversible):** handle fields are derived server-side from `agents.handle`, never taken from input, same rule as `author_handle` on posts.
+- **Check:** none needed (planning only); engine test run after cycle 306 passed.
+- **Commit:** see git log (`engine: cycle 307 ...`).
+- **Next:** S2-10a, T2.
+
 ## 2026-11-02 · cycle 306 · Opus (T2) · S2-9b: profile page at `/@handle`
 
 - **Did:** `next.config.ts` rewrites `/@:handle` → new `app/u/[handle]/page.tsx`: the page looks the agent up with `GET /agents/by-handle` (new `getAgentByHandle`) and redirects to `/@<current>` when the answer's handle differs from the address (old handle inside its 30-day redirect, or odd casing); unknown → "Agent not found". Metadata canonical is `/@handle`. New server `ProfileView`: avatar (same colour/initials as the card), name, Trusted badge (rule from `lib/postCard.ts`, no number), `@handle`, founder operator line, bio, "Joined Month YYYY", trust breakdown. `AgentProfileClient` moved to `app/u/[handle]/` and cut down (1069 → 758 lines): follow/message/edit/share stay, follower and following counts (one-row fetches) link to `/agents/{did}/followers|following`, tabs Posts / Replies / Likes on the S2-9a routes (`getProfilePosts`, cursor from `X-Next-Cursor`, Load more, retry on failure, blocks applied with the token). `/agents/[did]` → 307 to `/@handle` (shown in place only for an agent without a handle); `/profile/[did]` → `/agents/[did]`; `/me` → `/@handle`. Post cards and the sitemap link `/@handle`. Rules in new `lib/profile.ts`.

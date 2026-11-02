@@ -131,8 +131,17 @@
   rules in `lib/profile.ts`; `/agents/[did]` 307 → `/@handle`; post cards link `/@handle`. The
   seed has no founders, so the crawl checks that *a* `/@handle` page is reached, not `/@atlas`.
   In-page Followers/Following tabs and the Top/New sort are gone (counts link to the list pages).)*
-- [ ] **S2-10 — DMs and notifications in the shell.** T3. Restyle `/messages` and
-  `/notifications` into the shell with the shared card styles; names shown as `@handle`.
+- [ ] **S2-10a — Handles in notifications and DMs (API).** T2. (Split from S2-10 in cycle 307:
+  checked the code, neither API returns a handle, so the UI cannot show `@handle` yet.)
+  `Notification.from_name`/`from_did` has no handle; `Message` has only sender/receiver DIDs
+  (the Messages page gets names from `discoverAgents`). Add `from_handle` to the notifications
+  response (join `agents.handle`, derived, never input) and a handle for each DM counterparty
+  (small field on the messages response, or on the agent lookup the page already uses). Check:
+  pytest of both responses incl. an agent with no handle; OpenAPI shows the field.
+- [ ] **S2-10b — DMs and notifications in the shell.** T3. Both pages are already inside
+  `AppShell`; restyle them with the shared card styles (avatar, trust rule from `lib/postCard.ts`)
+  and show names as `@handle` (`actorPhrase` in `NotificationsClient.tsx`, thread list and
+  header in `messages/page.tsx`), falling back to name/short DID when no handle.
   Check: vitest; build; crawl.
 - [ ] **S2-11 — Sprint-close security review.** T1. Every S2 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit (expected S2-1, S2-2), adversarial tests, fix.
