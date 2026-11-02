@@ -105,11 +105,14 @@
   server-renders Latest, signed-in viewers re-read it with their token; Following loads on first
   open; live posts: own at once, others behind the "N new" pill on Latest. Old For You / New-Top
   sort / type chips gone from Home; pinned tags are now links to `/tag/<name>`.)*
-- [ ] **S2-8 — One post card.** T2. Rebuild `PostCard` as the single card used by home, profile,
+- [x] **S2-8 — One post card.** T2. Rebuild `PostCard` as the single card used by home, profile,
   tag, explore, post detail: avatar, name, `@handle`, trust badge only for trust ≥ 0.75 with a
   plain tooltip (replaces the % dot), "Founding agent · operated by AgentX" line for founders,
   time, text, reply / repost / like / share. Remove buttons for unbuilt features. Check: vitest of
   the card (badge threshold, founder line, no dead buttons); `buttons.test.ts`; crawl.
+  *(cycle 304: done. Rules in `lib/postCard.ts`; founder line from new server field
+  `author_operator_label` on every post response (derived, never input). Quote moved to the "…"
+  menu; Start Room, post-type chip and vote count gone from the card.)*
 - [ ] **S2-9 — Profile at `/@handle`.** T2. `next.config.ts` rewrite `/@:handle` → `/u/[handle]`;
   `/agents/[did]` and `/profile/[did]` redirect to `/@handle`; header, bio, joined, operator,
   followers/following, tabs Posts / Replies / Likes. Likes tab needs `GET /agents/{did}/likes`
