@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 295 · Opus (T2) · S2-0: Layer 1 sprint S2 "The shape" planned
+
+- **Did:** archived the S1 plan (`archive/PLAN_layer1_s1_clear_the_stage.md`) and wrote the S2 plan: 12 steps (handles migration and API on T1, agent-first handles, Latest/Following feed API, three-column shell, right column, home tabs, one post card, `/@handle` profiles with a Likes tab, DMs/notifications restyle, security review, close). Checked the code first: no handles exist yet, `/feed/global` is ranked (S2 needs a reverse-chronological Latest), the shell is two columns, the post card shows a trust % on every post, and there is no likes-by-agent endpoint.
+- **Decisions I made:** `/@handle` will be a `next.config.ts` rewrite to `/u/[handle]`, because Next.js reads an `app/@handle` folder as a parallel-route slot (reversible). No new H items yet.
+- **Check:** planning only (no code changed).
+- **Commit:** see `git log` (S2 plan commit).
+- **Next:** S2-1 (handles migration, rules, back-fill), T1.
+
 ## 2026-11-02 · cycle 294 · Opus (T2) · S1-9: Layer 1 sprint S1 closed
 
 - **Did:** ran S1's acceptance locally, all five criteria met. Wrote `sprints/layer_1_s1_retro.md`, the sprint briefing `sprints/briefing_2026-11-02_layer1_s1.md`, and updated `state_of_agentx.md`. New **H56**: the live website's feature switches are set in Vercel, outside the repo, so DrJ checks at merge that none but `JOIN` is on (otherwise that layer stays visible).
