@@ -20,6 +20,13 @@ Rules (Layer 1 plan §S3):
   • A quote's text is a template in the founder's voice; it must pass the
     claim checker (`founders.truth`) with the original's title, text, tags
     and author name as quoted text, or no quote is written.
+  • The only outside text in a quote is the original author's display name
+    and one tag (the "topic"). Both are the outsider's to choose, so both
+    must be plain words (`plain_words`): no ``@``, ``#``, ``/``, ``:`` or
+    line breaks. Otherwise an outsider could make a founder @mention someone,
+    #tag a post or post a link by picking a name (S3-10 review). The finished
+    title and text are screened again (`generation.unsafe_text`, no mention
+    or hashtag parses out of them); any doubt means no quote.
 
 Every decision is drawn from a generator seeded by (seed, founder, post id),
 like the replies (`founders.replies`): each tick and process reaches the
@@ -36,7 +43,8 @@ from datetime import datetime, timedelta
 from typing import Iterable, Optional
 from uuid import UUID
 
-from .generation import CONTENT_MAX, TITLE_MAX, GeneratedPost, trim_to
+from ..services import hashtags, mentions
+from .generation import CONTENT_MAX, TITLE_MAX, GeneratedPost, trim_to, unsafe_text
 from .personas import Persona
 from .truth import claim_problems
 
@@ -44,7 +52,7 @@ __all__ = [
     "MIN_AGE", "MAX_AGE", "REPOSTS_PER_DAY", "QUOTES_PER_DAY", "MAX_FOUNDERS_PER_POST",
     "REPOST_CHANCE", "QUOTE_CHANCE", "DEFAULT_AMPLIFY_SEED", "KIND_REPOST", "KIND_QUOTE",
     "AmplifyCandidate", "plan_amplify", "quotes_founder", "choose", "compose_quote",
-    "quote_quoted",
+    "quote_quoted", "plain_words",
 ]
 
 MIN_AGE = timedelta(hours=2)        # the "N hours old" of the plan
@@ -132,11 +140,29 @@ _QUOTE_LINES: dict[str, tuple[str, ...]] = {
 }
 _DEFAULT_LINE = "{author} on {topic}. Thoughts welcome."
 
+# What outside text may look like inside a founder's sentence: letters (any
+# script), digits, spaces and a few name characters. Nothing that the
+# platform's own parsers or a reader would take as an address, a tag or a
+# link: no ``@``, ``#``, ``/``, ``:``, ``.``, no line breaks, and never
+# starting with a punctuation mark. Up to 64 characters (a display name).
+_PLAIN_WORDS = re.compile(r"^[^\W_][\w ,'’&()\-]{0,63}$")
+
+
+def plain_words(text: Optional[str]) -> bool:
+    """True when *text* is a name or a topic a founder may repeat verbatim."""
+    if not text or len(text) > 64:
+        return False
+    if "\n" in text or "\r" in text or "\t" in text:
+        return False
+    return _PLAIN_WORDS.match(text) is not None and not unsafe_text(text)
+
 
 def _topic(candidate: AmplifyCandidate) -> str:
+    """The first tag that reads as plain words, with ``-`` / ``_`` as
+    spaces; "this" when there is none worth repeating."""
     for tag in candidate.tags:
         words = re.sub(r"[-_]+", " ", tag).strip()
-        if words:
+        if words and plain_words(words):
             return words
     return "this"
 
@@ -147,14 +173,33 @@ def quote_quoted(candidate: AmplifyCandidate) -> tuple[str, ...]:
                              _topic(candidate), *candidate.tags) if q)
 
 
+def _smuggles(text: str) -> bool:
+    """Does *text*, as a founder's post, carry something the founder did not
+    write: a link or address (`unsafe_text`), an @mention or a #hashtag?"""
+    if unsafe_text(text):
+        return True
+    try:
+        if mentions.extract(text):
+            return True
+    except mentions.TooManyMentions:
+        return True
+    return bool(hashtags.extract(text))
+
+
 def compose_quote(persona: Persona, candidate: AmplifyCandidate) -> Optional[GeneratedPost]:
-    """The quote post in *persona*'s voice, or None when its text would not
-    pass the claim checker with the original as quoted text (no facts: a
-    quote states no number of its own)."""
+    """The quote post in *persona*'s voice, or None when it may not be
+    written: the author's name is not plain words (`plain_words`), the
+    finished text would mention, tag or link anything, or it would not pass
+    the claim checker with the original as quoted text (no facts: a quote
+    states no number of its own)."""
+    author = (candidate.author_display or "").strip()
+    if not plain_words(author):
+        return None
     line = _QUOTE_LINES.get(persona.name, (_DEFAULT_LINE,))[0]
-    content = trim_to(line.format(author=candidate.author_display, topic=_topic(candidate)),
-                      CONTENT_MAX)
-    title = trim_to(f"Quoting {candidate.author_display}", TITLE_MAX)
+    content = trim_to(line.format(author=author, topic=_topic(candidate)), CONTENT_MAX)
+    title = trim_to(f"Quoting {author}", TITLE_MAX)
+    if _smuggles(content) or _smuggles(title):
+        return None
     quoted = quote_quoted(candidate)
     if claim_problems(content, (), quoted) or claim_problems(title, (), quoted):
         return None

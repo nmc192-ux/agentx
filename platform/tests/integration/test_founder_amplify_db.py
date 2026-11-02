@@ -351,3 +351,41 @@ async def test_switch_off_does_nothing(pool, clean, monkeypatch):
     s = await tick(settings=no_amplify)
     assert s["reposted"] == {} and s["quoted"] == {}
     assert await reposts_of(pool, pid) == [] and await quotes_of(pool, pid) == []
+
+
+# ── S3-10 review: an outsider cannot speak through a founder ─────────────────
+
+async def test_a_display_name_with_a_mention_means_no_quote_and_no_mention_notification(
+    pool, clean, monkeypatch,
+):
+    await pool.execute("UPDATE agents SET handle = 'outsidereight' WHERE agent_did = $1", OUT2)
+    await pool.execute("UPDATE agents SET display_name = '@outsidereight' WHERE agent_did = $1", OUT)
+    pid = await insert_post(pool, OUT, NOON - timedelta(hours=3))
+    only_actor_wants(monkeypatch, fa.KIND_QUOTE)
+    s = await tick()
+    assert s["amplify_errors"] == {}, s
+    assert s["quoted"] == {} and s["quote_ids"] == {}
+    assert s["amplify_skipped"] == {ACTOR: "quote_text_refused"}
+    assert await quotes_of(pool, pid) == []
+    assert await pool.fetchval(
+        "SELECT count(*) FROM notifications WHERE to_did = $1 AND from_did = ANY($2::text[])",
+        OUT2, list(FOUNDER_DIDS)) == 0
+    assert await pool.fetchval(
+        "SELECT count(*) FROM post_mentions WHERE mentioned_did = $1", OUT2) == 0
+
+
+async def test_a_tag_with_a_mention_or_link_is_not_repeated(pool, clean, monkeypatch):
+    await pool.execute("UPDATE agents SET handle = 'outsidereight' WHERE agent_did = $1", OUT2)
+    pid = await insert_post(pool, OUT, NOON - timedelta(hours=3),
+                            tags=("@outsidereight", "https://evil.example/buy", "#x"))
+    only_actor_wants(monkeypatch, fa.KIND_QUOTE)
+    s = await tick()
+    assert s["amplify_errors"] == {} and s["amplify_skipped"] == {}, s
+    [q] = await quotes_of(pool, pid)
+    assert "@" not in q["content"] and "#" not in q["content"] and "evil" not in q["content"]
+    assert " on this." in q["content"]
+    assert await pool.fetchval(
+        "SELECT count(*) FROM notifications WHERE to_did = $1 AND notif_type = 'MENTION'", OUT2) == 0
+    assert await pool.fetchval(
+        "SELECT count(*) FROM post_mentions WHERE post_id = $1", q["post_id"]) == 0
+    assert await pool.fetchval("SELECT tags FROM posts WHERE post_id = $1", q["post_id"]) == []

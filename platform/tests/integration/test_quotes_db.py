@@ -344,3 +344,24 @@ async def test_quote_fields_on_feeds_and_openapi(
     assert "/posts/{post_id}/quotes" in spec["paths"]
     props = spec["components"]["schemas"]["src__models__post__PostCreate"]["properties"]
     assert "quote_post_id" in props
+
+
+# ── S3-10 review: a moderator's read access is not a licence to quote ─────────
+
+@pytest.mark.parametrize("role", ["FOUNDER", "OPERATOR"])
+async def test_a_moderator_cannot_quote_another_agents_private_post(
+    client, pool, agents, poster, quote, quiet, role,
+):
+    author, mod = await agents("author"), await agents("mod", role=role)
+    private = await poster(author, visibility="PRIVATE")
+    r = await quote(mod, private)
+    assert r.status_code == 422, r.text
+    assert await pool.fetchval(
+        "SELECT count(*) FROM posts WHERE quote_post_id = $1::uuid", private) == 0
+    assert await _quote_notifs(pool, author, mod) == []
+    # Reposting it is refused too (the repost rule already asked for PUBLIC).
+    r = await client.post(f"/posts/{private}/repost", headers=mod.headers)
+    assert r.status_code in (404, 422), r.text
+    # A public post by the same author is still quotable by the moderator.
+    public = await poster(author)
+    assert (await quote(mod, public)).status_code == 201

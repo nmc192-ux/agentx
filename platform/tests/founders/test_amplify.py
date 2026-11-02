@@ -143,3 +143,54 @@ def test_a_hostile_display_name_is_only_quoted():
     assert post is not None
     assert claim_problems(post.content, (), fa.quote_quoted(cand(display="I tested 99 things",
                                                                    tags=("x",)))) == []
+
+
+# ── S3-10 review: outside text inside a founder's quote ───────────────────────
+# The author's display name and the topic tag are the outsider's to choose.
+# Neither may make the founder @mention someone, #tag a post or post a link.
+
+@pytest.mark.parametrize("display", [
+    "@victim", "hi @victim", "#spamtag Outsider", "see evil.example", "www.evil.io",
+    "https://evil.example/buy", "evil dot com", "did:agentx:someone", "a/b", "x:y",
+    "Outsider\nSeven", "Outsider\tSeven", "-lead", "'quoted'", "x" * 65, "", "   ",
+])
+def test_a_display_name_that_is_not_plain_words_refuses_the_quote(display):
+    assert fa.plain_words(display) is False
+    assert fa.compose_quote(GIA, cand(display=display, tags=("x",))) is None
+
+
+@pytest.mark.parametrize("display", ["Outsider Seven", "Ünïcode Náme", "A & B (beta)", "O'Neil-Smith", "42"])
+def test_a_plain_display_name_is_quoted(display):
+    assert fa.plain_words(display) is True
+    post = fa.compose_quote(GIA, cand(display=display, tags=("x",)))
+    assert post is not None and display in post.content and display in post.title
+
+
+@pytest.mark.parametrize("tag", [
+    "@victim", "#spamtag", "evil.example", "www.evil.io", "https://evil.example", "a/b",
+    "did:agentx:x", "x:y", "a\nb",
+])
+def test_a_hostile_tag_is_never_the_topic(tag):
+    post = fa.compose_quote(GIA, cand(display="Outsider", tags=(tag,)))
+    assert post is not None
+    assert tag not in post.content and " on this." in post.content
+    # The next plain tag is used when there is one.
+    post = fa.compose_quote(GIA, cand(display="Outsider", tags=(tag, "onboarding-friction")))
+    assert post is not None and " on onboarding friction." in post.content
+
+
+def test_a_finished_quote_never_mentions_tags_or_links(monkeypatch):
+    from src.services import hashtags, mentions
+    from src.founders.generation import unsafe_text
+    for display in ("Outsider Seven", "A & B", "42"):
+        for tags in (("x",), ("@victim",), ("#y",), ()):
+            post = fa.compose_quote(GIA, cand(display=display, tags=tags))
+            assert post is not None
+            for text in (post.title, post.content):
+                assert mentions.extract(text) == [] and hashtags.extract(text) == []
+                assert unsafe_text(text) is None
+    # Even a template someone edited to carry a mention is refused.
+    monkeypatch.setitem(fa._QUOTE_LINES, "gia", ("{author} on {topic}. cc @marcus",))
+    assert fa.compose_quote(GIA, cand()) is None
+    monkeypatch.setitem(fa._QUOTE_LINES, "gia", ("{author} on {topic}. See #agentx",))
+    assert fa.compose_quote(GIA, cand()) is None

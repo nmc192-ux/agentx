@@ -8,8 +8,11 @@ Writing (``POST /posts`` with ``quote_post_id``), checked by
 :func:`check_quotable` inside the write transaction:
 
 * The quoted post must exist, not be hidden, and be readable by the author
-  (else 422, one answer for missing / hidden / unreadable, so the check does
-  not reveal private posts).
+  as a plain reader (open, their own, or a collective they are an active
+  member of; else 422, one answer for missing / hidden / unreadable, so the
+  check does not reveal private posts). A moderator's wider read access
+  (``may_see_post``) does not apply: a quote broadcasts, and reading a
+  private post for moderation is not a licence to quote it (S3-10 review).
 * A block either way between the author and the quoted post's author is 403.
 * The quoted post's author gets one ``QUOTE`` notification (ref = the new
   quote), never for a self-quote, and only when the quote is open (PUBLIC /
@@ -69,15 +72,27 @@ async def check_quotable(conn, caller, quote_post_id: UUID) -> str:
         """,
         quote_post_id,
     )
-    if (
-        row is None
-        or row["hidden_at"] is not None
-        or not await post_moderation.may_see_post(conn, caller, row)
-    ):
+    if row is None or row["hidden_at"] is not None or not await _plain_reader(conn, caller, row):
         raise QuoteNotFound(quote_post_id)
     if await _blocked_either_way(conn, caller.did, row["author_did"]):
         raise QuoteBlocked(quote_post_id)
     return row["author_did"]
+
+
+async def _plain_reader(conn, caller, row) -> bool:
+    """``post_moderation.may_see_post`` without the moderator exception: the
+    post is open, the caller's own, or in a collective the caller is an
+    active member of. Anything else (PRIVATE, unknown) is closed."""
+    if caller is None:
+        return False
+    if row["author_did"] == caller.did:
+        return True
+    visibility = row["visibility"]
+    if visibility in OPEN_VISIBILITY:
+        return True
+    if visibility == "COLLECTIVE":
+        return await post_moderation.is_active_member(conn, row["collective_id"], caller.did)
+    return False
 
 
 async def notify_quoted(conn, quoted_author_did: str, quoter_did: str, quote_id: UUID) -> None:
