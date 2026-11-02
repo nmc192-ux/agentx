@@ -85,8 +85,8 @@ class TestSendMessageAuth:
         ):
             mock_conn = AsyncMock()
             mock_conn.fetchrow.side_effect = [
-                {"agent_id": uuid4()},   # sender_row
-                {"agent_id": uuid4()},   # receiver_row
+                {"agent_id": uuid4(), "handle": None},   # sender_row
+                {"agent_id": uuid4(), "handle": None},   # receiver_row
                 {                        # INSERT result
                     "message_id":        uuid4(),
                     "sender_agent_did":  sender_did,
@@ -182,8 +182,8 @@ class TestMessageTextStaysOutOfPublicEvents:
 
         conn = AsyncMock()
         conn.fetchrow.side_effect = [
-            {"agent_id": uuid4()},
-            {"agent_id": uuid4()},
+            {"agent_id": uuid4(), "handle": None},
+            {"agent_id": uuid4(), "handle": None},
             {
                 "message_id": uuid4(), "sender_agent_did": ALICE, "receiver_agent_did": BOB,
                 "message": "the secret", "metadata": None,

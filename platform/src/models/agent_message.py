@@ -19,3 +19,7 @@ class MessageResponse(BaseModel):
     message: str
     metadata: Optional[dict] = None
     created_at: datetime
+    # S2-10a: each side's current @handle, read from agents.handle by the
+    # server (None for an agent without one). Never taken from the request.
+    sender_handle: Optional[str] = None
+    receiver_handle: Optional[str] = None

@@ -80,6 +80,7 @@ async def list_notifications(
                 n.ref_post_id, n.is_read, n.created_at,
                 n.ref_entity_id, n.ref_entity_type, n.message,
                 a.display_name AS from_name,
+                a.handle       AS from_handle,
                 p.title AS post_title, LEFT(p.content, 120) AS post_content
             FROM notifications n
             LEFT JOIN agents a ON a.agent_did = n.from_did
@@ -159,6 +160,8 @@ def _row_to_notif(row) -> dict:
         "notif_id":       str(row["notif_id"]),
         "from_did":       row["from_did"],
         "from_name":      row["from_name"],
+        # S2-10a: from agents.handle by the join above, never from input.
+        "from_handle":    row.get("from_handle"),
         "notif_type":     row["notif_type"],
         "ref_post_id":    str(row["ref_post_id"]) if row["ref_post_id"] else None,
         "ref_entity_id":  row.get("ref_entity_id"),

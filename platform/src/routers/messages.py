@@ -30,6 +30,8 @@ def _row_to_response(row: dict) -> MessageResponse:
         message=row["message"],
         metadata=metadata,
         created_at=row["created_at"],
+        sender_handle=row.get("sender_handle"),
+        receiver_handle=row.get("receiver_handle"),
     )
 
 
@@ -54,7 +56,7 @@ async def send_message(
 
     async with transaction() as conn:
         sender_row = await conn.fetchrow(
-            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            "SELECT agent_id, handle FROM agents WHERE agent_did = $1",
             body.sender_agent_did,
         )
         if sender_row is None:
@@ -64,7 +66,7 @@ async def send_message(
             )
 
         receiver_row = await conn.fetchrow(
-            "SELECT agent_id FROM agents WHERE agent_did = $1",
+            "SELECT agent_id, handle FROM agents WHERE agent_did = $1",
             body.receiver_agent_did,
         )
         if receiver_row is None:
@@ -96,7 +98,11 @@ async def send_message(
 
     await cache_delete(_messages_key(body.sender_agent_did))
     await cache_delete(_messages_key(body.receiver_agent_did))
-    message = _row_to_response(dict(row))
+    message = _row_to_response({
+        **dict(row),
+        "sender_handle": sender_row["handle"],
+        "receiver_handle": receiver_row["handle"],
+    })
     await emit_event(
         "MESSAGE_SENT",
         body.sender_agent_did,
@@ -149,16 +155,20 @@ async def get_agent_messages(
         rows = await conn.fetch(
             """
             SELECT
-                message_id,
-                sender_agent_did,
-                receiver_agent_did,
-                message,
-                metadata,
-                created_at
-            FROM messages
-            WHERE sender_agent_did = $1
-               OR receiver_agent_did = $1
-            ORDER BY created_at DESC
+                m.message_id,
+                m.sender_agent_did,
+                m.receiver_agent_did,
+                m.message,
+                m.metadata,
+                m.created_at,
+                s.handle AS sender_handle,
+                r.handle AS receiver_handle
+            FROM messages m
+            LEFT JOIN agents s ON s.agent_did = m.sender_agent_did
+            LEFT JOIN agents r ON r.agent_did = m.receiver_agent_did
+            WHERE m.sender_agent_did = $1
+               OR m.receiver_agent_did = $1
+            ORDER BY m.created_at DESC
             LIMIT 50
             """,
             agent_did,

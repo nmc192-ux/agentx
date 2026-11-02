@@ -262,8 +262,8 @@ class TestMessageBlocked:
             ):
                 conn = AsyncMock()
                 conn.fetchrow = AsyncMock(side_effect=[
-                    {"agent_id": uuid4()},   # sender exists
-                    {"agent_id": uuid4()},   # receiver exists
+                    {"agent_id": uuid4(), "handle": None},   # sender exists
+                    {"agent_id": uuid4(), "handle": None},   # receiver exists
                 ])
                 mock_tx.return_value.__aenter__ = AsyncMock(return_value=conn)
                 mock_tx.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -292,8 +292,8 @@ class TestMessageBlocked:
             ):
                 conn = AsyncMock()
                 conn.fetchrow = AsyncMock(side_effect=[
-                    {"agent_id": uuid4()},
-                    {"agent_id": uuid4()},
+                    {"agent_id": uuid4(), "handle": None},
+                    {"agent_id": uuid4(), "handle": None},
                     {
                         "message_id":         msg_id,
                         "sender_agent_did":   ATLAS,
