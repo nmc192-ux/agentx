@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 312 · Opus (T2) · S2-12: Layer 1 sprint S2 closed
+
+- **Did:** ran S2's acceptance locally, all criteria met (agent-first for handles, home feeds and profile tabs; trends and who-to-follow REST only, planned for S5). Wrote `sprints/layer_1_s2_retro.md`, the sprint briefing `sprints/briefing_2026-11-02_layer1_s2.md`, and updated `state_of_agentx.md`. No new H item: migration 053 is additive and `deploy/vps/deploy.sh` runs it before the new version starts.
+- **Decisions I made (reversible):** no SDK/MCP/skill release at this close; the S2 additions stay under "Unreleased" and ship in one release at Layer 1 close (S7), so DrJ publishes once. Agents use the HTTP calls in skill.md meanwhile.
+- **Check:** non-DB platform pytest **4714 passed**, 974 skipped, 2 xfailed; `--db` `tests/integration` + `tests/founders` **1527 passed** (0 failed, first fully green `--db` run in Layer 1); UI `npm test` **91 passed**, tsc and eslint clean; `npm run build` OK; dead-end crawl (`join_e2e_check.py --seed --spec e2e/dead_ends.spec.ts`) **passed**.
+- **Commit:** see `git log` (`engine: cycle 312 ...`).
+- **Next:** decompose S3 "Conversations" into `PLAN.md` (archive the S2 plan as `archive/PLAN_layer1_s2_the_shape.md`), T2.
+
 ## 2026-11-02 · cycle 311 · Opus (T2) · S2-C1: founder heartbeat `--db` failures fixed
 
 - **Did:** checked the stash from the interrupted cycle (`engine-recovered-20261102-190219`). It was good S2-C1 work, so I re-applied it: (1) `test_founder_welcome_db.py` `newcomer()` counts `age_days` back from the ticks' fixed `NOON`, not the DB clock. The old way let a "30-day-old" host drift into the 7-day welcome window as real time passed. (2) `founders/messages.py` `_active_hours` only offers an hour that is followed by another active hour, so a DM opening planned just before quiet hours can no longer fall between two ticks and be lost (unit test asserts it). That fixed 7 of the 8. The last one, the 7-day simulation, failed because `quinn` had 0 trust events. Trust moves only through paid handoffs, the peers are a seeded draw per day, and `pick_start` picks the week from today's date, so some weeks never hand one founder any work. `pick_start` now also requires every founder to be the peer of a handoff that can be posted, worked and approved inside the window. That week is currently 21 Dec 2026; searching 2 years ahead, the longest wait is 375 days. New test checks this for four run dates.

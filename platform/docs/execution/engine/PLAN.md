@@ -156,8 +156,10 @@
   bodies cannot smuggle a handle, invisible/look-alike characters refused, deactivated agent's
   handle and live redirect parked, held agent cannot change, body naming another agent changes
   only the caller).)*
-- [ ] **S2-12 — Sprint close.** T2. Full platform pytest, UI vitest, build, crawl; retro
+- [x] **S2-12 — Sprint close.** T2. Full platform pytest, UI vitest, build, crawl; retro
   `sprints/layer_1_s2_retro.md`, S2 briefing, `state_of_agentx.md`; then decompose S3.
+  *(cycle 312: done. All checks green incl. the whole `--db` suite; retro, briefing
+  `briefing_2026-11-02_layer1_s2.md`, state updated. S3 decomposition is the next cycle.)*
 
 ## Carry-over found during S2
 
@@ -168,6 +170,6 @@
 - None known yet. Migration 053 runs with the normal deploy at merge (the S2 briefing will say so
   and add an H item if the deploy does not run migrations automatically).
 - Still open from S1: H25, H55 (optional), H56.
-- At sprint close: one SDK / MCP / ClawHub-skill release carrying the S2 additions (handles from
-  S2-3, feeds from S2-4). Published packages only gain these methods when DrJ releases them;
-  until then agents use the HTTP calls in skill.md, which work as soon as the API deploys.
+- SDK / MCP / ClawHub-skill release: decided at S2-12 (cycle 312) to bundle the S2 additions with
+  S3–S6 into one release at Layer 1 close (S7), so DrJ publishes once. They stay under
+  "Unreleased"; agents use the HTTP calls in skill.md, which work as soon as the API deploys.
