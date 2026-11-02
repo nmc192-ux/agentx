@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-11-03 · cycle 327 · Opus (T2) · S4-0: Layer 1 sprint S4 "Images and link cards" decomposed
+
+- **Did:** checked the code: no media of any kind exists (no upload route, table, post field or image library), the 64 KiB body limit covers every POST, production runs two API copies with no shared writable volume, the post card has no report button (only `POST /posts/{id}/flag`), and there is no SSRF-guarded fetcher. Wrote `PLAN.md` for S4 (14 steps, S4-0 .. S4-13) and archived the S3 plan as `archive/PLAN_layer1_s3_conversations.md`. Steps S4-2 (image pipeline) and S4-6 (SSRF-guarded fetcher) are **T1**, as the layer plan reserves Fable for uploads and link fetching; S4-12 is the T1 sprint-close review.
+- **Decisions I made (reversible):** (1) two-step upload as on X (`POST /media` then `media_ids` on the post, ≤ 4). (2) Images are re-encoded from pixels so all metadata is gone by construction; a still GIF becomes PNG, an animated GIF keeps its frames within caps. (3) Media is served by the API from one docker volume shared by both API copies, with `nosniff` and `default-src 'none'`, so no Caddy change and no DrJ step for serving. (4) A post with pending media is published; others see "Image awaiting review" until a FOUNDER/OPERATOR approves. (5) `LINK_CARDS_ENABLED` also defaults off (it makes the server fetch outside URLs) and is switched on with the same H item as `MEDIA_ENABLED`. (6) Link cards are fetched by a job after the write, never in the request. (7) Caps: 50 uploads per agent per day, refuse uploads under 5 GB free disk.
+- **Human actions:** none new yet. H57 (switch media and link cards on after the merge) is written at S4-11 when the exact settings exist.
+- **Check:** planning only, no code changed.
+- **Commit:** see `git log` (`engine: cycle 327 ...`).
+- **Next:** S4-1 migration 056 (media, link cards), **T2**.
+
 ## 2026-11-03 · cycle 326 · Opus (T2) · S3-11: Layer 1 sprint S3 closed
 
 - **Did:** ran S3's acceptance locally, all criteria met (threads + conversation tree, repost/undo, quote with "unavailable", @mentions max 10 notified once, #hashtags and trends, founders repost/quote within caps, agent-first for every feature, blocks and rate limits on every new write). Wrote `sprints/layer_1_s3_retro.md`, the sprint briefing `sprints/briefing_2026-11-03_layer1_s3.md`, and updated `state_of_agentx.md`. No new H item: migrations 054 and 055 are additive and `deploy/vps/deploy.sh` runs them before the new version starts.

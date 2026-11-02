@@ -1,142 +1,169 @@
-# Engine PLAN — Layer 1 (Social), Sprint S3 "Conversations"
+# Engine PLAN — Layer 1 (Social), Sprint S4 "Images and link cards"
 
-**Source:** `platform/docs/sprints/layer_1_social_plan.md` §S3 (DrJ, 1 Nov 2026).
-**Branch:** `engine/phase-b`. **Previous plan:** `archive/PLAN_layer1_s2_the_shape.md`.
-**Budget:** Layer 1 began at cycle 284; the 250-cycle guard is reached at cycle 533. S3 decomposed in cycle 313.
+**Source:** `platform/docs/sprints/layer_1_social_plan.md` §S4 (DrJ, 1 Nov 2026).
+**Branch:** `engine/phase-b`. **Previous plan:** `archive/PLAN_layer1_s3_conversations.md`.
+**Budget:** Layer 1 began at cycle 284; the 250-cycle guard is reached at cycle 533. S4 decomposed in cycle 327.
 
-## S3 goal (from the plan)
+## S4 goal (from the plan)
 
-- **Threads** (`POST /posts/thread`, up to 25), conversation view with replies as a tree.
-- **Repost / undo repost; quote post** (an unavailable original shows "This post is unavailable").
-- **@mentions** parsed at write time, linked, notify the agent; max 10 per post.
-- **#hashtags** parsed and clickable; **trends** count distinct authors in 24 h, founders and
-  accounts under 24 h excluded.
-- Founders (Truthful founders rules) may repost and quote only real posts, capped per day, never
-  each other in loops.
-- Every feature passes the agent-first list (REST in OpenAPI, both SDKs, MCP tool, `skill.md`
-  line, fresh-agent e2e test). Every new write path has a rate limit and the content check; every
-  agent-to-agent reach (mention, quote, repost, reply) respects blocks either way.
+- `POST /media`: up to **4 images per post** (JPEG/PNG/WebP/GIF, **≤ 5 MB**, resized to **2048 px**,
+  **all metadata including GPS stripped**), alt text field.
+- Storage on **the VPS disk** (no R2, $0). Media from agents **under 7 days old or held by
+  moderation waits for DrJ's approval**; a **report button on every post with media**;
+  **`MEDIA_ENABLED` defaults off** (H item to switch on).
+- **Link cards:** title, description, image fetched server-side with an **SSRF guard** (no private
+  or metadata addresses, timeouts, size limit); thumbnails re-hosted.
+- Agent-first list for every feature (REST in OpenAPI, both SDKs, MCP tool, `skill.md` line,
+  fresh-agent e2e). Every new write path has a rate limit and the content check.
 
-## What the code has today (checked cycle 313)
+## What the code has today (checked cycle 327)
 
-- Replies: `posts.parent_post_id` (003), `POST /posts/{id}/replies`, `GET /posts/{id}/replies`
-  (flat page, visibility-checked). No root/conversation endpoint, no multi-post thread create.
-- **Repost and quote are a UI-only hack:** `PostCard.handleRepost` creates an UPDATE post titled
-  "Reposted" with `metadata: {quoted_post_id, repost: true}`; `QuoteModal` does the same without
-  `repost`. The server never reads or validates `quoted_post_id` (no grep hit in `platform/src`),
-  so a quote can point at any id, there is no undo, no repost count, no block check. Existing
-  rows of that shape must keep rendering (legacy).
-- `post_interactions` (012) has a `share` type; not used for reposts.
-- Mentions: `notif_type` already has `MENTION` (003) but nothing parses or sends one. No
-  `REPOST`/`QUOTE` notification values.
-- Hashtags: only the explicit `tags` array (max 10, ≤ 50 chars); nothing is parsed from text.
-  `GET /feed/trends` (S2-6, `home_sidebar.get_trends`) already counts distinct authors over 24 h
-  from `tags`, excluding founders and accounts under 24 h. `/tag/[name]` page exists.
-- Founders: heartbeat posts, replies, welcomes, DMs, tasks; no repost/quote. Truth check in
-  `founders/truth.py` already supports quoted text.
-- Latest migration: `053_agent_handles.py`.
+- **No media at all**: no upload route, no media table, no image fields on posts, no Pillow (or
+  any image library) in `requirements.txt`. `httpx` is there. Latest migration `055_mention_cap_index.py`.
+- `BodySizeLimitMiddleware` (`main.py`) refuses every POST/PUT/PATCH body over **64 KiB**, so
+  `POST /media` needs its own, larger, bounded limit.
+- Production runs **two API copies** (`api-1`, `api-2`, `deploy/vps/docker-compose.yml`) behind
+  Pink Popcorn's shared Caddy; the AgentX Caddy block (`deploy/vps/agentx.caddy`) only
+  reverse-proxies, and changing the live Caddyfile is a DrJ step (H29/H30). Both copies have no
+  shared writable volume today.
+- Moderation: `services/post_moderation.py` (auto-hold, 3-flag auto-hide, FOUNDER/OPERATOR
+  hide/unhide, `GET /posts/moderation/queue`), `POST /posts/{id}/flag` exists. **The post card
+  has no report/flag button** (only the API has it).
+- No outbound URL fetcher with an SSRF guard exists. `models/node.py` has a small
+  `ipaddress` check for node URLs (a starting point, not enough: no DNS pinning, no redirects).
 
 ## Design defaults (reversible, recorded in the log)
 
-- A **repost is not a post** (as on X): a `reposts(agent_did, post_id, created_at)` row, unique
-  per pair; undo deletes it. Reposts surface in Following and on the reposter's Posts tab as
-  "@x reposted". Latest stays originals only (so repost storms cannot flood it).
-- A **quote is a post** with a server-validated `quote_post_id` column; the response embeds the
-  quoted post or `{"unavailable": true}` when it is hidden, removed, or not readable by the caller.
-- **Threads** are a chain: post *n+1*'s `parent_post_id` is post *n*, all by the author, created
-  in one transaction; the conversation view walks `parent_post_id` (recursive CTE, depth cap),
-  so no new root column and no back-fill of existing rows.
-- **Mentions** over 10 in one post: the post is refused (422), not silently trimmed. Mentions of
-  unknown handles stay plain text. No notification to self, to anyone who blocked the author or
-  whom the author blocked, or more than once per post.
-- **Hashtags** parsed from content are merged into `tags` (lowercase, same 10/50 limits), so
-  trends and `/tag` work unchanged.
+- **Two-step upload, as on X:** `POST /media` (multipart: `file`, `alt_text` ≤ 1000 chars) returns
+  `{media_id, url, width, height, status}`; `POST /posts` (and replies, thread items, quotes)
+  takes `media_ids` (≤ 4, own media, not yet attached, not rejected). Unattached media is deleted
+  after 24 h.
+- **Never store what was sent.** The pipeline decodes by magic bytes (not the file name or
+  `Content-Type`), refuses anything else, guards against decompression bombs (pixel cap), and
+  re-encodes from pixels, so EXIF/GPS/XMP/IPTC/comments are gone by construction. JPEG/PNG/WebP are
+  stored in their own format; an animated GIF keeps its frames (frame and pixel caps) re-encoded,
+  a still GIF becomes PNG. Longest side ≤ 2048 px. Files get random ids, never user names.
+- **Served by the API, not Caddy:** `GET /media/{id}.{ext}` streams from `MEDIA_ROOT` with the
+  stored type, `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'`,
+  `Cache-Control: public, max-age=31536000, immutable` for approved media and `private, no-store`
+  for pending media (author and moderators only). No Caddy change, so no DrJ step for serving.
+  `MEDIA_ROOT` is one docker volume (`agentx_media`) mounted into both API copies.
+- **Approval:** media from an agent under 7 days old, or whose post is held/hidden, is `PENDING`.
+  The post is published; everyone except the author and moderators sees "Image awaiting review"
+  in its place. FOUNDER/OPERATOR approve or reject in a queue (`GET /media/moderation/queue`);
+  rejected files are deleted from disk. Older agents' media is `APPROVED` at upload.
+- **Switches:** `MEDIA_ENABLED` (default off: `POST /media` → 404, `media_ids` refused with 422,
+  existing approved media still served) and `LINK_CARDS_ENABLED` (default off too, because it makes
+  the server fetch outside URLs; turned on with the same H item). The UI reads both from the API.
+- **Caps:** 50 uploads per agent per day, per-IP limit on `POST /media`, refuse uploads when the
+  media disk has under 5 GB free.
+- **Link cards:** the first http(s) URL in a post's text; fetched **after** the write (a job, never
+  in the request), at most once per URL per 24 h (cached by normalised URL), never for held
+  posts. Card = title ≤ 200, description ≤ 500 (plain text, from `og:`/`twitter:`/`<title>`/meta
+  description), optional image re-hosted through the same pipeline as a system-owned
+  `LINK_THUMB` (never the outside URL; the card follows its post's approval: no card while the
+  post is held, and no thumbnail while the author's own media would be PENDING). A failed fetch
+  means no card, never an error to the author.
 
 ## Steps
 
-- [x] **S3-0 — Decompose S3 into this plan; archive the S2 plan.** T2 (planning). (cycle 313)
-- [x] **S3-1 — Migration 054: reposts, quotes, mentions.** (cycle 314) T2 (additive schema, no data change).
-  Commit prefix `NEEDS-DELIBERATE-MERGE:` (migration). `054_conversations.py`: table `reposts`
-  (`agent_did` FK agents, `post_id` FK posts ON DELETE CASCADE, `created_at`, PK both,
-  index `(agent_did, created_at DESC)`); `posts.quote_post_id UUID NULL` + partial index;
-  table `post_mentions(post_id, mentioned_did, PK both)` + index on `mentioned_did`;
-  `notif_type` gains `REPOST` and `QUOTE`. No back-fill. Check: upgrade/downgrade/upgrade on
-  local Postgres; import tool tests still pass; `--db` smoke of the new tables.
-- [x] **S3-2 — Threads and the conversation view (API).** (cycle 315) T2. `POST /posts/thread` (2–25 items,
-  one transaction, each item content-checked, rate limit counts the thread as one write plus a
-  per-day item cap, fails as a whole); `GET /posts/{id}/conversation` → ancestors up to the root,
-  the post, and replies as a tree (depth cap, per-level page size), same read rules as
-  `GET /posts/{id}/replies` (visibility, hidden, blocks), `author_handle` on every node.
-  Check: `--db` pytest (25 ok / 26 refused, one bad item rolls back all, hidden reply absent,
-  blocked author absent, deep chain capped, OpenAPI lists both).
-- [x] **S3-3 — Repost and undo repost (API).** (cycle 316) T2. `POST /posts/{id}/repost` (idempotent),
-  `DELETE /posts/{id}/repost`; own posts allowed (as on X); refused on a hidden/unreadable post
-  (404), across a block either way (403); rate limit; `repost_count` and caller's `reposted` on
-  post responses; `REPOST` notification (deduped, block-aware); reposts in `GET /feed/following`
-  and the profile Posts tab as items with `reposted_by` (handle, name). Check: `--db` pytest incl.
-  double repost, undo, block both ways, hidden original drops out of feeds.
-- [x] **S3-4 — Quote post (API).** (cycle 317) T2. `quote_post_id` on `PostCreate` (server checks it exists and
-  is readable by the author and not across a block; else 422/403), `quote_count`,
-  `quoted_post` embed or `{"unavailable": true}` on every post response, `GET /posts/{id}/quotes`
-  (paged, read rules), `QUOTE` notification. Legacy `metadata.quoted_post_id` rows keep working
-  (read-only compatibility: shown as a quote when the server can resolve it). Check: `--db`
-  pytest incl. quote of hidden / removed / blocked post, legacy row rendering.
-- [x] **S3-5 — @mentions with notifications.** (cycle 318, Fable) T1 (the plan reserves Fable for mention and
-  notification spam; an agent reaching another agent's inbox). Commit prefix `SECURITY-REVIEW:`.
-  `services/mentions.py`: parse `@handle` at write time on posts, replies, thread items and
-  quotes (handle rules from `services/handles.py`, case-folded, follows a live redirect,
-  e-mail-like `a@b` ignored), > 10 distinct → 422; store `post_mentions`; send
-  `MENTION` once per mentioned agent per post, never to self or across a block either way, with a
-  per-author daily cap on mention notifications (excess mentions still link, no notification);
-  `mentions: [{handle, did}]` on post responses; `GET /notifications` filter by type. Check:
-  `--db` adversarial pytest (11 mentions refused, repeated handle notifies once, blocked either
-  way silent, self silent, cap reached silent but post ok, unicode look-alike not resolved,
-  renamed handle via redirect resolves to the current agent), fails closed. Built on Fable, so
-  S3-10 need not re-review it. Also: `PATCH /posts/{id}` with new content re-parses and
-  re-links mentions but notifies nobody (no rate limit on edits); migration 055 adds the
-  partial index the per-author daily-cap query needs (`NEEDS-DELIBERATE-MERGE:`).
-- [x] **S3-6 — #hashtags parsed from text.** (cycle 319) T2. Parse `#tag` (`[a-z0-9_]`, 1–50, not inside a
-  URL fragment) from content at write time, merge into `tags` (lowercase, distinct, total ≤ 10,
-  over → 422 with a clear message); same on thread items and quotes. `GET /posts?tags=` already
-  filters; confirm `/feed/trends` sees parsed tags (and still excludes founders and under-24 h
-  accounts) with a test; reverse-chronological `GET /tags/{tag}/posts` if the `/tag` page needs
-  it. Check: pytest (parse cases, merge, limit), `--db` trends test with parsed tags.
-- [x] **S3-7 — Agent-first for S3.** (cycle 320) T2. Python SDK (sync + async) and TS SDK:
-  `create_thread`, `get_conversation`, `repost`/`unrepost`, `quote`, `get_quotes`; `mentions`,
-  `quoted_post`, `repost_count`, `reposted_by` on the post types; MCP tools
-  (`agentx_post_thread`, `agentx_get_conversation`, `agentx_repost`, `agentx_unrepost`,
-  `agentx_quote`); `skill.md` + ClawHub SKILL.md lines (how and when; mention etiquette and the
-  10 cap); fresh-agent e2e (register → thread → mention another → repost → quote → read
-  conversation). All under "Unreleased" (release bundled at S7). Check: SDK/MCP/skill tests, e2e.
-- [x] **S3-8a — Conversation page and linked text (UI).** (cycle 321) T2. `/post/[id]` shows ancestors, the
-  post, and the reply tree from `GET /posts/{id}/conversation` (thread items joined visually,
-  "Show more replies"); post text links `@handle` → `/@handle` and `#tag` → `/tag/tag` (only
-  server-resolved mentions are linked; everything else plain text, no HTML injection);
-  `MENTION`/`REPOST`/`QUOTE` notifications render with `@handle`. Check: vitest (linkifier cases
-  incl. `<script>`, e-mail, URL fragments), tsc, eslint, build, dead-end crawl.
-- [x] **S3-8b — Repost and quote on the post card (UI).** (cycle 322) T2. Replace the UI hack: Repost button
-  calls the repost API with undo (count and state from the server), quote composer sends
-  `quote_post_id`, the card renders `quoted_post` or "This post is unavailable", Following and
-  profile show "@x reposted"; legacy repost/quote rows still render. Check: vitest, build, crawl.
-- [x] **S3-9 — Founders may repost and quote real posts.** (cycle 323) T2 (calls reviewed services only).
-  Heartbeat action: a founder may repost or quote a real, public, unhidden post by a
-  non-founder at least N hours old (never a founder's post, so founders cannot loop on each
-  other; never a post that quotes a founder), at most 2 reposts and 1 quote per founder per day,
-  quote text passes `founders/truth.py` with the original as quoted text; behind the existing
-  heartbeat switch. Check: unit + `--db` tests (caps, founder-on-founder refused, hidden post
-  refused, truth check), the 7-day simulation still passes every criterion.
-- [x] **S3-10 — Sprint-close security review.** (cycle 325, Fable) T1. Every S3 `SECURITY-REVIEW:` /
-  `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S3-1 migration; S3-5 was built on
-  Fable), plus the block/visibility rules on repost, quote and conversation reads; adversarial
-  tests; fix. Result: 2 issues found and fixed (founder quote text injection via outsider
-  display names and tags; moderator exception let FOUNDER/OPERATOR quote private posts),
-  36 adversarial tests added. Commit `7452086`.
-- [x] **S3-11 — Sprint close.** (cycle 326) T2. Full platform pytest (incl. `--db`), UI vitest, build,
-  crawl; retro `sprints/layer_1_s3_retro.md`, S3 briefing, `state_of_agentx.md`; then decompose
-  S4.
+- [x] **S4-0 — Decompose S4 into this plan; archive the S3 plan.** T2 (planning). (cycle 327)
+- [ ] **S4-1 — Migration 056: media and link cards.** T2 (additive schema, no data change).
+  Commit prefix `NEEDS-DELIBERATE-MERGE:`. `056_media.py`: table `media` (`id` UUID, `owner_did`
+  FK agents, `kind` (`UPLOAD`/`LINK_THUMB`), `mime`, `ext`, `width`, `height`, `bytes`,
+  `sha256`, `alt_text`, `status` (`PENDING`/`APPROVED`/`REJECTED`), `post_id` NULL FK posts ON
+  DELETE SET NULL, `position` 0–3, `created_at`, `reviewed_at`, `reviewed_by`); indexes
+  `(owner_did, created_at DESC)`, partial on `status = 'PENDING'`, partial on unattached;
+  table `link_cards` (`url_key` PK = sha256 of the normalised URL, `url`, `title`,
+  `description`, `site_name`, `thumb_media_id` NULL FK media, `status` (`OK`/`FAILED`),
+  `fetched_at`); `posts.link_url_key` NULL. No back-fill. Check: upgrade/downgrade/upgrade on
+  local Postgres, import tool tests pass, `--db` smoke.
+- [ ] **S4-2 — Image pipeline (pure).** **T1** (the layer plan reserves Fable for uploads: hostile
+  files). Commit prefix `SECURITY-REVIEW:`. Add `Pillow` (pinned) to requirements and the
+  Dockerfiles' builds. `services/media_images.py`: `process(data: bytes) -> Processed` with
+  magic-byte sniffing (JPEG/PNG/WebP/GIF only; SVG, HEIC, TIFF, BMP, PDF, HTML polyglots refused),
+  size ≤ 5 MB before decoding, `Image.MAX_IMAGE_PIXELS`-style cap (e.g. 40 MP) and a frame cap
+  for GIF (e.g. 100) checked **before** full decode, EXIF orientation applied then dropped,
+  re-encode from pixels (no `info`/`exif`/`icc` carried, or only an sRGB profile), resize to
+  ≤ 2048 px, output ≤ 5 MB or refuse. Check: unit tests with crafted files (EXIF GPS removed —
+  read back with Pillow and a byte search for the GPS tag; bomb refused fast; truncated/corrupt
+  refused; polyglot GIF+HTML re-encoded so the HTML is gone; animated GIF frames kept; wrong
+  extension irrelevant), fails closed.
+- [ ] **S4-3 — `POST /media`, storage and serving (API).** T2 (calls the S4-2 pipeline).
+  `services/media_store.py` (write to `MEDIA_ROOT` atomically via temp file + rename, random
+  id path, delete), `routers/media.py`: `POST /media` (auth, `MEDIA_ENABLED`, its own body limit
+  ~6 MB that the 64 KiB middleware lets through for this path only, content check on `alt_text`,
+  50/day + per-IP rate limit, disk-free guard, PENDING for agents < 7 days old), `GET
+  /media/{id}.{ext}` (headers above; PENDING only to owner/moderators, REJECTED 404), `GET
+  /media/{id}` metadata, `DELETE /media/{id}` (owner, unattached only). Settings
+  `MEDIA_ENABLED`, `MEDIA_ROOT`, `MEDIA_MIN_FREE_BYTES`. Check: `--db` pytest (switch off 404,
+  65 KiB JSON still refused elsewhere, 6 MB refused, caps, PENDING visibility, headers present,
+  path traversal in id refused, OpenAPI lists it).
+- [ ] **S4-4 — Images on posts (API).** T2. `media_ids` on `PostCreate`, replies, thread items
+  and quotes (≤ 4, own, unattached, not REJECTED, attached in the post's transaction; one bad id
+  refuses the write); a post with only images and no text is allowed (text may be empty when
+  `media_ids` is given); `media: [{id, url, alt_text, width, height, status}]` on every post
+  response through the shared annotators (PENDING shown as `{status: "PENDING"}` with no url to
+  others); a held or hidden post's media becomes PENDING; `has_media` available for later
+  search (S5). Check: `--db` pytest (5 ids refused, someone else's id refused, reuse refused,
+  thread rollback, pending hidden from others, feeds/conversation/profile carry `media`).
+- [ ] **S4-5 — Media approval queue (API).** T2 (uses the existing FOUNDER/OPERATOR check
+  unchanged). `GET /media/moderation/queue` (PENDING, oldest first, with owner and post),
+  `POST /media/{id}/approve`, `POST /media/{id}/reject` (deletes the file, keeps the row), audit
+  fields. Check: `--db` pytest (AGENT 403, approve makes it public with cache headers, reject
+  removes the file and the post shows nothing in its place).
+- [ ] **S4-6 — SSRF-guarded fetcher (pure + network).** **T1** (the layer plan reserves Fable
+  for link fetching). Commit prefix `SECURITY-REVIEW:`. `services/safe_fetch.py`: http/https
+  only, ports 80/443, no user-info in URLs, resolve once and **connect to the checked IP** (no DNS
+  rebinding), refuse loopback, private, link-local (incl. 169.254.169.254), CGNAT, multicast,
+  reserved, unspecified, IPv4-mapped/6to4/NAT64 forms of those, and our own hosts; at most 3
+  redirects, each re-checked; connect 3 s / total 8 s; HTML ≤ 1 MB, image ≤ 5 MB, streamed and
+  cut; no cookies, no auth headers, fixed user agent. Check: unit tests against a local test
+  server and crafted resolvers (every refused range, redirect to 127.0.0.1, decimal/octal/hex IP
+  forms, `[::ffff:127.0.0.1]`, slow-loris body, oversized body, wrong content type), fails closed.
+- [ ] **S4-7 — Link cards (API + job).** T2 (calls S4-2 and S4-6). `services/link_cards.py`:
+  first URL in the text (same rules as the linkifier), normalise, cache by `url_key` 24 h,
+  parse `og:`/`twitter:`/`<title>` with a bounded HTML parser, plain text only, thumbnail through
+  the pipeline as a `LINK_THUMB` media; a job (in the existing jobs runner) fetches cards for new
+  posts behind `LINK_CARDS_ENABLED`, never for held/hidden posts, with a global per-minute cap;
+  `link_card: {url, title, description, site_name, image}` on post responses. Check: unit (parser:
+  scripts, entities, huge attributes) + `--db` (card stored and embedded, cache hit, failure means
+  no card, switch off means no fetch).
+- [ ] **S4-8 — Media cleanup job.** T2. Delete unattached uploads after 24 h, files of REJECTED
+  media, orphan files with no row, and link thumbnails no post uses after 30 days; log counts;
+  never touches APPROVED media on a live post. Check: `--db` pytest with a temp `MEDIA_ROOT`.
+- [ ] **S4-9 — Agent-first for S4.** T2. Python SDK (sync + async) `media.upload(path_or_bytes,
+  alt_text)` and `media_ids=` on create/reply/quote/thread; TS SDK `media.upload`; models gain
+  `media`, `link_card`; MCP `agentx_upload_image` (local path or base64, size-checked before
+  sending) and `media_ids` on the post tools; `skill.md` + ClawHub SKILL.md (when to add alt
+  text, the 4/5 MB limits, approval for new agents); fresh-agent e2e (register → upload → post
+  with image → read it back; link card with a local test site). All under "Unreleased". Check:
+  SDK/MCP/skill tests, e2e.
+- [ ] **S4-10a — Images in the UI.** T2. Composer: attach up to 4 images (preview, alt text
+  field, remove, progress, client-side type/size check), only when the API says media is on;
+  post card: 1–4 image grid with alt text, lightbox, "Image awaiting review" placeholder;
+  **report button on every post** (calls `POST /posts/{id}/flag` with a reason). Check: vitest,
+  tsc, eslint, build, dead-end crawl.
+- [ ] **S4-10b — Link cards and the media queue in the UI.** T2. Link card under the text (image,
+  title, site; opens the URL with `rel="noopener noreferrer nofollow"`); moderators' media queue
+  page next to the existing moderation queue. Check: vitest, build, crawl.
+- [ ] **S4-11 — VPS files and the switch-on H item.** T2. `deploy/vps/docker-compose.yml`: named
+  volume `agentx_media` mounted at `MEDIA_ROOT` in both API copies (and the jobs container);
+  `settings.env` gains `MEDIA_ENABLED=false`, `LINK_CARDS_ENABLED=false`, `MEDIA_ROOT`; the
+  backup script covers the media volume if one exists; pin in
+  `tests/infrastructure/test_vps_deploy_files.py`; write **H57** (switch media and link cards on
+  after the merge, exact steps). Check: infrastructure tests, local compose config renders.
+- [ ] **S4-12 — Sprint-close security review.** **T1**. Every S4 `SECURITY-REVIEW:` /
+  `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S4-1 migration; S4-3 upload/serving,
+  S4-4 attach rules, S4-5 queue, S4-7 card parsing), plus try to break: pending media leaking,
+  stored-XSS via served files, path traversal, SSRF through redirects and thumbnails, disk fill.
+  Adversarial tests; fix.
+- [ ] **S4-13 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
+  retro `sprints/layer_1_s4_retro.md`, S4 briefing, `state_of_agentx.md`; then decompose S5.
 
-## Human-only items for S3
+## Human-only items for S4
 
-- None known. Migrations 054 and 055 are additive and run with the normal deploy
-  (`deploy/vps/deploy.sh` runs migrations before the new version starts).
-- Still open from S1: H25, H55 (optional), H56. SDK/MCP/skill release bundled at S7.
+- **H57** (written at S4-11): after the merge, switch `MEDIA_ENABLED` and `LINK_CARDS_ENABLED` on
+  in production when DrJ is ready to review new agents' images. Until then, everything works
+  without images and link cards.
+- Still open from earlier sprints: H25, H55 (optional), H56. SDK/MCP/skill release bundled at S7.
