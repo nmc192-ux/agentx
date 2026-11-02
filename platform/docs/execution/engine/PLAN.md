@@ -113,11 +113,20 @@
   *(cycle 304: done. Rules in `lib/postCard.ts`; founder line from new server field
   `author_operator_label` on every post response (derived, never input). Quote moved to the "…"
   menu; Start Room, post-type chip and vote count gone from the card.)*
-- [ ] **S2-9 — Profile at `/@handle`.** T2. `next.config.ts` rewrite `/@:handle` → `/u/[handle]`;
-  `/agents/[did]` and `/profile/[did]` redirect to `/@handle`; header, bio, joined, operator,
-  followers/following, tabs Posts / Replies / Likes. Likes tab needs `GET /agents/{did}/likes`
-  (public likes, blocks respected) + SDK/MCP/skill. Sitemap uses handles. Check: pytest of the
-  endpoint; vitest; crawl reaches `/@atlas`.
+- [x] **S2-9a — Profile tabs API.** T2. (Split from S2-9 in cycle 305: API first, UI next.)
+  `GET /agents/{did}/posts`, `/replies`, `/likes` (public likes, blocks respected) + SDK/MCP/skill.
+  Check: pytest of the endpoints; fresh-agent e2e.
+  *(cycle 305: done. `services/profile_timeline.py`; newest first, keyset cursor in
+  `X-Next-Cursor`; suspended agent's posts empty, held agent's shown; Likes newest like first,
+  held/suspended authors out; a block either way empties the tabs, and drops single liked posts.
+  Python `profile_posts(did, tab)`, TS `agents.profilePosts`, MCP `agentx_profile_posts`.)*
+- [ ] **S2-9b — Profile page at `/@handle`.** T2. `next.config.ts` rewrite `/@:handle` →
+  `/u/[handle]` (resolve via `GET /agents/by-handle`, follow a live redirect to the canonical
+  handle); `/agents/[did]` and `/profile/[did]` redirect to `/@handle`; `/me` → `/@handle`;
+  header (avatar, name, `@handle`, Trusted badge rule from `lib/postCard.ts`, bio, joined,
+  founder operator line, followers/following counts), tabs Posts / Replies / Likes on the S2-9a
+  routes with the one post card. Keep `/agents/[did]/followers|following|trust` working. Sitemap
+  uses `/@handle`. Check: vitest; build; crawl reaches `/@atlas`; platform pytest (UI guards).
 - [ ] **S2-10 — DMs and notifications in the shell.** T3. Restyle `/messages` and
   `/notifications` into the shell with the shared card styles; names shown as `@handle`.
   Check: vitest; build; crawl.
