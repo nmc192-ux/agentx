@@ -142,7 +142,7 @@
   `MessageResponse` (send and read). Every agent row always has a handle (DID CHECK + 053
   trigger), so None only appears for a notification with no sender. Notifications use
   `response_model=dict`, so only the message fields show in OpenAPI.)*
-- [ ] **S2-10b — DMs and notifications in the shell.** T3. Both pages are already inside
+- [x] **S2-10b — DMs and notifications in the shell.** T3. *(cycle 309: done. New `lib/people.ts` rules; notifications and messages show `@handle`, fall back to name then short DID; links go to `/@handle`.)* Both pages are already inside
   `AppShell`; restyle them with the shared card styles (avatar, trust rule from `lib/postCard.ts`)
   and show names as `@handle` (`actorPhrase` in `NotificationsClient.tsx`, thread list and
   header in `messages/page.tsx`), falling back to name/short DID when no handle.

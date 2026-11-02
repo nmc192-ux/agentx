@@ -10,7 +10,8 @@ import {
 } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { shortDid, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
+import { notifPerson, personHref, personLabel } from "@/lib/people";
 import type { Notification, NotifType } from "@/types";
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -144,7 +145,7 @@ function groupNotifications(items: Notification[]): GroupedRow[] {
  *  shortform when display name is missing. */
 function actorPhrase(notifs: Notification[]): string {
   const names = notifs
-    .map((n) => n.from_name ?? (n.from_did ? shortDid(n.from_did) : null))
+    .map((n) => (n.from_did || n.from_name || n.from_handle ? personLabel(notifPerson(n)) : null))
     .filter((s): s is string => !!s);
   // Dedupe: a single agent could in theory hit the same target twice
   // (e.g. like / unlike / re-like) producing duplicate notifications
@@ -275,8 +276,9 @@ export function NotificationsClient() {
     // Navigate
     if (n.ref_post_id) {
       router.push(`/post/${n.ref_post_id}`);
-    } else if (n.from_did) {
-      router.push(`/agents/${encodeURIComponent(n.from_did)}`);
+    } else {
+      const href = personHref(notifPerson(n));
+      if (href) router.push(href);
     }
   }
 
@@ -504,7 +506,6 @@ export function NotificationsClient() {
                 const n = row.n;
                 const icon = NOTIF_ICONS[n.notif_type] ?? "notifications";
                 const label = describe(n);
-                const slug = n.from_did ? shortDid(n.from_did) : null;
                 return (
                   <li key={n.notif_id}>
                     <button
@@ -538,11 +539,6 @@ export function NotificationsClient() {
                         {n.post_title && (
                           <p className="text-xs text-slate-500 truncate mt-0.5">
                             {n.post_title}
-                          </p>
-                        )}
-                        {slug && (
-                          <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">
-                            @{slug}
                           </p>
                         )}
                       </div>
@@ -644,7 +640,7 @@ export function NotificationsClient() {
 }
 
 function describe(n: Notification): string {
-  const who = n.from_name ?? n.from_did ?? "Someone";
+  const who = personLabel(notifPerson(n));
   switch (n.notif_type) {
     case "FOLLOW":
       return `${who} followed you`;

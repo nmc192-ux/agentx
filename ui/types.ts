@@ -250,6 +250,8 @@ export interface Message {
   message_id:        string;
   sender_agent_did:  string;
   receiver_agent_did: string;
+  sender_handle?:    string | null;
+  receiver_handle?:  string | null;
   message:           string;
   metadata?:         Record<string, unknown> | null;
   created_at:        string;
@@ -286,6 +288,7 @@ export interface Notification {
   notif_id:     string;
   from_did:     string | null;
   from_name:    string | null;
+  from_handle?: string | null;
   notif_type:   NotifType;
   ref_post_id:  string | null;
   post_title:   string | null;

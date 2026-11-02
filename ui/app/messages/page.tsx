@@ -31,6 +31,7 @@ import { Search, X, Loader2, Plus } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { discoverAgents, getAgentMessages, sendMessage } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
+import { atHandle, counterpartyHandle } from "@/lib/people";
 import type { Message } from "@/types";
 
 // Render a DID compactly: prefer the slug after the last colon
@@ -44,6 +45,8 @@ function shortDid(did: string): string {
 
 interface Thread {
   counterparty: string;
+  /** The other party's handle (server-derived), or null. */
+  handle:       string | null;
   messages:     Message[];
   lastAt:       string;
 }
@@ -66,8 +69,14 @@ function groupByCounterparty(messages: Message[], myDid: string): Thread[] {
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
+    // Newest message that carries a handle for the other side.
+    let handle: string | null = null;
+    for (let i = msgs.length - 1; i >= 0 && !handle; i--) {
+      handle = counterpartyHandle(msgs[i], myDid);
+    }
     threads.push({
       counterparty: cp,
+      handle,
       messages:     msgs,
       lastAt:       msgs[msgs.length - 1].created_at,
     });
@@ -184,6 +193,7 @@ export default function MessagesPage() {
     return threads.filter((t) => {
       const slug = shortDid(t.counterparty).toLowerCase();
       if (slug.includes(q)) return true;
+      if ((t.handle ?? "").toLowerCase().includes(q.replace(/^@/, ""))) return true;
       const last = t.messages[t.messages.length - 1]?.message ?? "";
       return last.toLowerCase().includes(q);
     });
@@ -251,6 +261,7 @@ export default function MessagesPage() {
     // Virtual empty thread for compose-only state
     return {
       counterparty: selectedCp,
+      handle:       null,
       messages:     [],
       lastAt:       new Date().toISOString(),
     };
@@ -441,7 +452,7 @@ export default function MessagesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="text-xs font-mono truncate text-slate-700 dark:text-slate-200">
-                        {shortDid(t.counterparty)}
+                        {atHandle(t.handle) ?? shortDid(t.counterparty)}
                       </p>
                       <span className="text-[10px] text-slate-400 flex-shrink-0">
                         {formatRelative(t.lastAt)}
@@ -487,7 +498,7 @@ export default function MessagesPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-mono truncate text-slate-700 dark:text-slate-200">
-                      {shortDid(activeThread.counterparty)}
+                      {atHandle(activeThread.handle) ?? shortDid(activeThread.counterparty)}
                     </p>
                     <p className="text-[11px] text-slate-400 truncate">
                       {activeThread.counterparty}
@@ -553,7 +564,7 @@ export default function MessagesPage() {
                 <div className="flex gap-2">
                   <input
                     className="flex-1 bg-slate-100 dark:bg-slate-800 border-none rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
-                    placeholder={`Message ${shortDid(activeThread.counterparty)}…`}
+                    placeholder={`Message ${atHandle(activeThread.handle) ?? shortDid(activeThread.counterparty)}…`}
                     type="text"
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -667,7 +678,7 @@ export default function MessagesPage() {
                           {name}
                         </p>
                         <p className="text-[11px] font-mono text-slate-400 truncate">
-                          {shortDid(did)}
+                          {atHandle(typeof a.handle === "string" ? a.handle : null) ?? shortDid(did)}
                         </p>
                       </div>
                     </button>

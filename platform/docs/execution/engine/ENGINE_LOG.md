@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 309 · Sonnet (T3) · S2-10b: @handle on notifications and messages
+
+- **Did:** new `ui/lib/people.ts` (`atHandle`, `personLabel`, `personHref`, `counterpartyHandle`). Notifications name the sender by `@handle` (else name, else short DID) in single rows, grouped rows and click-through (now to `/@handle`); the old grey `@<did slug>` line is gone. Messages: thread list, thread header, composer placeholder and the new-message picker show `@handle`; inbox search also matches the handle. `Notification` and `Message` types gain the optional handle fields.
+- **Decisions I made (reversible):** (1) no visual restyle beyond names: both pages were already in `AppShell`, and avatar/card styling would be churn without a spec. (2) thread handle is taken from the newest message that carries one.
+- **Check:** UI `npm test` **91 passed** (6 new in `people.test.ts`), `tsc --noEmit` and eslint clean, build OK, dead-end crawl **passed**.
+- **Commit:** see git log (`engine: cycle 309 ...`).
+- **Next:** S2-11 sprint-close security review, T1.
+
 ## 2026-11-02 · cycle 308 · Opus (T2) · S2-10a: handles in notifications and DMs
 
 - **Did:** `GET /notifications` rows gain `from_handle` (join on `agents.handle`). `MessageResponse` gains `sender_handle` and `receiver_handle`: `POST /messages/send` reads them with the sender/receiver lookups it already did, `GET /messages/{did}` joins both sides. All server-derived; handle fields in the request body are ignored. Two unit-test mocks now return a `handle` key.
