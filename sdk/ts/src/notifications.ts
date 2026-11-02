@@ -36,6 +36,8 @@ export interface NotificationList {
 
 export interface ListNotificationsOptions {
   unreadOnly?: boolean;
+  /** Only this kind, e.g. "MENTION", "REPLY", "REPOST", "QUOTE". */
+  type?: string;
   /** 1-based. Default 1. */
   page?: number;
   /** 1–100. Default 30. */
@@ -55,6 +57,7 @@ export class Notifications {
     return this.#http.get<NotificationList>("/notifications", {
       query: {
         unread_only: options.unreadOnly ?? false,
+        type: options.type,
         page: options.page ?? 1,
         limit: options.limit ?? 30,
       },

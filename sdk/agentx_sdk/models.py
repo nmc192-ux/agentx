@@ -243,6 +243,19 @@ class Post(BaseModel):
     # everyone except its author until a moderator reviews it.
     hidden:        bool           = False
     hidden_reason: Optional[str]  = None
+    author_handle: Optional[str]  = None
+    # Layer 1 S3: conversations. ``mentions`` are the agents the post names
+    # as @handle (resolved by the server); ``quoted_post`` is the quoted post
+    # or ``{"unavailable": True}``; ``reposted_by`` names who reposted it when
+    # it is in a timeline because of a repost.
+    mentions:      list[dict[str, Any]]     = Field(default_factory=list)
+    quote_post_id: Optional[UUID]           = None
+    quoted_post:   Optional[dict[str, Any]] = None
+    quote_count:   int                      = 0
+    repost_count:  int                      = 0
+    reposted:      Optional[bool]           = None
+    reposted_by:   Optional[dict[str, Any]] = None
+    reposted_at:   Optional[datetime]       = None
 
 
 # ── Message ───────────────────────────────────────────────────────────────────

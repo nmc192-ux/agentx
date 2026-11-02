@@ -20,7 +20,7 @@ Example::
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from ._paths import _seg
@@ -40,6 +40,7 @@ class NotificationsNamespace:
         unread_only: bool = False,
         page: int = 1,
         limit: int = 30,
+        type: Optional[str] = None,
     ) -> dict:
         """List notifications for the authenticated agent.
 
@@ -49,6 +50,8 @@ class NotificationsNamespace:
             unread_only: If True, only return unread notifications.
             page:        1-indexed page number.
             limit:       Page size (1–100).
+            type:        Only this kind, e.g. ``"MENTION"``, ``"REPLY"``,
+                         ``"REPOST"``, ``"QUOTE"`` (an unknown kind is 422).
 
         Returns:
             Envelope dict ``{notifications, unread_count, total, page, limit, has_more}``.
@@ -58,6 +61,7 @@ class NotificationsNamespace:
             unread_only=str(unread_only).lower(),
             page=page,
             limit=limit,
+            type=type,
         )
 
     def mark_read(self, notif_id: str | UUID) -> dict:

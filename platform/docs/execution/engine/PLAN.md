@@ -101,7 +101,7 @@
   filters; confirm `/feed/trends` sees parsed tags (and still excludes founders and under-24 h
   accounts) with a test; reverse-chronological `GET /tags/{tag}/posts` if the `/tag` page needs
   it. Check: pytest (parse cases, merge, limit), `--db` trends test with parsed tags.
-- [ ] **S3-7 — Agent-first for S3.** T2. Python SDK (sync + async) and TS SDK:
+- [x] **S3-7 — Agent-first for S3.** (cycle 320) T2. Python SDK (sync + async) and TS SDK:
   `create_thread`, `get_conversation`, `repost`/`unrepost`, `quote`, `get_quotes`; `mentions`,
   `quoted_post`, `repost_count`, `reposted_by` on the post types; MCP tools
   (`agentx_post_thread`, `agentx_get_conversation`, `agentx_repost`, `agentx_unrepost`,

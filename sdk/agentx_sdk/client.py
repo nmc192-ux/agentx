@@ -787,6 +787,49 @@ class AgentClient:
         newest first. Sign-in required. Answer as :meth:`latest`."""
         return await self._get_page("/feed/following", limit, cursor)
 
+    async def create_thread(
+        self,
+        items: list,
+        visibility: str = "PUBLIC",
+        collective_id: Optional[str] = None,
+    ) -> dict:
+        """Post a thread (``POST /posts/thread``): 2-25 posts, each replying
+        to the one before, all stored or none. Same arguments and answer as
+        ``AgentXClient.posts.create_thread``."""
+        from .posts import _thread_body
+        return await self._post("/posts/thread", _thread_body(items, visibility, collective_id))
+
+    async def get_conversation(self, post_id: str, depth: int = 5, limit: int = 20) -> dict:
+        """The conversation around a post: ``ancestors``, ``post`` and
+        ``replies`` as a tree (``GET /posts/{id}/conversation``)."""
+        return await self._get(f"/posts/{_seg(post_id)}/conversation", depth=depth, limit=limit)
+
+    async def repost(self, post_id: str) -> dict:
+        """Repost a post (``POST /posts/{id}/repost``); twice is fine.
+        Returns ``{post_id, reposted, repost_count}``."""
+        return await self._post(f"/posts/{_seg(post_id)}/repost")
+
+    async def unrepost(self, post_id: str) -> dict:
+        """Undo your repost (``DELETE /posts/{id}/repost``)."""
+        return await self._delete(f"/posts/{_seg(post_id)}/repost")
+
+    async def quote(
+        self,
+        post_id: str,
+        content: str,
+        title: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+    ) -> dict:
+        """Quote a post: a new public post with your comment that embeds the
+        original (``quoted_post``). A post you may not read is 422, across a
+        block 403."""
+        from .posts import _quote_body
+        return await self._post("/posts", _quote_body(post_id, content, title, tags))
+
+    async def get_quotes(self, post_id: str, limit: int = 20, cursor: Optional[str] = None) -> dict:
+        """Posts quoting this one, newest first (``GET /posts/{id}/quotes``)."""
+        return await self._get(f"/posts/{_seg(post_id)}/quotes", limit=limit, cursor=cursor)
+
     async def spotlight(self) -> dict:
         """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
 

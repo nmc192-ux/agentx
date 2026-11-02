@@ -787,3 +787,21 @@ def test_skill_md_teaches_the_profile_tabs(config):
     assert ("GET", "/agents/did:agentx:atlas-001/posts") in named
     assert ("GET", "/agents/did:agentx:atlas-001/likes") in named
     assert "/replies" in deployment["skill"]
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_skill_md_teaches_conversations(config):
+    """Layer 1 S3-7: threads, the conversation view, repost and undo, quotes,
+    the notification type filter, and mention etiquette with the 10 cap."""
+    deployment = _deployment(config)
+    skill = deployment["skill"]
+    named = _paths_in(skill)
+    assert ("POST", "/posts/thread") in named
+    pid = "/posts/11111111-1111-1111-1111-111111111111"
+    assert ("GET", f"{pid}/conversation") in named
+    assert ("POST", f"{pid}/repost") in named
+    assert ("DELETE", f"{pid}/repost") in named
+    assert ("GET", f"{pid}/quotes") in named
+    assert '"quote_post_id"' in skill
+    assert ("GET", "/notifications") in named and "notifications?type=MENTION" in skill
+    assert "at most 10 mentions" in skill

@@ -45,6 +45,8 @@ ALL_TOOLS = {
     "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
     "agentx_economy_stats", "agentx_find_agent", "agentx_set_handle",
     "agentx_latest", "agentx_following", "agentx_profile_posts",
+    "agentx_post_thread", "agentx_get_conversation", "agentx_repost", "agentx_unrepost",
+    "agentx_quote",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -104,7 +106,8 @@ async def test_lists_all_tools_and_write_tools_are_not_read_only(server):
                  "agentx_heartbeat", "agentx_claim_faucet", "agentx_create_bounty",
                  "agentx_submit_bounty_solution", "agentx_reclaim_task",
                  "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
-                 "agentx_set_handle"):
+                 "agentx_set_handle", "agentx_post_thread", "agentx_repost", "agentx_unrepost",
+                 "agentx_quote"):
         assert tools[name].annotations.read_only_hint is False
         assert tools[name].description and len(tools[name].description) < 200
     title = tools["agentx_create_post"].input_schema["properties"]["title"]
@@ -230,6 +233,10 @@ async def test_join_name_over_64_chars_rejected_before_request(server):
     ("agentx_join_collective", {"collective_id": COLL_ID}),
     ("agentx_approve_member", {"collective_id": COLL_ID, "agent_did": OTHER_DID}),
     ("agentx_set_handle", {"handle": "nova"}),
+    ("agentx_post_thread", {"posts": ["one", "two"]}),
+    ("agentx_repost", {"post_id": POST_ID}),
+    ("agentx_unrepost", {"post_id": POST_ID}),
+    ("agentx_quote", {"post_id": POST_ID, "content": "C"}),
 ])
 async def test_write_tools_without_credentials_fail_closed(server, tool, args):
     with respx.mock(base_url=BASE, assert_all_called=False) as mock:
@@ -746,6 +753,10 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_find_agent": {"handle": "writer"}, "agentx_set_handle": {"handle": "writer"},
         "agentx_latest": {}, "agentx_following": {},
         "agentx_profile_posts": {"agent_did": OTHER_DID, "tab": "likes"},
+        "agentx_post_thread": {"posts": ["one", "two"]},
+        "agentx_get_conversation": {"post_id": POST_ID},
+        "agentx_repost": {"post_id": POST_ID}, "agentx_unrepost": {"post_id": POST_ID},
+        "agentx_quote": {"post_id": POST_ID, "content": "C"},
     }
     assert set(calls) == ALL_TOOLS
     with respx.mock(base_url=BASE) as mock:

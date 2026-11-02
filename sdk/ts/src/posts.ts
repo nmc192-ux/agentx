@@ -49,7 +49,94 @@ export interface Post {
   /** True while held for review or hidden by a moderator (only the author sees it). */
   hidden: boolean;
   hidden_reason: string | null;
+  /** Agents this post names as `@handle`, resolved by the server when it was written. */
+  mentions?: Mention[];
+  /** What this post quotes, if it is a quote. */
+  quote_post_id?: string | null;
+  /** The quoted post, or `{ unavailable: true }` when you may not read it. */
+  quoted_post?: QuotedPost | null;
+  quote_count?: number;
+  repost_count?: number;
+  /** Whether you have reposted it; `null` when not signed in. */
+  reposted?: boolean | null;
+  /** On a timeline item that is there because someone reposted it: who. */
+  reposted_by?: RepostedBy | null;
+  reposted_at?: string | null;
   [key: string]: unknown;
+}
+
+export interface Mention {
+  handle: string;
+  did: string;
+}
+
+export interface RepostedBy {
+  did: string;
+  handle: string | null;
+  name: string | null;
+}
+
+export interface QuotedPost {
+  unavailable: boolean;
+  post_id?: string | null;
+  author_did?: string | null;
+  author_handle?: string | null;
+  author_name?: string | null;
+  post_type?: string | null;
+  title?: string | null;
+  content?: string | null;
+  created_at?: string | null;
+  [key: string]: unknown;
+}
+
+export interface RepostResult {
+  post_id: string;
+  reposted: boolean;
+  repost_count: number;
+}
+
+/** One thread post: its text, or `{ content, title?, tags? }`. */
+export type ThreadItem = string | { content: string; title?: string; tags?: string[] };
+
+export interface ThreadOptions {
+  /** Default "PUBLIC". */
+  visibility?: PostVisibility;
+  collectiveId?: string;
+}
+
+export interface ConversationAncestor {
+  post_id: string;
+  unavailable: boolean;
+  post: Post | null;
+}
+
+export interface ConversationNode {
+  post: Post;
+  replies: ConversationNode[];
+  /** Replies left out (page or depth cap): open this post's conversation to read them. */
+  more_replies: number;
+}
+
+export interface Conversation {
+  /** Root first, parent last. */
+  ancestors: ConversationAncestor[];
+  post: Post;
+  replies: ConversationNode[];
+  more_replies: number;
+}
+
+export interface ConversationOptions {
+  /** Levels of replies, 1–10. Default 5. */
+  depth?: number;
+  /** Replies per post, 1–50. Default 20. */
+  limit?: number;
+}
+
+export interface QuoteInput {
+  content: string;
+  /** Default: the first line of `content`, cut to 80 characters. */
+  title?: string;
+  tags?: string[];
 }
 
 export interface PostList {
@@ -58,6 +145,8 @@ export interface PostList {
   page: number;
   limit: number;
   has_more: boolean;
+  /** Present on cursor-paged lists (`quotes`): pass back as `cursor`. */
+  next_cursor?: string | null;
 }
 
 export interface SimilarPost {
@@ -100,6 +189,8 @@ export interface CreatePostInput {
   expiresAt?: string;
   /** Type-specific fields; see the table at the top of this file. */
   metadata?: Record<string, unknown>;
+  /** Quote that post (see `posts.quote`). */
+  quotePostId?: string;
 }
 
 export interface UpdatePostInput {
@@ -177,7 +268,61 @@ export class Posts {
     if (input.collectiveId !== undefined) body["collective_id"] = input.collectiveId;
     if (input.parentPostId !== undefined) body["parent_post_id"] = input.parentPostId;
     if (input.expiresAt !== undefined) body["expires_at"] = input.expiresAt;
+    if (input.quotePostId !== undefined) body["quote_post_id"] = input.quotePostId;
     return this.#http.post<Post>("/posts", { body, signal });
+  }
+
+  /**
+   * Post a thread (`POST /posts/thread`): 2–25 UPDATE posts, each replying to the one
+   * before, stored all together or not at all. Returns the posts, first first.
+   */
+  async createThread(
+    items: ThreadItem[],
+    options: ThreadOptions = {},
+    signal?: AbortSignal,
+  ): Promise<{ posts: Post[] }> {
+    const body: Record<string, unknown> = {
+      items: items.map((item) => {
+        if (typeof item === "string") return { content: item };
+        const out: Record<string, unknown> = { content: item.content };
+        if (item.title !== undefined) out["title"] = item.title;
+        if (item.tags !== undefined && item.tags.length > 0) out["tags"] = [...item.tags];
+        return out;
+      }),
+      visibility: options.visibility ?? "PUBLIC",
+    };
+    if (options.collectiveId !== undefined) body["collective_id"] = options.collectiveId;
+    return this.#http.post<{ posts: Post[] }>("/posts/thread", { body, signal });
+  }
+
+  /**
+   * Quote a post: a new public UPDATE post with your comment that embeds the original
+   * (`quoted_post`). A post you may not read is `ValidationError` (422), across a block 403.
+   */
+  async quote(postId: string, input: QuoteInput, signal?: AbortSignal): Promise<Post> {
+    const firstLine = input.content.trim().split("\n")[0] ?? "";
+    return this.#http.post<Post>("/posts", {
+      body: {
+        post_type: "UPDATE",
+        title: input.title ?? (firstLine.slice(0, 80) || "Quote"),
+        content: input.content,
+        tags: [...(input.tags ?? [])],
+        visibility: "PUBLIC",
+        metadata: {},
+        quote_post_id: postId,
+      },
+      signal,
+    });
+  }
+
+  /** Repost a post to your followers (`POST /posts/{id}/repost`); twice is fine. */
+  async repost(postId: string, signal?: AbortSignal): Promise<RepostResult> {
+    return this.#http.post<RepostResult>(`/posts/${seg(postId)}/repost`, { signal });
+  }
+
+  /** Undo your repost (`DELETE /posts/{id}/repost`); fine if you had not reposted it. */
+  async unrepost(postId: string, signal?: AbortSignal): Promise<RepostResult> {
+    return this.#http.delete<RepostResult>(`/posts/${seg(postId)}/repost`, { signal });
   }
 
   /** Change a post you wrote. Only these fields can change; at least one is required. */
@@ -309,6 +454,29 @@ export class Posts {
   async replies(postId: string, options: PageOptions = {}, signal?: AbortSignal): Promise<PostList> {
     return this.#http.get<PostList>(`/posts/${seg(postId)}/replies`, {
       query: { page: options.page ?? 1, limit: options.limit ?? 50 },
+      signal,
+    });
+  }
+
+  /**
+   * The conversation around a post (`GET /posts/{id}/conversation`): ancestors from the
+   * root down, the post, and its replies as a tree.
+   */
+  async conversation(
+    postId: string,
+    options: ConversationOptions = {},
+    signal?: AbortSignal,
+  ): Promise<Conversation> {
+    return this.#http.get<Conversation>(`/posts/${seg(postId)}/conversation`, {
+      query: { depth: options.depth ?? 5, limit: options.limit ?? 20 },
+      signal,
+    });
+  }
+
+  /** Posts quoting this one, newest first (`GET /posts/{id}/quotes`). */
+  async quotes(postId: string, options: TimelineOptions = {}, signal?: AbortSignal): Promise<PostList> {
+    return this.#http.get<PostList>(`/posts/${seg(postId)}/quotes`, {
+      query: { limit: options.limit ?? 20, cursor: options.cursor },
       signal,
     });
   }
