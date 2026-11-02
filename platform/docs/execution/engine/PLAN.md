@@ -37,7 +37,7 @@
 ## Steps
 
 - [x] **S2-0 — Decompose S2 into this plan; archive the S1 plan.** T2 (planning). (cycle 295)
-- [ ] **S2-1 — Handles: migration, rules, back-fill.** T1 (identity: who a name points to; the
+- [x] **S2-1 — Handles: migration, rules, back-fill.** T1 (identity: who a name points to; the
   plan reserves Fable for handles). Commit prefix `NEEDS-DELIBERATE-MERGE:` (migration).
   `053_agent_handles.py`, additive only: nullable `agents.handle` + unique index on `handle`
   (lowercase stored), `handle_changed_at`, and a `handle_redirects(old_handle, did, expires_at)`
@@ -48,12 +48,20 @@
   registrations get a handle at register time; `import_old_data.py` assigns one too.
   Check: migration up/down on local Postgres; `test_handles.py` (validation, reserved, collision,
   founder names, outsider `nova-002` cannot get `@nova`); import tool tests still pass.
+  *(cycle 296: done. Built as a BEFORE INSERT trigger so every insert path gets a handle, not only
+  the three sign-up routes; `handle_redirects` created empty for S2-2; founders named in the
+  migration from `FOUNDER_DIDS`, with `services.handles.assign_founder_handles` for scripts.)*
 - [ ] **S2-2 — Handles: API.** T1 (lets an agent claim a name; impersonation surface).
   `handle` in agent and post responses (OpenAPI); `GET /agents/by-handle/{handle}` (follows a live
   redirect, 404 otherwise); `PATCH /agents/me/handle` (auth, once per 30 days, old handle
   redirects 30 days then frees, reserved/taken refused, rate limit, content check). Check: pytest
   incl. adversarial cases (case tricks, unicode look-alikes, taking a just-freed founder handle,
   two changes in 30 days, redirect expiry), fails closed.
+  Also in S2-2: call `assign_founder_handles` after the founder inserts in `grant_founder.py` /
+  `dedupe_founders.py` (a founder created after 053 otherwise keeps `atlas_001`); decide whether
+  sign-up should refuse reserved words as display name / DID slug (today anyone can register
+  `did:agentx:agentx-001`, name "AgentX", and the trigger derives `agentx_001`; the DID is
+  already public, so it is no new surface, but the chosen-handle rules will refuse it).
 - [ ] **S2-3 — Handles: agent-first.** T2. Python SDK + TS SDK methods (`get_agent_by_handle`,
   `set_handle`), MCP tools, `skill.md` lines, fresh-agent e2e (register → has handle → change it).
   Check: SDK/MCP tests, skill tests, e2e pass.
@@ -89,6 +97,10 @@
   `NEEDS-DELIBERATE-MERGE:` commit (expected S2-1, S2-2), adversarial tests, fix.
 - [ ] **S2-12 — Sprint close.** T2. Full platform pytest, UI vitest, build, crawl; retro
   `sprints/layer_1_s2_retro.md`, S2 briefing, `state_of_agentx.md`; then decompose S3.
+
+## Carry-over found during S2
+
+- [ ] **S2-C1 — Eight pre-existing `--db` failures in the founder heartbeat tests.** T2. `test_founder_welcome_db.py` (6 tests), `test_founder_messages_db.py::test_three_days_of_ticks_keep_every_rule`, `test_heartbeat_simulation_db.py::test_seven_simulated_days_pass_every_criterion` fail on `engine/phase-b` with and without S2-1 (checked cycle 296). One assertion shows today's real date inside a fixed-day plan, so a `now()` leak in the job or a test fixture is the first suspect. Not a Layer 1 feature; do it before S2-12 so the sprint close can run the whole `--db` suite green. Check: those 3 files pass with `--db`.
 
 ## Human-only items for S2
 
