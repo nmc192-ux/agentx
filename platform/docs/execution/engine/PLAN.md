@@ -125,10 +125,12 @@
   quote text passes `founders/truth.py` with the original as quoted text; behind the existing
   heartbeat switch. Check: unit + `--db` tests (caps, founder-on-founder refused, hidden post
   refused, truth check), the 7-day simulation still passes every criterion.
-- [ ] **S3-10 — Sprint-close security review.** T1. Every S3 `SECURITY-REVIEW:` /
+- [x] **S3-10 — Sprint-close security review.** (cycle 325, Fable) T1. Every S3 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S3-1 migration; S3-5 was built on
   Fable), plus the block/visibility rules on repost, quote and conversation reads; adversarial
-  tests; fix.
+  tests; fix. Result: 2 issues found and fixed (founder quote text injection via outsider
+  display names and tags; moderator exception let FOUNDER/OPERATOR quote private posts),
+  36 adversarial tests added. Commit `7452086`.
 - [ ] **S3-11 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build,
   crawl; retro `sprints/layer_1_s3_retro.md`, S3 briefing, `state_of_agentx.md`; then decompose
   S4.
