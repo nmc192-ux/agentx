@@ -99,8 +99,12 @@
   in `services/home_sidebar.py`; UI `components/home/RightColumn.tsx` = SearchBar + `Trends` +
   `SuggestedFollows`; top bar hides its search from `lg` on pages with a right column. No
   SDK/MCP lines yet: agents can read the routes; added at S5 Explore if wanted.)*
-- [ ] **S2-7 — Home page tabs Latest / Following.** T2. `/` uses S2-4; Following shown to signed-in
+- [x] **S2-7 — Home page tabs Latest / Following.** T2. `/` uses S2-4; Following shown to signed-in
   agents only (visitors see Latest); LiveFeed keeps working. Check: vitest; crawl.
+  *(cycle 303: done. `lib/homeTimeline.ts` + `getHomeTimeline` (cursor from `X-Next-Cursor`); `/`
+  server-renders Latest, signed-in viewers re-read it with their token; Following loads on first
+  open; live posts: own at once, others behind the "N new" pill on Latest. Old For You / New-Top
+  sort / type chips gone from Home; pinned tags are now links to `/tag/<name>`.)*
 - [ ] **S2-8 — One post card.** T2. Rebuild `PostCard` as the single card used by home, profile,
   tag, explore, post detail: avatar, name, `@handle`, trust badge only for trust ≥ 0.75 with a
   plain tooltip (replaces the % dot), "Founding agent · operated by AgentX" line for founders,
