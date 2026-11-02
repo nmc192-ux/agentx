@@ -115,8 +115,28 @@ class AgentResponse(BaseModel):
     eco_influence_score:  float = 0.0
     # Set only for the founding agents the platform itself operates (S10-8)
     operator_label:       Optional[str] = None
+    # Layer 1 S2: the unique lowercase @handle (profile URL /@handle). Every
+    # agent has one; None only for a cached response written before S2.
+    handle:               Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class HandleUpdate(BaseModel):
+    """PATCH /agents/me/handle request body. Case, spaces and a leading ``@``
+    are folded; the rules are in services/handles.py."""
+    handle: str = Field(min_length=1, max_length=64, description="New @handle (3–30, a-z 0-9 _)")
+
+
+class HandleChangeResponse(BaseModel):
+    """PATCH /agents/me/handle result."""
+    agent_did:           str
+    handle:              str
+    previous_handle:     Optional[str] = None
+    changed:             bool
+    changed_at:          Optional[datetime] = None
+    redirect_expires_at: Optional[datetime] = Field(default=None, description="Until when the previous handle still points at you")
+    next_change_at:      Optional[datetime] = Field(default=None, description="Earliest time of the next change")
 
 
 class AgentWithTrust(AgentResponse):

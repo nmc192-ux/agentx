@@ -178,3 +178,50 @@ def test_a_derived_handle_is_never_reserved_or_a_founder_name():
         # still assigns it (the DID is already public), but nobody can *choose* it.
         if not derived.startswith(h.RESERVED_PREFIXES):
             assert h.check_handle_allowed(derived, did, DEV_ROSTER) == derived
+
+
+# ── S2-2: choosing a handle (pure rules) ──────────────────────────────────────
+
+@pytest.mark.parametrize("bad", ["fuck", "fuck_you", "f_u_c_k", "shit123", "sh_it", "FUCK"])
+def test_profane_handles_are_blocked(bad):
+    assert h.is_blocked(h.normalize_handle(bad))
+    with pytest.raises(h.HandleBlocked) as exc:
+        h.check_handle_allowed(bad, "did:agentx:someone-001", DEV_ROSTER)
+    assert exc.value.reason == "blocked"
+
+
+@pytest.mark.parametrize("ok", ["nova_fan", "scunthorpe", "assistant", "classic", "analyst_7", "cockpit_crew"])
+def test_ordinary_handles_are_not_blocked(ok):
+    assert not h.is_blocked(ok)
+    assert h.check_handle_allowed(ok, "did:agentx:someone-001", DEV_ROSTER) == ok
+
+
+def test_the_rule_order_is_format_reserved_blocked_founder():
+    did = "did:agentx:someone-001"
+    with pytest.raises(h.HandleInvalid):
+        h.check_handle_allowed("ad", did, DEV_ROSTER)              # format first
+    with pytest.raises(h.HandleReserved):
+        h.check_handle_allowed("admin", did, DEV_ROSTER)           # reserved before founder
+    with pytest.raises(h.HandleReserved) as exc:
+        h.check_handle_allowed("@NOVA", did, DEV_ROSTER)
+    assert "founding agent" in str(exc.value)
+
+
+def test_every_handle_error_has_a_distinct_reason():
+    errors = [h.HandleInvalid, h.HandleReserved, h.HandleBlocked, h.HandleTaken, h.HandleCooldown, h.HandleNoAgent]
+    assert len({e.reason for e in errors}) == len(errors)
+    for e in errors:
+        assert issubclass(e, h.HandleError) and issubclass(e, ValueError)
+
+
+def test_cooldown_error_carries_the_next_change_time():
+    from datetime import datetime, timezone
+    when = datetime(2026, 12, 2, tzinfo=timezone.utc)
+    exc = h.HandleCooldown("nova_fan", when)
+    assert exc.next_change_at == when and exc.reason == "cooldown"
+    assert "30 days" in str(exc) and "2026-12-02" in str(exc)
+
+
+def test_cooldown_and_redirect_are_thirty_days():
+    from datetime import timedelta
+    assert h.COOLDOWN == timedelta(days=30) and h.REDIRECT_TTL == timedelta(days=30)

@@ -331,6 +331,13 @@ LIMIT_ONBOARD_DAY  = "20/day"
 LIMIT_FAUCET       = "6/minute"
 LIMIT_FAUCET_HR    = "30/hour"
 
+# PATCH /agents/me/handle  (Layer 1 S2-2; use with ``limiter_did``)
+# A handle changes once per 30 days, so the cap only bounds probing for free
+# names (which GET /agents/by-handle answers publicly anyway) and the row
+# lock the change takes. Static: a handle is not a trust-scaled activity.
+LIMIT_HANDLE_CHANGE     = "10/hour"
+LIMIT_HANDLE_CHANGE_DAY = "30/day"
+
 
 # ── Sprint 9 (S9-8a2): the remaining open write routes ───────────────────────
 

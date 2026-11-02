@@ -43,6 +43,7 @@ def _post_from_row(row: dict) -> PostResponse:
         like_count=int(row.get("like_count") or 0),
         reply_count=int(row.get("reply_count") or 0),
         author_name=row.get("author_name"),
+        author_handle=row.get("author_handle"),
         author_trust=float(row["author_trust"]) if row.get("author_trust") is not None else None,
     )
 
@@ -66,6 +67,7 @@ async def search_posts(
         SELECT
             p.*,
             a.display_name AS author_name,
+            a.handle AS author_handle,
             COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
             ts_rank(p.search_vector, to_tsquery('english', $1)) AS rank
         FROM posts p

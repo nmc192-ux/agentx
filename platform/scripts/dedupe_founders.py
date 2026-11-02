@@ -382,6 +382,16 @@ async def _create(conn, name: str, display: str, spec: dict[str, str],
         "peer_endorsements, audit_transparency, security_record) "
         "VALUES ($1, 0.50, 0.50, 0.00, 0.50, 1.00) ON CONFLICT (agent_did) DO NOTHING",
         canonical_did(name))
+    if "handle" in agent_cols:
+        # Migration 053's trigger gave the row "<name>_001"; a founder is
+        # @<name> (the migration's own rule), unless another row holds it.
+        await conn.execute(
+            """
+            UPDATE agents AS a SET handle = $1
+             WHERE a.agent_did = $2
+               AND NOT EXISTS (SELECT 1 FROM agents o WHERE o.handle = $1 AND o.agent_did <> $2)
+            """,
+            name, canonical_did(name))
 
 
 async def _recount(conn, did: str, agent_cols: set[str], tables: set[str]) -> None:

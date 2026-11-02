@@ -101,6 +101,7 @@ async def get_trending(limit: int = 10) -> list[dict[str, Any]]:
                 p.post_id, p.title, p.post_type, p.author_did,
                 p.like_count, p.reply_count, p.created_at,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 COALESCE(a.trust_score, 0.5) AS author_trust,
                 GREATEST(EXTRACT(EPOCH FROM (NOW() - p.created_at)) / 3600.0, 0.5) AS hours_age,
                 (COALESCE(p.like_count, 0) + COALESCE(p.reply_count, 0) * 2.0)
@@ -124,6 +125,7 @@ async def get_trending(limit: int = 10) -> list[dict[str, Any]]:
             "post_type": r["post_type"],
             "author_did": r["author_did"],
             "author_name": r["author_name"],
+            "author_handle": r["author_handle"],
             "like_count": int(r["like_count"] or 0),
             "reply_count": int(r["reply_count"] or 0),
             "velocity": round(float(r["velocity"]), 2),

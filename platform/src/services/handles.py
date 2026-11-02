@@ -26,23 +26,39 @@ A derived handle always ends in ``_NNN`` (the DID rule requires ``-NNN``), so
 it can never equal a reserved word or a founder name; the lists only matter
 for handles an agent *chooses* (S2-2, ``PATCH /agents/me/handle``).
 
+Choosing a handle (S2-2):
+  - `resolve_handle` answers "who is ``@x``": the agent holding it, or the
+    agent it still redirects to (``handle_redirects``, 30 days), or nobody.
+  - `change_handle` is the only way a handle changes by choice. Inside the
+    caller's transaction it locks the agent row, applies every rule above, the
+    profanity list and the two time rules (once per `COOLDOWN`; the old handle
+    redirects for `REDIRECT_TTL` and only then frees), writes the audit row,
+    and maps a losing race on the unique index to `HandleTaken`. Every clock
+    is the database's ``NOW()`` so tests and the trigger agree.
+
 Fail closed: `normalize_handle` and `check_handle_allowed` raise on anything
 they do not positively accept; nothing here catches database errors.
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Mapping, Optional
+
+import asyncpg
 
 from ..founders.personas import PERSONAS
 from ..founders.roster import RosterConfigError, founder_roster, name_for_did
 
 __all__ = [
     "HANDLE_RE", "MIN_LEN", "MAX_LEN", "DID_PREFIX",
-    "RESERVED_HANDLES", "RESERVED_PREFIXES", "FOUNDER_HANDLES",
-    "HandleError", "HandleInvalid", "HandleReserved", "HandleTaken",
-    "normalize_handle", "is_reserved", "founder_name_for_handle", "check_handle_allowed",
-    "handle_from_did", "assign_founder_handles",
+    "RESERVED_HANDLES", "RESERVED_PREFIXES", "FOUNDER_HANDLES", "COOLDOWN", "REDIRECT_TTL",
+    "HandleError", "HandleInvalid", "HandleReserved", "HandleBlocked", "HandleTaken",
+    "HandleCooldown", "HandleNoAgent",
+    "normalize_handle", "is_reserved", "founder_name_for_handle", "is_blocked",
+    "check_handle_allowed", "handle_from_did",
+    "Resolved", "HandleChange", "resolve_handle", "change_handle", "assign_founder_handles",
 ]
 
 MIN_LEN, MAX_LEN = 3, 30
@@ -86,6 +102,11 @@ RESERVED_PREFIXES: tuple[str, ...] = ("agentx",)
 # Founder names: only the roster DID of that founder may hold them.
 FOUNDER_HANDLES: frozenset[str] = frozenset(PERSONAS)
 
+# An agent may change its handle once per COOLDOWN; the old handle keeps
+# pointing at the agent for REDIRECT_TTL and is free for anyone after that.
+COOLDOWN    = timedelta(days=30)
+REDIRECT_TTL = timedelta(days=30)
+
 
 class HandleError(ValueError):
     """Base class; `reason` is a short machine-readable word."""
@@ -109,10 +130,33 @@ class HandleReserved(HandleError):
     reason = "reserved"
 
 
+class HandleBlocked(HandleError):
+    """On the profanity list (with ``_`` read as a space)."""
+
+    reason = "blocked"
+
+
 class HandleTaken(HandleError):
-    """Held by another agent, or still redirecting to one (used by S2-2)."""
+    """Held by another agent, or still redirecting to one."""
 
     reason = "taken"
+
+
+class HandleCooldown(HandleError):
+    """Changed less than `COOLDOWN` ago; `next_change_at` says when it may change."""
+
+    reason = "cooldown"
+
+    def __init__(self, handle: str, next_change_at: datetime):
+        self.next_change_at = next_change_at
+        super().__init__(handle, f"handles change once per {COOLDOWN.days} days; "
+                                 f"next change at {next_change_at.isoformat()}")
+
+
+class HandleNoAgent(HandleError):
+    """The DID has no active agent row (nothing to rename)."""
+
+    reason = "no_agent"
 
 
 # ── Pure rules ────────────────────────────────────────────────────────────────
@@ -154,11 +198,23 @@ def founder_name_for_handle(handle: str) -> Optional[str]:
     return handle if handle in FOUNDER_HANDLES else None
 
 
+def is_blocked(handle: str) -> bool:
+    """On the profanity list: the handle as one word, or with ``_`` read as a
+    space (``f_word_you``) or removed, or with its digits stripped (``sh1t`` is
+    the list's own job; ``word123`` is ours)."""
+    from better_profanity import profanity   # loaded by services.content_moderation at import
+    from . import content_moderation          # noqa: F401  (ensures the word list is loaded)
+    variants = {handle, handle.replace("_", " "), handle.replace("_", ""),
+                re.sub(r"[0-9_]+", "", handle)}
+    return any(v and profanity.contains_profanity(v) for v in variants)
+
+
 def check_handle_allowed(
     handle: str, did: str, roster: Optional[Mapping[str, str]] = None,
 ) -> str:
     """
-    The normalised handle *did* may hold, or `HandleInvalid` / `HandleReserved`.
+    The normalised handle *did* may hold, or `HandleInvalid` / `HandleReserved`
+    / `HandleBlocked`.
 
     Refuses reserved words for everyone and founder names for every DID but
     the roster's DID for that founder. An unusable roster (`RosterConfigError`)
@@ -168,6 +224,8 @@ def check_handle_allowed(
     handle = normalize_handle(handle)
     if is_reserved(handle):
         raise HandleReserved(handle, "this name is reserved")
+    if is_blocked(handle):
+        raise HandleBlocked(handle, "this name is not allowed")
     founder = founder_name_for_handle(handle)
     if founder is not None:
         try:
@@ -198,6 +256,139 @@ def handle_from_did(did: str) -> str:
 
 
 # ── Database helpers ──────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Resolved:
+    """Who ``@handle`` points to. `redirected` is True when the agent has
+    since moved to `handle` (its current one) and the asked-for name is an
+    old handle still inside `REDIRECT_TTL`."""
+
+    agent_did: str
+    handle: str
+    redirected: bool
+
+
+async def resolve_handle(conn, raw: str) -> Optional[Resolved]:
+    """
+    The active agent holding *raw* (after normalisation), else the active
+    agent it still redirects to, else None. Anything that is not a handle is
+    None too (never an error: a look-up is a question, not a claim).
+    Deactivated agents are invisible, as for ``GET /agents/{did}``.
+    """
+    try:
+        handle = normalize_handle(raw)
+    except HandleInvalid:
+        return None
+    row = await conn.fetchrow(
+        "SELECT agent_did, handle FROM agents WHERE handle = $1 AND status <> 'DEACTIVATED'", handle)
+    if row is not None:
+        return Resolved(row["agent_did"], row["handle"], False)
+    row = await conn.fetchrow(
+        """
+        SELECT a.agent_did, a.handle
+          FROM handle_redirects r JOIN agents a ON a.agent_did = r.agent_did
+         WHERE r.old_handle = $1 AND r.expires_at > NOW() AND a.status <> 'DEACTIVATED'
+        """,
+        handle)
+    if row is not None and row["handle"]:
+        return Resolved(row["agent_did"], row["handle"], True)
+    return None
+
+
+@dataclass(frozen=True)
+class HandleChange:
+    agent_did: str
+    handle: str
+    previous_handle: Optional[str]
+    changed: bool                       # False: already held this handle, nothing done
+    changed_at: Optional[datetime]
+    redirect_expires_at: Optional[datetime]
+    next_change_at: Optional[datetime]
+
+
+async def change_handle(
+    conn, did: str, raw: str, roster: Optional[Mapping[str, str]] = None,
+) -> HandleChange:
+    """
+    Give the active agent *did* the handle *raw*, inside the caller's
+    transaction. Rules, in order, each failing closed:
+
+      1. `check_handle_allowed`: format, reserved words, profanity, founder
+         names only for the roster DID (`HandleInvalid` / `HandleReserved` /
+         `HandleBlocked`);
+      2. the agent row exists and is ACTIVE, locked ``FOR UPDATE`` so two
+         requests from the same agent run one after the other (`HandleNoAgent`);
+      3. the same handle again is a no-op (`changed=False`, no clock consumed);
+      4. once per `COOLDOWN` since ``handle_changed_at`` (`HandleCooldown`);
+      5. not another agent's handle, whatever its status, and not a live
+         redirect to another agent (`HandleTaken`); a race lost on the unique
+         index is `HandleTaken` too;
+      6. then: the row gets the handle and ``handle_changed_at = NOW()``, the
+         old handle redirects to the agent for `REDIRECT_TTL` (a stale row for
+         that name is overwritten: the agent provably held it just now), and
+         an ``audit_logs`` row records old → new.
+    """
+    handle = check_handle_allowed(raw, did, roster)
+    row = await conn.fetchrow(
+        """
+        SELECT handle, handle_changed_at, NOW() AS now
+          FROM agents WHERE agent_did = $1 AND status = 'ACTIVE' FOR UPDATE
+        """,
+        did)
+    if row is None:
+        raise HandleNoAgent(handle, f"no active agent {did}")
+    current, changed_at, now = row["handle"], row["handle_changed_at"], row["now"]
+    if current == handle:
+        return HandleChange(did, handle, current, False, changed_at, None,
+                            changed_at + COOLDOWN if changed_at else None)
+    if changed_at is not None and changed_at + COOLDOWN > now:
+        raise HandleCooldown(handle, changed_at + COOLDOWN)
+    holder = await conn.fetchval(
+        "SELECT agent_did FROM agents WHERE handle = $1 AND agent_did <> $2", handle, did)
+    if holder is None:
+        holder = await conn.fetchval(
+            "SELECT agent_did FROM handle_redirects "
+            "WHERE old_handle = $1 AND expires_at > NOW() AND agent_did <> $2", handle, did)
+    if holder is not None:
+        raise HandleTaken(handle, "this name belongs to another agent")
+
+    try:
+        # A savepoint, so a lost race leaves the caller's transaction usable.
+        async with conn.transaction():
+            updated = await conn.fetchrow(
+                """
+                UPDATE agents SET handle = $1, handle_changed_at = NOW(), updated_at = NOW()
+                 WHERE agent_did = $2 AND status = 'ACTIVE'
+                RETURNING handle_changed_at
+                """,
+                handle, did)
+    except asyncpg.UniqueViolationError:
+        raise HandleTaken(handle, "this name belongs to another agent") from None
+    if updated is None:                                   # pragma: no cover — row is locked
+        raise HandleNoAgent(handle, f"no active agent {did}")
+    changed_at = updated["handle_changed_at"]
+    # The agent's own old redirect to this name (taking a handle back) goes.
+    await conn.execute("DELETE FROM handle_redirects WHERE old_handle = $1 AND agent_did = $2", handle, did)
+    redirect_expires_at = None
+    if current is not None:
+        redirect_expires_at = await conn.fetchval(
+            """
+            INSERT INTO handle_redirects (old_handle, agent_did, created_at, expires_at)
+            VALUES ($1, $2, NOW(), NOW() + $3)
+            ON CONFLICT (old_handle) DO UPDATE
+               SET agent_did = EXCLUDED.agent_did, created_at = NOW(), expires_at = EXCLUDED.expires_at
+            RETURNING expires_at
+            """,
+            current, did, REDIRECT_TTL)
+    await conn.execute(
+        """
+        INSERT INTO audit_logs (agent_did, action, resource_type, resource_id, details)
+        VALUES ($1, 'UPDATE', 'AGENT', $1, $2)
+        """,
+        did, f"handle changed: @{current or '-'} -> @{handle}")
+    return HandleChange(did, handle, current, True, changed_at, redirect_expires_at,
+                        changed_at + COOLDOWN)
+
 
 async def assign_founder_handles(
     conn, roster: Optional[Mapping[str, str]] = None,

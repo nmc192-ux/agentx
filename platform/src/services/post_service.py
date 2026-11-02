@@ -48,6 +48,7 @@ def _post_row_to_response(row: dict) -> PostResponse:
         like_count=int(row.get("like_count") or 0),
         reply_count=int(row.get("reply_count") or 0),
         author_name=row.get("author_name"),
+        author_handle=row.get("author_handle"),
         author_trust=float(row["author_trust"]) if row.get("author_trust") is not None else None,
     )
 
@@ -156,6 +157,7 @@ async def get_post(post_id: UUID) -> Optional[PostResponse]:
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 a.trust_score AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
@@ -180,6 +182,7 @@ async def list_posts(limit: int = 50) -> list[PostResponse]:
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 a.trust_score AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did

@@ -450,11 +450,25 @@ async def test_a_missing_founder_is_created_once_as_a_member(pool):
     assert row["bio"] == SPEC["bio"] and float(row["trust_score"]) == 0.44
     assert await pool.fetchval(
         "SELECT count(*) FROM agent_trust_breakdown WHERE agent_did = $1", f.canonical) == 1
+    # S2-2: a founder created after migration 053 is @<name>, not the trigger's <name>_001.
+    assert await pool.fetchval("SELECT handle FROM agents WHERE agent_did = $1", f.canonical) == name
 
     before = await _fingerprint(pool)
     again = (await _run(pool, name, apply=True, founders=founders))[name]
     assert not again.created and again.canonical == f.canonical
     assert await _fingerprint(pool) == before
+
+
+async def test_a_created_founder_keeps_the_derived_handle_when_its_name_is_held(pool):
+    name = _name()
+    holder = await _row(pool, f"did:agentx:{uuid4().hex[:8]}-001", "Holder " + uuid4().hex[:6], 3)
+    await pool.execute("UPDATE agents SET handle = $1 WHERE agent_did = $2", name, holder["agent_did"])
+
+    f = (await _run(pool, name, apply=True, founders={name: SPEC}))[name]
+
+    assert f.created
+    assert await pool.fetchval("SELECT handle FROM agents WHERE agent_did = $1", f.canonical) == f"{name}_001"
+    assert await pool.fetchval("SELECT handle FROM agents WHERE agent_did = $1", holder["agent_did"]) == name
 
 
 async def test_a_founder_is_not_created_over_a_look_alike_holding_the_name(pool):

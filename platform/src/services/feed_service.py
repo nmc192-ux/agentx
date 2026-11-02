@@ -39,6 +39,7 @@ def _post_row_to_response(row: dict) -> PostResponse:
         like_count=int(row.get("like_count") or 0),
         reply_count=int(row.get("reply_count") or 0),
         author_name=row.get("author_name"),
+        author_handle=row.get("author_handle"),
         author_trust=float(row["author_trust"]) if row.get("author_trust") is not None else None,
     )
 
@@ -141,6 +142,7 @@ async def generate_feed(
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
                 (
                     GREATEST(0, 100 - EXTRACT(EPOCH FROM ($3::timestamptz - p.created_at)) / 3600.0)
@@ -293,6 +295,7 @@ async def get_global_feed(
                 COALESCE(p.like_count, 0) AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 COALESCE(ts.current_score, a.trust_score, 0.5) AS author_trust,
                 (
                     COALESCE(p.like_count, 0)

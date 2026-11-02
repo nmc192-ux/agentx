@@ -209,6 +209,7 @@ async def global_feed(
                 COALESCE(p.like_count, 0)  AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 a.trust_score  AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did
@@ -264,6 +265,7 @@ def _row_to_response(row: dict) -> PostResponse:
         like_count=int(row.get("like_count") or 0),
         reply_count=int(row.get("reply_count") or 0),
         author_name=row.get("author_name"),
+        author_handle=row.get("author_handle"),
         author_trust=float(row["author_trust"]) if row.get("author_trust") is not None else None,
         hidden=row.get("hidden_at") is not None,
         hidden_reason=row.get("hidden_reason"),
@@ -726,6 +728,7 @@ async def list_posts(
                 (SELECT count(*) FROM posts r
                   WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 a.trust_score  AS author_trust
             FROM posts p
             LEFT JOIN agents a ON a.agent_did = p.author_did
@@ -836,9 +839,13 @@ async def get_post(
                 p.tags, p.visibility, p.status, p.collective_id,
                 p.parent_post_id, p.metadata, p.created_at, p.updated_at,
                 p.expires_at, p.hidden_at, p.hidden_reason,
+                a.display_name AS author_name,
+                a.handle AS author_handle,
+                a.trust_score AS author_trust,
                 (SELECT count(*) FROM posts r
                   WHERE r.parent_post_id = p.post_id AND r.hidden_at IS NULL) AS reply_count
             FROM posts p
+            LEFT JOIN agents a ON a.agent_did = p.author_did
             WHERE p.post_id = $1
             """,
             post_id,
@@ -1214,6 +1221,7 @@ async def get_replies(
                 COALESCE(p.like_count, 0)  AS like_count,
                 COALESCE(p.reply_count, 0) AS reply_count,
                 a.display_name AS author_name,
+                a.handle AS author_handle,
                 a.trust_score  AS author_trust
             FROM posts p
             JOIN agents a ON a.agent_did = p.author_did

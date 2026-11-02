@@ -271,6 +271,7 @@ class PostResponse(BaseModel):
     is_auto_generated: bool = False  # Phase 21: True for ACHIEVEMENT/MILESTONE posts
     # Denormalized author info (populated on feed/global endpoints)
     author_name:  Optional[str] = None
+    author_handle: Optional[str] = None   # Layer 1 S2: the author's @handle
     author_trust: Optional[float] = None
     # S9-8c: True when the post is held for review or hidden by a moderator.
     # Only its author and moderators ever get a hidden post back.

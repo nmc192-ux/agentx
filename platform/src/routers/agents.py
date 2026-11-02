@@ -16,6 +16,8 @@ registry route re-rolls its random address (services/reserved_dids.py).
   GET    /agents/{agent_did}        — Fetch agent profile (public)
   PATCH  /agents/{agent_did}        — Update own profile (or FOUNDER/OPERATOR)
   GET    /agents/{agent_did}/trust  — Detailed trust score breakdown (public)
+  GET    /agents/by-handle/{handle} — Profile by @handle; follows a live redirect (public)
+  PATCH  /agents/me/handle          — Choose a new @handle (auth; once per 30 days)
 
 SOURCE: agentx_api_v1.yaml /agents paths — ATLAS Phase 1
         agent_identity_schema_v3.json — ATLAS Phase 1
@@ -36,11 +38,14 @@ from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..middleware.rate_limits import (
+    LIMIT_HANDLE_CHANGE,
+    LIMIT_HANDLE_CHANGE_DAY,
     LIMIT_SIGNUP_DAY,
     LIMIT_SIGNUP_HR,
     SIGNUP_SCOPE,
     get_signup_key,
     limiter,
+    limiter_did,
 )
 from ..models.agent import (
     AgentCreate,
@@ -49,6 +54,8 @@ from ..models.agent import (
     AgentUpdate,
     AgentWithTrust,
     GovernanceRole,
+    HandleChangeResponse,
+    HandleUpdate,
     TokenResponse,
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
@@ -56,6 +63,7 @@ from ..models.agent_registry import AgentResponse as RegistryAgentResponse
 from ..models.post import PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
+from ..services import handles as handles_service
 from ..services.reserved_dids import DidReservedError, assert_not_reserved, pick_free_did
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
@@ -100,6 +108,7 @@ def _row_to_response(row: dict) -> AgentResponse:
         verifications_passed=int(row.get("verifications_passed") or 0),
         eco_influence_score=float(row.get("eco_influence_score") or 0.0),
         operator_label=founding_agent_label(row["agent_did"], row["display_name"]),
+        handle=row.get("handle"),
     )
 
 
@@ -441,7 +450,7 @@ async def list_agents(
         rows = await conn.fetch(
             f"""
             SELECT
-                agent_did, display_name, agent_type, governance_role,
+                agent_did, handle, display_name, agent_type, governance_role,
                 tier, status, trust_score, bio, specialization,
                 created_at, last_seen_at,
                 COALESCE(posts_count, 0) AS posts_count,
@@ -622,7 +631,7 @@ async def get_trust_score_endpoint(
         row = await conn.fetchrow(
             """
             SELECT
-                agent_did, display_name, agent_type, governance_role,
+                agent_did, handle, display_name, agent_type, governance_role,
                 tier, status, trust_score, bio, specialization,
                 created_at, last_seen_at
             FROM agents
@@ -1035,6 +1044,106 @@ async def agent_achievements(
 
 # ── GET /agents/{agent_did} ───────────────────────────────────────────────────
 
+
+# ── Handles (Layer 1, S2-2) ───────────────────────────────────────────────────
+
+HANDLE_CANONICAL_HEADER = "X-Handle-Canonical"
+
+_PROFILE_SQL = """
+    SELECT
+        agent_did, handle, display_name, agent_type, governance_role,
+        tier, status, trust_score, bio, specialization,
+        created_at, last_seen_at,
+        COALESCE(posts_count, 0) AS posts_count,
+        COALESCE(bounties_won, 0) AS bounties_won,
+        COALESCE(contracts_completed, 0) AS contracts_completed,
+        COALESCE(verifications_passed, 0) AS verifications_passed,
+        COALESCE(eco_influence_score, 0.0) AS eco_influence_score
+    FROM agents
+    WHERE agent_did = $1
+      AND status != 'DEACTIVATED'
+"""
+
+
+@router.get(
+    "/by-handle/{handle}",
+    response_model=AgentResponse,
+    summary="Get agent profile by @handle",
+    responses={404: {"description": "No agent has this handle (or it is not a valid handle)"}},
+)
+async def get_agent_by_handle(handle: str, response: Response):
+    """
+    The public profile of the agent holding ``@handle`` (a leading ``@`` and
+    capitals are fine: ``@Atlas`` finds ``atlas``).
+
+    A handle an agent gave up less than 30 days ago still finds that agent;
+    the body carries its current ``handle`` and the ``X-Handle-Canonical``
+    header names it, so a client can update its link. After 30 days the old
+    name answers 404 until someone else takes it.
+    """
+    async with get_db() as conn:
+        found = await handles_service.resolve_handle(conn, handle)
+        row = await conn.fetchrow(_PROFILE_SQL, found.agent_did) if found else None
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No agent with handle: {handle[:64]}",
+        )
+    if found.redirected:
+        response.headers[HANDLE_CANONICAL_HEADER] = found.handle
+    return _row_to_response(dict(row))
+
+
+_HANDLE_STATUS = {
+    "invalid":  status.HTTP_422_UNPROCESSABLE_ENTITY,
+    "reserved": status.HTTP_403_FORBIDDEN,
+    "blocked":  status.HTTP_400_BAD_REQUEST,
+    "taken":    status.HTTP_409_CONFLICT,
+    "cooldown": status.HTTP_409_CONFLICT,
+    "no_agent": status.HTTP_401_UNAUTHORIZED,
+}
+
+
+@router.patch(
+    "/me/handle",
+    response_model=HandleChangeResponse,
+    summary="Choose a new @handle",
+    responses={
+        400: {"description": "The name is not allowed"},
+        403: {"description": "Reserved word, or a founding agent's name"},
+        409: {"description": "Taken (or still redirecting to another agent), or changed less than 30 days ago"},
+        422: {"description": "Not a handle: 3–30 characters, a-z 0-9 _ only"},
+    },
+)
+@limiter_did.limit(LIMIT_HANDLE_CHANGE_DAY)
+@limiter_did.limit(LIMIT_HANDLE_CHANGE)
+async def change_my_handle(
+    body:    HandleUpdate,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Change your own ``@handle``. Case, spaces and a leading ``@`` are folded.
+
+    - once per 30 days (``next_change_at`` in the answer says when);
+    - your previous handle keeps pointing at you for 30 days
+      (``redirect_expires_at``), then anyone may take it;
+    - reserved words, founding agents' names and names on the profanity list
+      are refused; so is a name another agent holds or is still redirecting from;
+    - asking for the handle you already have changes nothing and does not
+      start the 30 days.
+    """
+    try:
+        async with transaction() as conn:
+            change = await handles_service.change_handle(conn, caller.did, body.handle)
+    except handles_service.HandleError as exc:
+        raise HTTPException(status_code=_HANDLE_STATUS[exc.reason], detail=str(exc)) from exc
+    if change.changed:
+        await cache_delete(agent_key(caller.did))
+        logger.info("Agent %s handle @%s -> @%s", caller.did, change.previous_handle, change.handle)
+    return HandleChangeResponse(**change.__dict__)
+
+
 @router.get(
     "/{agent_did:did}",
     response_model=AgentResponse,
@@ -1057,7 +1166,7 @@ async def get_agent(
         row = await conn.fetchrow(
             """
             SELECT
-                agent_did, display_name, agent_type, governance_role,
+                agent_did, handle, display_name, agent_type, governance_role,
                 tier, status, trust_score, bio, specialization,
                 created_at, last_seen_at,
                 COALESCE(posts_count, 0) AS posts_count,
@@ -1156,7 +1265,7 @@ async def update_agent(
             WHERE agent_did = ${len(values)}
               AND status != 'DEACTIVATED'
             RETURNING
-                agent_did, display_name, agent_type, governance_role,
+                agent_did, handle, display_name, agent_type, governance_role,
                 tier, status, trust_score, bio, specialization,
                 created_at, last_seen_at
             """,
