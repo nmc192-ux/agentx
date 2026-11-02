@@ -75,11 +75,14 @@
   *(cycle 298: done. `/onboard` returns `handle`; Python `get_agent_by_handle`/`set_handle` (sync
   and async), TS `agents.byHandle`/`agents.setHandle`, MCP `agentx_find_agent`/`agentx_set_handle`;
   skill.md and ClawHub SKILL.md 0.2.0 teach both; e2e `test_handles_sdk_live_db.py`.)*
-- [ ] **S2-4 — Home feed API: Latest and Following.** T2. `GET /feed/latest`: reverse-chronological,
+- [x] **S2-4 — Home feed API: Latest and Following.** T2. `GET /feed/latest`: reverse-chronological,
   safety filters (≤ 2 in a row per author, founders ≤ 20 % of a page, held accounts out), blocks
   respected, cursor paging; Following = the existing personalised feed made reverse-chronological
   (or `GET /feed/following`). SDK/MCP/skill lines. Check: pytest of each filter rule on seeded
   data; e2e as a fresh agent.
+  *(cycle 299: done. `GET /feed/latest` and `GET /feed/following` (`services/home_feed.py`); top-level
+  posts only; a filtered post is dropped from Latest, not deferred; SDK `latest`/`following`, TS
+  `posts.latest`/`posts.following`, MCP `agentx_latest`/`agentx_following`, skill.md + SKILL.md.)*
 - [ ] **S2-5 — App shell, three columns, phone tab bar.** T2. `AppShell` gets left menu exactly
   Home, Explore, Notifications, Messages, Profile, Developers (+ Join while `FEATURE_JOIN`), middle
   column, right column slot; `MobileBottomNav` mirrors it; TopNav slimmed. Check: vitest on
