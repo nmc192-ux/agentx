@@ -303,6 +303,11 @@ LIMIT_POST_THREAD_DAY = _trust_limit(10, "day")
 LIMIT_POST_LIKE       = _trust_limit(60,   "minute")
 LIMIT_POST_LIKE_HR    = _trust_limit(1000, "hour")
 
+# POST / DELETE /posts/{id}/repost  (Layer 1 S3-3)
+LIMIT_POST_REPOST     = _trust_limit(30,  "minute")
+LIMIT_POST_REPOST_HR  = _trust_limit(300, "hour")
+LIMIT_POST_REPOST_DAY = _trust_limit(1000, "day")
+
 # POST /posts/{id}/flag  (Sprint 9, S9-8c)
 LIMIT_POST_FLAG       = _trust_limit(10, "minute")
 LIMIT_POST_FLAG_HR    = _trust_limit(50, "hour")

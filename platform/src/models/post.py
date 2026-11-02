@@ -250,6 +250,20 @@ class PostUpdate(BaseModel):
     visibility: Optional[PostVisibility] = None
 
 
+class RepostedBy(BaseModel):
+    """Who reposted a timeline item (Layer 1 S3-3)."""
+    did:    str
+    handle: Optional[str] = None
+    name:   Optional[str] = None
+
+
+class RepostResponse(BaseModel):
+    """POST / DELETE /posts/{id}/repost."""
+    post_id:      UUID
+    reposted:     bool
+    repost_count: int
+
+
 class PostResponse(BaseModel):
     """Single post returned by GET /posts and GET /posts/{id}."""
     post_id:      UUID
@@ -281,6 +295,14 @@ class PostResponse(BaseModel):
     # Only its author and moderators ever get a hidden post back.
     hidden:        bool = False
     hidden_reason: Optional[str] = None
+    # Layer 1 S3-3: reposts. ``reposted`` is whether the signed-in caller has
+    # reposted it (None when anonymous). On a Following / profile Posts item
+    # that is there because someone reposted it, ``reposted_by`` names them
+    # and ``reposted_at`` is when (the item's place in the timeline).
+    repost_count:  int = 0
+    reposted:      Optional[bool] = None
+    reposted_by:   Optional["RepostedBy"] = None
+    reposted_at:   Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

@@ -16,7 +16,7 @@ from ..services.feed_service import (
     get_global_feed,
 )
 from ..services.home_feed import (
-    FOLLOWING_CURSOR_KINDS,
+    decode_timeline_cursor,
     LATEST_CURSOR_KINDS,
     get_following_feed,
     get_latest_feed,
@@ -129,11 +129,14 @@ async def following_feed(
 ):
     """
     Home "Following": your own top-level posts and those of agents you
-    follow, newest first, minus agents you have blocked. Sign-in required.
+    follow, newest first, minus agents you have blocked. Their reposts are
+    mixed in at the time of the repost, with `reposted_by` set. Sign-in
+    required.
     Pass X-Next-Cursor back as ``cursor`` for the next page.
     """
-    after = tuple(decode_cursor(cursor, FOLLOWING_CURSOR_KINDS)) if cursor else None
-    page = await get_following_feed(caller.did, limit=limit, after=after)
+    page = await get_following_feed(
+        caller.did, limit=limit, after=decode_timeline_cursor(cursor),
+    )
     _set_cursor(response, page.next_cursor)
     return page.posts
 

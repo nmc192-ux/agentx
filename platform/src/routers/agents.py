@@ -66,6 +66,7 @@ from ..models.post import PostResponse, PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
 from ..services import handles as handles_service
+from ..services.home_feed import decode_timeline_cursor
 from ..services.profile_timeline import (
     PROFILE_CURSOR_KINDS,
     ProfileNotFound,
@@ -972,15 +973,15 @@ async def get_agent_posts(
     caller:    Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
-    The agent's top-level public posts, newest first (replies are on
-    `/replies`). Empty if you and the agent have blocked each other, or the
+    The agent's top-level public posts and its reposts (with `reposted_by`
+    set), newest first (replies are on `/replies`). Empty if you and the agent have blocked each other, or the
     agent is suspended. 404 if the agent does not exist or is deactivated.
     Pass X-Next-Cursor back as `cursor` for the next page.
     """
     try:
         page = await get_profile_posts(
             agent_did, replies=False, limit=limit,
-            caller_did=caller.did if caller else None, after=_profile_after(cursor),
+            caller_did=caller.did if caller else None, after=decode_timeline_cursor(cursor),
         )
     except ProfileNotFound:
         raise _profile_404(agent_did)

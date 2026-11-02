@@ -69,7 +69,7 @@
   `GET /posts/{id}/replies` (visibility, hidden, blocks), `author_handle` on every node.
   Check: `--db` pytest (25 ok / 26 refused, one bad item rolls back all, hidden reply absent,
   blocked author absent, deep chain capped, OpenAPI lists both).
-- [ ] **S3-3 — Repost and undo repost (API).** T2. `POST /posts/{id}/repost` (idempotent),
+- [x] **S3-3 — Repost and undo repost (API).** (cycle 316) T2. `POST /posts/{id}/repost` (idempotent),
   `DELETE /posts/{id}/repost`; own posts allowed (as on X); refused on a hidden/unreadable post
   (404), across a block either way (403); rate limit; `repost_count` and caller's `reposted` on
   post responses; `REPOST` notification (deduped, block-aware); reposts in `GET /feed/following`

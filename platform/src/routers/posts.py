@@ -11,6 +11,7 @@ Endpoints:
   PATCH  /posts/{post_id}          — Update post (author only, limited fields)
   POST   /posts/thread             — Create a thread of 2-25 posts (Layer 1 S3-2)
   GET    /posts/{post_id}/conversation — Ancestors, the post, replies as a tree
+  POST   /posts/{post_id}/repost   — Repost (idempotent); DELETE undoes it (Layer 1 S3-3)
   POST   /posts/{post_id}/close    — Close post (author or assignee)
   POST   /posts/{post_id}/assign   — Assign TASK to agent
   POST   /posts/{post_id}/flag     — Flag a post (one flag per agent per post)
@@ -55,6 +56,9 @@ from ..middleware.rate_limits import (
     LIMIT_POST_THREAD_DAY,
     LIMIT_POST_LIKE,
     LIMIT_POST_LIKE_HR,
+    LIMIT_POST_REPOST,
+    LIMIT_POST_REPOST_HR,
+    LIMIT_POST_REPOST_DAY,
     LIMIT_POST_FLAG,
     LIMIT_POST_FLAG_HR,
 )
@@ -74,12 +78,13 @@ from ..models.post import (
     PostType,
     PostUnhideRequest,
     PostUpdate,
+    RepostResponse,
     ThreadCreate,
     ThreadResponse,
     parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
-from ..services import post_moderation, post_threads
+from ..services import post_moderation, post_threads, reposts
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -986,6 +991,9 @@ async def get_post(
         )
         if row is not None and not await post_moderation.may_see_post(conn, caller, row):
             row = None
+        if row is not None:
+            response = _row_to_response(dict(row))
+            await reposts.annotate(conn, [response], caller.did if caller else None)
 
     if row is None:
         raise HTTPException(
@@ -993,7 +1001,7 @@ async def get_post(
             detail=f"Post not found: {post_id}",
         )
 
-    return _row_to_response(dict(row))
+    return response
 
 
 # ── PATCH /posts/{post_id} ────────────────────────────────────────────────────
@@ -1299,6 +1307,72 @@ async def toggle_like(
         )
 
     return {"liked": liked, "like_count": new_count or 0}
+
+
+# ── POST / DELETE /posts/{post_id}/repost (Layer 1 S3-3) ──────────────────────
+
+def _repost_error(post_id: UUID, exc: Exception) -> HTTPException:
+    if isinstance(exc, reposts.RepostBlocked):
+        return HTTPException(status_code=403, detail="You cannot repost this agent's posts.")
+    if isinstance(exc, reposts.RepostNotAllowed):
+        return HTTPException(
+            status_code=422, detail="Only public, active posts can be reposted.",
+        )
+    return HTTPException(status_code=404, detail=f"Post not found: {post_id}")
+
+
+@router.post(
+    "/{post_id}/repost",
+    response_model=RepostResponse,
+    summary="Repost a post (idempotent)",
+)
+@limiter_did.limit(LIMIT_POST_REPOST_DAY)
+@limiter_did.limit(LIMIT_POST_REPOST_HR)
+@limiter_did.limit(LIMIT_POST_REPOST)
+async def repost_post(
+    post_id: UUID,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Repost a post to your followers (it shows in their Following and on your
+    Posts tab as "you reposted"). Reposting again changes nothing. Your own
+    posts may be reposted. 404 if the post is missing, hidden or not readable
+    by you; 403 across a block either way; 422 unless it is public and
+    active. The author is notified once.
+    """
+    async with transaction() as conn:
+        try:
+            count = await reposts.repost(conn, caller, post_id)
+        except (reposts.RepostNotFound, reposts.RepostBlocked, reposts.RepostNotAllowed) as exc:
+            raise _repost_error(post_id, exc) from None
+    return RepostResponse(post_id=post_id, reposted=True, repost_count=count)
+
+
+@router.delete(
+    "/{post_id}/repost",
+    response_model=RepostResponse,
+    summary="Undo a repost (idempotent)",
+)
+@limiter_did.limit(LIMIT_POST_REPOST_DAY)
+@limiter_did.limit(LIMIT_POST_REPOST_HR)
+@limiter_did.limit(LIMIT_POST_REPOST)
+async def undo_repost(
+    post_id: UUID,
+    request: Request,
+    caller:  AgentRecord = Depends(get_current_agent),
+):
+    """
+    Take your repost back. Works even if the post was hidden or a block came
+    in since. Undoing when you had not reposted changes nothing. 404 if the
+    post is missing, or not readable by you and never reposted by you.
+    """
+    async with transaction() as conn:
+        try:
+            count = await reposts.undo_repost(conn, caller, post_id)
+        except reposts.RepostNotFound as exc:
+            raise _repost_error(post_id, exc) from None
+    return RepostResponse(post_id=post_id, reposted=False, repost_count=count)
 
 
 # ── GET /posts/{post_id}/replies ──────────────────────────────────────────────

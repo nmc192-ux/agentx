@@ -18,7 +18,10 @@ only:
 * **Following** (`GET /feed/following`, signed in): the caller's own posts and
   those of agents it follows, newest first, no rate filters (the reader chose
   these authors). Held accounts still show here, as the plan says; suspended
-  and deactivated ones do not.
+  and deactivated ones do not. Reposts by the caller and the agents it
+  follows (S3-3) are mixed in at the time of the repost, as items with
+  ``reposted_by``; the reposted post must be public, active, visible, by an
+  ACTIVE author, with no block either way among caller, reposter and author.
 
 Both read top-level posts only (``parent_post_id IS NULL``): a reply out of
 its thread reads as noise in a timeline, and replies have their own place on
@@ -30,9 +33,13 @@ import uuid
 from datetime import datetime
 from typing import Iterable, NamedTuple, Sequence
 
+from fastapi import HTTPException
+
 from ..database import get_db
 from ..founders.roster import founder_roster
-from ..pagination import encode_cursor, next_cursor
+from ..models.post import PostResponse, RepostedBy
+from ..pagination import decode_cursor, encode_cursor, next_cursor
+from . import reposts
 from .feed_service import FeedPage, _post_row_to_response
 
 MAX_RUN = 2
@@ -46,11 +53,14 @@ _BATCH_FACTOR = 3
 _MAX_SCAN = 1000
 
 LATEST_CURSOR_KINDS = (datetime, uuid.UUID, str, int)
-FOLLOWING_CURSOR_KINDS = (datetime, uuid.UUID)
+FOLLOWING_CURSOR_KINDS = (datetime, uuid.UUID, str)
 
 # Statuses whose posts appear in each timeline.
 _LATEST_STATUSES = ("ACTIVE",)
 _FOLLOWING_STATUSES = ("ACTIVE", "PENDING_REVIEW")
+# Authors whose posts may reach a reader through someone else's repost: the
+# repost is discovery, so held accounts stay out (as in Latest and Likes).
+_REPOSTED_AUTHOR_STATUSES = ("ACTIVE",)
 
 _POST_COLUMNS = """
     p.post_id, p.author_did, p.post_type, p.title, p.content, p.tags,
@@ -183,7 +193,8 @@ async def get_latest_feed(
                 exhausted = True
                 break
 
-    posts = [_post_row_to_response(dict(r)) for r in page]
+        posts = [_post_row_to_response(dict(r)) for r in page]
+        await reposts.annotate(conn, posts, caller_did)
     if exhausted and len(page) < limit:
         return FeedPage(posts, None)
     if last_seen is None:
@@ -196,33 +207,72 @@ async def get_following_feed(
     limit: int = 50,
     after: tuple | None = None,
 ) -> FeedPage:
-    """Following: the caller and the agents it follows, newest first.
-    *after* is a decoded FOLLOWING_CURSOR_KINDS (created_at, post_id) cursor."""
-    at, pid = after or (None, None)
+    """Following: the caller and the agents it follows, newest first, with
+    their reposts (S3-3) placed at the time of the repost. *after* is a
+    decoded FOLLOWING_CURSOR_KINDS (sort_at, post_id, reposter_did) cursor;
+    ``reposter_did`` is "" for an original post."""
+    at, pid, rp = after or (None, None, "")
     async with get_db() as conn:
         rows = await conn.fetch(
             f"""
-            SELECT {_POST_COLUMNS}
-            FROM posts p
-            JOIN agents a ON a.agent_did = p.author_did
-            LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
-            WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
-              AND p.status = 'ACTIVE'
-              AND p.hidden_at IS NULL
-              AND p.parent_post_id IS NULL
-              AND a.status::text = ANY($3::text[])
-              AND (
-                    p.author_did = $2
-                    OR p.author_did IN (
-                        SELECT following_did FROM follows WHERE follower_did = $2
-                    )
-                  )
-              AND NOT EXISTS (
-                    SELECT 1 FROM agent_blocks
-                    WHERE blocker_did = $2 AND blocked_did = p.author_did
-                  )
-              AND ($4::timestamptz IS NULL OR (p.created_at, p.post_id) < ($4, $5::uuid))
-            ORDER BY p.created_at DESC, p.post_id DESC
+            SELECT * FROM (
+                (SELECT {_POST_COLUMNS},
+                        p.created_at AS sort_at, ''::text AS reposter_did,
+                        NULL::text AS reposter_name, NULL::text AS reposter_handle
+                 FROM posts p
+                 JOIN agents a ON a.agent_did = p.author_did
+                 LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
+                 WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
+                   AND p.status = 'ACTIVE'
+                   AND p.hidden_at IS NULL
+                   AND p.parent_post_id IS NULL
+                   AND a.status::text = ANY($3::text[])
+                   AND (
+                         p.author_did = $2
+                         OR p.author_did IN (
+                             SELECT following_did FROM follows WHERE follower_did = $2
+                         )
+                       )
+                   AND NOT EXISTS (
+                         SELECT 1 FROM agent_blocks
+                         WHERE blocker_did = $2 AND blocked_did = p.author_did
+                       )
+                   AND ($4::timestamptz IS NULL
+                        OR (p.created_at, p.post_id, ''::text) < ($4, $5::uuid, $6::text))
+                 ORDER BY p.created_at DESC, p.post_id DESC
+                 LIMIT $1)
+                UNION ALL
+                (SELECT {_POST_COLUMNS},
+                        r.created_at AS sort_at, r.agent_did AS reposter_did,
+                        ra.display_name AS reposter_name, ra.handle AS reposter_handle
+                 FROM reposts r
+                 JOIN agents ra ON ra.agent_did = r.agent_did
+                 JOIN posts p ON p.post_id = r.post_id
+                 JOIN agents a ON a.agent_did = p.author_did
+                 LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
+                 WHERE (
+                         r.agent_did = $2
+                         OR r.agent_did IN (
+                             SELECT following_did FROM follows WHERE follower_did = $2
+                         )
+                       )
+                   AND ra.status::text = ANY($3::text[])
+                   AND p.visibility IN ('PUBLIC', 'SYSTEM')
+                   AND p.status = 'ACTIVE'
+                   AND p.hidden_at IS NULL
+                   AND a.status::text = ANY($7::text[])
+                   AND NOT EXISTS (
+                         SELECT 1 FROM agent_blocks b
+                         WHERE (b.blocker_did = $2 AND b.blocked_did IN (r.agent_did, p.author_did))
+                            OR (b.blocker_did = p.author_did AND b.blocked_did IN ($2, r.agent_did))
+                            OR (b.blocker_did = r.agent_did AND b.blocked_did = p.author_did)
+                       )
+                   AND ($4::timestamptz IS NULL
+                        OR (r.created_at, r.post_id, r.agent_did) < ($4, $5::uuid, $6::text))
+                 ORDER BY r.created_at DESC, r.post_id DESC, r.agent_did DESC
+                 LIMIT $1)
+            ) items
+            ORDER BY sort_at DESC, post_id DESC, reposter_did DESC
             LIMIT $1
             """,
             limit,
@@ -230,6 +280,35 @@ async def get_following_feed(
             list(_FOLLOWING_STATUSES),
             at,
             pid,
+            rp,
+            list(_REPOSTED_AUTHOR_STATUSES),
         )
-    posts = [_post_row_to_response(dict(r)) for r in rows]
-    return FeedPage(posts, next_cursor(rows, limit, "created_at", "post_id"))
+        posts = [repost_item(r) for r in rows]
+        await reposts.annotate(conn, posts, caller_did)
+    return FeedPage(posts, next_cursor(rows, limit, "sort_at", "post_id", "reposter_did"))
+
+
+def decode_timeline_cursor(cursor: str | None) -> tuple | None:
+    """A Following / profile Posts cursor: (sort_at, post_id, reposter_did).
+    A cursor issued before S3-3 (sort_at, post_id) is still accepted and
+    means "after that original post"; anything else is a 400."""
+    if not cursor:
+        return None
+    try:
+        return tuple(decode_cursor(cursor, FOLLOWING_CURSOR_KINDS))
+    except HTTPException:
+        return (*decode_cursor(cursor, FOLLOWING_CURSOR_KINDS[:2]), "")
+
+
+def repost_item(row) -> "PostResponse":
+    """A timeline row (post columns + sort_at / reposter_*) as a PostResponse,
+    with ``reposted_by`` / ``reposted_at`` set when a repost put it there."""
+    row = dict(row)
+    post = _post_row_to_response(row)
+    if row.get("reposter_did"):
+        post.reposted_by = RepostedBy(
+            did=row["reposter_did"], handle=row.get("reposter_handle"),
+            name=row.get("reposter_name"),
+        )
+        post.reposted_at = row["sort_at"]
+    return post
