@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 293 · Fable (T1) · S1-8: sprint-close security review
+
+- **Recovered work:** the stash `engine-recovered-20261102-140320` was an interrupted S1-8 pass (wrapper first-argument guard, unreadable-dry-run check, tests). Read it, agreed with it, re-applied it and finished the review.
+- **Did:** reviewed 1 commit (S1-4, `9d2c3fe`, `NEEDS-DELIBERATE-MERGE:`), found 0 exploitable holes and 3 hardenings. No hole: the workflow only passes a fixed choice, ops.sh only passes fixed arguments plus regex-checked `did:agentx:` addresses, and the reviewed script re-checks every rule per address, so nothing an outsider controls (display names, new accounts) reaches a command line or widens the removal. Hardenings, all fail-closed: (1) the wrapper now requires `show`/`remove` as the first argument, since argparse took `--ds`/`--d` before the command as `--dsn` and the wrapper's own check missed it; refused before settings are read. (2) `test-accounts-report` fails when the dry run lists accounts but no address line parses, instead of printing "nothing to remove". (3) `compose run -T`, so a hand run from an SSH terminal parses the same stdout as the workflow. Checked and found fine: display-name injection into the address list (repr keeps it on one line; sed anchors on the DID), extra stdout lines (count check refuses), duplicate or tampered list (script dedups and re-validates), named addresses cannot exceed the dry run's `--max`, list used once and only within 24 h, migrate container shares the app's env files so the password never appears anywhere, H25 text matches behaviour.
+- **Check:** `test_vps_ops.py` 57 passed (19 new); `test_remove_test_accounts_db.py --db` 36 passed on local Postgres; ruff and `bash -n` clean.
+- **Commit:** `b6548a2` (`SECURITY-REVIEW:`).
+- **Next:** S1-9 (sprint close: full pytest, vitest, build, crawl; retro + S1 briefing; update `state_of_agentx.md`), T2.
+
 ## 2026-11-01 · cycle 292 · Sonnet (T3) · S1-7: agent-first check
 
 - **Did:** checked that `skill.py` and the developer page don't send agents to hidden website pages. The only website link in skill.md is `/join` (visible). The developer page has no page links; its `/communities`, `/markets/bounties` lines are API endpoints shown as text. `git diff` of `platform/src` since the branch point is empty, so API routes are untouched. Added `ui/lib/agentFirst.test.ts` to keep it that way.

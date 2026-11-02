@@ -89,7 +89,10 @@ rename it at any time with H55 (no work is lost).
 - [x] **S1-7 — Agent-first check for S1.** (cycle 292, `fc07ad9`) T3. `skill.md` and the developer page don't send
   agents to hidden website pages; API routes untouched (diff check on `platform/src` routers).
   Check: skill/docs tests pass; grep shows no hidden-page URLs in `skill.py`/developer page.
-- [ ] **S1-8 — Sprint-close security review.** T1. Review every S1 commit marked
+- [x] **S1-8 — Sprint-close security review.** (cycle 293, `b6548a2`) T1. Reviewed 1 commit
+  (S1-4, `9d2c3fe`), found 0 exploitable holes, 3 hardenings (argparse `--ds` abbreviation of
+  `--dsn` before the command; unreadable dry run no longer reads as "nothing to remove";
+  `compose run -T`). 19 adversarial tests added. Review every S1 commit marked
   `SECURITY-REVIEW:`/`NEEDS-DELIBERATE-MERGE:` (expected: S1-4), add adversarial tests, fix.
 - [ ] **S1-9 — Sprint close.** T2. Run S1 acceptance locally (full platform pytest, UI vitest,
   build, crawl), write `platform/docs/sprints/layer_1_s1_retro.md` and the S1 briefing for DrJ,
