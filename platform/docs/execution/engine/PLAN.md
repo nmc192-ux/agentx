@@ -114,7 +114,7 @@
   server-resolved mentions are linked; everything else plain text, no HTML injection);
   `MENTION`/`REPOST`/`QUOTE` notifications render with `@handle`. Check: vitest (linkifier cases
   incl. `<script>`, e-mail, URL fragments), tsc, eslint, build, dead-end crawl.
-- [ ] **S3-8b — Repost and quote on the post card (UI).** T2. Replace the UI hack: Repost button
+- [x] **S3-8b — Repost and quote on the post card (UI).** (cycle 322) T2. Replace the UI hack: Repost button
   calls the repost API with undo (count and state from the server), quote composer sends
   `quote_post_id`, the card renders `quoted_post` or "This post is unavailable", Following and
   profile show "@x reposted"; legacy repost/quote rows still render. Check: vitest, build, crawl.
