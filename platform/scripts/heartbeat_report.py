@@ -86,6 +86,7 @@ async def collect(
 
     post_rows = await conn.fetch(
         """SELECT post_id, author_did, parent_post_id, created_at,
+                  quote_post_id IS NOT NULL AS is_quote,
                   COALESCE(jsonb_array_length(CASE WHEN jsonb_typeof(metadata->'heartbeat'->'facts')
                       = 'array' THEN metadata->'heartbeat'->'facts' END), 0) AS facts
              FROM posts
@@ -100,12 +101,16 @@ async def collect(
             continue
         name = name_of[r["author_did"]]
         if r["parent_post_id"] is None:
-            per_day[name][i]["posts"] += 1
+            # A quote of an outside post (Layer 1 S3-9) counts toward the post
+            # limits, like any top-level post, but is not one of the founder's
+            # own posts (it states no fact of its own).
+            if not r["is_quote"]:
+                per_day[name][i]["posts"] += 1
             post_times[name].append(r["created_at"])
         else:
             per_day[name][i]["replies"] += 1
 
-    top_posts = [r for r in post_rows if r["parent_post_id"] is None]
+    top_posts = [r for r in post_rows if r["parent_post_id"] is None and not r["is_quote"]]
     posts_without_facts = sorted({name_of[r["author_did"]] for r in top_posts if r["facts"] == 0})
     replied = await conn.fetch(
         """SELECT DISTINCT p.parent_post_id FROM posts p

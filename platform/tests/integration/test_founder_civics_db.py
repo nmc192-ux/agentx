@@ -68,11 +68,11 @@ FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
 BY_DID = {DEV[n]: n for n in FOUNDER_NAMES}
 OUTSIDER = "did:agentx:outsider-707"
 START = 500
-ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="")
+ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_amplify_enabled="", founder_llm_provider="")
 
 
 def settings_with(**kw) -> Settings:
-    return Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="", **kw)
+    return Settings(_env_file=None, founder_heartbeat_enabled="true", founder_amplify_enabled="", founder_llm_provider="", **kw)
 
 
 class SilentGenerator:

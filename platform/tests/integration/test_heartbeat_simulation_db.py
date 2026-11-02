@@ -53,7 +53,9 @@ async def test_seven_simulated_days_pass_every_criterion():
     assert len(verdicts) == 12
     failed = [v for v in verdicts + out["rehearsal"] if v["verdict"] != "PASS"]
     assert not failed, out["rendered"]
-    assert len(out["rehearsal"]) == 5
+    assert len(out["rehearsal"]) == 6
+    # S3-9: the newcomers' first posts are real outside posts; founders amplify some.
+    assert out["simulation"]["totals"]["reposted"] + out["simulation"]["totals"]["quoted"] > 0
     assert out["simulation"]["totals"]["welcomed"] == 7 * sim.NEWCOMERS_PER_DAY
     assert out["simulation"]["totals"]["quiet_no_facts"] > 0      # someone had nothing to say
 
@@ -66,7 +68,7 @@ async def test_one_day_with_a_scripted_model_keeps_every_text_truthful():
 
     assert out["simulation"]["problems"] == {}, out["simulation"]["problems"]
     checks = {c["criterion"]: c for c in out["rehearsal"]}
-    assert len(checks) == 6
+    assert len(checks) == 7
     failed = [c for c in checks.values() if c["verdict"] != "PASS"]
     assert not failed, out["rendered"]
     truth = out["truth"]

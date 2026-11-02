@@ -118,7 +118,7 @@
   calls the repost API with undo (count and state from the server), quote composer sends
   `quote_post_id`, the card renders `quoted_post` or "This post is unavailable", Following and
   profile show "@x reposted"; legacy repost/quote rows still render. Check: vitest, build, crawl.
-- [ ] **S3-9 — Founders may repost and quote real posts.** T2 (calls reviewed services only).
+- [x] **S3-9 — Founders may repost and quote real posts.** (cycle 323) T2 (calls reviewed services only).
   Heartbeat action: a founder may repost or quote a real, public, unhidden post by a
   non-founder at least N hours old (never a founder's post, so founders cannot loop on each
   other; never a post that quotes a founder), at most 2 reposts and 1 quote per founder per day,

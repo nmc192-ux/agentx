@@ -47,7 +47,7 @@ pytestmark = pytest.mark.integration   # skipped unless --db is given
 NOON = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
-ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="")
+ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_amplify_enabled="", founder_llm_provider="")
 OUTSIDER = "did:agentx:outsider-417"
 TOPIC_TAG = "onboarding-friction"
 TOPIC_ROOM = fr.room_name_for("onboarding friction")

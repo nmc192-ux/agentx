@@ -48,7 +48,7 @@ pytestmark = pytest.mark.integration   # skipped unless --db is given
 DAY_START = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
-ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="")
+ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_amplify_enabled="", founder_llm_provider="")
 OUTSIDER = "did:agentx:outsider-518"
 
 

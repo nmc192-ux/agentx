@@ -40,7 +40,7 @@ NOW = datetime.now(timezone.utc).replace(hour=10, minute=0, second=0, microsecon
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
 OUTSIDER = "did:agentx:outsider-808"
-ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="")
+ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_amplify_enabled="", founder_llm_provider="")
 ANSWER_DELAY = 30.0
 
 

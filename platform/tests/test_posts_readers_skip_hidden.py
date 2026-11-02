@@ -60,6 +60,9 @@ REVIEWED = {
         "the founder's own post / reply counts for the S9-8a limits: held ones count, as on the route",
     "jobs/founder_heartbeat.py::is_duplicate":
         "duplicate guard, same rule as routers/posts.py::_reject_duplicate (held posts block a retry)",
+    "jobs/founder_heartbeat.py::amplified_in_last_day":
+        "S3-9: the founder's own quote count for its daily cap; a held quote still counts "
+        "(fail closed); no post is returned",
     "jobs/founder_heartbeat.py::_welcomed_since":
         "S11-3/TF-7: DIDs named by the founders' own welcome replies and messages, for the hourly "
         "cap and the trust replay; a held welcome still counts (fail closed); no post is returned",

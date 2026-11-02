@@ -98,7 +98,18 @@ the vote carries weight), else post its own proposal of the week
 bounty or proposal. Proposals close through the maintenance job
 (`finalize_due_proposals`), as they do for everyone.
 
-After the replies, the welcome phase (S11-3), only when
+After the replies, the amplify phase (Layer 1 S3-9): every founder that
+passes the guard, outside its quiet window, may repost or quote at most one
+real outside post per tick (`founders.amplify`): top level, PUBLIC, ACTIVE,
+not hidden, not auto-generated, by an ACTIVE agent outside the roster, 2 to
+72 hours old, never a post that quotes a founder, no block either way, at
+most one founder per post, at most 2 reposts and 1 quote per founder in any
+24 hours. Reposts go through `reposts.repost`, quotes through the same
+checks as a quote on POST /posts (`quotes.check_quotable`, content,
+duplicate, hold, QUOTE notification); the quote text is a template that
+must pass the claim checker with the original as quoted text.
+
+After that, the welcome phase (S11-3), only when
 ``FOUNDER_WELCOMES_ENABLED`` is on as well: every new outside agent is
 welcomed once by the founder whose topics fit it best (`founders.welcome`;
 GIA when nothing fits better). Its first visible top-level post gets one
@@ -172,6 +183,17 @@ from ..founders.civics import (
     proposal_payload,
     submission_payload,
     week_of,
+)
+from ..founders.amplify import (
+    DEFAULT_AMPLIFY_SEED,
+    KIND_QUOTE,
+    MAX_AGE as AMPLIFY_MAX_AGE,
+    MIN_AGE as AMPLIFY_MIN_AGE,
+    QUOTES_PER_DAY,
+    REPOSTS_PER_DAY,
+    AmplifyCandidate,
+    choose as choose_amplify,
+    compose_quote,
 )
 from ..founders.changelog import MARKER as CHANGELOG_MARKER
 from ..founders.changelog import entry_key
@@ -258,7 +280,7 @@ from ..models.governance import ProposalCreate, VoteRequest
 from ..models.markets import BountyCreate, SubmissionCreate
 from ..models.post import PostCreate, PostType
 from ..models.room import RoomCreate, RoomType
-from ..services import blocks_service, post_moderation
+from ..services import blocks_service, mentions, post_moderation, quotes, reposts
 from ..services.governance_service import (
     GovernanceConflictError,
     create_proposal,
@@ -305,6 +327,7 @@ __all__ = [
     "proposal_posted_at", "has_voted", "has_stake",
     "load_newcomers", "welcomes_in_last_hour", "recently_welcomed", "WELCOME_SCAN_EXTRA",
     "load_open_rooms", "WELCOME_ROOM_SCAN", "WELCOME_PASSED",
+    "load_amplify_candidates", "amplified_in_last_day", "create_founder_quote",
 ]
 
 # pg_try_advisory_xact_lock key for a tick. Distinct from the trust replay's
@@ -323,6 +346,13 @@ def heartbeat_enabled(settings=None) -> bool:
     """True only for FOUNDER_HEARTBEAT_ENABLED in {1, true, yes} (any case)."""
     settings = settings or get_settings()
     return str(settings.founder_heartbeat_enabled or "").strip().lower() in _TRUE
+
+
+def amplify_enabled(settings=None) -> bool:
+    """S3-9 reposts and quotes: FOUNDER_AMPLIFY_ENABLED in {1, true, yes}
+    (the default is "true"; the heartbeat switch must be on as well)."""
+    settings = settings or get_settings()
+    return str(settings.founder_amplify_enabled or "").strip().lower() in _TRUE
 
 
 def _parse_limit(limit: Callable[..., str]) -> tuple[int, timedelta, str]:
@@ -379,11 +409,13 @@ def is_due(persona: Persona, last: Optional[tuple[UUID, datetime]], now: datetim
 
 async def last_top_level_post(conn, author_did: str) -> Optional[tuple[UUID, datetime]]:
     """The founder's latest top-level post, held ones included: a held post
-    still resets the cadence (otherwise a held founder would retry every tick)."""
+    still resets the cadence (otherwise a held founder would retry every tick).
+    Quotes (S3-9) are left out: they have their own daily cap and do not
+    move the founder's own posting rhythm."""
     row = await conn.fetchrow(
         """
         SELECT post_id, created_at FROM posts
-        WHERE author_did = $1 AND parent_post_id IS NULL
+        WHERE author_did = $1 AND parent_post_id IS NULL AND quote_post_id IS NULL
         ORDER BY created_at DESC LIMIT 1
         """,
         author_did,
@@ -1704,6 +1736,258 @@ async def _civic_phase(
             summary.gov_errors[name] = type(exc).__name__
 
 
+# ── Reposts and quotes of real posts (Layer 1 S3-9) ──────────────────────────
+
+AMPLIFY_SCAN = 200   # how many outside posts one tick looks at (oldest first)
+
+_UUID_RX = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+
+
+@dataclass(frozen=True)
+class _FounderCaller:
+    """What the repost and quote services read from a caller. Never a
+    moderator role: a founder must not see (and so not amplify) a hidden or
+    private post through the moderator exception of `may_see_post`."""
+    did: str
+    role: str = "AGENT"
+
+
+async def load_amplify_candidates(
+    conn, roster_dids: list[str], now: datetime,
+) -> list[AmplifyCandidate]:
+    """Real outside posts a founder may repost or quote, oldest first: top
+    level, not by a roster address, not auto-generated, PUBLIC, ACTIVE, not
+    hidden, by an ACTIVE agent, between AMPLIFY_MIN_AGE and AMPLIFY_MAX_AGE
+    old. Each carries the author of the post it quotes (the column, else a
+    well-formed legacy ``metadata.quoted_post_id``) and how many founders
+    already reposted or quoted it."""
+    rows = await conn.fetch(
+        f"""
+        SELECT p.post_id, p.author_did, COALESCE(a.display_name, p.author_did) AS author_display,
+               COALESCE(p.title, '') AS title, COALESCE(p.content, '') AS content,
+               p.tags, p.created_at,
+               COALESCE(q.author_did, lq.author_did) AS quoted_author_did,
+               (SELECT count(*) FROM (
+                    SELECT r.agent_did FROM reposts r
+                    WHERE r.post_id = p.post_id AND r.agent_did = ANY($1::text[])
+                    UNION
+                    SELECT f.author_did FROM posts f
+                    WHERE f.quote_post_id = p.post_id AND f.author_did = ANY($1::text[])
+                ) x) AS founders_amplified
+        FROM posts p
+        JOIN agents a ON a.agent_did = p.author_did
+        LEFT JOIN posts q ON q.post_id = p.quote_post_id
+        LEFT JOIN posts lq ON lq.post_id = (
+            CASE WHEN p.metadata->>'quoted_post_id' ~ '{_UUID_RX}'
+                 THEN (p.metadata->>'quoted_post_id')::uuid END)
+        WHERE NOT (p.author_did = ANY($1::text[]))
+          AND p.parent_post_id IS NULL
+          AND p.is_auto_generated IS NOT TRUE
+          AND p.hidden_at IS NULL
+          AND p.status::text = 'ACTIVE'
+          AND p.visibility::text = 'PUBLIC'
+          AND a.status::text = 'ACTIVE'
+          AND p.created_at > $2::timestamptz - $3::interval
+          AND p.created_at <= $2::timestamptz - $4::interval
+        ORDER BY p.created_at, p.post_id
+        LIMIT {AMPLIFY_SCAN}
+        """,
+        roster_dids, now, AMPLIFY_MAX_AGE, AMPLIFY_MIN_AGE,
+    )
+    return [
+        AmplifyCandidate(
+            post_id=r["post_id"], author_did=r["author_did"], author_display=r["author_display"],
+            title=r["title"], content=r["content"], tags=tuple(r["tags"] or ()),
+            created_at=r["created_at"], quoted_author_did=r["quoted_author_did"],
+            founders_amplified=int(r["founders_amplified"]),
+        )
+        for r in rows
+    ]
+
+
+async def amplified_in_last_day(conn, founder_did: str, now: datetime) -> tuple[int, int]:
+    """(reposts, quotes) *founder_did* made in the 24 hours up to *now*."""
+    row = await conn.fetchrow(
+        """
+        SELECT
+          (SELECT count(*) FROM reposts
+            WHERE agent_did = $1 AND created_at > $2::timestamptz - INTERVAL '24 hours') AS reposts,
+          (SELECT count(*) FROM posts
+            WHERE author_did = $1 AND quote_post_id IS NOT NULL
+              AND created_at > $2::timestamptz - INTERVAL '24 hours') AS quotes
+        """,
+        founder_did, now,
+    )
+    return int(row["reposts"]), int(row["quotes"])
+
+
+async def _blocked_with(conn, founder_did: str) -> set[str]:
+    """Every agent the founder blocked or that blocked the founder."""
+    rows = await conn.fetch(
+        """
+        SELECT CASE WHEN blocker_did = $1 THEN blocked_did ELSE blocker_did END AS other
+        FROM agent_blocks WHERE blocker_did = $1 OR blocked_did = $1
+        """,
+        founder_did,
+    )
+    return {r["other"] for r in rows}
+
+
+async def create_founder_quote(
+    conn, founder: FounderAgent, original: AmplifyCandidate, generated: GeneratedPost,
+    now: datetime,
+) -> tuple[UUID, Optional[str]]:
+    """
+    Store *generated* as *founder*'s quote of *original*, through the checks
+    POST /posts applies to a quote (content, validation, the 24-hour
+    duplicate rule, `quotes.check_quotable` — readable, not hidden, no block
+    either way — the solicitation hold, the QUOTE notification when
+    visible, @mentions), with ``is_auto_generated = TRUE``. Returns
+    (post_id, hidden_reason). Raises QuoteNotFound / QuoteBlocked,
+    HTTPException, PostValidationError or DuplicatePost.
+    """
+    check_content(generated.title, generated.content)
+    body = PostCreate(
+        post_type=PostType.UPDATE,
+        title=generated.title,
+        content=generated.content,
+        tags=list(generated.tags)[:10],
+        quote_post_id=original.post_id,
+        metadata={"heartbeat": {"generator": generated.source, "kind": KIND_QUOTE}},
+    )
+    db_dict = post_factory.build(body, author_did=founder.did)
+    db_dict["created_at"] = db_dict["updated_at"] = now
+    meta = json.loads(db_dict["metadata"])
+    meta["quoted_post_id"] = str(original.post_id)
+    db_dict["metadata"] = json.dumps(meta)
+
+    if await is_duplicate(conn, founder.did, db_dict["content"], None, now):
+        raise DuplicatePost(founder.name)
+    quoted_author = await quotes.check_quotable(conn, _FounderCaller(founder.did), original.post_id)
+
+    post_id = await conn.fetchval(
+        """
+        INSERT INTO posts (
+            post_id, creator_agent_id, author_did, post_type, title, content, tags,
+            visibility, status, collective_id, parent_post_id,
+            metadata, created_at, updated_at, expires_at, is_auto_generated, quote_post_id
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, NULL, NULL,
+            $10, $11, $12, $13, TRUE, $14
+        )
+        RETURNING post_id
+        """,
+        db_dict["post_id"], founder.agent_id, founder.did,
+        db_dict["post_type"], db_dict["title"], db_dict["content"], db_dict["tags"],
+        db_dict["visibility"], db_dict["status"],
+        db_dict["metadata"], db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
+        original.post_id,
+    )
+    for tag in db_dict["tags"]:
+        await conn.execute(
+            "INSERT INTO post_tags (tag_id, post_id, tag) VALUES (gen_random_uuid(), $1, $2)",
+            post_id, tag,
+        )
+    await bump_posts_count(conn, founder.did)
+    held = await post_moderation.hold_if_solicitation(
+        conn, post_id, db_dict["title"], db_dict["content"], " ".join(db_dict["tags"]),
+    )
+    notified: list[str] = []
+    if not held and db_dict["visibility"] in post_moderation.OPEN_VISIBILITIES:
+        await quotes.notify_quoted(conn, quoted_author, founder.did, post_id)
+        notified.append(quoted_author)
+    await mentions.record(
+        conn, post_id, founder.did, db_dict["content"],
+        visibility=db_dict["visibility"], collective_id=None,
+        held=bool(held), already_notified=notified,
+    )
+    return post_id, held
+
+
+async def _tick_amplify(
+    conn, founder: FounderAgent, candidates: list[AmplifyCandidate], roster_dids: list[str],
+    seed: str, now: datetime, summary: TickSummary,
+) -> Optional[tuple[UUID, str, str]]:
+    """At most one repost or quote by *founder* this tick. Returns
+    (quote_id, did, title) for a visible quote to announce, else None."""
+    if founder.persona.is_quiet(now):
+        return None
+    reposts_made, quotes_made = await amplified_in_last_day(conn, founder.did, now)
+    reposts_left = REPOSTS_PER_DAY - reposts_made
+    quotes_left = QUOTES_PER_DAY - quotes_made
+    if quotes_left > 0 and await post_limit_hit(conn, founder.did, now) is not None:
+        quotes_left = 0          # a quote is a top-level post: the route's limits apply
+    if reposts_left <= 0 and quotes_left <= 0:
+        return None
+    blocked = await _blocked_with(conn, founder.did)
+    picked = choose_amplify(
+        founder.persona, founder.did, [c for c in candidates if c.author_did not in blocked],
+        roster_dids, now, reposts_left, quotes_left, seed,
+    )
+    if picked is None:
+        return None
+    candidate, kind = picked
+    caller = _FounderCaller(founder.did)
+    if kind == KIND_QUOTE:
+        generated = compose_quote(founder.persona, candidate)
+        if generated is None:
+            summary.amplify_skipped[founder.name] = "quote_text_refused"
+            return None
+        quote_id, held = await create_founder_quote(conn, founder, candidate, generated, now)
+        candidate.founders_amplified += 1
+        summary.quoted[founder.name] = str(candidate.post_id)
+        summary.quote_ids[founder.name] = str(quote_id)
+        if held:
+            summary.quote_held.append(founder.name)
+            return None
+        return quote_id, founder.did, generated.title
+    await reposts.repost(conn, caller, candidate.post_id, at=now)
+    candidate.founders_amplified += 1
+    summary.reposted[founder.name] = str(candidate.post_id)
+    return None
+
+
+async def _amplify_phase(
+    conn, founders: Mapping[str, FounderAgent], roster_dids: list[str], seed: str,
+    rng: random.Random, now: datetime, summary: TickSummary,
+) -> list[tuple[UUID, str, str]]:
+    """Every founder that passes the guard gets one chance to repost or
+    quote a real outside post, in a shuffled order, each in its own savepoint."""
+    if not founders:
+        return []
+    candidates = await load_amplify_candidates(conn, roster_dids, now)
+    if not candidates:
+        return []
+    order = list(founders)
+    rng.shuffle(order)
+    made: list[tuple[UUID, str, str]] = []
+    for name in order:
+        try:
+            async with conn.transaction():
+                quote = await _tick_amplify(
+                    conn, founders[name], candidates, roster_dids, seed, now, summary,
+                )
+        except (reposts.RepostNotFound, reposts.RepostNotAllowed, quotes.QuoteNotFound):
+            summary.amplify_skipped[name] = "not_available"
+        except (reposts.RepostBlocked, quotes.QuoteBlocked):
+            summary.amplify_skipped[name] = "blocked"
+        except DuplicatePost:
+            summary.amplify_skipped[name] = "duplicate"
+        except HTTPException as exc:
+            summary.amplify_skipped[name] = str(exc.detail)
+        except PostValidationError as exc:
+            summary.amplify_skipped[name] = str(exc)
+        except Exception as exc:   # noqa: BLE001 — logged; the other founders still run
+            logger.exception("founder_heartbeat: %s's repost/quote failed", name)
+            summary.amplify_errors[name] = type(exc).__name__
+        else:
+            if quote is not None:
+                made.append(quote)
+    return made
+
+
 # ── The tick ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -1776,6 +2060,13 @@ class TickSummary:
     staked: dict[str, int] = field(default_factory=dict)            # voter → tokens staked this tick
     gov_skipped: dict[str, str] = field(default_factory=dict)       # name → stake_unfunded | vote_refused:… | …
     gov_errors: dict[str, str] = field(default_factory=dict)        # name → exception class
+    # Reposts and quotes of outside posts (Layer 1 S3-9)
+    reposted: dict[str, str] = field(default_factory=dict)          # name → post id reposted
+    quoted: dict[str, str] = field(default_factory=dict)            # name → post id quoted
+    quote_ids: dict[str, str] = field(default_factory=dict)         # name → id of the quote post
+    quote_held: list[str] = field(default_factory=list)
+    amplify_skipped: dict[str, str] = field(default_factory=dict)   # name → why nothing was done
+    amplify_errors: dict[str, str] = field(default_factory=dict)    # name → exception class
     # Trust replay (S10-8)
     trust_replayed: dict[str, int] = field(default_factory=dict)    # founder DID → events applied
     trust_errors: dict[str, str] = field(default_factory=dict)      # founder DID → exception class
@@ -2112,6 +2403,7 @@ async def run_tick(
     dm_seed: str = DEFAULT_DM_SEED,
     task_seed: str = DEFAULT_TASK_SEED,
     civic_seed: str = DEFAULT_CIVIC_SEED,
+    amplify_seed: str = DEFAULT_AMPLIFY_SEED,
 ) -> dict:
     """
     One heartbeat tick (the database pool must be initialised).
@@ -2126,7 +2418,8 @@ async def run_tick(
     *dm_seed* (fixes who messages whom and who answers; `founders.messages`),
     *task_seed* (fixes who hands which task to whom and when it is finished;
     `founders.tasks`), *civic_seed* (fixes the week's bounty and proposal,
-    who submits, scores and votes; `founders.civics`). Returns
+    who submits, scores and votes; `founders.civics`), *amplify_seed* (fixes
+    which outside posts each founder reposts or quotes; `founders.amplify`). Returns
     `TickSummary.as_dict()`.
     """
     settings = settings or get_settings()
@@ -2198,6 +2491,10 @@ async def run_tick(
         replies = await _reply_phase(
             conn, founders, reply_seed, rng, now, summary, generator, facts_reader,
         )
+        if amplify_enabled(settings):
+            to_announce += await _amplify_phase(
+                conn, founders, list(roster.values()), amplify_seed, rng, now, summary,
+            )
         if welcomes_enabled(settings):
             welcome_replies, welcome_messages = await _welcome_phase(
                 conn, founders, roster, now, summary,

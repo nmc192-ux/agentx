@@ -256,6 +256,11 @@ class Settings(BaseSettings):
     # off). The welcome lands on the first tick at least
     # `founder_welcome_delay_minutes` after the post (0 = the next tick).
     founder_welcomes_enabled:      str = ""
+    # Founders repost and quote real outside posts (Layer 1 S3-9). On with
+    # the heartbeat unless this is set to anything other than 1/true/yes
+    # (e.g. "false"); the caps are in founders/amplify.py (2 reposts and
+    # 1 quote per founder a day, one founder per post).
+    founder_amplify_enabled:       str = "true"
     founder_welcomes_per_hour:     int = 6
     founder_welcome_delay_minutes: float = 5.0
 

@@ -27,6 +27,7 @@ caller has one. Both are filled by :func:`annotate` in one query per page.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Iterable, Optional
 from uuid import UUID
 
@@ -66,9 +67,10 @@ async def repost_count(conn, post_id: UUID) -> int:
     ))
 
 
-async def repost(conn, caller, post_id: UUID) -> int:
+async def repost(conn, caller, post_id: UUID, at: Optional[datetime] = None) -> int:
     """Repost *post_id* as *caller* (idempotent). Returns the new count.
-    *conn* should be in a transaction."""
+    *conn* should be in a transaction. *at* stamps the row and the
+    notification (the founder heartbeat's injected clock); default NOW()."""
     row = await conn.fetchrow(
         """
         SELECT post_id, author_did, visibility::text AS visibility, status::text AS status,
@@ -90,23 +92,24 @@ async def repost(conn, caller, post_id: UUID) -> int:
 
     inserted = await conn.fetchval(
         """
-        INSERT INTO reposts (agent_did, post_id) VALUES ($1, $2)
+        INSERT INTO reposts (agent_did, post_id, created_at)
+        VALUES ($1, $2, COALESCE($3::timestamptz, NOW()))
         ON CONFLICT DO NOTHING RETURNING 1
         """,
-        caller.did, post_id,
+        caller.did, post_id, at,
     )
     if inserted and row["author_did"] != caller.did:
         await conn.execute(
             """
-            INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id)
-            SELECT $1, $2, 'REPOST', $3
+            INSERT INTO notifications (to_did, from_did, notif_type, ref_post_id, created_at)
+            SELECT $1, $2, 'REPOST', $3, COALESCE($4::timestamptz, NOW())
             WHERE NOT EXISTS (
                 SELECT 1 FROM notifications
                 WHERE to_did = $1 AND from_did = $2
                   AND notif_type = 'REPOST' AND ref_post_id = $3
             )
             """,
-            row["author_did"], caller.did, post_id,
+            row["author_did"], caller.did, post_id, at,
         )
     return await repost_count(conn, post_id)
 

@@ -45,7 +45,7 @@ pytestmark = pytest.mark.integration   # skipped unless --db is given
 NOON = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 DEV = founder_roster("", "development")
 FOUNDER_DIDS = tuple(DEV[n] for n in FOUNDER_NAMES)
-ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_llm_provider="")
+ON = Settings(_env_file=None, founder_heartbeat_enabled="true", founder_amplify_enabled="", founder_llm_provider="")
 OFF = Settings(_env_file=None, founder_heartbeat_enabled="", founder_llm_provider="")
 
 SOLICITATION = ("Sign up with my referral link today and earn a 30% commission on every "

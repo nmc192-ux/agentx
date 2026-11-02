@@ -320,7 +320,7 @@ async def simulate(
         if s.get("skipped"):
             problems[f"skipped:{s['skipped']}"] += 1
         for key in ("refused", "errors", "trust_errors", "reply_errors", "dm_errors",
-                    "welcome_errors"):
+                    "welcome_errors", "amplify_errors"):
             for name, why in (s.get(key) or {}).items():
                 problems[f"{key}:{name}:{why}"] += 1
         if progress and k % 288 == 0:
@@ -329,6 +329,8 @@ async def simulate(
         totals["posted"] += len(s.get("posted") or ())
         totals["quiet_no_facts"] += len(s.get("quiet_no_facts") or ())
         totals["welcomed"] += len(s.get("welcomed") or {})
+        totals["reposted"] += len(s.get("reposted") or {})
+        totals["quoted"] += len(s.get("quoted") or {})
     totals["seconds"] = int(time.monotonic() - t0)
     return {"totals": dict(totals), "problems": dict(problems)}
 
@@ -425,13 +427,49 @@ async def rehearsal_checks(
     end = start + timedelta(days=days)
     posts = {r["author_did"]: r["n"] for r in await conn.fetch(
         "SELECT author_did, count(*) AS n FROM posts WHERE author_did = ANY($1::text[]) "
-        "AND parent_post_id IS NULL AND created_at >= $2 AND created_at < $3 GROUP BY 1",
+        "AND parent_post_id IS NULL AND quote_post_id IS NULL "
+        "AND created_at >= $2 AND created_at < $3 GROUP BY 1",
         list(roster.values()), start, end)}
     factless = [nm for nm in roster if not fact_log.texts.get(nm)]
     loud = [nm for nm in factless if posts.get(roster[nm], 0)]
     add("founders without facts stay quiet", not loud,
         f"{len(factless)} founder(s) never had a fact ({', '.join(factless) or 'none'}); "
         "none of them posted" if not loud else f"posted with no fact: {', '.join(loud)}")
+
+    # Layer 1 S3-9: founders repost and quote only real outside posts, within
+    # their daily caps, and never each other (quotes are posts, so the claim
+    # checker above has read them too).
+    from src.founders import amplify as fa
+    roster_dids = list(roster.values())
+    amp = await conn.fetch(
+        """SELECT 'repost' AS kind, r.agent_did AS founder, r.created_at AS at, p.post_id,
+                  p.author_did, p.is_auto_generated, p.created_at AS posted
+             FROM reposts r JOIN posts p ON p.post_id = r.post_id
+            WHERE r.agent_did = ANY($1::text[]) AND r.created_at >= $2 AND r.created_at < $3
+           UNION ALL
+           SELECT 'quote', q.author_did, q.created_at, p.post_id, p.author_did,
+                  p.is_auto_generated, p.created_at
+             FROM posts q JOIN posts p ON p.post_id = q.quote_post_id
+            WHERE q.author_did = ANY($1::text[]) AND q.created_at >= $2 AND q.created_at < $3""",
+        roster_dids, start, end)
+    wrong = [r for r in amp if r["author_did"] in roster_dids or r["is_auto_generated"]
+             or r["at"] - r["posted"] < fa.MIN_AGE]
+    over_cap = []
+    for r in amp:
+        same = [x for x in amp if x["founder"] == r["founder"] and x["kind"] == r["kind"]
+                and r["at"] - timedelta(hours=24) < x["at"] <= r["at"]]
+        cap = fa.REPOSTS_PER_DAY if r["kind"] == "repost" else fa.QUOTES_PER_DAY
+        if len(same) > cap:
+            over_cap.append(r)
+    per_post = Counter(r["post_id"] for r in amp)
+    crowded = [p for p, k in per_post.items() if k > fa.MAX_FOUNDERS_PER_POST]
+    add("founders repost and quote only real outside posts, within their caps",
+        not wrong and not over_cap and not crowded,
+        f"{sum(1 for r in amp if r['kind'] == 'repost')} repost(s), "
+        f"{sum(1 for r in amp if r['kind'] == 'quote')} quote(s), all of outside posts, "
+        "within the daily caps, one founder per post" if not (wrong or over_cap or crowded)
+        else f"{len(wrong)} of a founder or too young, {len(over_cap)} over a cap, "
+             f"{len(crowded)} post(s) with more than one founder")
 
     # Counts about "agents other than the founders" can never exceed what the
     # outsiders (here: the newcomers) really did, ever (TF-9 found the founders'
