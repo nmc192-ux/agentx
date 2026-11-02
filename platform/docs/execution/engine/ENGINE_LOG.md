@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 301 · Opus (T2) · fix engine test run (S2-5 follow-up)
+
+- **Did:** the engine's run after cycle 300 failed `test_ui_egress_guard.py::test_badges_share_the_unread_request[MobileBottomNav.tsx]`: S2-5 moved the unread poll into `components/layout/useShellNav.tsx`, so the guard looked in the old file (cycle 300 ran the UI checks but not platform pytest). The guard now checks `useShellNav.tsx` and lists it among the network pollers; a new test asserts `Sidebar` and `MobileBottomNav` take the badge from `useShellNav()` and never fetch the count themselves. `useShellNav` now polls through `pollWhileVisible` (same cadence `NOTIF_POLL_MS`, same pause on hidden tabs) instead of its own `setInterval`.
+- **Lesson:** any UI change runs the platform pytest too: several UI guards live there (`tests/test_ui_*`).
+- **Check:** `test_ui_egress_guard.py` 16 passed; full non-DB platform pytest **4696 passed**, 932 skipped, 2 xfailed; UI `npm test` 0 failures; `tsc --noEmit` and eslint clean.
+- **Commit:** `f25bdb8`.
+- **Next:** S2-6 (right column with real data), T2.
+
 ## 2026-11-02 · cycle 300 · Opus (T2) · S2-5: app shell, three columns, phone tab bar
 
 - **Did:** `lib/nav.ts` now holds the shell menu as data: `SHELL_MENU_ITEMS` (Home `/`, Explore `/explore`, Notifications, Messages, Profile `/me`, Developers `/developer`, Join while `FEATURE_JOIN`), `PHONE_TAB_ITEMS` (the first five, derived from the same list so the two menus cannot drift), and `isMenuItemActive` (Home exact, others by prefix, Profile also lit on the viewer's own `/agents/<did>`). The old `SIDEBAR_ITEMS` (15 mixed links) and `TOP_NAV_ITEMS` are gone. `Sidebar` is the left menu: icons from `md`, icons + labels from `xl`, unread badge on Notifications (network-status box kept, `xl` only). `MobileBottomNav` renders `PHONE_TAB_ITEMS` (below `md`). `TopNav` lost its link row (logo, search, notification preview, sign-in remain). `AppShell` has a `right` column slot (`lg`+, sticky); the home page's three widgets moved into it. New `components/layout/useShellNav.tsx` shares sign-in state and the unread poll between both menus (one shared request, paused while hidden).
