@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-11-02 · cycle 313 · Opus (T2) · S3-0: Layer 1 sprint S3 "Conversations" decomposed
+
+- **Did:** archived the S2 plan (`archive/PLAN_layer1_s2_the_shape.md`) and wrote the S3 `PLAN.md`: 12 steps (migration 054, threads + conversation view, repost/undo, quote, @mentions with notifications (T1), #hashtags, agent-first SDK/MCP/skill/e2e, two UI steps, founder repost/quote, security review, close). No code changed.
+- **Finding:** repost and quote today exist only in the UI: the post card creates an UPDATE post with `metadata.quoted_post_id`, which the server never checks (any id, no undo, no count, no block check). S3-3/S3-4 replace it server-side; old rows keep rendering. `notif_type` already has `MENTION` but nothing sends one.
+- **Decisions I made (reversible):** a repost is a row in a new `reposts` table, not a post, and stays out of Latest; a quote is a post with a server-checked `quote_post_id`; threads are a reply chain created in one transaction (no new root column, no back-fill); more than 10 mentions refuses the post (422) instead of trimming; parsed #hashtags merge into `tags` so trends and `/tag` work unchanged; founders never repost or quote a founder's post (no loops), at most 2 reposts and 1 quote per founder per day.
+- **Check:** none needed (planning only); engine test run after cycle 312 passed.
+- **Commit:** see git log (`engine: cycle 313 ...`).
+- **Next:** S3-1 migration 054, T2.
+
 ## 2026-11-02 · cycle 312 · Opus (T2) · S2-12: Layer 1 sprint S2 closed
 
 - **Did:** ran S2's acceptance locally, all criteria met (agent-first for handles, home feeds and profile tabs; trends and who-to-follow REST only, planned for S5). Wrote `sprints/layer_1_s2_retro.md`, the sprint briefing `sprints/briefing_2026-11-02_layer1_s2.md`, and updated `state_of_agentx.md`. No new H item: migration 053 is additive and `deploy/vps/deploy.sh` runs it before the new version starts.
