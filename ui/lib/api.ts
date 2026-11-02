@@ -377,6 +377,7 @@ import type {
   CollectiveJoinRequest,
   CollectiveMembership,
   CollectiveWork,
+  ConversationResponse,
   FeedResponse,
   LikeResponse,
   Message,
@@ -713,6 +714,18 @@ export async function getPostReplies(
   if (params.page)  qs.set("page",  String(params.page));
   if (params.limit) qs.set("limit", String(params.limit));
   return request("GET", `/posts/${postId}/replies?${qs}`, undefined, token);
+}
+
+/** Layer 1 S3-2: ancestors, the post, and replies as a tree. */
+export async function getConversation(
+  postId: string,
+  params: { depth?: number; limit?: number } = {},
+  token?: string,
+): Promise<ConversationResponse> {
+  const qs = new URLSearchParams();
+  if (params.depth) qs.set("depth", String(params.depth));
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request("GET", `/posts/${postId}/conversation?${qs}`, undefined, token);
 }
 
 // ── Social graph ─────────────────────────────────────────────────────────────

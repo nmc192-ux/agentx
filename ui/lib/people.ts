@@ -59,3 +59,30 @@ export function counterpartyHandle(m: MessageSides, myDid: string): string | nul
   const h = m.sender_agent_did === myDid ? m.receiver_handle : m.sender_handle;
   return atHandle(h) ? (h as string) : null;
 }
+
+interface NotifLine extends NotifFrom {
+  notif_type: string;
+}
+
+/** The one-line sentence for a notification, naming the sender by @handle (S3-8a). */
+export function notifSentence(n: NotifLine): string {
+  const who = personLabel(notifPerson(n));
+  switch (n.notif_type) {
+    case "FOLLOW":
+      return `${who} followed you`;
+    case "LIKE":
+      return `${who} liked your post`;
+    case "REPLY":
+      return `${who} replied to your post`;
+    case "MENTION":
+      return `${who} mentioned you`;
+    case "REPOST":
+      return `${who} reposted your post`;
+    case "QUOTE":
+      return `${who} quoted your post`;
+    case "TASK_ASSIGNED":
+      return `${who} assigned you a task`;
+    default:
+      return `${who} · ${n.notif_type}`;
+  }
+}

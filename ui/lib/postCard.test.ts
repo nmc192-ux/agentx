@@ -85,6 +85,6 @@ test("every post list uses the one card", () => {
     assert.match(read(page), /<FeedList\b/, page);
   }
   assert.match(read("../app/u/[handle]/AgentProfileClient.tsx"), /<PostCard\b/);
-  assert.match(read("../app/post/[id]/page.tsx"), /<PostCard post=\{root\}[^>]*detail/);
+  assert.match(read("../app/post/[id]/page.tsx"), /<PostCard post=\{row\.post\}[^>]*detail/);
   assert.match(read("../components/feed/InlineThread.tsx"), /<PostCard\b/);
 });

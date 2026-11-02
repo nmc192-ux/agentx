@@ -1,185 +1,187 @@
 "use client";
 
 /**
- * AgentX — Thread Page (Post + Replies)
- * Renders the root post and its replies using the same `PostCard` used on the
- * feed, so every social action (like / quote / block / start-room) works on
- * the permalink page too. Replies are composed via the standard
- * `SocialComposeBox` in `parentPostId` mode (handles mentions, tags, type).
+ * AgentX — Conversation page (Layer 1 S3-8a).
  *
- * Replies render with a "New / Top" sort toggle — same trust-weighted
- * ranking as the home feed (50963d6) and inline reply thread (9eed2e4).
- * AgentX's per-author trust score lets us surface the highest-credibility
- * voices first, which Bluesky / Twitter / Mastodon structurally cannot
- * (no cross-post reputation signal). Third caller for the trust-rank
- * formula triggered the rule-of-three extraction to lib/feed/trustRank.ts.
+ * One request, GET /posts/{id}/conversation, gives the ancestors (root
+ * first), the post, and its replies as a tree. `lib/conversation.ts` turns
+ * that into rows: an ancestor the reader may not see shows as "This post is
+ * unavailable"; an author's own first reply continues the thread at the same
+ * depth, joined by a line; other replies indent (up to a cap); "Show N more
+ * replies" opens that post's own conversation (or, under this post, loads
+ * the largest page the API allows). Every card is the shared `PostCard`, so
+ * @mentions, #tags and actions work the same as on the feed.
  */
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronDown, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, EyeOff, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { PostCard } from "@/components/feed/PostCard";
-import { AncestorChain } from "@/components/feed/AncestorChain";
-import { InlineThread } from "@/components/feed/InlineThread";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
-import { TrustRankInfo } from "@/components/feed/TrustRankInfo";
-import { getPost, getPostReplies } from "@/lib/api";
+import { getConversation } from "@/lib/api";
 import { getToken, isLoggedIn } from "@/lib/auth";
-import { byTrustRank, type SortMode } from "@/lib/feed/trustRank";
-import type { Post, SocialPost } from "@/types";
+import { conversationRows, moreRepliesLabel, type ConvRow } from "@/lib/conversation";
+import type { ConversationResponse, SocialPost } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 interface Props { params: Promise<{ id: string }> }
 
-/** Coerce backend Post (which carries engagement fields at runtime) to the
- *  stricter SocialPost shape the UI components expect. */
-function toSocialPost(p: Post): SocialPost {
-  const raw = p as unknown as Record<string, unknown>;
-  return {
-    ...p,
-    like_count:   typeof raw.like_count   === "number" ? (raw.like_count   as number) : 0,
-    reply_count:  typeof raw.reply_count  === "number" ? (raw.reply_count  as number) : 0,
-    author_name:  typeof raw.author_name  === "string" ? (raw.author_name  as string) : null,
-    author_trust: typeof raw.author_trust === "number" ? (raw.author_trust as number) : null,
-    metadata:     (raw.metadata as Record<string, unknown> | undefined) ?? {},
-  };
-}
+/** Replies per post on first load, and the most the API returns per post. */
+const FIRST_LIMIT = 20;
+const MAX_LIMIT = 50;
+/** Left offset per reply level, in pixels. */
+const INDENT_PX = 16;
 
 export default function ThreadPage({ params }: Props) {
   const { id } = use(params);
   const router = useRouter();
 
-  const [root,         setRoot]         = useState<SocialPost | null>(null);
-  const [rootLoading,  setRootLoading]  = useState(true);
-  const [rootError,    setRootError]    = useState(false);
-  const [replies,      setReplies]      = useState<SocialPost[]>([]);
-  const [replyLoading, setReplyLoading] = useState(true);
-  const [loggedIn,     setLoggedIn]     = useState(false);
-  const [sort,         setSort]         = useState<SortMode>("new");
-
-  // Pagination state for replies. The first page is loaded by the
-  // initial-fetch effect below; subsequent pages are loaded on user
-  // demand via the "Show more replies" button. We track:
-  //   - replyPage:    last page successfully fetched (1-indexed)
-  //   - replyTotal:   server-reported total reply count (so the button
-  //                   can show "Show 23 more replies" instead of an
-  //                   ambiguous chevron)
-  //   - replyHasMore: server-reported flag — when false, the button
-  //                   disappears
-  //   - loadingMore:  true while a "Show more" fetch is in flight (so
-  //                   the button shows a spinner and de-bounces double
-  //                   clicks)
-  // Twitter / Bluesky both expose the same affordance — without it,
-  // threads that exceed the initial-fetch cap (50 here) silently
-  // truncate, which is the exact "lost conversation" smell that
-  // prompted Bluesky to ship a tail-load button on every long thread.
-  const [replyPage,    setReplyPage]    = useState(1);
-  const [replyTotal,   setReplyTotal]   = useState(0);
-  const [replyHasMore, setReplyHasMore] = useState(false);
-  const [loadingMore,  setLoadingMore]  = useState(false);
-
-  const REPLY_PAGE_SIZE = 50;
+  const [convo,    setConvo]    = useState<ConversationResponse | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [limit,    setLimit]    = useState(FIRST_LIMIT);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   useEffect(() => {
     setLoggedIn(isLoggedIn());
   }, []);
 
-  // Load root post
+  const load = useCallback(async (perPost: number) => {
+    const token = getToken() ?? undefined;
+    return getConversation(id, { limit: perPost }, token);
+  }, [id]);
+
   useEffect(() => {
     let active = true;
     (async () => {
-      setRootLoading(true);
-      setRootError(false);
+      setLoading(true);
+      setNotFound(false);
+      setLimit(FIRST_LIMIT);
       try {
-        const token = getToken() ?? undefined;
-        const p = await getPost(id, token);
-        if (active) setRoot(toSocialPost(p));
+        const data = await load(FIRST_LIMIT);
+        if (active) setConvo(data);
       } catch {
-        if (active) setRootError(true);
+        if (active) { setConvo(null); setNotFound(true); }
       } finally {
-        if (active) setRootLoading(false);
+        if (active) setLoading(false);
       }
     })();
     return () => { active = false; };
-  }, [id]);
+  }, [load]);
 
-  // Load first page of replies. Re-runs only when the post id changes;
-  // pagination is driven by the "Show more" button below, not by this
-  // effect, so re-pagination on sort toggle / new-reply append is
-  // deliberately avoided.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      setReplyLoading(true);
-      setReplyPage(1);
-      setReplyTotal(0);
-      setReplyHasMore(false);
-      try {
-        const token = getToken() ?? undefined;
-        const data = await getPostReplies(id, { page: 1, limit: REPLY_PAGE_SIZE }, token);
-        if (active) {
-          setReplies(data.posts.map(toSocialPost));
-          setReplyTotal(data.total ?? data.posts.length);
-          setReplyHasMore(Boolean(data.has_more));
-        }
-      } catch {
-        if (active) setReplies([]);
-      } finally {
-        if (active) setReplyLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [id]);
-
-  function handleNewReply(post: SocialPost) {
-    setReplies((prev) => [post, ...prev]);
-    // A freshly composed reply doesn't change the server-side has_more
-    // flag, but it does mean the local list is one ahead of the server's
-    // page-1 window. We bump the total so the "Show more" button's
-    // count stays accurate ("Show 23 more replies" not "Show 22…").
-    setReplyTotal((prev) => prev + 1);
-  }
-
-  // "Show more replies" handler — fetches the next page and appends.
-  // Dedup guard: if a fetch is already in flight, ignore the click.
-  // Failure leaves state untouched (button stays available for retry).
-  async function loadMoreReplies() {
-    if (loadingMore || !replyHasMore) return;
+  // "Show more" under this post: reload with the largest page the API allows.
+  async function loadMoreHere() {
+    if (loadingMore) return;
     setLoadingMore(true);
     try {
-      const token = getToken() ?? undefined;
-      const nextPage = replyPage + 1;
-      const data = await getPostReplies(
-        id,
-        { page: nextPage, limit: REPLY_PAGE_SIZE },
-        token,
-      );
-      setReplies((prev) => [...prev, ...data.posts.map(toSocialPost)]);
-      setReplyPage(nextPage);
-      setReplyHasMore(Boolean(data.has_more));
-      if (typeof data.total === "number") setReplyTotal(data.total);
+      const data = await load(MAX_LIMIT);
+      setConvo(data);
+      setLimit(MAX_LIMIT);
     } catch {
-      // Silent — button stays available for retry. A toast layer would
-      // be nice here but is out of scope for this ship.
+      // Keep what is shown; the button stays for a retry.
     } finally {
       setLoadingMore(false);
     }
   }
 
-  // Sorted view of the reply list. New = chronological (whatever order
-  // the API returned + freshly-posted replies prepended). Top = trust ×
-  // recency, descending — surfaces the most credible recent voices first.
-  // Pure comparator (no Date.now) so React 19's purity rule is satisfied.
-  const visibleReplies = useMemo(() => {
-    if (sort === "new") return replies;
-    return [...replies].sort(byTrustRank);
-  }, [replies, sort]);
+  function handleNewReply(post: SocialPost) {
+    setConvo((c) => (c ? { ...c, replies: [...c.replies, { post, replies: [], more_replies: 0 }] } : c));
+  }
 
-  // Only show the sort toggle when sorting is meaningful. With 0 or 1
-  // reply, the tabs are pure noise — they'd suggest options that change
-  // nothing visible.
-  const showSort = !replyLoading && replies.length > 1;
+  const rows = useMemo(() => (convo ? conversationRows(convo) : []), [convo]);
+
+  // The reply box goes under the post and any thread it continues into.
+  const composerAfter = useMemo(() => {
+    let i = rows.findIndex((r) => r.kind === "focal");
+    while (i + 1 < rows.length) {
+      const next = rows[i + 1];
+      if (next.kind === "reply" && next.depth === 0 && next.joinedAbove) i++;
+      else break;
+    }
+    return i;
+  }, [rows]);
+
+  const hasReplies = rows.some((r) => r.kind === "reply");
+
+  function renderRow(row: ConvRow<SocialPost>) {
+    switch (row.kind) {
+      case "ancestor":
+        return (
+          <div key={row.key} className="relative pb-3">
+            {row.post ? (
+              <PostCard post={row.post} inThread />
+            ) : (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3 text-sm text-slate-500">
+                <EyeOff size={14} aria-hidden />
+                This post is unavailable
+              </div>
+            )}
+            <Joiner />
+          </div>
+        );
+      case "focal":
+        return (
+          <div key={row.key} className={`relative ${row.joinBelow ? "pb-3" : "mb-6"}`}>
+            <PostCard post={row.post} index={0} detail />
+            {row.joinBelow && <Joiner />}
+          </div>
+        );
+      case "reply":
+        return (
+          <div
+            key={row.key}
+            className={`relative ${row.joinBelow ? "pb-3" : "mb-3"} ${row.depth > 0 ? "border-l border-slate-800" : ""}`}
+            style={{ marginLeft: row.depth * INDENT_PX, paddingLeft: row.depth > 0 ? 8 : 0 }}
+          >
+            <PostCard post={row.post} inThread />
+            {row.joinBelow && <Joiner />}
+          </div>
+        );
+      case "more": {
+        const style = { marginLeft: row.depth * INDENT_PX };
+        if (row.focal && limit < MAX_LIMIT) {
+          return (
+            <div key={row.key} className="mb-3" style={style}>
+              <button
+                type="button"
+                onClick={loadMoreHere}
+                disabled={loadingMore}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg
+                           border border-slate-800 bg-slate-900/40 hover:bg-slate-800/60
+                           text-sm text-cyan-400 hover:text-cyan-300 font-medium transition-colors
+                           disabled:opacity-60 disabled:cursor-not-allowed
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60"
+              >
+                {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+                {moreRepliesLabel(row.count)}
+              </button>
+            </div>
+          );
+        }
+        if (row.focal) {
+          return (
+            <p key={row.key} className="mb-3 text-center text-xs text-slate-500" style={style}>
+              {row.count} more {row.count === 1 ? "reply" : "replies"} not shown
+            </p>
+          );
+        }
+        return (
+          <div key={row.key} className="mb-3" style={style}>
+            <Link
+              href={`/post/${row.parentId}`}
+              className="inline-flex items-center gap-1 text-sm text-cyan-400 hover:text-cyan-300 hover:underline"
+            >
+              <ChevronDown className="w-4 h-4" />
+              {moreRepliesLabel(row.count)}
+            </Link>
+          </div>
+        );
+      }
+    }
+  }
 
   return (
     <AppShell>
@@ -196,186 +198,52 @@ export default function ThreadPage({ params }: Props) {
         <h1 className="text-lg font-bold">Post</h1>
       </div>
 
-      {/* Root post */}
-      {rootLoading && (
+      {loading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={24} className="animate-spin text-primary" />
         </div>
       )}
 
-      {!rootLoading && rootError && (
+      {!loading && notFound && (
         <div className="py-12 text-center text-slate-500">
-          Couldn’t load this post.
+          This post is unavailable. It may have been removed, or you may not be able to see it.
         </div>
       )}
 
-      {!rootLoading && !rootError && !root && (
-        <div className="py-12 text-center text-slate-500">Post not found.</div>
-      )}
-
-      {root && (() => {
-        // The reply pointer can live in either of two shapes depending on
-        // backend serialization: a top-level `parent_post_id` field or
-        // tucked into `metadata.parent_post_id` (which is where the
-        // composer puts it on creation). Accept both — the first to
-        // resolve to a string wins. Empty / null means "this isn't a
-        // reply, render nothing extra above the root post".
-        const flat = root.parent_post_id;
-        const meta = root.metadata?.parent_post_id;
-        const parentId =
-          (typeof flat === "string" && flat) ||
-          (typeof meta === "string" ? meta : null);
-        return (
-          <div className="mb-6">
-            {parentId && <AncestorChain parentPostId={parentId} />}
-            <PostCard post={root} index={0} detail />
-          </div>
-        );
-      })()}
-
-      {/* Reply composer (logged-in users only; SocialComposeBox self-hides
-          for anon, but we keep this guard so the heading row only shows for
-          actionable users). */}
-      {loggedIn && root && (
-        <div className="mb-6">
-          <SocialComposeBox
-            parentPostId={id}
-            onPosted={handleNewReply}
-            placeholder="Write your reply… (use @ to mention)"
-            compact
-          />
-        </div>
-      )}
-
-      {/* Reply sort tabs — same trust-weighted ranking as the home feed
-          and inline reply thread. Suppressed when ≤1 reply since the
-          tabs would change nothing visible. */}
-      {showSort && (
-        <div
-          role="tablist"
-          aria-label="Reply sort"
-          className="flex border-b border-slate-800 mb-3"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={sort === "new"}
-            onClick={() => setSort("new")}
-            title="Newest replies first"
-            className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
-                        focus-visible:outline-none focus-visible:ring-2
-                        focus-visible:ring-cyan-500/60 rounded-t ${
-              sort === "new"
-                ? "text-cyan-400 border-b-2 border-cyan-400"
-                : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
-            }`}
-          >
-            New
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={sort === "top"}
-            onClick={() => setSort("top")}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors -mb-px
-                        focus-visible:outline-none focus-visible:ring-2
-                        focus-visible:ring-cyan-500/60 rounded-t ${
-              sort === "top"
-                ? "text-cyan-400 border-b-2 border-cyan-400"
-                : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
-            }`}
-          >
-            Top
-            <span
-              className="ml-1 text-[8px] font-semibold uppercase tracking-wide
-                         text-cyan-500/70"
-              aria-hidden
-            >
-              trust
-            </span>
-          </button>
-          <TrustRankInfo />
-        </div>
-      )}
-
-      {/* Replies */}
-      <div className="space-y-3">
-        {replyLoading && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-primary" />
-          </div>
-        )}
-        {!replyLoading && replies.length === 0 && (
-          <p className="text-center text-slate-500 text-sm py-8">
-            No replies yet. Start the conversation!
-          </p>
-        )}
-        {!replyLoading &&
-          visibleReplies.map((reply, i) => {
-            // Bluesky-style 2-level conversation view: each direct
-            // reply gets its own children inlined beneath (read-only,
-            // no compose, no sort) when it has any. `inThread` switches
-            // the PostCard's Reply button from "toggle local thread"
-            // (which would duplicate the same children we're about to
-            // render) into a Link to the reply's permalink — that's
-            // where users compose a reply *to* this reply.
-            const childCount = reply.reply_count ?? 0;
-            return (
-              <div key={reply.post_id}>
-                <PostCard post={reply} index={i} inThread />
-                {childCount > 0 && (
-                  <InlineThread postId={reply.post_id} nested />
-                )}
-              </div>
-            );
-          })}
-
-        {/* "Show more replies" button — visible only when the server
-            still has more replies beyond what we've loaded. We compute
-            the remaining count from server-reported total minus the
-            local list length so the label stays accurate even after a
-            user composes a fresh reply (which prepends locally without
-            re-fetching). When sort is "Top", remaining still refers to
-            chronologically-later replies; the next page lands at the
-            bottom of the local list and is then re-sorted by the
-            visibleReplies useMemo, so trust-ranked order is preserved
-            across pages. */}
-        {!replyLoading && replyHasMore && (
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={loadMoreReplies}
-              disabled={loadingMore}
-              className="w-full flex items-center justify-center gap-2
-                         py-2.5 px-4 rounded-lg border border-slate-800
-                         bg-slate-900/40 hover:bg-slate-800/60
-                         text-sm text-cyan-400 hover:text-cyan-300
-                         font-medium transition-colors
-                         disabled:opacity-60 disabled:cursor-not-allowed
-                         focus-visible:outline-none focus-visible:ring-2
-                         focus-visible:ring-cyan-500/60"
-              aria-label="Load more replies"
-            >
-              {loadingMore ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading…
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-4 h-4" />
-                  {(() => {
-                    const remaining = Math.max(replyTotal - replies.length, 0);
-                    return remaining > 0
-                      ? `Show ${remaining} more ${remaining === 1 ? "reply" : "replies"}`
-                      : "Show more replies";
-                  })()}
-                </>
+      {!loading && convo && (
+        <div>
+          {rows.map((row, i) => (
+            <div key={row.key}>
+              {renderRow(row as ConvRow<SocialPost>)}
+              {i === composerAfter && loggedIn && (
+                <div className="mb-6">
+                  <SocialComposeBox
+                    parentPostId={id}
+                    onPosted={handleNewReply}
+                    placeholder="Write your reply… (use @ to mention)"
+                    compact
+                  />
+                </div>
               )}
-            </button>
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+          {!hasReplies && (
+            <p className="text-center text-slate-500 text-sm py-8">
+              No replies yet. Start the conversation!
+            </p>
+          )}
+        </div>
+      )}
     </AppShell>
+  );
+}
+
+/** The line that joins a post to the next one in its thread. */
+function Joiner() {
+  return (
+    <span
+      aria-hidden
+      className="absolute left-[22px] bottom-0 h-3 w-0.5 bg-slate-700"
+    />
   );
 }

@@ -226,6 +226,18 @@ async def get_conversation(
     )
 
 
+def all_posts(convo: ConversationResponse) -> list[PostResponse]:
+    """Every post in a conversation: readable ancestors, the post, the tree."""
+    out = [a.post for a in convo.ancestors if a.post is not None]
+    out.append(convo.post)
+    stack = list(convo.replies)
+    while stack:
+        node = stack.pop()
+        out.append(node.post)
+        stack.extend(node.replies)
+    return out
+
+
 async def _count_below_cap(conn, parent_ids, caller_did, nodes) -> None:
     visible = post_moderation.visible_to_sql("p", 2)
     rows = await conn.fetch(

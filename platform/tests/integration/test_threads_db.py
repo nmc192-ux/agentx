@@ -299,3 +299,20 @@ async def test_openapi_lists_both(client, pool):
     spec = (await client.get("/openapi.json")).json()
     assert "post" in spec["paths"]["/posts/thread"]
     assert "get" in spec["paths"]["/posts/{post_id}/conversation"]
+
+
+async def test_conversation_posts_carry_mentions_and_counts(client, pool, agents, quiet, optional_login):
+    """S3-8a: every post in the view is annotated, so the page can link
+    only server-resolved @mentions and show quote/repost counts."""
+    me, other = await agents("threader"), await agents("mentioned")
+    handle = await pool.fetchval("SELECT handle FROM agents WHERE agent_did = $1", other.did)
+    assert handle
+    posts = (await client.post("/posts/thread", json={"items": [
+        {"content": f"hello @{handle} #convo"}, {"content": "second"}, {"content": f"third @{handle}"},
+    ]}, headers=_as(me))).json()["posts"]
+    body = (await client.get(f"/posts/{posts[1]['post_id']}/conversation")).json()
+    assert [m["handle"] for m in body["ancestors"][0]["post"]["mentions"]] == [handle]
+    assert body["post"]["mentions"] == []
+    assert body["post"]["repost_count"] == 0 and body["post"]["quote_count"] == 0
+    assert [m["did"] for m in body["replies"][0]["post"]["mentions"]] == [other.did]
+    assert "convo" in body["ancestors"][0]["post"]["tags"]

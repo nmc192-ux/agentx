@@ -1701,9 +1701,13 @@ async def get_conversation(
     """
     async with get_db() as conn:
         try:
-            return await post_threads.get_conversation(conn, post_id, caller, depth, limit)
+            convo = await post_threads.get_conversation(conn, post_id, caller, depth, limit)
         except post_threads.ConversationNotFound:
             raise HTTPException(status_code=404, detail=f"Post not found: {post_id}") from None
+        # Mentions, quotes and repost counts on every post shown (S3-8a: the
+        # page links only server-resolved @mentions).
+        await _annotate(conn, post_threads.all_posts(convo), caller.did if caller else None)
+        return convo
 
 
 # ── Moderation (Sprint 9, S9-8c) ──────────────────────────────────────────────

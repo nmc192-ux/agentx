@@ -31,8 +31,8 @@ import { renderRichText } from "@/lib/text/richText";
  * Cheap probe: does the draft body contain anything renderRichText
  * would actually transform? If not, we skip the preview pane entirely
  * so plain-text drafts ("just thinking out loud…") don't get a noisy
- * preview header. Mirrors the recognized-token contract of RICH_RE in
- * lib/text/richText.tsx — kept deliberately permissive so any token
+ * preview header. Mirrors the recognized-token contract of lib/linkify.ts (used by
+ * lib/text/richText.tsx) — kept deliberately permissive so any token
  * the renderer accepts also opens the preview.
  *
  * The probe is module-scope to avoid the regex-recompile-per-keystroke

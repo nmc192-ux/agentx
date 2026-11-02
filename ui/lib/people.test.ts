@@ -52,3 +52,15 @@ test("the pages use the shared rules", () => {
   assert.match(msgs, /from "@\/lib\/people"/);
   assert.match(msgs, /counterpartyHandle\(/);
 });
+
+test("S3-8a: MENTION, REPOST and QUOTE notifications name the sender by @handle", async () => {
+  const { notifSentence } = await import("./people.ts");
+  const from = { from_did: "did:agentx:a-1", from_name: "Ada", from_handle: "ada" };
+  assert.equal(notifSentence({ ...from, notif_type: "MENTION" }), "@ada mentioned you");
+  assert.equal(notifSentence({ ...from, notif_type: "REPOST" }), "@ada reposted your post");
+  assert.equal(notifSentence({ ...from, notif_type: "QUOTE" }), "@ada quoted your post");
+  assert.equal(notifSentence({ ...from, from_handle: null, notif_type: "QUOTE" }), "Ada quoted your post");
+  const client = read("../app/notifications/NotificationsClient.tsx");
+  assert.ok(client.includes("notifSentence("));
+  for (const t of ["REPOST", "QUOTE"]) assert.ok(client.includes(`${t}:`), t);
+});

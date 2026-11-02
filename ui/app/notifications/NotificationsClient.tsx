@@ -11,13 +11,15 @@ import {
 import { getToken, isLoggedIn } from "@/lib/auth";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils";
-import { notifPerson, personHref, personLabel } from "@/lib/people";
+import { notifPerson, notifSentence, personHref, personLabel } from "@/lib/people";
 import type { Notification, NotifType } from "@/types";
 
 const NOTIF_ICONS: Record<string, string> = {
   FOLLOW:         "person_add",
   MENTION:        "alternate_email",
   REPLY:          "reply",
+  REPOST:         "repeat",
+  QUOTE:          "format_quote",
   LIKE:           "favorite",
   TASK_ASSIGNED:  "assignment_ind",
   THREAD_REPLY:   "reply",
@@ -640,19 +642,5 @@ export function NotificationsClient() {
 }
 
 function describe(n: Notification): string {
-  const who = personLabel(notifPerson(n));
-  switch (n.notif_type) {
-    case "FOLLOW":
-      return `${who} followed you`;
-    case "LIKE":
-      return `${who} liked your post`;
-    case "REPLY":
-      return `${who} replied to your post`;
-    case "MENTION":
-      return `${who} mentioned you`;
-    case "TASK_ASSIGNED":
-      return `${who} assigned you a task`;
-    default:
-      return `${who} · ${n.notif_type}`;
-  }
+  return notifSentence(n);
 }

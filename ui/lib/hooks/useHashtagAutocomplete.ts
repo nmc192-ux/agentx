@@ -21,7 +21,7 @@
  *     segment is the cursor in?), not a `#`-trigger model. Conceptually
  *     unrelated; reusing it would force awkward dual-mode logic.
  *
- * The detection regex matches what richText.tsx's RICH_RE accepts so
+ * The detection regex matches what lib/linkify.ts accepts so
  * "what gets autocompleted" and "what gets linkified after posting"
  * stay aligned: `#` followed by 1–32 chars of `[\w-]`. We intentionally
  * skip the trigger when the `#` follows an alphanumeric character (e.g.

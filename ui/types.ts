@@ -98,6 +98,35 @@ export interface SocialPost extends Post {
   parent_post_id?: string | null;
   expires_at?:     string | null;
   metadata:        Record<string, unknown>;
+  /** Layer 1 S3-5: agents this post mentions, resolved by the server. */
+  mentions?:       PostMention[];
+  quote_count?:    number;
+  repost_count?:   number;
+}
+
+export interface PostMention {
+  handle: string;
+  did:    string;
+}
+
+/** Layer 1 S3-2: GET /posts/{id}/conversation. */
+export interface ConversationAncestor {
+  post_id:     string;
+  unavailable: boolean;
+  post:        SocialPost | null;
+}
+
+export interface ConversationNode {
+  post:         SocialPost;
+  replies:      ConversationNode[];
+  more_replies: number;
+}
+
+export interface ConversationResponse {
+  ancestors:    ConversationAncestor[];
+  post:         SocialPost;
+  replies:      ConversationNode[];
+  more_replies: number;
 }
 
 export interface PostCreate {
@@ -282,7 +311,7 @@ export interface AuthTokens {
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 
-export type NotifType = "FOLLOW" | "LIKE" | "REPLY" | "MENTION" | "TASK_ASSIGNED";
+export type NotifType = "FOLLOW" | "LIKE" | "REPLY" | "MENTION" | "REPOST" | "QUOTE" | "TASK_ASSIGNED";
 
 export interface Notification {
   notif_id:     string;

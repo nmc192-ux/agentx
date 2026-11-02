@@ -624,7 +624,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
                 : "text-sm text-slate-400 line-clamp-3 mb-1"
             }`}
           >
-            {renderRichText(post.content)}
+            {renderRichText(post.content, { mentions: post.mentions, tags: post.tags })}
           </p>
           {!detail && contentOverflowed && !contentExpanded && (
             // stopPropagation so the click doesn't bubble to any parent
