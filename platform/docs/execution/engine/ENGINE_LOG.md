@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-02 · cycle 294 · Opus (T2) · S1-9: Layer 1 sprint S1 closed
+
+- **Did:** ran S1's acceptance locally, all five criteria met. Wrote `sprints/layer_1_s1_retro.md`, the sprint briefing `sprints/briefing_2026-11-02_layer1_s1.md`, and updated `state_of_agentx.md`. New **H56**: the live website's feature switches are set in Vercel, outside the repo, so DrJ checks at merge that none but `JOIN` is on (otherwise that layer stays visible).
+- **Check:** platform pytest **4552 passed**, 847 skipped, 2 xfailed; UI `npm test` 50 passed; tsc, eslint clean; `npm run build` OK; dead-end crawl (`join_e2e_check.py --seed --spec e2e/dead_ends.spec.ts`) passed, 26 pages.
+- **Note:** a first pytest launch used the system `python` (not on PATH) and ran nothing; rerun with `platform/.venv`.
+- **Commit:** see `git log` (sprint-close commit on `engine/phase-b`).
+- **Next:** decompose S2 "The shape" into `PLAN.md` (archive the S1 plan), T2.
+
 ## 2026-11-02 · cycle 293 · Fable (T1) · S1-8: sprint-close security review
 
 - **Recovered work:** the stash `engine-recovered-20261102-140320` was an interrupted S1-8 pass (wrapper first-argument guard, unreadable-dry-run check, tests). Read it, agreed with it, re-applied it and finished the review.

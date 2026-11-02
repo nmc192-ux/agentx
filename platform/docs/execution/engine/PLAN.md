@@ -94,7 +94,7 @@ rename it at any time with H55 (no work is lost).
   `--dsn` before the command; unreadable dry run no longer reads as "nothing to remove";
   `compose run -T`). 19 adversarial tests added. Review every S1 commit marked
   `SECURITY-REVIEW:`/`NEEDS-DELIBERATE-MERGE:` (expected: S1-4), add adversarial tests, fix.
-- [ ] **S1-9 — Sprint close.** T2. Run S1 acceptance locally (full platform pytest, UI vitest,
+- [x] **S1-9 — Sprint close.** (cycle 294) T2. All acceptance met; retro, briefing, H56 written. Run S1 acceptance locally (full platform pytest, UI vitest,
   build, crawl), write `platform/docs/sprints/layer_1_s1_retro.md` and the S1 briefing for DrJ,
   update `state_of_agentx.md`, then decompose S2 in the next cycle.
 
@@ -102,3 +102,6 @@ rename it at any time with H55 (no work is lost).
 
 - H55 (optional): rename the engine branch to `engine/layer-1-social`.
 - H25 (rewritten in S1-4): run `test-accounts-report`, then `test-accounts-remove`.
+- H56 (S1-9): at merge, check no `NEXT_PUBLIC_FEATURE_*` other than `JOIN` is on in Vercel.
+
+**S1 closed (cycle 294).** Next cycle replaces this file with the S2 plan (archive this one).

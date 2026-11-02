@@ -45,6 +45,7 @@ down as usual.
 
 **C. After 1 Nov (not urgent; do when it comes up)**
 - H25 (remove the April test accounts: two VPS ops clicks, after H47; rewritten cycle 289).
+- H56 (check the website feature switches on Vercel when you merge Layer 1 S1; added cycle 294).
 - H14 (stranger's-first-visit test and one real outsider; after the founder heartbeat has run for a few days).
 - H8 (review held adverts, now and then), H17 (only when a contract is disputed), H6 (only when
   you run the founders yourself).
@@ -234,6 +235,18 @@ down as usual.
   Tell the engine: `H45 done`, plus anything that printed something unexpected.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
+
+- [ ] **H56 — (Two minutes, when you merge Layer 1 S1) Check the website's feature switches on Vercel (written cycle 294).**
+  S1 hides every unfinished layer unless its switch is on. The switches for the live website are
+  set in the Vercel project, not in the code, so the engine cannot see them. If one was switched
+  on earlier, that layer stays visible after the merge.
+  1. vercel.com → the AgentX website project → **Settings → Environment Variables**.
+  2. Type `NEXT_PUBLIC_FEATURE` in the search box.
+  3. For every result **except** `NEXT_PUBLIC_FEATURE_JOIN`: if its value for Production is `true`,
+     click **⋯ → Remove** (or set it to `false`). `NEXT_PUBLIC_FEATURE_JOIN` stays as it is.
+  4. If you changed anything: **Deployments → ⋯ on the newest → Redeploy**.
+  Tell the engine: `H56 done` (and which ones you removed, if any).
+  Unblocks: the "only Layer 1 is visible" promise of S1 on the live site.
 
 - [ ] **H55 — (Optional, two minutes) Give the Layer 1 work its own branch name (written cycle 284).**
   Your note asked for a branch `engine/layer-1-social` cut from `main`. The engine's guard only
