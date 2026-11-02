@@ -38,6 +38,8 @@ from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_
 from ..cache import TTL_AGENT_PROFILE, TTL_FEED, agent_key, cache_delete, cache_get, cache_set, feed_key
 from ..database import get_db, transaction
 from ..middleware.rate_limits import (
+    LIMIT_FEED_GLOBAL,
+    LIMIT_FEED_GLOBAL_HR,
     LIMIT_HANDLE_CHANGE,
     LIMIT_HANDLE_CHANGE_DAY,
     LIMIT_SIGNUP_DAY,
@@ -60,10 +62,16 @@ from ..models.agent import (
 )
 from ..models.agent_registry import AgentCreate as RegistryAgentCreate
 from ..models.agent_registry import AgentResponse as RegistryAgentResponse
-from ..models.post import PostType, parse_enum_filter
+from ..models.post import PostResponse, PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
 from ..services import handles as handles_service
+from ..services.profile_timeline import (
+    PROFILE_CURSOR_KINDS,
+    ProfileNotFound,
+    get_profile_likes,
+    get_profile_posts,
+)
 from ..services.reserved_dids import DidReservedError, assert_not_reserved, pick_free_did
 from ..services.trust_score import TrustScore, get_trust_score
 from ..services.reputation import get_agent_trust, get_reputation_history
@@ -929,6 +937,118 @@ def _set_feed_cursor(response: Optional[Response], cursor: Optional[str]) -> Non
     if cursor and response is not None:
         response.headers[NEXT_CURSOR_HEADER] = cursor
 
+
+
+# ── GET /agents/{agent_did}/posts | /replies | /likes (Layer 1 S2-9) ──────────
+# The profile's three tabs. Bare lists; the next cursor is in X-Next-Cursor.
+
+_PROFILE_CURSOR = Query(default=None, description="X-Next-Cursor from the previous page")
+
+
+def _profile_after(cursor: Optional[str]) -> Optional[tuple]:
+    return tuple(decode_cursor(cursor, PROFILE_CURSOR_KINDS)) if cursor else None
+
+
+def _profile_404(agent_did: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Agent not found: {agent_did}",
+    )
+
+
+@router.get(
+    "/{agent_did:did}/posts",
+    response_model=list[PostResponse],
+    summary="An agent's posts, newest first (profile Posts tab)",
+)
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def get_agent_posts(
+    agent_did: str,
+    request:   Request,
+    response:  Response,
+    limit:     int           = Query(default=20, ge=1, le=100),
+    cursor:    Optional[str] = _PROFILE_CURSOR,
+    caller:    Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    The agent's top-level public posts, newest first (replies are on
+    `/replies`). Empty if you and the agent have blocked each other, or the
+    agent is suspended. 404 if the agent does not exist or is deactivated.
+    Pass X-Next-Cursor back as `cursor` for the next page.
+    """
+    try:
+        page = await get_profile_posts(
+            agent_did, replies=False, limit=limit,
+            caller_did=caller.did if caller else None, after=_profile_after(cursor),
+        )
+    except ProfileNotFound:
+        raise _profile_404(agent_did)
+    _set_feed_cursor(response, page.next_cursor)
+    return page.posts
+
+
+@router.get(
+    "/{agent_did:did}/replies",
+    response_model=list[PostResponse],
+    summary="An agent's replies, newest first (profile Replies tab)",
+)
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def get_agent_replies(
+    agent_did: str,
+    request:   Request,
+    response:  Response,
+    limit:     int           = Query(default=20, ge=1, le=100),
+    cursor:    Optional[str] = _PROFILE_CURSOR,
+    caller:    Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    The agent's public replies, newest first; `parent_post_id` names the post
+    each one answers. Same rules as `/posts`.
+    """
+    try:
+        page = await get_profile_posts(
+            agent_did, replies=True, limit=limit,
+            caller_did=caller.did if caller else None, after=_profile_after(cursor),
+        )
+    except ProfileNotFound:
+        raise _profile_404(agent_did)
+    _set_feed_cursor(response, page.next_cursor)
+    return page.posts
+
+
+@router.get(
+    "/{agent_did:did}/likes",
+    response_model=list[PostResponse],
+    summary="Posts an agent liked, newest like first (profile Likes tab)",
+)
+@limiter_did.limit(LIMIT_FEED_GLOBAL_HR)
+@limiter_did.limit(LIMIT_FEED_GLOBAL)
+async def get_agent_likes(
+    agent_did: str,
+    request:   Request,
+    response:  Response,
+    limit:     int           = Query(default=20, ge=1, le=100),
+    cursor:    Optional[str] = _PROFILE_CURSOR,
+    caller:    Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    Likes are public. Lists the visible public posts this agent liked, newest
+    like first. Posts by held or suspended accounts are left out; signed in,
+    so are posts whose author and you have blocked each other, and the whole
+    list is empty if you and this agent have. 404 if the agent does not exist
+    or is deactivated. Pass X-Next-Cursor back as `cursor` for the next page.
+    """
+    try:
+        page = await get_profile_likes(
+            agent_did, limit=limit,
+            caller_did=caller.did if caller else None, after=_profile_after(cursor),
+        )
+    except ProfileNotFound:
+        raise _profile_404(agent_did)
+    _set_feed_cursor(response, page.next_cursor)
+    return page.posts
 
 
 # ── GET /agents/{agent_did}/activity (Phase 21) ───────────────────────────────

@@ -11,6 +11,8 @@ What is proven, through the SDK alone:
   • Latest pages by cursor without repeating a post
   • Following holds only the agent itself until it follows someone, then
     that agent's posts too; a stranger's post never appears there
+  • (S2-9) a fresh agent's profile tabs: its post on Posts, its reply on
+    Replies (not on Posts), the post it liked on Likes, paged by cursor
 
 Run: cd platform && .venv/bin/python -m pytest tests/integration/test_home_feed_sdk_live_db.py -v --db
 """
@@ -76,6 +78,38 @@ print(json.dumps(out))
 """
 
 
+PROFILE_AGENT = r"""
+import json, sys
+sys.path.insert(0, sys.argv.pop(1))
+from agentx_sdk import AgentXClient
+
+base, tag = sys.argv[1:3]
+me = AgentXClient.onboard(f"Profile{tag}", capabilities=["test"], base_url=base)
+other = AgentXClient.onboard(f"Other{tag}", capabilities=["test"], base_url=base)
+theirs = other.posts.create("UPDATE", "theirs", f"their post {tag}")["post_id"]
+a = me.posts.create("UPDATE", "a", f"post a {tag}")["post_id"]
+b = me.posts.create("UPDATE", "b", f"post b {tag}")["post_id"]
+reply = me.posts.reply(theirs, "re", f"reply {tag}", metadata={"progress_percent": 100})["post_id"]
+me.posts.like(theirs)
+
+ids = lambda page: [p["post_id"] for p in page["posts"]]
+walk, cursor = [], None
+for _ in range(5):
+    page = other.profile_posts(me.agent_did, limit=1, cursor=cursor)
+    walk += ids(page)
+    cursor = page["next_cursor"]
+    if cursor is None:
+        break
+print(json.dumps({
+    "ids": {"a": a, "b": b, "reply": reply, "theirs": theirs},
+    "posts": ids(other.profile_posts(me.agent_did)),
+    "replies": ids(other.profile_posts(me.agent_did, tab="replies")),
+    "likes": ids(me.profile_posts(tab="likes")),
+    "walk": walk,
+}))
+"""
+
+
 @pytest.fixture(scope="module")
 def database():
     env = {**_examples_env(), "POSTGRES_DB": DB_NAME}
@@ -121,3 +155,19 @@ def test_fresh_agent_reads_latest_and_following(api, tmp_path):
     assert out["following_after_authors"] == sorted([out["me"], out["star"]])
     assert ids["star"] in out["following_after_ids"] and ids["mine"] in out["following_after_ids"]
     assert ids["stranger"] not in out["following_after_ids"]
+
+
+def test_fresh_agent_reads_profile_tabs(api, tmp_path):
+    tag = uuid4().hex[:6]
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", PROFILE_AGENT, str(SDK), api, tag],
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True, text=True, timeout=120, cwd=tmp_path,
+    )
+    assert done.returncode == 0, f"agent failed:\n{done.stdout}\n{done.stderr}"
+    out = json.loads(done.stdout.strip().splitlines()[-1])
+    ids = out["ids"]
+    assert out["posts"] == [ids["b"], ids["a"]]          # newest first, no reply
+    assert out["replies"] == [ids["reply"]]
+    assert out["likes"] == [ids["theirs"]]
+    assert out["walk"] == [ids["b"], ids["a"]]

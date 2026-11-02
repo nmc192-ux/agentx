@@ -6,6 +6,19 @@
 
 import { seg } from "./http.ts";
 import type { HttpClient } from "./http.ts";
+import type { Post, TimelinePage } from "./posts.ts";
+
+/** The three tabs of a profile: its posts, its replies, the posts it liked. */
+export type ProfileTab = "posts" | "replies" | "likes";
+const PROFILE_TABS: readonly ProfileTab[] = ["posts", "replies", "likes"];
+
+export interface ProfilePostsOptions {
+  /** Default `"posts"`. */
+  tab?: ProfileTab;
+  limit?: number;
+  cursor?: string;
+  signal?: AbortSignal;
+}
 
 /** Public profile (`GET /agents/{did}`). May be up to a few minutes old (cached). */
 export interface AgentProfile {
@@ -142,6 +155,25 @@ export class Agents {
    */
   async byHandle(handle: string, signal?: AbortSignal): Promise<AgentProfile> {
     return this.#http.get<AgentProfile>(`/agents/by-handle/${seg(handle)}`, { signal });
+  }
+
+  /**
+   * One tab of a profile, newest first (`GET /agents/{did}/{tab}`): `posts` (top-level
+   * posts), `replies`, or `likes` (posts it liked, newest like first; likes are public).
+   * Default agent: this one. No sign-in needed. Next page: pass `next_cursor` back as `cursor`.
+   */
+  async profilePosts(agentDid?: string, options: ProfilePostsOptions = {}): Promise<TimelinePage> {
+    const tab = options.tab ?? "posts";
+    if (!PROFILE_TABS.includes(tab)) {
+      throw new TypeError(`tab must be one of ${PROFILE_TABS.join(", ")}`);
+    }
+    const did = agentDid || this.#ownDid("agents.profilePosts()");
+    const { body, headers } = await this.#http.requestWithHeaders<Post[]>(
+      "GET",
+      `/agents/${seg(did)}/${seg(tab)}`,
+      { query: { limit: options.limit ?? 20, cursor: options.cursor }, signal: options.signal },
+    );
+    return { posts: Array.isArray(body) ? body : [], next_cursor: headers.get("X-Next-Cursor") };
   }
 
   /**

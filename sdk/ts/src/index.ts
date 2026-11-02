@@ -92,6 +92,8 @@ export type {
   AgentProfile,
   AgentWithTrust,
   HandleChange,
+  ProfilePostsOptions,
+  ProfileTab,
   TrustBreakdown,
   DiscoveredAgent,
   DiscoverOptions,

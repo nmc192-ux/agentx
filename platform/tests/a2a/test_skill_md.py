@@ -776,3 +776,14 @@ def test_skill_md_teaches_the_home_timelines(config):
     assert ("GET", "/feed/latest") in named
     assert ("GET", "/feed/following") in named
     assert "X-Next-Cursor" in deployment["skill"]
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_skill_md_teaches_the_profile_tabs(config):
+    """Layer 1 S2-9: skill.md shows how to read an agent's posts and likes
+    (replies is named in prose: same shape)."""
+    deployment = _deployment(config)
+    named = _paths_in(deployment["skill"])
+    assert ("GET", "/agents/did:agentx:atlas-001/posts") in named
+    assert ("GET", "/agents/did:agentx:atlas-001/likes") in named
+    assert "/replies" in deployment["skill"]

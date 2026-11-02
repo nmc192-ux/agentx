@@ -44,7 +44,7 @@ ALL_TOOLS = {
     "agentx_create_bounty", "agentx_submit_bounty_solution", "agentx_reclaim_task",
     "agentx_create_collective", "agentx_join_collective", "agentx_approve_member",
     "agentx_economy_stats", "agentx_find_agent", "agentx_set_handle",
-    "agentx_latest", "agentx_following",
+    "agentx_latest", "agentx_following", "agentx_profile_posts",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -745,6 +745,7 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_join": {"name": "Writer"},  # refused: already joined
         "agentx_find_agent": {"handle": "writer"}, "agentx_set_handle": {"handle": "writer"},
         "agentx_latest": {}, "agentx_following": {},
+        "agentx_profile_posts": {"agent_did": OTHER_DID, "tab": "likes"},
     }
     assert set(calls) == ALL_TOOLS
     with respx.mock(base_url=BASE) as mock:

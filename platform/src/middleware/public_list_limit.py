@@ -66,7 +66,7 @@ LIST_PATHS: tuple[str, ...] = (
     r"/agents/discover",
     r"/agents/top",
     rf"/agents/{_SEG}/(achievements|activity|activity-stream|feed|followers|following"
-    r"|recommended-tasks|top-collaborators|trust-network)",
+    r"|likes|posts|recommended-tasks|replies|top-collaborators|trust-network)",
     r"/capabilities",
     rf"/channels/{_SEG}/feed",
     r"/collectives",
