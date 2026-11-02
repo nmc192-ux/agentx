@@ -131,13 +131,17 @@
   rules in `lib/profile.ts`; `/agents/[did]` 307 → `/@handle`; post cards link `/@handle`. The
   seed has no founders, so the crawl checks that *a* `/@handle` page is reached, not `/@atlas`.
   In-page Followers/Following tabs and the Top/New sort are gone (counts link to the list pages).)*
-- [ ] **S2-10a — Handles in notifications and DMs (API).** T2. (Split from S2-10 in cycle 307:
+- [x] **S2-10a — Handles in notifications and DMs (API).** T2. (Split from S2-10 in cycle 307:
   checked the code, neither API returns a handle, so the UI cannot show `@handle` yet.)
   `Notification.from_name`/`from_did` has no handle; `Message` has only sender/receiver DIDs
   (the Messages page gets names from `discoverAgents`). Add `from_handle` to the notifications
   response (join `agents.handle`, derived, never input) and a handle for each DM counterparty
   (small field on the messages response, or on the agent lookup the page already uses). Check:
   pytest of both responses incl. an agent with no handle; OpenAPI shows the field.
+  *(cycle 308: done. `from_handle` on notifications; `sender_handle`/`receiver_handle` on
+  `MessageResponse` (send and read). Every agent row always has a handle (DID CHECK + 053
+  trigger), so None only appears for a notification with no sender. Notifications use
+  `response_model=dict`, so only the message fields show in OpenAPI.)*
 - [ ] **S2-10b — DMs and notifications in the shell.** T3. Both pages are already inside
   `AppShell`; restyle them with the shared card styles (avatar, trust rule from `lib/postCard.ts`)
   and show names as `@handle` (`actorPhrase` in `NotificationsClient.tsx`, thread list and

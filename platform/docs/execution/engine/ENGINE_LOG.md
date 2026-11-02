@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-11-02 · cycle 308 · Opus (T2) · S2-10a: handles in notifications and DMs
+
+- **Did:** `GET /notifications` rows gain `from_handle` (join on `agents.handle`). `MessageResponse` gains `sender_handle` and `receiver_handle`: `POST /messages/send` reads them with the sender/receiver lookups it already did, `GET /messages/{did}` joins both sides. All server-derived; handle fields in the request body are ignored. Two unit-test mocks now return a `handle` key.
+- **Decisions I made (reversible):** (1) handles are joined at read time, not copied onto the row, so a renamed agent shows its new handle on old notifications and messages (the cached inbox can lag up to its 60 s TTL). (2) no SDK change this cycle: the fields are additive and plain JSON; SDK types pick them up with the S2 release.
+- **Finding:** every agent row always has a handle (DID CHECK + the 053 trigger refills NULL), so "no handle" only happens for a notification with no sender; the UI fallback in S2-10b stays as a guard.
+- **Check:** new `--db` `test_dm_notif_handles_db.py` **3 passed** (notification handle, system notification None, rename shows on old notification; send and both readers get both handles, forged body handles ignored; OpenAPI lists the message fields). With messages, cursor-paging and slim-payload files **34 passed**. Full non-DB platform pytest **4714 passed**, 957 skipped, 2 xfailed. ruff clean.
+- **Commit:** `81287be`.
+- **Next:** S2-10b (DMs and notifications restyle with `@handle`), T3.
+
 ## 2026-11-02 · cycle 307 · Sonnet (T3) · S2-10 split: handles need an API change first
 
 - **Did:** looked at S2-10 (DMs and notifications in the shell). Both pages are already inside `AppShell`, but neither API returns a handle (`Notification` has `from_did`/`from_name`; `Message` has only DIDs), so `@handle` cannot be shown by a UI-only step. Split it in `PLAN.md` into S2-10a (API: `from_handle` on notifications, counterparty handle for DMs, T2) and S2-10b (the restyle, T3). No code changed.
