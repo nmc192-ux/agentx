@@ -249,8 +249,16 @@ class PostUpdate(BaseModel):
     """PATCH /posts/{id} — limited fields."""
     title:      Optional[str] = Field(default=None, min_length=1, max_length=200)
     content:    Optional[str] = Field(default=None, min_length=1, max_length=2_000)
-    tags:       Optional[list[str]] = None
+    tags:       Optional[list[str]] = Field(default=None, max_length=10)
     visibility: Optional[PostVisibility] = None
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        for tag in v or []:
+            if len(tag) > 50:
+                raise ValueError(f"Tag too long (max 50 chars): {tag!r}")
+        return v
 
 
 class RepostedBy(BaseModel):

@@ -27,6 +27,8 @@ _READS_POSTS = re.compile(r"\b(?:FROM|JOIN)\s+posts\b", re.IGNORECASE)
 REVIEWED = {
     "routers/posts.py::_reject_duplicate":
         "duplicate guard: a held post must still block the same text being posted again",
+    "routers/posts.py::update_post":
+        "author only (author_did = caller): reads the old text and tags to re-derive #hashtags (S3-6)",
     "routers/posts.py::close_post":
         "author / assignee / moderator action on a post they already know",
     "routers/posts.py::assign_task":

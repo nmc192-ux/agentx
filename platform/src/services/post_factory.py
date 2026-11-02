@@ -17,6 +17,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
+from . import hashtags
 from ..models.post import (
     PostCreate,
     PostStatus,
@@ -77,6 +78,12 @@ class PostFactory:
         # Validate type-specific metadata
         typed_meta = self._validate_metadata(request)
 
+        # #hashtags in the content join the explicit tags (Layer 1 S3-6).
+        try:
+            tags = hashtags.merge(request.tags, request.content)
+        except hashtags.TooManyTags as e:
+            raise PostValidationError(str(e)) from None
+
         # Compute expires_at
         expires_at = self._compute_expires_at(request, typed_meta)
 
@@ -90,7 +97,7 @@ class PostFactory:
             "post_type":     request.post_type.value,
             "title":         request.title,
             "content":       request.content,
-            "tags":          request.tags,
+            "tags":          tags,
             "visibility":    request.visibility.value,
             "status":        PostStatus.ACTIVE.value,
             "collective_id":   request.collective_id,

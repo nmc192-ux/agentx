@@ -87,7 +87,7 @@ from ..models.post import (
     parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
-from ..services import mentions, post_moderation, post_threads, quotes, reposts
+from ..services import hashtags, mentions, post_moderation, post_threads, quotes, reposts
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -205,8 +205,7 @@ async def global_feed(
         params.append(_filter_value(post_type, PostType, "type"))
         conditions.append(f"p.post_type = ${len(params)}")
     if tag:
-        params.append(tag)
-        conditions.append(f"${len(params)} = ANY(p.tags)")
+        conditions.append(_tag_condition(params, tag))
 
     count_where, count_params = " AND ".join(conditions), list(params)
     where = count_where + _post_keyset(params, after)
@@ -296,6 +295,34 @@ async def _annotate(conn, posts: list[PostResponse], caller_did: Optional[str]) 
     await mentions.annotate(conn, posts, caller_did)
 
 
+def _tag_condition(params: list, tag: str) -> str:
+    """``?tag=`` matches the stored form (lower case, no '#', S3-6) and, for
+    rows written before S3-6, the tag exactly as given."""
+    params.append(tag)
+    params.append(hashtags.normalize(tag))
+    return f"(${len(params) - 1} = ANY(p.tags) OR ${len(params)} = ANY(p.tags))"
+
+
+def _merge_tags(tags, *texts: Optional[str]) -> list[str]:
+    """`hashtags.merge`, with more than `hashtags.MAX_TAGS` as a 422 (S3-6)."""
+    try:
+        return hashtags.merge(tags, *texts)
+    except hashtags.TooManyTags as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e),
+        ) from None
+
+
+async def _replace_post_tags(conn, post_id, tags: list[str]) -> None:
+    """Keep the ``post_tags`` index rows in step with ``posts.tags``."""
+    await conn.execute("DELETE FROM post_tags WHERE post_id = $1", post_id)
+    for tag in tags:
+        await conn.execute(
+            "INSERT INTO post_tags (tag_id, post_id, tag) VALUES (gen_random_uuid(), $1, $2)",
+            post_id, tag,
+        )
+
+
 def _check_mentions(*texts: Optional[str]) -> None:
     """422 when a text names more than `mentions.MAX_MENTIONS` agents (S3-5).
     Runs before the write so nothing is stored and no limit is consumed."""
@@ -334,6 +361,7 @@ async def create_post(
     if isinstance(body, AgentPostCreate):
         check_content(None, body.content)
         _check_mentions(body.content)
+        simple_tags = _merge_tags([], body.content)
         async with transaction() as conn:
             agent_row = await conn.fetchrow(
                 """
@@ -365,7 +393,7 @@ async def create_post(
                 )
                 VALUES (
                     gen_random_uuid(), $1, $1, $2, $3, $4, $5,
-                    $6, 'UPDATE', $7, '{}', 'PUBLIC', 'ACTIVE',
+                    $6, 'UPDATE', $7, $8, 'PUBLIC', 'ACTIVE',
                     '{}'::jsonb, NOW(), NOW()
                 )
                 RETURNING post_id, agent_id, type, topic, content, confidence, created_at
@@ -377,7 +405,9 @@ async def create_post(
                 body.confidence,
                 agent_row["agent_did"],
                 body.topic,
+                simple_tags,
             )
+            await _replace_post_tags(conn, row["post_id"], simple_tags)
             await bump_posts_count(conn, caller.did)
             held = await post_moderation.hold_if_solicitation(
                 conn, row["post_id"], body.topic, body.content,
@@ -926,8 +956,7 @@ async def list_posts(
         params.append(str(collective_id))
         conditions.append(f"p.collective_id = ${len(params)}::uuid")
     if tag:
-        params.append(tag)
-        conditions.append(f"${len(params)} = ANY(p.tags)")
+        conditions.append(_tag_condition(params, tag))
 
     count_where, count_params = " AND ".join(conditions), list(params)
     where = count_where + _post_keyset(params, after)
@@ -1116,26 +1145,46 @@ async def update_post(
         updates["title"] = body.title
     if body.content is not None:
         updates["content"] = body.content
-    if body.tags is not None:
-        updates["tags"] = body.tags
     if body.visibility is not None:
         updates["visibility"] = body.visibility.value
 
-    if not updates:
+    if not updates and body.tags is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="No fields provided for update",
         )
 
-    set_parts  = [f"{col} = ${i+1}" for i, col in enumerate(updates.keys())]
-    set_parts.append("updated_at = now()")
-    if "title" in updates or "content" in updates:
-        # A moderator cleared the old text, not this one: flags count again.
-        set_parts.append("moderation_cleared_at = NULL")
-    values     = list(updates.values())
-    values.extend([caller.did, str(post_id)])
-
     async with transaction() as conn:
+        if body.content is not None or body.tags is not None:
+            # Tags follow the text (S3-6): new explicit tags, or the old ones
+            # minus those that came from the old text, plus the new text's.
+            old = await conn.fetchrow(
+                """
+                SELECT content, tags FROM posts
+                WHERE post_id = $1::uuid AND author_did = $2 AND status = 'ACTIVE'
+                FOR UPDATE
+                """,
+                str(post_id), caller.did,
+            )
+            if old is not None:
+                if body.tags is not None:
+                    base = body.tags
+                else:
+                    from_text = set(hashtags.extract(old["content"]))
+                    base = [t for t in (old["tags"] or []) if t not in from_text]
+                text = body.content if body.content is not None else old["content"]
+                updates["tags"] = _merge_tags(base, text)
+        if not updates:
+            updates["tags"] = body.tags or []      # a missing post: 404 below
+
+        set_parts  = [f"{col} = ${i+1}" for i, col in enumerate(updates.keys())]
+        set_parts.append("updated_at = now()")
+        if "title" in updates or "content" in updates:
+            # A moderator cleared the old text, not this one: flags count again.
+            set_parts.append("moderation_cleared_at = NULL")
+        values     = list(updates.values())
+        values.extend([caller.did, str(post_id)])
+
         row = await conn.fetchrow(
             f"""
             UPDATE posts
@@ -1154,6 +1203,8 @@ async def update_post(
         )
         held = None
         if row is not None:
+            if "tags" in updates:
+                await _replace_post_tags(conn, post_id, list(row["tags"] or []))
             held = await post_moderation.hold_if_solicitation(
                 conn, post_id, row["title"], row["content"], " ".join(row["tags"] or []),
             )

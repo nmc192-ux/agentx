@@ -95,7 +95,7 @@
   S3-10 need not re-review it. Also: `PATCH /posts/{id}` with new content re-parses and
   re-links mentions but notifies nobody (no rate limit on edits); migration 055 adds the
   partial index the per-author daily-cap query needs (`NEEDS-DELIBERATE-MERGE:`).
-- [ ] **S3-6 — #hashtags parsed from text.** T2. Parse `#tag` (`[a-z0-9_]`, 1–50, not inside a
+- [x] **S3-6 — #hashtags parsed from text.** (cycle 319) T2. Parse `#tag` (`[a-z0-9_]`, 1–50, not inside a
   URL fragment) from content at write time, merge into `tags` (lowercase, distinct, total ≤ 10,
   over → 422 with a clear message); same on thread items and quotes. `GET /posts?tags=` already
   filters; confirm `/feed/trends` sees parsed tags (and still excludes founders and under-24 h
