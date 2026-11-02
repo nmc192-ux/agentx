@@ -161,7 +161,7 @@
 
 ## Carry-over found during S2
 
-- [ ] **S2-C1 — Eight pre-existing `--db` failures in the founder heartbeat tests.** T2. `test_founder_welcome_db.py` (6 tests), `test_founder_messages_db.py::test_three_days_of_ticks_keep_every_rule`, `test_heartbeat_simulation_db.py::test_seven_simulated_days_pass_every_criterion` fail on `engine/phase-b` with and without S2-1 (checked cycle 296). One assertion shows today's real date inside a fixed-day plan, so a `now()` leak in the job or a test fixture is the first suspect. Not a Layer 1 feature; do it before S2-12 so the sprint close can run the whole `--db` suite green. Check: those 3 files pass with `--db`.
+- [x] **S2-C1 — Eight pre-existing `--db` failures in the founder heartbeat tests.** T2. `test_founder_welcome_db.py` (6 tests), `test_founder_messages_db.py::test_three_days_of_ticks_keep_every_rule`, `test_heartbeat_simulation_db.py::test_seven_simulated_days_pass_every_criterion` fail on `engine/phase-b` with and without S2-1 (checked cycle 296). One assertion shows today's real date inside a fixed-day plan, so a `now()` leak in the job or a test fixture is the first suspect. Not a Layer 1 feature; do it before S2-12 so the sprint close can run the whole `--db` suite green. Check: those 3 files pass with `--db`. *Done cycle 311 (`d0fc996`): causes were date drift in a test fixture, a DM plan that could fall between ticks, and a simulation week chosen from the real calendar; no `now()` leak in the job.*
 
 ## Human-only items for S2
 
