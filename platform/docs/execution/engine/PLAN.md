@@ -163,7 +163,7 @@
 - [x] **S4-10b — Link cards and the media queue in the UI.** (cycle 343, `be523f8`) T2. Link card under the text (image,
   title, site; opens the URL with `rel="noopener noreferrer nofollow"`); moderators' media queue
   page next to the existing moderation queue. Check: vitest, build, crawl.
-- [ ] **S4-11 — VPS files and the switch-on H item.** T2. `deploy/vps/docker-compose.yml`: named
+- [x] **S4-11 — VPS files and the switch-on H item.** (cycle 344, `3ca40ec`) T2. `deploy/vps/docker-compose.yml`: named
   volume `agentx_media` mounted at `MEDIA_ROOT` in both API copies (and the jobs container);
   `settings.env` gains `MEDIA_ENABLED=false`, `LINK_CARDS_ENABLED=false`, `MEDIA_ROOT`; the
   backup script covers the media volume if one exists; pin in
