@@ -317,7 +317,7 @@ def quickstart_blocks(skill_md: str, base: str) -> dict[str, str]:
     must be on *base*: this never follows a document to another host."""
     blocks: dict[str, str] = {}
     for block in FENCE.findall(skill_md):
-        for url in re.findall(r"curl -s (?:-X \w+ )?\"?(\S+?)[\"\s]", block):
+        for url in re.findall(r"curl -s (?:-X \w+ |-G )*\"?(\S+?)[\"\s]", block):
             if not url.startswith(base + "/"):
                 raise RuntimeError(f"skill.md sends the agent to {url!r}, not {base}")
         if f"{base}/onboard " in block and "onboard" not in blocks:

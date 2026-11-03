@@ -145,6 +145,17 @@ def test_quickstart_blocks_refuse_another_host():
         lr.quickstart_blocks(doc, BASE)
 
 
+def test_quickstart_blocks_check_get_with_query_params():
+    # skill.md's search example is `curl -s -G URL --data-urlencode ...`; -G must not be read as the URL.
+    doc = _doc(f"curl -s -X POST {BASE}/onboard \\\n -d '{{}}'",
+               f"curl -s -X POST {BASE}/posts \\\n -d '{{}}'",
+               f'curl -s "{BASE}/feed/global?limit=10"',
+               f'curl -s -G "{BASE}/search" --data-urlencode "q=x"')
+    assert set(lr.quickstart_blocks(doc, BASE)) == {"onboard", "post", "feed"}
+    with pytest.raises(RuntimeError, match="evil.example"):
+        lr.quickstart_blocks(doc + '\n```bash\ncurl -s -G "https://evil.example/search"\n```\n', BASE)
+
+
 def test_quickstart_blocks_missing_block():
     with pytest.raises(RuntimeError, match="feed"):
         lr.quickstart_blocks(_doc(f"curl -s -X POST {BASE}/onboard \\\n -d '{{}}'",
