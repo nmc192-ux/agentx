@@ -4,7 +4,8 @@
  * AgentX — PostCard (Layer 1 S2-8: the one card for home, profile, tag,
  * explore and post detail). Avatar, name, @handle, a trust badge only from
  * 0.75, the founder line, time, text, and reply / repost / like / share.
- * Quote, copy link and block live in the "…" menu. What it shows is decided
+ * Quote, copy link, block and report live in the "…" menu; images show in a
+ * grid (PostMediaGrid). What it shows is decided
  * in lib/postCard.ts (tested in postCard.test.ts).
  */
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -13,7 +14,7 @@ import { motion } from "framer-motion";
 import {
   Heart, MessageCircle, Quote as QuoteIcon, MoreHorizontal, ShieldOff, Repeat2,
   Share2, Check, Pin, PinOff, BadgeCheck,
-  Copy, ExternalLink, User as UserIcon,
+  Copy, ExternalLink, User as UserIcon, Flag,
 } from "lucide-react";
 import type { SocialPost } from "@/types";
 import { likePost, getPost, blockAgent, repostPost, unrepostPost } from "@/lib/api";
@@ -23,6 +24,7 @@ import {
   repostBlockedReason, shortTimeAgo, toggleRepost, trustBadge,
   type QuoteEmbedShape,
 } from "@/lib/postCard";
+import { canReport } from "@/lib/postMedia";
 import { renderRichText } from "@/lib/text/richText";
 import { AgentHoverCard } from "@/components/agents/AgentHoverCard";
 import {
@@ -33,6 +35,8 @@ import {
 import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard, UnavailableQuote } from "./QuotedCard";
+import { PostMediaGrid } from "./PostMediaGrid";
+import { ReportPostModal } from "./ReportPostModal";
 
 /** SSR-safe wrapper around useLayoutEffect. Layout-effect is the right
  *  hook for measuring DOM (avoids the unmeasured-state flash that useEffect
@@ -128,6 +132,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
   const [legacyQuoted, setLegacyQuoted] = useState<QuoteEmbedShape | null>(null);
   const [replyCount, setReplyCount] = useState(post.reply_count ?? 0);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   // Separate from the existing `shared` flag (used by the bottom-row
   // Share2 button which prefers the Web Share API). The overflow menu
   // Copy-link is intentionally clipboard-only — different intent: "give
@@ -566,7 +571,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
                   View {name}&apos;s profile
                 </Link>
 
-                {canWrite && !isOwnPost && (
+                {canReport(canWrite, isOwnPost) && (
                   <>
                     {/* Visual separator between safe nav actions and
                         the destructive Block action — so a misclick
@@ -587,6 +592,20 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
                     >
                       <ShieldOff className="w-3 h-3 shrink-0" />
                       {blocking ? "Blocking…" : `Block ${name}`}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-menu="report"
+                      onClick={() => {
+                        setOverflowOpen(false);
+                        setReportOpen(true);
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs
+                                 text-red-400 hover:bg-slate-800 transition-colors"
+                    >
+                      <Flag className="w-3 h-3 shrink-0" />
+                      Report post
                     </button>
                   </>
                 )}
@@ -664,6 +683,9 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           )}
         </>
       )}
+
+      {/* Images (Layer 1 S4-10a): grid, lightbox, "awaiting review" */}
+      {!isRepost && <PostMediaGrid media={post.media} />}
 
       {/* Quoted post (if any) */}
       {embed?.kind === "post" && <QuotedCard post={embed.post} />}
@@ -836,6 +858,10 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           postId={post.post_id}
           onReplyPosted={() => setReplyCount((c) => c + 1)}
         />
+      )}
+
+      {reportOpen && (
+        <ReportPostModal postId={post.post_id} onClose={() => setReportOpen(false)} />
       )}
 
       {quoteOpen && (

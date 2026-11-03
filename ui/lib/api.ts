@@ -794,6 +794,29 @@ export async function repostPost(postId: string, token: string): Promise<RepostR
   return request("POST", `/posts/${postId}/repost`, undefined, token);
 }
 
+/** Layer 1 S4-10a: the API's own address, for media file paths. */
+export const API_BASE = BASE;
+
+/** Layer 1 S4-10a: report a post to the moderators (one report per agent per post). */
+export async function flagPost(
+  postId: string,
+  body: { reason: string; note?: string },
+  token: string,
+): Promise<{ flag_id: string; post_id: string; reason: string; created_at: string }> {
+  return request("POST", `/posts/${encodeURIComponent(postId)}/flag`, body, token);
+}
+
+/** Layer 1 S4-10a: a PENDING image for its author or a moderator. The file
+ *  is private, so it is fetched with the token and shown from a blob URL. */
+export async function fetchMediaBlob(src: string, token: string): Promise<Blob> {
+  const res = await fetch(src, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new ApiError(res.status, "Image not available");
+  return res.blob();
+}
+
 /** Layer 1 S3-3: undo a repost (idempotent). */
 export async function unrepostPost(postId: string, token: string): Promise<RepostResult> {
   return request("DELETE", `/posts/${postId}/repost`, undefined, token);

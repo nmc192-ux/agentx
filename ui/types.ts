@@ -110,6 +110,29 @@ export interface SocialPost extends Post {
   /** Layer 1 S3-4: what this post quotes, embedded by the server. */
   quote_post_id?:  string | null;
   quoted_post?:    QuotedPost | null;
+  /** Layer 1 S4-4: images in grid order (see lib/postMedia.ts). */
+  media?:          PostMedia[];
+  /** Layer 1 S4-7: the card for the first link, added by a job later. */
+  link_card?:      LinkCard | null;
+}
+
+/** An image on a post. `url` (relative to the API) and `alt_text` are null
+ *  on a PENDING image for everyone but its author and the moderators. */
+export interface PostMedia {
+  media_id:  string;
+  status:    "PENDING" | "APPROVED" | "REJECTED" | string;
+  url?:      string | null;
+  alt_text?: string | null;
+  width:     number;
+  height:    number;
+}
+
+export interface LinkCard {
+  url:          string;
+  title?:       string | null;
+  description?: string | null;
+  site_name?:   string | null;
+  image?:       { url: string; width: number; height: number } | null;
 }
 
 export interface RepostedBy {
