@@ -191,6 +191,58 @@ def test_backup_rotates_and_keeps_neon_dumps(source_db, workdir):
     assert listing.returncode == 0 and "TABLE DATA public agents" in listing.stdout
 
 
+def _media_dir(tmp_path: Path) -> Path:
+    media = tmp_path / "media"
+    (media / "ab").mkdir(parents=True)
+    (media / "ab" / "ab12cd34-0000-4000-8000-000000000001.png").write_bytes(b"\x89PNG fake")
+    return media
+
+
+def test_backup_archives_media_and_keeps_media_keep(source_db, workdir, tmp_path):
+    """S4-11: the images folder is archived next to the dump; only MEDIA_KEEP archives stay."""
+    assert run(workdir, "restore", str(_dump(workdir))).returncode == 0
+    backups = workdir / "backups"
+    for i in range(3):
+        old = backups / f"media-2026010{i}-000000.tar.gz"
+        old.write_bytes(b"old")
+        os.utime(old, (1_700_000_000 + i, 1_700_000_000 + i))
+    result = run(workdir, "backup", MEDIA_DIR=str(_media_dir(tmp_path)), MEDIA_KEEP="2")
+    assert result.returncode == 0, result.stderr
+    archives = sorted(backups.glob("media-*.tar.gz"))
+    assert len(archives) == 2 and not list(backups.glob("*.part"))
+    newest = max(archives, key=lambda p: p.stat().st_mtime)
+    assert oct(newest.stat().st_mode & 0o777) == "0o600"
+    listing = subprocess.run(["tar", "-tzf", str(newest)], capture_output=True, text=True)
+    assert "./ab/ab12cd34-0000-4000-8000-000000000001.png" in listing.stdout
+    assert _record(workdir, "backup")["ok"] is True
+
+
+def test_backup_without_media_folder_is_still_ok(source_db, workdir):
+    assert run(workdir, "restore", str(_dump(workdir))).returncode == 0
+    result = run(workdir, "backup", MEDIA_DIR=str(workdir / "no-such-folder"))
+    assert result.returncode == 0, result.stderr
+    assert "nothing to archive" in result.stdout
+    assert not list((workdir / "backups").glob("media-*"))
+    assert _record(workdir, "backup")["ok"] is True
+
+
+def test_failed_media_archive_fails_the_run_but_keeps_the_dump(source_db, workdir, tmp_path):
+    """A broken media archive is reported (ok false, ALERT) and never left as a half file."""
+    assert run(workdir, "restore", str(_dump(workdir))).returncode == 0
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "tar").write_text("#!/bin/sh\necho 'tar: broken' >&2\nexit 2\n")
+    (fake / "tar").chmod(0o755)
+    result = run(workdir, "backup", MEDIA_DIR=str(_media_dir(tmp_path)),
+                 PATH=f"{fake}{os.pathsep}{os.environ['PATH']}")
+    assert result.returncode != 0
+    assert "ALERT: backup of the images" in result.stderr
+    backups = workdir / "backups"
+    assert len(list(backups.glob("agentx-*.dump"))) == 1
+    assert not list(backups.glob("media-*"))
+    assert _record(workdir, "backup")["ok"] is False
+
+
 def test_neon_password_only_on_stdin(source_db, workdir, tmp_path):
     """Wrap psql/pg_dump: record their argv and environment; the password must not be in argv."""
     shim = tmp_path / "bin"

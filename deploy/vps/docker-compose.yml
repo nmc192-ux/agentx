@@ -22,6 +22,10 @@
 #     second scheduler by accident (plan §5);
 #   - db is on the private network only (not the proxy network Caddy is on), publishes no
 #     port, and never sees api.env (no JWT secret in the database container).
+#   - images (Layer 1 S4) live on one named volume, agentx_media, mounted at MEDIA_ROOT
+#     (/data/media) in both API copies and the scheduler (link-card thumbnails, cleanup), never
+#     in migrate or db. The image creates /data/media owned by the app user, so a new volume is
+#     writable. db_move.sh backup archives it next to the nightly database dump.
 
 name: agentx
 
@@ -68,6 +72,8 @@ x-api: &api
     timeout: 10s
     start_period: 25s
     retries: 3
+  volumes:
+    - media:/data/media
   networks:
     - agentx
     - proxy
@@ -87,6 +93,8 @@ services:
     # for the founders BRUNO and QUINN. Read-only, and only here: the API never needs them.
     volumes:
       - "${AGENTX_STATUS_DIR:-/opt/agentx/status}:/var/lib/agentx/status:ro"
+      # S4: link-card thumbnails are written here and the cleanup job deletes leftovers.
+      - media:/data/media
     healthcheck:
       disable: true
 
@@ -128,6 +136,8 @@ services:
 volumes:
   pgdata:
     name: agentx_pgdata
+  media:
+    name: agentx_media
 
 networks:
   agentx:

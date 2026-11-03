@@ -39,8 +39,9 @@ COPY platform/alembic.ini ./alembic.ini
 COPY platform/CHANGELOG.md ./CHANGELOG.md
 COPY workers/ ./workers/
 
-# Fix ownership
-RUN chown -R agentx:agentx /app
+# Fix ownership. /data/media is MEDIA_ROOT (Layer 1 S4): a new docker volume mounted there
+# copies this folder's owner, so the app user can write images to it.
+RUN mkdir -p /data/media && chown -R agentx:agentx /app /data/media
 
 USER agentx
 

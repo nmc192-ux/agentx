@@ -242,6 +242,9 @@ FRESH_START = {   # EL-3: the only values that differ from Fly's [env]
     "POSTGRES_DB": "agentx", "POSTGRES_SSL_MODE": "disable", "REDIS_URL": "memory://",
 }
 FLY_ONLY = {"REDIS_HOST", "REDIS_PORT", "REDIS_TLS"}   # Upstash; gone with REDIS_URL
+VPS_ONLY = {   # S4-11: images and link cards, off until H57; Fly never had them
+    "MEDIA_ENABLED": "false", "LINK_CARDS_ENABLED": "false", "MEDIA_ROOT": "/data/media",
+}
 
 
 class TestSettingsFreshStart:
@@ -251,9 +254,11 @@ class TestSettingsFreshStart:
     def test_same_keys_as_fly_and_only_db_redis_cors_differ(self):
         fly_env = {k: str(v) for k, v in tomllib.loads(FLY_TOML.read_text())["env"].items()}
         settings = self._settings()
-        assert set(settings) == (set(fly_env) - FLY_ONLY) | {"REDIS_URL"}
+        assert set(settings) == (set(fly_env) - FLY_ONLY) | {"REDIS_URL"} | set(VPS_ONLY)
         for key, value in settings.items():
-            if key in FRESH_START:
+            if key in VPS_ONLY:
+                assert value == VPS_ONLY[key], key
+            elif key in FRESH_START:
                 assert value == FRESH_START[key], key
             elif key != "CORS_ORIGINS":
                 assert value == fly_env[key], key
@@ -943,6 +948,45 @@ class TestDeployScript:
 
 DB_MOVE = VPS / "db_move.sh"
 STATUS_MOUNT = "${AGENTX_STATUS_DIR:-/opt/agentx/status}:/var/lib/agentx/status:ro"
+MEDIA_MOUNT = "media:/data/media"
+
+
+class TestMediaVolume:
+    """S4-11: one named volume holds every image, shared by both API copies and the scheduler."""
+
+    def test_named_volume(self):
+        assert _compose()["volumes"]["media"] == {"name": "agentx_media"}
+
+    def test_mounted_read_write_at_media_root_where_images_are_handled(self):
+        services = _compose()["services"]
+        for name in ("api-1", "api-2", "scheduler"):
+            assert MEDIA_MOUNT in services[name]["volumes"], name
+        for name in ("migrate", "db"):
+            assert not any("media" in v for v in services[name].get("volumes", [])), name
+
+    def test_mount_path_is_the_apps_media_root(self):
+        from src.config import Settings
+        assert Settings.model_fields["media_root"].default == "/data/media"
+        assert _env_file(VPS / "settings.env")["MEDIA_ROOT"] == "/data/media"
+
+    def test_switches_off_by_default(self):
+        from src.config import Settings
+        settings = _env_file(VPS / "settings.env")
+        assert settings["MEDIA_ENABLED"] == "false" and settings["LINK_CARDS_ENABLED"] == "false"
+        assert Settings.model_fields["media_enabled"].default == "false"
+        assert Settings.model_fields["link_cards_enabled"].default == "false"
+
+    def test_image_creates_media_root_owned_by_the_app_user(self):
+        # A new docker volume copies the owner of the folder it is mounted over.
+        text = (REPO / "platform" / "Dockerfile").read_text()
+        assert re.search(r"mkdir -p /data/media && chown -R agentx:agentx /app /data/media", text)
+        assert text.index("/data/media") < text.index("USER agentx")
+
+    def test_backup_archives_the_volume_read_only_without_network(self):
+        text = (VPS / "db_move.sh").read_text()
+        assert 'MEDIA_VOLUME="${MEDIA_VOLUME:-agentx_media}"' in text
+        assert '--network none -v "$MEDIA_VOLUME:/media:ro"' in text
+        assert 'media_backup "$stamp"' in text[text.index("cmd_backup() {"):]
 
 
 def _status_record_fn(script: Path) -> str:
@@ -954,7 +998,7 @@ def _status_record_fn(script: Path) -> str:
 class TestStatusRecords:
     def test_only_the_scheduler_mounts_the_folder_read_only(self):
         services = _compose()["services"]
-        assert services["scheduler"]["volumes"] == [STATUS_MOUNT]
+        assert services["scheduler"]["volumes"] == [STATUS_MOUNT, MEDIA_MOUNT]
         for name in ("api-1", "api-2", "migrate", "db"):
             assert "volumes" not in services[name] or STATUS_MOUNT not in services[name]["volumes"]
 

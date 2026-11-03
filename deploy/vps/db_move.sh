@@ -7,6 +7,7 @@
 #   cd /opt/agentx && bash db_move.sh restore <file>   # into the EMPTY VPS database, all or nothing
 #   cd /opt/agentx && bash db_move.sh verify           # exact row counts, Neon vs VPS, every table
 #   cd /opt/agentx && bash db_move.sh backup           # VPS -> /var/backups/agentx/agentx-<time>.dump
+#                                                      # (+ media-<time>.tar.gz of the agentx_media volume)
 #   cd /opt/agentx && bash db_move.sh restore-test     # newest backup -> throwaway database, compare, drop
 #
 # Every Postgres tool runs from the `db` image (pg17 tools, so they can read a Neon server of
@@ -25,6 +26,10 @@ set -euo pipefail
 cd "${AGENTX_DIR:-/opt/agentx}"
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/agentx}"
 KEEP="${KEEP:-14}"
+# Images (Layer 1 S4): the agentx_media volume is archived next to the dump, if the volume exists.
+# Archives are big, so fewer are kept. PG_RUN=native reads MEDIA_DIR (a folder) instead.
+MEDIA_VOLUME="${MEDIA_VOLUME:-agentx_media}"
+MEDIA_KEEP="${MEDIA_KEEP:-3}"
 SECRETS="${AGENTX_SECRETS_FILE:-/etc/agentx/api.env}"
 
 env_value() {  # env_value FILE NAME -> last value of NAME in FILE, quotes removed
@@ -161,7 +166,44 @@ cmd_check() {
 
 # A dump that died halfway (power, OOM, kill) leaves a .part file that nothing else deletes
 # and that the retention loop never counts; sweep the stale ones before writing a new dump.
-sweep_parts() { find "$BACKUP_DIR" -maxdepth 1 -name '*.dump.part' -mmin +1440 -delete 2>/dev/null || true; }
+sweep_parts() {
+  find "$BACKUP_DIR" -maxdepth 1 \( -name '*.dump.part' -o -name 'media-*.tar.gz.part' \) -mmin +1440 -delete 2>/dev/null || true
+}
+
+# media_exists: is there a media volume (or, natively, a MEDIA_DIR folder) to archive?
+media_exists() {
+  if [[ "${PG_RUN:-container}" == native ]]; then
+    [[ -n "${MEDIA_DIR:-}" && -d "${MEDIA_DIR:-}" ]]
+  else
+    docker volume inspect "$MEDIA_VOLUME" > /dev/null 2>&1
+  fi
+}
+
+# media_tar: the media files as a gzipped tar on stdout. The volume is mounted read-only into a
+# throwaway container of the db image (already on the VPS); nothing else is mounted into it.
+media_tar() {
+  if [[ "${PG_RUN:-container}" == native ]]; then
+    tar -C "$MEDIA_DIR" -czf - .
+  else
+    docker run --rm --network none -v "$MEDIA_VOLUME:/media:ro" "$DB_IMAGE" tar -C /media -czf - .
+  fi
+}
+
+# media_backup STAMP: archive the images, check the archive reads back, keep the newest MEDIA_KEEP.
+media_backup() {
+  local file="$BACKUP_DIR/media-$1.tar.gz"
+  if ! media_exists; then
+    echo "media: no $MEDIA_VOLUME volume; nothing to archive"
+    return 0
+  fi
+  media_tar < /dev/null > "$file.part" || { rm -f -- "$file.part"; return 1; }
+  tar -tzf "$file.part" > /dev/null || { rm -f -- "$file.part"; return 1; }
+  mv "$file.part" "$file"
+  ls -1t "$BACKUP_DIR"/media-*.tar.gz | tail -n +"$(( MEDIA_KEEP + 1 ))" | while IFS= read -r old; do
+    rm -f -- "$old"
+  done
+  echo "media: $file ($(du -h "$file" | cut -f1)); kept $(ls -1 "$BACKUP_DIR"/media-*.tar.gz | wc -l | tr -d ' ')"
+}
 
 cmd_dump() {
   need_src
@@ -223,8 +265,14 @@ cmd_backup() {
   ls -1t "$BACKUP_DIR"/agentx-*.dump | tail -n +"$(( KEEP + 1 ))" | while IFS= read -r old; do
     rm -f -- "$old"
   done
-  status_record backup "$(printf '{"ok": true, "finished_at": "%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
   echo "backup: $file ($(du -h "$file" | cut -f1)); kept $(ls -1 "$BACKUP_DIR"/agentx-*.dump | wc -l | tr -d ' ')"
+  # The database dump is safe on disk first; a media archive that fails marks the run failed.
+  if ! media_backup "$stamp"; then
+    status_record backup "$(printf '{"ok": false, "finished_at": "%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+    echo "ALERT: backup of the images (media volume) failed; the database dump is fine" >&2
+    return 1
+  fi
+  status_record backup "$(printf '{"ok": true, "finished_at": "%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
 }
 
 # restore-test: prove last night's backup can be loaded. Newest agentx-*.dump -> a throwaway
