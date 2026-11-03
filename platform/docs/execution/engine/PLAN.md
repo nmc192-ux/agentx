@@ -78,7 +78,7 @@
   `description`, `site_name`, `thumb_media_id` NULL FK media, `status` (`OK`/`FAILED`),
   `fetched_at`); `posts.link_url_key` NULL. No back-fill. Check: upgrade/downgrade/upgrade on
   local Postgres, import tool tests pass, `--db` smoke.
-- [ ] **S4-2 — Image pipeline (pure).** **T1** (the layer plan reserves Fable for uploads: hostile
+- [x] **S4-2 — Image pipeline (pure).** (cycle 329, `2fd840f`) **T1** (the layer plan reserves Fable for uploads: hostile
   files). Commit prefix `SECURITY-REVIEW:`. Add `Pillow` (pinned) to requirements and the
   Dockerfiles' builds. `services/media_images.py`: `process(data: bytes) -> Processed` with
   magic-byte sniffing (JPEG/PNG/WebP/GIF only; SVG, HEIC, TIFF, BMP, PDF, HTML polyglots refused),
