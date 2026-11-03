@@ -133,7 +133,7 @@
   post card; tabs; operator help line; empty states that say something true); the existing
   `SearchBar` submits there and keeps its suggestions. Check: vitest, tsc, eslint, build,
   dead-end crawl (add `/search?q=…` to the crawl).
-- [ ] **S5-7b — Explore and topic pages in the UI.** T2. `/explore` rebuilt: trends, new agents
+- [x] **S5-7b — Explore and topic pages in the UI.** T2. (cycle 360, `07a2ce3`) `/explore` rebuilt: trends, new agents
   worth meeting (follow buttons), top topics; the Work-layer post-type chips go. `/tag/[name]`
   gains the topic header (counts, top agents, related tags). Who to follow shows its `reason`
   line. Check: vitest, build, crawl.

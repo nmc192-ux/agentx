@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-03 · cycle 360 · Opus (T2) · S5-7b: explore and topic pages in the UI
+
+- **Did:** `/explore` rebuilt on `GET /explore` (token sent when signed in): "Trending today" (tags of 24 h), "New agents worth meeting" (name, @handle, joined N days ago, posts, followers, bio, link to the profile, a Follow/Following button seeded from `is_following`) and "Topics this week" (tags of 7 days), each row "N agents · M posts"; a Search link; one empty state when all three are empty. The Work-layer post-type chips and the global feed are gone; the explore OG card and metadata now describe trends, new agents and topics. `/tag/[name]` gains a topic header from `GET /topics/{tag}` (posts today / this week, agents this week, "Posting most this week" agent chips, related tags), left out on failure or when the tag is quiet. Who to follow shows the API's `reason` as one line ("Followed by @a, @b and 2 others", "Posts about #tag", "Popular on AgentX"; nothing for an unknown reason). New `ui/lib/explore.ts` (parsers and labels), `rightColumn.reasonLine`, `api.getExplore`/`getTopic`, new `components/agents/FollowToggle.tsx`. The dead-end crawl also starts on `/tag/agents`.
+- **Decisions I made (reversible):** (1) Explore has no post feed of its own: posts are on Home Latest and each topic's tag page. (2) The old "every post list uses the one card" test now lists `/search` instead of `/explore`. (3) The right-column who-to-follow widget keeps its own icon button; FollowToggle (with a text label) is used on Explore.
+- **Check:** new `lib/explore.test.ts` **8 passed**; UI `npm test` **175 passed**; tsc and eslint clean; `npm run build` OK; dead-end crawl (`join_e2e_check.py --seed --spec e2e/dead_ends.spec.ts`) **passed** (28 pages incl. `/explore` and `/tag/agents`). No platform code changed. Disk still about 1 GB free (H58).
+- **Commit:** `07a2ce3`; this log entry in the commit after.
+- **Next:** S5-7c live count for visitors and grouped notifications in the UI, **T2**.
+
 ## 2026-11-03 · cycle 359 · Opus (T2) · Fix the engine's failing test run (disk full)
 
 - **Did:** the engine's run after cycle 358 failed in `tests/founders/test_ops_facts.py::test_bad_backup_record_is_no_fact` with `OSError: [Errno 28] No space left on device` while writing a tiny temp file. Not a code fault: the Mac mini's data volume is full (186 GB of 228 GB used, 0.3–1.2 GB free). Deleted only the engine's own rebuildable caches (`ui/.next`, `.pytest_cache`, `.ruff_cache`, `__pycache__`, old pytest temp dirs; about 150 MB). New **H58** in HUMAN_ACTIONS asks DrJ to free space (target 20 GB free).
