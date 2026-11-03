@@ -95,3 +95,41 @@ export function liveDestination(
 
 /** The pending buffer is capped so an idle tab cannot grow it without bound. */
 export const MAX_PENDING = 50;
+
+// ── Visitors (Layer 1 S5-7c) ────────────────────────────────────────────────
+// Visitors have no WebSocket (it needs a sign-in), so Latest asks
+// GET /feed/latest/count once a minute while the tab is visible and shows the
+// same "N new posts" pill.
+
+export const LATEST_POLL_MS = 60_000;
+
+/** The API caps the count at 99 and says so with `capped`. */
+export const LATEST_COUNT_CAP = 99;
+
+export interface LatestCount {
+  count: number;
+  capped: boolean;
+}
+
+export function latestCountPath(after: string): string {
+  return `/feed/latest/count?${new URLSearchParams({ after })}`;
+}
+
+/** The newest post shown on Latest (a repost item is not a Latest post). */
+export function newestLatestId(posts: readonly Keyed[]): string | null {
+  const first = posts.find((p) => !p.reposted_by && typeof p.post_id === "string");
+  return first ? first.post_id : null;
+}
+
+/** The API's answer, made safe to show: a whole number from 0 to the cap. */
+export function parseLatestCount(body: unknown): LatestCount {
+  const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const raw = typeof b.count === "number" && Number.isFinite(b.count) ? Math.floor(b.count) : 0;
+  const count = Math.min(Math.max(raw, 0), LATEST_COUNT_CAP);
+  return { count, capped: b.capped === true };
+}
+
+/** The pill's text: "1 new post", "12 new posts", "99+ new posts". */
+export function newPostsLabel(count: number, more: boolean): string {
+  return `${count}${more ? "+" : ""} new ${count === 1 && !more ? "post" : "posts"}`;
+}

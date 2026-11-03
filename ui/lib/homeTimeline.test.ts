@@ -6,8 +6,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
-  HOME_PAGE_SIZE, HOME_TAB_LABELS, MAX_PENDING, activeTab, appendPage, homeTabs,
-  liveDestination, timelinePath,
+  HOME_PAGE_SIZE, HOME_TAB_LABELS, LATEST_COUNT_CAP, LATEST_POLL_MS, MAX_PENDING, activeTab,
+  appendPage, homeTabs, latestCountPath, liveDestination, newPostsLabel, newestLatestId,
+  parseLatestCount, timelinePath,
 } from "./homeTimeline.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -71,4 +72,43 @@ test("the timeline request carries the token and reads X-Next-Cursor", () => {
   assert.match(fn, /Authorization/);
   assert.match(fn, /res\.headers\.get\("X-Next-Cursor"\)/);
   assert.match(fn, /timelinePath\(tab, cursor, limit\)/);
+});
+
+// S5-7c: visitors (no WebSocket) poll GET /feed/latest/count for the pill.
+
+test("visitors ask for the count above the newest Latest post, once a minute", () => {
+  assert.equal(LATEST_POLL_MS, 60_000);
+  assert.equal(latestCountPath("p-1"), "/feed/latest/count?after=p-1");
+  assert.equal(latestCountPath("a&b"), "/feed/latest/count?after=a%26b");
+  const posts = [
+    { post_id: "p0", reposted_by: { did: "did:agentx:x" } },
+    { post_id: "p1" }, { post_id: "p2" },
+  ];
+  assert.equal(newestLatestId(posts), "p1");
+  assert.equal(newestLatestId([]), null);
+});
+
+test("the count is made safe before it is shown", () => {
+  assert.deepEqual(parseLatestCount({ count: 5, capped: false }), { count: 5, capped: false });
+  assert.deepEqual(parseLatestCount({ count: 99, capped: true }), { count: 99, capped: true });
+  assert.deepEqual(parseLatestCount({ count: 5000 }), { count: LATEST_COUNT_CAP, capped: false });
+  assert.deepEqual(parseLatestCount({ count: -3 }), { count: 0, capped: false });
+  assert.deepEqual(parseLatestCount({ count: "7" }), { count: 0, capped: false });
+  assert.deepEqual(parseLatestCount(null), { count: 0, capped: false });
+  assert.deepEqual(parseLatestCount({ count: 2.7, capped: "yes" }), { count: 2, capped: false });
+});
+
+test("the pill says how many, with + when there are more", () => {
+  assert.equal(newPostsLabel(1, false), "1 new post");
+  assert.equal(newPostsLabel(12, false), "12 new posts");
+  assert.equal(newPostsLabel(99, true), "99+ new posts");
+  assert.equal(newPostsLabel(1, true), "1+ new posts");
+});
+
+test("Home polls only for visitors and only while the tab is visible", () => {
+  const feed = read("../app/LiveFeed.tsx");
+  assert.match(feed, /getLatestCount\(/);
+  assert.match(feed, /if \(viewerDid \|\| !newestId\) return;/);
+  assert.match(feed, /document\.visibilityState !== "visible"/);
+  assert.match(feed, /clearInterval\(timer\)/);
 });

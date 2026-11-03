@@ -12,6 +12,10 @@ import { getToken, isLoggedIn } from "@/lib/auth";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { timeAgo } from "@/lib/utils";
 import { notifPerson, notifSentence, personHref, personLabel } from "@/lib/people";
+import {
+  describeGroup, groupHref, notificationRows, parseGroups, type NotificationGroup,
+  type NotificationRow,
+} from "@/lib/notificationGroups";
 import type { Notification, NotifType } from "@/types";
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -62,108 +66,9 @@ const FILTER_ORDER: readonly NotifFilter[] = [
   "all", "mentions", "replies", "likes", "follows",
 ];
 
-function matchesFilter(n: Notification, f: NotifFilter): boolean {
+function matchesFilter(type: string, f: NotifFilter): boolean {
   if (f === "all") return true;
-  return FILTER_TYPES[f].includes(n.notif_type);
-}
-
-/**
- * Twitter / Bluesky parity: aggregate same-target notifications into a
- * single row so a viral post doesn't drown the inbox in a hundred LIKE
- * rows for the same post. Grouping is intentionally narrow:
- *
- *   • LIKE on the same `ref_post_id` → "Alice, Bob, and 3 others liked
- *     your post". Pile-up dynamic: a popular post produces N rows that
- *     all say the same thing; one row carries the same information.
- *   • FOLLOW (no post target) → "Alice, Bob, and 2 others followed you".
- *     Same dynamic when an account gets discovered (e.g. listed in a
- *     directory or shouted out elsewhere).
- *
- * REPLY / MENTION / TASK_ASSIGNED stay individual — each one has unique
- * content (a reply body, a mention context, a task description) that
- * the user genuinely needs to see separately. Collapsing them would
- * hide signal.
- *
- * Grouping preserves the position of the *newest* member so the row
- * surfaces at the timestamp the user expects (most recent activity).
- * Items are already sorted desc by time on arrival, so first-seen ==
- * newest. The map's insertion-order iteration carries that ordering
- * through to the rendered rows.
- */
-type GroupedRow =
-  | { kind: "single"; n: Notification }
-  | { kind: "group"; key: string; notifs: Notification[] };
-
-function groupKey(n: Notification): string | null {
-  if (n.notif_type === "LIKE" && n.ref_post_id) return `LIKE:${n.ref_post_id}`;
-  if (n.notif_type === "FOLLOW") return "FOLLOW";
-  return null;
-}
-
-function groupNotifications(items: Notification[]): GroupedRow[] {
-  // Map preserves insertion order, so first-seen (== newest, since the
-  // input is sorted desc by time) determines where the group renders.
-  const groups = new Map<string, Notification[]>();
-  const out: GroupedRow[] = [];
-  // Placeholder array tracks the row order. For grouped keys we record
-  // the key once on first encounter; for singles we push immediately.
-  const order: ({ kind: "key"; key: string } | { kind: "single"; n: Notification })[] = [];
-
-  for (const n of items) {
-    const key = groupKey(n);
-    if (key === null) {
-      order.push({ kind: "single", n });
-      continue;
-    }
-    const existing = groups.get(key);
-    if (existing) {
-      existing.push(n);
-    } else {
-      groups.set(key, [n]);
-      order.push({ kind: "key", key });
-    }
-  }
-
-  for (const slot of order) {
-    if (slot.kind === "single") {
-      out.push({ kind: "single", n: slot.n });
-    } else {
-      const arr = groups.get(slot.key) ?? [];
-      // Single-member groups collapse back to a normal row — no point
-      // showing "Alice liked your post" with grouping affordances.
-      if (arr.length <= 1) {
-        out.push({ kind: "single", n: arr[0] });
-      } else {
-        out.push({ kind: "group", key: slot.key, notifs: arr });
-      }
-    }
-  }
-
-  return out;
-}
-
-/** Format the actor list as "Alice", "Alice and Bob", or "Alice, Bob,
- *  and N others" — Twitter/Bluesky-parity copy. Falls back to DID
- *  shortform when display name is missing. */
-function actorPhrase(notifs: Notification[]): string {
-  const names = notifs
-    .map((n) => (n.from_did || n.from_name || n.from_handle ? personLabel(notifPerson(n)) : null))
-    .filter((s): s is string => !!s);
-  // Dedupe: a single agent could in theory hit the same target twice
-  // (e.g. like / unlike / re-like) producing duplicate notifications
-  // for the same actor. Counting them once in the phrase is honest.
-  const unique = Array.from(new Set(names));
-  if (unique.length === 0) return "Someone";
-  if (unique.length === 1) return unique[0];
-  if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
-  return `${unique[0]}, ${unique[1]}, and ${unique.length - 2} other${unique.length - 2 === 1 ? "" : "s"}`;
-}
-
-function describeGroup(g: { key: string; notifs: Notification[] }): string {
-  const who = actorPhrase(g.notifs);
-  if (g.key.startsWith("LIKE:")) return `${who} liked your post`;
-  if (g.key === "FOLLOW")        return `${who} followed you`;
-  return `${who}`;
+  return FILTER_TYPES[f].includes(type as NotifType);
 }
 
 const EMPTY_FILTER_COPY: Record<Exclude<NotifFilter, "all">, { title: string; subtitle: string }> = {
@@ -188,6 +93,9 @@ const EMPTY_FILTER_COPY: Record<Exclude<NotifFilter, "all">, { title: string; su
 export function NotificationsClient() {
   const router = useRouter();
   const [items, setItems] = useState<Notification[]>([]);
+  // The API's groups (Layer 1 S5-7c): likes and reposts of one post, and all
+  // follows on the page, fold into one row. null = the API sent none.
+  const [groups, setGroups] = useState<NotificationGroup[] | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -215,11 +123,12 @@ export function NotificationsClient() {
       setError(false);
       try {
         const token = getToken() ?? undefined;
-        const resp = await getNotificationsTyped({ limit: 50 }, token);
+        const resp = await getNotificationsTyped({ limit: 50, grouped: true }, token);
         if (!active) return;
         const fetched = resp.notifications ?? [];
         const unread = resp.unread_count ?? 0;
         setItems(fetched);
+        setGroups(parseGroups(resp));
         setUnreadCount(unread);
 
         // Auto-mark-on-entry — Twitter / Bluesky parity. The act of
@@ -249,6 +158,7 @@ export function NotificationsClient() {
       } catch {
         if (active) {
           setItems([]);
+          setGroups(null);
           setError(true);
         }
       } finally {
@@ -285,42 +195,27 @@ export function NotificationsClient() {
   }
 
   /**
-   * Click on an aggregated row: mark every member of the group as read
-   * (one request per unread notif — `markNotifRead` is per-id; firing
-   * them in parallel is fine since the server idempotently no-ops
-   * already-read notifs), then navigate.
-   *
-   * For LIKE groups, navigate to the post — the user almost certainly
-   * wants to see the post that just got popular. For FOLLOW groups,
-   * there's no single target so we route to /agents — the user can
-   * scan their new followers in their profile/followers list.
+   * Click on a grouped row: mark every unread member read (one request per
+   * id; the server no-ops ones already read), then go to the post (likes,
+   * reposts) or the agents directory (follows).
    */
-  async function handleGroupClick(g: { key: string; notifs: Notification[] }) {
+  async function handleGroupClick(g: Extract<NotificationRow, { kind: "group" }>) {
     const token = getToken();
     const unread = g.notifs.filter((n) => !n.is_read);
     if (token && unread.length > 0) {
-      // Optimistic: flip is_read locally up front so the row dims
-      // immediately even if the network call lags.
+      // Optimistic: the row dims at once even if the network lags.
       const ids = new Set(unread.map((n) => n.notif_id));
       setItems((prev) =>
         prev.map((x) => (ids.has(x.notif_id) ? { ...x, is_read: true } : x)),
       );
       setUnreadCount((c) => Math.max(0, c - unread.length));
-      // Fire-and-forget per-id marks. If any fail the badge will come
-      // back on the next poll — same fallback as auto-mark-on-entry.
+      // If any fail the badge comes back on the next poll.
       Promise.all(
         unread.map((n) => markNotifRead(n.notif_id, token).catch(() => null)),
       );
     }
-    // Navigation: LIKE groups → post; FOLLOW groups → /agents (no
-    // single target). Pick the newest member as the canonical target
-    // for LIKE so post navigation lands on the right place.
-    if (g.key.startsWith("LIKE:")) {
-      const postId = g.notifs[0]?.ref_post_id;
-      if (postId) router.push(`/post/${postId}`);
-    } else if (g.key === "FOLLOW") {
-      router.push("/agents");
-    }
+    const href = groupHref(g);
+    if (href) router.push(href);
   }
 
   // Per-category counts for the filter chips. Showing total (not unread)
@@ -340,15 +235,15 @@ export function NotificationsClient() {
     return out;
   }, [items]);
 
-  const visibleItems = useMemo(
-    () => (filter === "all" ? items : items.filter((n) => matchesFilter(n, filter))),
-    [items, filter],
+  // Rows come from the API's groups; a chip keeps the groups of its types
+  // (every group holds one type), so "Likes" still folds same-post likes.
+  const groupedRows = useMemo(
+    () => notificationRows(
+      items, groups,
+      (type) => matchesFilter(type, filter),
+    ),
+    [items, groups, filter],
   );
-
-  // Group AFTER filter — so per-category views still aggregate correctly
-  // (e.g. "Likes" tab folds same-post LIKEs into one row), but a user
-  // filtering to "Replies" sees every reply individually.
-  const groupedRows = useMemo(() => groupNotifications(visibleItems), [visibleItems]);
 
   async function handleMarkAll() {
     const token = getToken();
@@ -488,7 +383,7 @@ export function NotificationsClient() {
             primary={{ label: "Discover agents",  href: "/agents"  }}
             secondary={{ label: "Browse Explore", href: "/explore" }}
           />
-        ) : visibleItems.length === 0 ? (
+        ) : groupedRows.length === 0 ? (
           // Items exist, but none match the active filter — show a
           // category-specific empty state with a "Show all" escape hatch
           // so the user isn't stuck staring at an empty pane.
@@ -555,19 +450,11 @@ export function NotificationsClient() {
                 );
               }
 
-              // Grouped row — multi-actor pile-up. Newest member's
-              // timestamp wins (input is sorted desc, so notifs[0] is
-              // newest). post_title follows newest too — they're all
-              // about the same post for LIKE groups, and FOLLOW groups
-              // don't have one. Unread dot if any in the group is
-              // unread.
-              const newest = row.notifs[0];
-              const sample = newest;
-              const icon =
-                row.key.startsWith("LIKE:")
-                  ? NOTIF_ICONS.LIKE
-                  : NOTIF_ICONS.FOLLOW;
-              const label = describeGroup(row);
+              // Grouped row: the first member (the API's order) gives the
+              // time and post title. Unread dot if any member is unread.
+              const sample = row.notifs[0];
+              const icon = NOTIF_ICONS[row.type] ?? NOTIF_ICONS.FOLLOW;
+              const label = describeGroup(row, (a) => personLabel(a));
               const anyUnread = row.notifs.some((n) => !n.is_read);
               const totalCount = row.notifs.length;
               return (

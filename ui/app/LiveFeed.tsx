@@ -9,7 +9,9 @@
  *
  * Both page with the API's cursor ("Load more"). Live posts from the
  * WebSocket wait behind a "N new posts" pill on Latest so the reader's place
- * does not jump; your own posts show at once on either tab.
+ * does not jump; your own posts show at once on either tab. Visitors (no
+ * socket) get the same pill from GET /feed/latest/count, asked once a minute
+ * while the tab is visible (S5-7c).
  * Pinned hashtags (lib/storage/pinnedTags) are links to their tag pages.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,10 +22,10 @@ import { OnboardingHero } from "@/components/onboarding/OnboardingHero";
 import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
 import { agentXWs } from "@/lib/websocket";
 import { getDid, getToken } from "@/lib/auth";
-import { getHomeTimeline } from "@/lib/api";
+import { getHomeTimeline, getLatestCount } from "@/lib/api";
 import {
-  HOME_TAB_HINTS, HOME_TAB_LABELS, MAX_PENDING, activeTab, appendPage, homeTabs,
-  liveDestination, type HomeTab,
+  HOME_TAB_HINTS, HOME_TAB_LABELS, LATEST_POLL_MS, MAX_PENDING, activeTab, appendPage,
+  homeTabs, liveDestination, newPostsLabel, newestLatestId, type HomeTab, type LatestCount,
 } from "@/lib/homeTimeline";
 import { unpinTag, usePinnedTags } from "@/lib/storage/pinnedTags";
 import type { SocialPost } from "@/types";
@@ -55,6 +57,8 @@ export function LiveFeed({
     following: EMPTY,
   });
   const [pendingPosts, setPendingPosts] = useState<SocialPost[]>([]);
+  // Visitors only: what /feed/latest/count last said.
+  const [visitorNew, setVisitorNew] = useState<LatestCount>({ count: 0, capped: false });
   const [loadingMore, setLoadingMore] = useState(false);
   const pinnedTags = usePinnedTags();
 
@@ -137,6 +141,42 @@ export function LiveFeed({
     };
   }, [viewerDid]);
 
+  // Visitors: ask how many posts are newer than the top of Latest, once a
+  // minute while the tab is visible. Signed-in readers have the socket.
+  const newestId = newestLatestId(timelines.latest.posts);
+  useEffect(() => {
+    if (viewerDid || !newestId) return;
+    let active = true;
+    const poll = async () => {
+      if (document.visibilityState !== "visible" || getToken()) return;
+      try {
+        const next = await getLatestCount(newestId);
+        if (active) setVisitorNew(next);
+      } catch {
+        // Rate-limited or offline: keep what the pill says; try next minute.
+      }
+    };
+    const timer = window.setInterval(() => void poll(), LATEST_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [viewerDid, newestId]);
+
+  async function showVisitorNewPosts() {
+    setVisitorNew({ count: 0, capped: false });
+    try {
+      const page = await getHomeTimeline("latest", null);
+      setTimelines((prev) => ({
+        ...prev,
+        latest: { ...prev.latest, posts: appendPage(page.posts, prev.latest.posts) },
+      }));
+    } catch {
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function selectTab(next: HomeTab) {
     setWantedTab(next);
     setPendingPosts([]);
@@ -182,6 +222,12 @@ export function LiveFeed({
   }
 
   const tabs = homeTabs(!!viewerDid);
+  // One pill: socket posts held back for a signed-in reader, the polled count
+  // for a visitor.
+  const pillCount = viewerDid ? pendingPosts.length : visitorNew.count;
+  const pillLabel = viewerDid
+    ? newPostsLabel(pillCount, pillCount === MAX_PENDING)
+    : newPostsLabel(pillCount, visitorNew.capped);
 
   return (
     <>
@@ -251,7 +297,7 @@ export function LiveFeed({
           ))}
         </div>
 
-        {tab === "latest" && pendingPosts.length > 0 && (
+        {tab === "latest" && pillCount > 0 && (
           <div
             className="sticky top-2 z-10 flex justify-center pointer-events-none mb-3"
             role="status"
@@ -259,18 +305,17 @@ export function LiveFeed({
           >
             <button
               type="button"
-              onClick={flushPendingPosts}
+              onClick={viewerDid ? flushPendingPosts : showVisitorNewPosts}
               className="pointer-events-auto inline-flex items-center gap-1.5
                          px-3.5 py-1.5 rounded-full bg-cyan-500 text-white
                          text-xs font-semibold shadow-lg shadow-cyan-500/30
                          hover:bg-cyan-400 active:scale-95 transition
                          focus-visible:outline-none focus-visible:ring-2
                          focus-visible:ring-cyan-300/60"
-              aria-label={`Show ${pendingPosts.length} new ${pendingPosts.length === 1 ? "post" : "posts"}`}
+              aria-label={`Show ${pillLabel}`}
             >
               <ArrowUp className="w-3 h-3" aria-hidden />
-              {pendingPosts.length === MAX_PENDING ? `${MAX_PENDING}+` : pendingPosts.length}{" "}
-              new {pendingPosts.length === 1 ? "post" : "posts"}
+              {pillLabel}
             </button>
           </div>
         )}

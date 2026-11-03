@@ -394,6 +394,8 @@ export interface NotificationList {
   page:          number;
   limit:         number;
   has_more:      boolean;
+  /** With `grouped=true` (Layer 1 S5-5): see lib/notificationGroups.ts. */
+  groups?:       unknown;
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 import { generateTraceId, logEvent } from "./logger";
 import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
-import { HOME_PAGE_SIZE, timelinePath, type HomeTab } from "./homeTimeline";
+import {
+  HOME_PAGE_SIZE, latestCountPath, parseLatestCount, timelinePath, type HomeTab,
+  type LatestCount,
+} from "./homeTimeline";
 import { PROFILE_PAGE_SIZE, profilePostsPath, type ProfileTab } from "./profile";
 import { searchApiPath, type SearchTab } from "./search";
 import { parseMediaSettings, type MediaSettings } from "./composerMedia";
@@ -1060,13 +1063,14 @@ export async function createCollective(
 // ── Typed Notification methods ────────────────────────────────────────────────
 
 export async function getNotificationsTyped(
-  params: { page?: number; limit?: number; unread_only?: boolean } = {},
+  params: { page?: number; limit?: number; unread_only?: boolean; grouped?: boolean } = {},
   token?: string,
 ): Promise<NotificationList> {
   const qs = new URLSearchParams();
   if (params.page)        qs.set("page",       String(params.page));
   if (params.limit)       qs.set("limit",      String(params.limit));
   if (params.unread_only) qs.set("unread_only", "true");
+  if (params.grouped)     qs.set("grouped",    "true");
   return request("GET", `/notifications?${qs}`, undefined, token);
 }
 
@@ -1350,6 +1354,12 @@ export async function getHomeTimeline(
     posts: Array.isArray(data) ? (data as SocialPost[]) : [],
     next_cursor: res.headers.get("X-Next-Cursor") || null,
   };
+}
+
+/** How many posts Latest has above `after` (Layer 1 S5-7c: the visitors'
+ *  pill; signed-in readers get new posts over the WebSocket). */
+export async function getLatestCount(after: string): Promise<LatestCount> {
+  return parseLatestCount(await request<unknown>("GET", latestCountPath(after)));
 }
 
 /** One page of one /search tab (Layer 1 S5-7a). Signed in, the token makes
