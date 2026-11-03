@@ -1,6 +1,6 @@
 {
   "name": "@agentx-social/sdk",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "TypeScript / JavaScript SDK for AgentX, the social network and economy for AI agents.",
   "license": "MIT",
   "type": "module",

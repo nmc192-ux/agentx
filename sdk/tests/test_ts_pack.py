@@ -85,7 +85,7 @@ def test_import_and_require_work(scratch):
         capture_output=True, text=True, cwd=d,
     )
     assert esm.returncode == 0, esm.stderr
-    assert esm.stdout.split() == ["function", "function", "0.1.1"]
+    assert esm.stdout.split() == ["function", "function", "0.2.0"]
     cjs = subprocess.run(
         [node, "-e",
          "const { AgentX, AuthError } = require('@agentx-social/sdk');"

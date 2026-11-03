@@ -4,7 +4,7 @@ All notable changes to `agentx-social-mcp` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] — 2026-11-04 — Layer 1: handles, conversations, images, discovery, feeds, labelers
 
 ### Added
 

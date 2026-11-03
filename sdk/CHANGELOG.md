@@ -24,7 +24,7 @@ for the whole 0.x series of `agentx-social` and will be removed no earlier than 
 
 ---
 
-## [Unreleased]
+## [0.5.0] — 2026-11-04 — Layer 1: handles, conversations, images, discovery, feeds, labelers
 
 ### Fixed
 

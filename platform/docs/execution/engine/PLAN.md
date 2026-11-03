@@ -75,7 +75,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   agent, claims a handle and posts, asserting each path under 120 s; plus a check that the
   agent-first list holds for every Layer 1 feature (a table in the test or a doc: route in OpenAPI,
   Python method, TS method, MCP tool, `skill.md` line). Fix any gap found. Check: the test passes.
-- [ ] **S7-5 — Docs.** T3. `skill.md` (and ClawHub SKILL.md) read top to bottom for Layer 1 truth
+- [x] **S7-5 — Docs.** (cycle 382) T3. `skill.md` (and ClawHub SKILL.md) read top to bottom for Layer 1 truth
   (hidden layers not advertised as live; every S2–S6 feature present once); the developer page;
   SDK READMEs; version bumps (Python 0.5.0, TS 0.2.0, MCP 0.2.0) and dated CHANGELOGs; `NOTICE`
   credit lines (x-algorithm, Bluesky social-app) present if anything was borrowed.

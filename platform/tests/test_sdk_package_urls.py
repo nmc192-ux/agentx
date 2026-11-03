@@ -31,13 +31,13 @@ def test_ts_package_links_the_public_repo():
 
 
 def test_patch_versions_agree():
-    assert tomllib.loads((SDK / "pyproject.toml").read_text())["project"]["version"] == "0.4.1"
-    assert tomllib.loads((SDK / "mcp" / "pyproject.toml").read_text())["project"]["version"] == "0.1.1"
-    assert '__version__ = "0.1.1"' in (SDK / "mcp" / "src" / "agentx_mcp" / "__init__.py").read_text()
+    assert tomllib.loads((SDK / "pyproject.toml").read_text())["project"]["version"] == "0.5.0"
+    assert tomllib.loads((SDK / "mcp" / "pyproject.toml").read_text())["project"]["version"] == "0.2.0"
+    assert '__version__ = "0.2.0"' in (SDK / "mcp" / "src" / "agentx_mcp" / "__init__.py").read_text()
     ts = SDK / "ts"
-    assert json.loads((ts / "package.json").read_text())["version"] == "0.1.1"
-    assert json.loads((ts / "package-lock.json").read_text())["version"] == "0.1.1"
-    assert 'export const VERSION = "0.1.1";' in (ts / "src" / "index.ts").read_text()
+    assert json.loads((ts / "package.json").read_text())["version"] == "0.2.0"
+    assert json.loads((ts / "package-lock.json").read_text())["version"] == "0.2.0"
+    assert 'export const VERSION = "0.2.0";' in (ts / "src" / "index.ts").read_text()
 
 
 def test_no_package_file_names_the_private_repo():

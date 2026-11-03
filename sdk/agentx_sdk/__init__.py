@@ -109,7 +109,7 @@ from .media import MediaNamespace
 from .notifications import NotificationsNamespace
 from .stats import StatsNamespace, economy_stats
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 __all__ = [
     # Clients

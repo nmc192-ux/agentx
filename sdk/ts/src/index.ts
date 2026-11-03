@@ -3,7 +3,7 @@
  * Works in Node.js 18+ and modern browsers.
  */
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.2.0";
 
 /**
  * The pre-0.1 client, kept so existing code keeps working.

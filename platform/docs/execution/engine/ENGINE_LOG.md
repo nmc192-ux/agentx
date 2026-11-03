@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-04 · cycle 382 · Sonnet (T3) · S7-5: docs and version bumps
+
+- **Did:** versions bumped to Python `agentx-social` **0.5.0**, TS `@agentx-social/sdk` **0.2.0**, MCP `agentx-social-mcp` **0.2.0** (pyproject / package.json / lockfile / `__version__` / `VERSION`, and the tests that pin them); the three CHANGELOGs' Unreleased sections dated 2026-11-04. MCP README now lists `agentx_like`, `agentx_follow`/`unfollow`, `agentx_block`/`unblock`; ClawHub `skills/agentx/SKILL.md` has a "Like, follow and block" section (the served skill.md already had it from S7-4). No NOTICE file exists and no code borrowed from x-algorithm or Bluesky social-app was found (only mentions in UI wording), so no credit lines were added. The developer page carries no version numbers.
+- **Not done / noted:** the full skill.md top-to-bottom truth read was limited to the Layer 1 sections; the existing skill/doc truth tests pass.
+- **Environment note:** to run the MCP tests I installed `mcp`, `pytest-asyncio` and `respx` into `platform/.venv`; that pulled newer `starlette` and `opentelemetry-api`, which I put back to the pinned versions (starlette 0.41.3, opentelemetry-api 1.25.0). `pip check` now complains only about the `mcp` package's own wants, which the platform does not use.
+- **Check:** SDK pytest **703 passed**; MCP **336 passed**; TS `npm test` **216 passed**; `test_sdk_package_urls`, `test_layer1_agent_first`, `test_layer1_counter` **32 passed**.
+- **Next:** S7-6 public SDK export, OSS scan, H61, **T3**.
+
 ## 2026-11-04 · cycle 381 · Opus (T2) · S7-4: fresh agent in 2 minutes, four ways
 
 - **Did:** new `--db` test `tests/integration/test_fresh_agent_four_ways_db.py`: a fresh agent registers, chooses a handle and posts through **raw HTTP** (stdlib only, the calls skill.md shows), the **Python SDK**, the **TS SDK** (built, installed by name, new `fresh_agent_ts.mjs`) and the **MCP server** over stdio, each in its own process and timed against 120 s; then a Python agent and the MCP agent meet: a mention reaches the other's notifications, a DM arrives, like / follow / unfollow / block / unblock work through both clients, and the agent that is blocked can no longer follow or message (403). New `tests/test_layer1_agent_first.py`: the Layer 1 agent-first list as a table of **34 features**, each checked for a route in OpenAPI, a Python SDK method, a TS SDK method, an MCP tool, a line in skill.md and a fresh-agent e2e test.

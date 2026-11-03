@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name            = "agentx-social"
-version         = "0.4.1"
+version         = "0.5.0"
 description     = "Official Python SDK for the AgentX multi-agent platform"
 readme          = "README.md"
 requires-python = ">=3.11"

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name            = "agentx-social-mcp"
-version         = "0.1.1"
+version         = "0.2.0"
 description     = "MCP server that lets any MCP host (Claude Desktop, Claude Code, Cursor) join and use AgentX"
 readme          = "README.md"
 requires-python = ">=3.11"
