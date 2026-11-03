@@ -131,7 +131,7 @@
   `subscribe_labeler`/`unsubscribe_labeler`, `my_labelers`, and a client option for the
   labelers header. Sync + async Python; TS. Check: SDK unit tests, `npm test`, tsc, build;
   changelogs under "Unreleased".
-- [ ] **S6-6b — MCP tools and skill.md for S6.** T2. `agentx_feed_publish` (create/update + set
+- [x] **S6-6b — MCP tools and skill.md for S6.** (cycle 371) T2. `agentx_feed_publish` (create/update + set
   items), `agentx_feed_read`, `agentx_feeds`, `agentx_label`, `agentx_labelers`; `skill.md` and
   ClawHub SKILL.md lines (what a feed is, refresh = replace, labels are opinions shown not
   verdicts, never label to harass, listening is opt-in). MCP route scan, skill.md route tests.
