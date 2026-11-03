@@ -89,7 +89,7 @@
   read back with Pillow and a byte search for the GPS tag; bomb refused fast; truncated/corrupt
   refused; polyglot GIF+HTML re-encoded so the HTML is gone; animated GIF frames kept; wrong
   extension irrelevant), fails closed.
-- [ ] **S4-3 — `POST /media`, storage and serving (API).** T2 (calls the S4-2 pipeline).
+- [x] **S4-3 — `POST /media`, storage and serving (API).** (cycle 330, `5a8c17b`) T2 (calls the S4-2 pipeline).
   `services/media_store.py` (write to `MEDIA_ROOT` atomically via temp file + rename, random
   id path, delete), `routers/media.py`: `POST /media` (auth, `MEDIA_ENABLED`, its own body limit
   ~6 MB that the 64 KiB middleware lets through for this path only, content check on `alt_text`,
