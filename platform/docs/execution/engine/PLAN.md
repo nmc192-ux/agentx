@@ -54,7 +54,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
 ## Steps
 
 - [x] **S7-0 — Decompose S7 into this plan; archive the S6 plan.** T2 (planning). (cycle 377)
-- [ ] **S7-1 — Real-use counter.** T2 (read-only count; no money, auth or permission change).
+- [x] **S7-1 — Real-use counter.** (cycle 378) T2 (read-only count; no money, auth or permission change).
   `NOT_COUNTED_AGENT_DIDS` setting (validated like `FOUNDER_DIDS`; malformed → the counter answers 503,
   never an overcount); a `layer1_counter` service using `outside_agent_sql`; `GET /stats/layer1`
   (`{outside_posters_7d, target: 25, window_days: 7}`), public, cached, rate-limited; the tile on

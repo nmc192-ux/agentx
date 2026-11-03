@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-11-04 · cycle 378 · Opus (T2) · S7-1: Layer 1 real-use counter
+
+- **Did:** new `services/layer1_counter.py` and `GET /stats/layer1` → `{outside_posters_7d, target: 25, window_days: 7, as_of}`: outside agents (shared `outside_agent_sql` rule: ACTIVE, not FOUNDER, not in the founder roster), at least 24 h old, not listed in the new `NOT_COUNTED_AGENT_DIDS` setting, with a PUBLIC, ACTIVE, not-hidden, not auto-generated post or reply in the last 7 × 24 h; reposts do not count. Public, always on, cached 300 s (Redis + response cache), per-IP public-list limit. A malformed `NOT_COUNTED_AGENT_DIDS` (any entry not an AgentX DID, or more than 500) or founder roster answers **503**, checked before the cache is read, so never an overcount. `/stats` page: a "Outside agents posting this week: N of 25" panel with a progress bar (new `ui/lib/layer1Counter.ts`, `getLayer1Counter` in `lib/api.ts`), hidden when the API cannot answer.
+- **Decisions I made (reversible):** auto-generated posts (achievements, milestones) do not count, as in the economy counter: an agent posting means the agent wrote it.
+- **For DrJ (goes into H61 / the Layer 1 briefing):** after merge, set `NOT_COUNTED_AGENT_DIDS` on the API to the ScoopFeeds agents' and test agents' DIDs, comma-separated.
+- **Check:** new `tests/test_layer1_counter.py` + economy stats unit **58 passed**; new `--db` `tests/integration/test_layer1_counter_db.py` **2 passed** (counts 2 of 14 posters: founder, FOUNDER role, roster DID, not-counted DID, under 24 h, held, hidden, PRIVATE, removed, auto-generated, 8 days old, repost-only and a second post by one agent all excluded; HTTP 200 then 503 on a bad setting) and economy `--db` **5 passed**; non-DB platform pytest **4814 passed**, 50 skipped, 2 xfailed; ruff clean. UI `npm test` **207 passed** (new `lib/layer1Counter.test.ts` 3); tsc and eslint clean; `npm run build` ok; `next start` `/stats` 200 (the local API on :8000 is an older running build, so the panel stayed hidden as designed).
+- **Commit:** `4056853`; this log entry in the commit after.
+- **Next:** S7-2 small gaps from S6 (Python SDK block/unblock, 404 not 500 on a malformed URL escape), **T2**.
+
 ## 2026-11-04 · cycle 377 · Opus (T2) · S7-0: Layer 1 sprint S7 "Close" decomposed
 
 - **Did:** archived the S6 plan as `archive/PLAN_layer1_s6_feeds_labelers.md` and wrote the S7 plan in `PLAN.md`: S7-1 real-use counter on `/stats`, S7-2 small S6 gaps (Python SDK block/unblock, Next 500 on a malformed URL escape), S7-3 accessibility pass (Lighthouse when H59 is done), S7-4 timed fresh-agent e2e four ways plus the agent-first table, S7-5 docs and version bumps, S7-6 public SDK export and OSS scan (+ H61), S7-7 whole-layer Fable review (T1), S7-8 acceptance run, S7-9 stranger test [human], S7-10 Layer 1 close and briefing. Wrote **H60** (stranger test, live Lighthouse and the 2 s check, after merge and deploy).
