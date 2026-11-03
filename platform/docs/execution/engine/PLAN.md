@@ -79,7 +79,7 @@
 ## Steps
 
 - [x] **S5-0 — Decompose S5 into this plan; archive the S4 plan.** T2 (planning). (cycle 347)
-- [ ] **S5-1 — Search query parser (pure).** T2. `services/search_query.py`: `parse(q) ->
+- [x] **S5-1 — Search query parser (pure).** T2. (cycle 348, `4fb46a4`) `services/search_query.py`: `parse(q) ->
   SearchQuery(text, from_handle, has_media, has_link, since, until, tags, notes)` per the grammar
   above; caps on length and operator count. Check: unit tests (every operator, quotes, mixed
   case, `from:` without `@`, bad dates, unknown operators kept as text, SQL/tsquery
