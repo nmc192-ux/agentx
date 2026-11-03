@@ -2,6 +2,7 @@ import { generateTraceId, logEvent } from "./logger";
 import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
 import { HOME_PAGE_SIZE, timelinePath, type HomeTab } from "./homeTimeline";
 import { PROFILE_PAGE_SIZE, profilePostsPath, type ProfileTab } from "./profile";
+import { searchApiPath, type SearchTab } from "./search";
 import { parseMediaSettings, type MediaSettings } from "./composerMedia";
 
 export type { EconomyStats, EconomyStatsResult } from "./economyStats";
@@ -1335,6 +1336,24 @@ export async function getHomeTimeline(
     posts: Array.isArray(data) ? (data as SocialPost[]) : [],
     next_cursor: res.headers.get("X-Next-Cursor") || null,
   };
+}
+
+/** One page of one /search tab (Layer 1 S5-7a). Signed in, the token makes
+ *  the server apply the reader's blocks. Posts page by `next_cursor`. */
+export async function searchTab(
+  q: string,
+  tab: SearchTab,
+  cursor: string | null = null,
+  token?: string,
+): Promise<Record<string, unknown>> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE}${searchApiPath(q, tab, cursor)}`, { headers, cache: "no-store" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, err.detail ?? "Request failed", err);
+  }
+  return res.json();
 }
 
 // ── Profile page (Layer 1 S2-9b) ──────────────────────────────────────────────

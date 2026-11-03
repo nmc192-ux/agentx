@@ -15,6 +15,11 @@
  * single entry; "Clear" wipes the list. Up to 6 entries kept,
  * case-insensitive dedup so "AgentX" and "agentx" don't both appear.
  *
+ * Layer 1 S5-7a: the first row is always "Search for …", which opens the
+ * full results page `/search?q=` (tabs for posts, agents and tags, cursor
+ * paging, operators such as from:@handle). ↵ before any suggestion is
+ * highlighted, or before results arrive, goes there too.
+ *
  * Keyboard nav: ↑/↓ moves selection across all visible rows (including
  * history rows when the panel is in recent-searches mode), ↵ opens the
  * highlighted result, Esc closes. Mouse hover also drives selection so
@@ -28,6 +33,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, X, Loader2, FileText, Users, FolderOpen, Hash, Clock } from "lucide-react";
 import { searchAll } from "@/lib/api";
+import { cleanQuery, searchHref } from "@/lib/search";
 import { FEATURE_COLLECTIVES } from "@/lib/flags";
 import { postTypeColor } from "@/types";
 import type { PostType } from "@/types";
@@ -83,6 +89,7 @@ interface SearchResult {
  *  `history` rows have no href — clicking re-populates the input and
  *  re-runs the search via the existing debounce effect. */
 type Row =
+  | { kind: "search";    label: string; href: string }
   | { kind: "tag";       label: string; href: string }
   | { kind: "post";      label: string; href: string; post_type: string }
   | { kind: "agent";     label: string; href: string; specialization?: string }
@@ -189,6 +196,10 @@ export function SearchBar() {
 
     const out: Row[] = [];
 
+    // 0. "Search for …" — the full results page; always first so ↵ lands there.
+    const q = cleanQuery(query);
+    if (q) out.push({ kind: "search", label: q, href: searchHref(q) });
+
     // 1. Hashtag jump-row — only when the query is tag-shaped or starts with #.
     const tag = normalizeTag(query);
     if (tag) {
@@ -262,13 +273,12 @@ export function SearchBar() {
       return;
     }
     if (!open || !hasRows) {
-      // Allow Enter on a tag-shaped query to jump even before results arrive,
-      // matching Twitter / Bluesky behaviour where ⏎ on a hashtag works.
+      // Enter before results arrive opens the full results page.
       if (e.key === "Enter") {
-        const tag = normalizeTag(query);
-        if (tag) {
+        const q = cleanQuery(query);
+        if (q) {
           e.preventDefault();
-          navigateTo({ kind: "tag", label: tag, href: `/tag/${encodeURIComponent(tag)}` });
+          navigateTo({ kind: "search", label: q, href: searchHref(q) });
         }
       }
       return;
@@ -288,6 +298,7 @@ export function SearchBar() {
 
   // Section index ranges so we can render section headers without losing
   // the global-row-index needed for keyboard highlight.
+  const searchRows    = rows.filter((r) => r.kind === "search");
   const historyRows   = rows.filter((r) => r.kind === "history");
   const tagRows       = rows.filter((r) => r.kind === "tag");
   const postRows      = rows.filter((r) => r.kind === "post");
@@ -341,9 +352,7 @@ export function SearchBar() {
               history mode (where empty rows means an empty history list,
               which is handled by the gating condition above — the panel
               never opens in that case). */}
-          {!hasRows && !isHistoryMode && (
-            <p className="text-sm text-slate-500 p-4 text-center">No results found</p>
-          )}
+
 
           {historyRows.length > 0 && (
             <div className="p-2">
@@ -403,6 +412,29 @@ export function SearchBar() {
                 );
               })}
             </div>
+          )}
+
+          {searchRows.map((row) => {
+            const idx = indexOf(row);
+            return (
+              <div key="search" className="p-2 border-b border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => navigateTo(row)}
+                  onMouseEnter={() => setActive(idx)}
+                  className={`flex items-center gap-2 w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    active === idx ? "bg-slate-800" : "hover:bg-slate-800"
+                  }`}
+                >
+                  <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span className="truncate">Search for “{row.label}”</span>
+                </button>
+              </div>
+            );
+          })}
+
+          {!isHistoryMode && rows.every((r) => r.kind === "search") && (
+            <p className="text-sm text-slate-500 px-4 py-3 text-center">No quick matches</p>
           )}
 
           {tagRows.length > 0 && (

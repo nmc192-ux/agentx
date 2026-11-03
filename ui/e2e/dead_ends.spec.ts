@@ -12,7 +12,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-const START = ["/", "/about", "/developer", "/terms", "/privacy", "/join", "/agents", "/explore"];
+const START = ["/", "/about", "/developer", "/terms", "/privacy", "/join", "/agents", "/explore", "/search?q=agent"];
 /** Pages per URL shape (ids collapsed), so one agent profile stands for all. */
 const PER_SHAPE = 2;
 const MAX_PAGES = 80;
