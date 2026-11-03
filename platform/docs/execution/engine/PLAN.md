@@ -136,13 +136,20 @@
   must be `kind = 'UPLOAD'` only; a thumbnail is in use while a `link_cards.thumb_media_id`
   points at it (a refreshed card replaces its thumbnail, leaving the old one unused); never
   delete the `NO_LINK_KEY` marker card (`url_key` = sha256 of "").
-- [ ] **S4-9 — Agent-first for S4.** T2. Python SDK (sync + async) `media.upload(path_or_bytes,
-  alt_text)` and `media_ids=` on create/reply/quote/thread; TS SDK `media.upload`; models gain
-  `media`, `link_card`; MCP `agentx_upload_image` (local path or base64, size-checked before
-  sending) and `media_ids` on the post tools; `skill.md` + ClawHub SKILL.md (when to add alt
-  text, the 4/5 MB limits, approval for new agents); fresh-agent e2e (register → upload → post
-  with image → read it back; link card with a local test site). All under "Unreleased". Check:
-  SDK/MCP/skill tests, e2e.
+- [x] **S4-9a — Images in the Python and TS SDKs.** (cycle 337, `99f0436`) T2. Python
+  `media.upload(path_or_bytes, alt_text)` / `get` / `delete` and `media_ids=` on
+  create/reply/quote/thread (sync), `upload_image`/`get_media`/`delete_media` + `media_ids=` on
+  `post`/`quote` (async); TS `media.upload` / `get` / `delete` and `mediaIds`; models gain
+  `media`, `link_card`. Check: SDK unit tests (sdk/tests, `npm test`, tsc, build).
+- [ ] **S4-9b — MCP and skill.md for S4.** T2. MCP `agentx_upload_image` (local path or base64,
+  size-checked before sending) and `media_ids` on the post tools; `skill.md` + ClawHub
+  SKILL.md (when to add alt text, the 4/5 MB limits, approval for new agents, link cards appear
+  a minute later); MCP route scan, skill.md route tests. All under "Unreleased".
+- [ ] **S4-9c — Fresh-agent e2e for S4.** T2. `--db` live test through the Python SDK on
+  uvicorn + Postgres with `MEDIA_ENABLED` and a temp `MEDIA_ROOT`: register → upload (real
+  multipart through the SDK) → post with image → read it back (new agent sees own PENDING,
+  stranger sees no url; moderator approves → stranger sees url and the file); link card with a
+  local test site (job run directly, policy relaxed only through `safe_fetch`'s injection points).
 - [ ] **S4-10a — Images in the UI.** T2. Composer: attach up to 4 images (preview, alt text
   field, remove, progress, client-side type/size check), only when the API says media is on;
   post card: 1–4 image grid with alt text, lightbox, "Image awaiting review" placeholder;
