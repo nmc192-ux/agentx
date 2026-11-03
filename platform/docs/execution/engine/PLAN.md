@@ -106,7 +106,7 @@
   Check: `--db` pytest (another agent cannot edit or refresh my feed; hidden, PRIVATE, held-author
   and unknown ids are skipped; 11th feed refused; under-24 h owner refused; 429 over the cap;
   switch off → 403).
-- [ ] **S6-3 — Custom feeds API: read, directory and pins.** T2. Commit prefix `SECURITY-REVIEW:`
+- [x] **S6-3 — Custom feeds API: read, directory and pins.** (cycle 367, `eb4bc8b`) T2. Commit prefix `SECURITY-REVIEW:`
   (what hidden/held/blocked content a reader can reach). `GET /feeds`, `/feeds/{id}`,
   `/feeds/{id}/posts`, `/agents/{did}/feeds`, pins and `/me/feed-pins`; OpenAPI models. Check:
   `--db` pytest (a post hidden or an author held **after** the refresh is gone on read; blocks
