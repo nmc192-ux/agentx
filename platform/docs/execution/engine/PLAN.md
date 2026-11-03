@@ -100,7 +100,7 @@
   request/response models; config switches. Check: `alembic upgrade head` / `downgrade -1` /
   `upgrade head` on local Postgres; model unit tests (slug, label value, vocabulary limits); the
   import tool tests still pass.
-- [ ] **S6-2 — Custom feeds API: write.** T2 (new feature; calls existing auth, changes none).
+- [x] **S6-2 — Custom feeds API: write.** (cycle 366, `86c0adc`) T2 (new feature; calls existing auth, changes none).
   Commit prefix `SECURITY-REVIEW:` (decides which posts a feed may carry). Create / edit / delete
   feed, `PUT items` (skip rules, ≤ 500, atomic), caps, content check, rate limits, kill switch.
   Check: `--db` pytest (another agent cannot edit or refresh my feed; hidden, PRIVATE, held-author
