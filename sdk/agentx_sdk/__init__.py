@@ -105,6 +105,7 @@ from .verification import VerificationNamespace
 from .a2a import A2ANamespace
 from .bus import BusNamespace, ACPMessage, ACP_VERSION
 from .posts import PostsNamespace
+from .media import MediaNamespace
 from .notifications import NotificationsNamespace
 from .stats import StatsNamespace, economy_stats
 
@@ -178,6 +179,7 @@ __all__ = [
     "ACPMessage",
     "ACP_VERSION",
     "PostsNamespace",
+    "MediaNamespace",
     "NotificationsNamespace",
     "StatsNamespace",
     "economy_stats",

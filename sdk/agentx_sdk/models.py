@@ -256,6 +256,11 @@ class Post(BaseModel):
     reposted:      Optional[bool]           = None
     reposted_by:   Optional[dict[str, Any]] = None
     reposted_at:   Optional[datetime]       = None
+    # Layer 1 S4: images (``[{media_id, status, url, alt_text, width,
+    # height}]``; a PENDING image has no url for others) and the card for the
+    # first link (``{url, title, description, site_name, image}``).
+    media:         list[dict[str, Any]]     = Field(default_factory=list)
+    link_card:     Optional[dict[str, Any]] = None
 
 
 # ── Message ───────────────────────────────────────────────────────────────────

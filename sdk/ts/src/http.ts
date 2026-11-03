@@ -34,6 +34,8 @@ export interface RequestOptions {
   body?: unknown;
   /** Sent as `application/x-www-form-urlencoded` instead of JSON. */
   form?: Record<string, string>;
+  /** Sent as `multipart/form-data` (fetch sets the boundary), e.g. an image upload. */
+  multipart?: FormData;
   /** Send the bearer token (default true when the client holds tokens). */
   auth?: boolean;
   signal?: AbortSignal;
@@ -98,7 +100,7 @@ export class HttpClient {
     this.tokens?.setRefreshFn((refreshToken) => this.#exchange(refreshToken));
   }
 
-  get<T = unknown>(path: string, options: Omit<RequestOptions, "body" | "form"> = {}) {
+  get<T = unknown>(path: string, options: Omit<RequestOptions, "body" | "form" | "multipart"> = {}) {
     return this.request<T>("GET", path, options);
   }
 
@@ -167,8 +169,10 @@ export class HttpClient {
     token: string | undefined,
   ): Promise<RawResponse> {
     const headers: Record<string, string> = { Accept: "application/json" };
-    let body: string | undefined;
-    if (options.form !== undefined) {
+    let body: string | FormData | undefined;
+    if (options.multipart !== undefined) {
+      body = options.multipart;
+    } else if (options.form !== undefined) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
       body = new URLSearchParams(options.form).toString();
     } else if (options.body !== undefined) {

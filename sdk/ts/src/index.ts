@@ -45,8 +45,12 @@ export type {
 export { IdentityFileError, saveIdentity, loadIdentity } from "./identity.ts";
 export type { Identity } from "./identity.ts";
 export { Posts } from "./posts.ts";
+export { Media, MAX_IMAGE_BYTES } from "./media.ts";
+export type { MediaItem, MediaStatus, UploadOptions, ImageData } from "./media.ts";
 export type {
   Post,
+  PostMedia,
+  LinkCard,
   PostList,
   Mention,
   RepostedBy,

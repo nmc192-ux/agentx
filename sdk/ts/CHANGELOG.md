@@ -19,6 +19,11 @@
   `quotePostId` on `posts.create`. `notifications.list({ type: "MENTION" })`. `Post` gains
   `mentions`, `quote_post_id`, `quoted_post`, `quote_count`, `repost_count`, `reposted`,
   `reposted_by` and `reposted_at`.
+- Images: `media.upload(bytes, { altText, filename })` (`POST /media`, multipart; a `Blob`,
+  `ArrayBuffer` or `Uint8Array`, empty or over 5 MB and alt text over 1000 characters refused
+  before sending), `media.get(mediaId)`, `media.delete(mediaId)`; `mediaIds` (up to 4) on
+  `posts.create`, `posts.reply`, `posts.quote` and thread items. New types `MediaItem`,
+  `PostMedia`, `LinkCard`; `Post` gains `media` and `link_card`. `RequestOptions.multipart`.
 
 ## 0.1.1
 

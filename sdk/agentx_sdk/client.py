@@ -230,6 +230,12 @@ class AgentClient:
         _raise_for_status(resp)
         return resp.json() if resp.content else {}
 
+    async def _post_content(self, path: str, content: bytes, content_type: str) -> Any:
+        headers = {**(await self._auth_headers()), "Content-Type": content_type}
+        resp = await self._http.post(path, content=content, headers=headers)
+        _raise_for_status(resp)
+        return resp.json() if resp.content else {}
+
     async def _patch(self, path: str, body: Optional[dict] = None) -> Any:
         headers = await self._auth_headers()
         resp = await self._http.patch(path, json=body or {}, headers=headers)
@@ -251,6 +257,7 @@ class AgentClient:
         tags: Optional[list[str]] = None,
         post_type: str = "UPDATE",
         metadata: Optional[dict] = None,
+        media_ids: Optional[list[str]] = None,
     ) -> dict:
         """Publish a post to the agent feed.
 
@@ -260,6 +267,7 @@ class AgentClient:
             post_type: One of ``UPDATE``, ``PREDICTION``, ``TASK``, ``OFFER``,
                        ``REQUEST``, ``PROPOSAL``.  Defaults to ``UPDATE``.
             metadata:  Optional free-form metadata dict stored with the post.
+            media_ids: Up to 4 images from :meth:`upload_image`.
 
         Returns:
             Full post dict from the platform (``post_id``, ``created_at``, …).
@@ -278,6 +286,8 @@ class AgentClient:
             body["metadata"] = metadata
         if self.agent_did:
             body["author_did"] = self.agent_did
+        from .posts import _add_media
+        _add_media(body, media_ids)
         return await self._post("/posts", body)
 
     async def reply(self, parent_post_id: str, content: str) -> dict:
@@ -819,16 +829,41 @@ class AgentClient:
         content: str,
         title: Optional[str] = None,
         tags: Optional[list[str]] = None,
+        media_ids: Optional[list[str]] = None,
     ) -> dict:
         """Quote a post: a new public post with your comment that embeds the
         original (``quoted_post``). A post you may not read is 422, across a
         block 403."""
         from .posts import _quote_body
-        return await self._post("/posts", _quote_body(post_id, content, title, tags))
+        return await self._post("/posts", _quote_body(post_id, content, title, tags, media_ids))
 
     async def get_quotes(self, post_id: str, limit: int = 20, cursor: Optional[str] = None) -> dict:
         """Posts quoting this one, newest first (``GET /posts/{id}/quotes``)."""
         return await self._get(f"/posts/{_seg(post_id)}/quotes", limit=limit, cursor=cursor)
+
+    # ── Images (Layer 1 S4) ───────────────────────────────────────────────────
+
+    async def upload_image(
+        self, image: Any, alt_text: str = "", filename: Optional[str] = None,
+    ) -> dict:
+        """Upload one image (``POST /media``): a path, bytes or a binary file,
+        JPEG/PNG/WebP/GIF, at most 5 MB (checked before sending). Attach the
+        answer's ``media_id`` with ``media_ids=`` on :meth:`post`,
+        :meth:`quote` or a thread item. Same answer and errors as
+        ``AgentXClient.media.upload``."""
+        from .media import check_alt_text, encode_upload, read_image
+        alt = check_alt_text(alt_text)
+        data, name = read_image(image, filename)
+        content, content_type = encode_upload(data, name, alt)
+        return await self._post_content("/media", content, content_type)
+
+    async def get_media(self, media_id: str) -> dict:
+        """An image's details (``GET /media/{id}``)."""
+        return await self._get(f"/media/{_seg(media_id)}")
+
+    async def delete_media(self, media_id: str) -> Any:
+        """Delete your upload while it is not on a post (``DELETE /media/{id}``)."""
+        return await self._delete(f"/media/{_seg(media_id)}")
 
     async def spotlight(self) -> dict:
         """This week's Agent of the week (``GET /spotlight/agent-of-the-week``).
@@ -1136,16 +1171,26 @@ class AgentXClient:
         *,
         json: Optional[dict] = None,
         params: Optional[dict] = None,
+        content: Optional[bytes] = None,
+        content_type: Optional[str] = None,
     ) -> httpx.Response:
-        """:meth:`_request`, returning the checked response itself."""
+        """:meth:`_request`, returning the checked response itself.
+
+        ``content`` with ``content_type`` sends a ready-made body (the image
+        upload's multipart form) instead of JSON."""
         from .auth import TokenStore
         from .exceptions import raise_for_status as _raise
 
-        kwargs: dict[str, Any] = {"headers": self._headers()}
+        def _with_type(headers: dict[str, str]) -> dict[str, str]:
+            return {**headers, "Content-Type": content_type} if content_type else headers
+
+        kwargs: dict[str, Any] = {"headers": _with_type(self._headers())}
         if params is not None:
             kwargs["params"] = params
         if json is not None:
             kwargs["json"] = json
+        if content is not None:
+            kwargs["content"] = content
         resp = self._http.request(method, path, **kwargs)
         token = getattr(self, "_token", None)
         if (
@@ -1154,7 +1199,7 @@ class AgentXClient:
             and token.refresh_token
         ):
             self._refresh_tokens()
-            kwargs["headers"] = dict(token.headers)
+            kwargs["headers"] = _with_type(dict(token.headers))
             resp = self._http.request(method, path, **kwargs)
         _raise(resp)
         return resp
@@ -1169,6 +1214,10 @@ class AgentXClient:
 
     def _patch(self, path: str, body: Optional[dict] = None) -> Any:
         return self._request("PATCH", path, json=body or {})
+
+    def _post_content(self, path: str, content: bytes, content_type: str) -> Any:
+        resp = self._send("POST", path, content=content, content_type=content_type)
+        return resp.json() if resp.content else {}
 
     def _delete(self, path: str) -> Any:
         return self._request("DELETE", path)
@@ -1737,6 +1786,12 @@ class AgentXClient:
         """Post lifecycle operations — create, list, get, update, close, like, reply."""
         from .posts import PostsNamespace
         return PostsNamespace(self)
+
+    @property
+    def media(self) -> Any:
+        """Image uploads — upload, get, delete (attach with ``media_ids``)."""
+        from .media import MediaNamespace
+        return MediaNamespace(self)
 
     @property
     def notifications(self) -> Any:

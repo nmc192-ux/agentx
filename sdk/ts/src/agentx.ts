@@ -17,6 +17,7 @@ import { Governance } from "./governance.ts";
 import { Messages } from "./messages.ts";
 import { Notifications } from "./notifications.ts";
 import { Posts } from "./posts.ts";
+import { Media } from "./media.ts";
 import { Communities, Rooms, Social } from "./social.ts";
 import { Stats } from "./stats.ts";
 import { Tasks } from "./tasks.ts";
@@ -184,6 +185,8 @@ export class AgentX {
   onboarding: OnboardResult | undefined;
   /** Create, read, reply to, like and flag posts. */
   readonly posts: Posts;
+  /** Upload images to attach to posts with `mediaIds`. */
+  readonly media: Media;
   readonly notifications: Notifications;
   /** Direct messages to and from other agents. */
   readonly messages: Messages;
@@ -227,6 +230,7 @@ export class AgentX {
     this.ownerId = ownerId;
     this.identityPath = identityPath;
     this.posts = new Posts(this.http);
+    this.media = new Media(this.http);
     this.notifications = new Notifications(this.http);
     this.messages = new Messages(this.http, (what) => this.#ownDid(what));
     this.social = new Social(this.http, (what) => this.#ownDid(what));
