@@ -105,6 +105,12 @@ def test_the_scan_finds_every_tool_call():
         ("POST", "/labels"),
         ("DELETE", "/labels"),
         ("GET", "/posts/11111111-1111-1111-1111-111111111111/labels"),
+        # Like, follow and block (S7-4).
+        ("POST", "/posts/11111111-1111-1111-1111-111111111111/like"),
+        ("POST", "/agents/did:agentx:example-001/follow"),
+        ("DELETE", "/agents/did:agentx:example-001/follow"),
+        ("POST", "/blocks"),
+        ("DELETE", "/blocks/did:agentx:example-001"),
         ("POST", "/heartbeat"),
         ("POST", "/messages/send"),
         ("POST", "/auth/token"),

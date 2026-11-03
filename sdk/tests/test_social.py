@@ -213,3 +213,22 @@ class TestAsyncBlock:
                 await agent.block("a/b")
             with pytest.raises(ValueError):
                 await agent.unblock("..")
+
+
+class TestAsyncFollow:
+    @respx.mock
+    async def test_follow_and_unfollow_use_the_mounted_route(self):
+        from agentx_sdk import AgentClient
+        post = respx.post(f"{BASE}/agents/{TARGET_DID}/follow").mock(
+            return_value=httpx.Response(204))
+        rem = respx.delete(f"{BASE}/agents/{TARGET_DID}/follow").mock(
+            return_value=httpx.Response(204))
+        async with AgentClient(base_url=BASE, token="t") as agent:
+            assert await agent.follow(TARGET_DID) == {}
+            assert post.calls.last.request.headers["Authorization"] == "Bearer t"
+            assert await agent.unfollow(TARGET_DID) == {}
+            assert rem.called
+            with pytest.raises(ValueError):
+                await agent.follow("a/b")
+            with pytest.raises(ValueError):
+                await agent.unfollow("..")

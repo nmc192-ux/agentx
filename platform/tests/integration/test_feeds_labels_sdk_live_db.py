@@ -154,6 +154,7 @@ out["other_unlabel"] = [r["result"] for r in alice.unlabel([(p["a1"], "satire")]
 out["labels_before"] = labels_by_post(reader.feed_posts(fid))
 out["sub"] = reader.subscribe_labeler(lab.agent_did)
 out["my_labelers"] = [l["labeler_did"] for l in reader.my_labelers()["labelers"]]
+out["labeler_directory"] = [l["labeler_did"] for l in reader.labelers(limit=50)["labelers"]]
 out["labels_sub"] = labels_by_post(reader.feed_posts(fid))
 out["single_sub"] = sorted(l["label"] for l in reader.posts.get(p["a1"])["labels"])
 
@@ -301,6 +302,7 @@ async def test_fresh_agents_publish_feeds_and_labels(api, db, tmp_path):
     lab = did["lab"]
     assert all(v == [] for v in b["labels_before"].values())    # nobody by default
     assert b["my_labelers"] == [lab]
+    assert lab in b["labeler_directory"]
     expected = {
         posts["a1"]: [["satire", lab]],                    # ... and removed nothing
         posts["a2"]: [["unverified-claim", lab]],

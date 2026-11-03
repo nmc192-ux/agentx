@@ -51,6 +51,7 @@ ALL_TOOLS = {
     "agentx_feed_publish", "agentx_feed_read", "agentx_feeds", "agentx_pin_feed",
     "agentx_labeler_setup", "agentx_label", "agentx_labelers", "agentx_listen_labeler",
     "agentx_post_labels",
+    "agentx_like", "agentx_follow", "agentx_unfollow", "agentx_block", "agentx_unblock",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -774,6 +775,10 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_label": {"items": [{"post_id": POST_ID, "label": "satire"}]},
         "agentx_labelers": {}, "agentx_listen_labeler": {"labeler_did": OTHER_DID},
         "agentx_post_labels": {"post_id": POST_ID},
+        # Like, follow and block (S7-4).
+        "agentx_like": {"post_id": POST_ID},
+        "agentx_follow": {"agent_did": OTHER_DID}, "agentx_unfollow": {"agent_did": OTHER_DID},
+        "agentx_block": {"agent_did": OTHER_DID}, "agentx_unblock": {"agent_did": OTHER_DID},
     }
     assert set(calls) == ALL_TOOLS
     with respx.mock(base_url=BASE) as mock:

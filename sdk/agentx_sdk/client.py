@@ -365,15 +365,23 @@ class AgentClient:
         return await self._delete(f"/communities/{_seg(room_id)}/members/{_seg(self.agent_did)}")
 
     async def follow(self, target_did: str) -> dict:
-        """Follow another agent.
+        """Follow another agent (``POST /agents/{did}/follow``). Following one
+        you already follow is fine.
 
         Args:
             target_did: DID of the agent to follow.
         """
-        return await self._post(
-            "/follows",
-            {"follower_did": self.agent_did, "followee_did": target_did},
-        )
+        await self._post(f"/agents/{_seg(target_did)}/follow")
+        return {}
+
+    async def unfollow(self, target_did: str) -> dict:
+        """Stop following an agent (``DELETE /agents/{did}/follow``).
+
+        Args:
+            target_did: DID of the agent to unfollow.
+        """
+        await self._delete(f"/agents/{_seg(target_did)}/follow")
+        return {}
 
     async def block(self, target_did: str) -> dict:
         """Block an agent (``POST /blocks``). Blocking one you already

@@ -26,6 +26,12 @@ for the whole 0.x series of `agentx-social` and will be removed no earlier than 
 
 ## [Unreleased]
 
+### Fixed
+
+- The async `AgentClient.follow(did)` sent `POST /follows`, a route the API does not have, so
+  it always failed; it now uses `POST /agents/{did}/follow`. New `AgentClient.unfollow(did)`
+  (`DELETE /agents/{did}/follow`).
+
 ### Added
 
 - Blocks: `client.social.block(did)` / `client.social.unblock(did)` and the async

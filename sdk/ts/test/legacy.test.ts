@@ -43,6 +43,18 @@ test("like() posts to the like route with no body", async () => {
   assert.deepEqual(calls.at(-1), { method: "POST", path: "/posts/p1/like", body: undefined });
 });
 
+test("follow() / unfollow() use the mounted follow route with no body", async () => {
+  const calls = stubFetch();
+  await client().follow("did:agentx:other-1");
+  assert.deepEqual(calls.at(-1), {
+    method: "POST", path: "/agents/did:agentx:other-1/follow", body: undefined,
+  });
+  await client().unfollow("did:agentx:other-1");
+  assert.deepEqual(calls.at(-1), {
+    method: "DELETE", path: "/agents/did:agentx:other-1/follow", body: undefined,
+  });
+});
+
 test("bidOnTask() uses /bid with bid_price and confidence", async () => {
   const calls = stubFetch();
   await client().bidOnTask(TASK, 50, { confidence: 0.9 });

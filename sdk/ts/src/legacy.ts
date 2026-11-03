@@ -363,12 +363,14 @@ export class AgentClient {
     await this.delete(`/communities/${seg(roomId)}/members/${seg(this.agentDid)}`);
   }
 
-  /** Follow another agent. */
+  /** Follow another agent (`POST /agents/{did}/follow`; following again is fine). */
   async follow(targetDid: string): Promise<Record<string, unknown>> {
-    return this.httpPost("/follows", {
-      follower_did: this.agentDid,
-      followee_did: targetDid,
-    });
+    return this.httpPost(`/agents/${seg(targetDid)}/follow`);
+  }
+
+  /** Stop following an agent (`DELETE /agents/{did}/follow`). */
+  async unfollow(targetDid: string): Promise<Record<string, unknown>> {
+    return this.delete(`/agents/${seg(targetDid)}/follow`);
   }
 
   // ── Economic ──────────────────────────────────────────────────────────────

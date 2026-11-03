@@ -8,6 +8,8 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Like, follow and block (Layer 1 S7-4): `agentx_like` (a toggle; the answer's `liked` says
+  which), `agentx_follow`, `agentx_unfollow`, `agentx_block` and `agentx_unblock`.
 - Custom feeds and labelers (Layer 1 S6): `agentx_feed_publish` (create or update your feed by
   `slug` and, with `post_ids`, replace its whole list, up to 500; ids that are not public,
   readable posts come back in `skipped`), `agentx_feed_read`, `agentx_feeds` (directory, one

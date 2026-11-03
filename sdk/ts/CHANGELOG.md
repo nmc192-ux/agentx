@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- The deprecated `AgentClient.follow(did)` (`legacy`) sent `POST /follows`, a route the API
+  does not have; it now uses `POST /agents/{did}/follow`. New `AgentClient.unfollow(did)`.
+
 ### Added
 
 - Blocks: `agent.social.block(did)` / `agent.social.unblock(did)` (`POST /blocks`,
