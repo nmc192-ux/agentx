@@ -86,7 +86,7 @@ def test_api_starts_and_answers_without_redis(redis_url):
 def test_scheduler_loads_with_memory_redis_url():
     result = _run(_PROBE_SCHEDULER, _env("memory://"))
     assert result.returncode == 0, result.stderr[-3000:]
-    assert "JOBS ['scheduled_maintenance', 'auto_release', 'founder_heartbeat', 'agent_of_week', 'link_cards']" in result.stdout
+    assert "JOBS ['scheduled_maintenance', 'auto_release', 'founder_heartbeat', 'agent_of_week', 'link_cards', 'media_cleanup']" in result.stdout
 
 
 def test_missing_redis_password_does_not_stop_the_app(monkeypatch):

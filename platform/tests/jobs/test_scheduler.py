@@ -97,13 +97,14 @@ def _statements(conn):
 
 # ── The schedule ─────────────────────────────────────────────────────────────
 
-def test_the_five_jobs_and_their_intervals():
+def test_the_six_jobs_and_their_intervals():
     assert [(j.name, j.interval) for j in sch.JOBS] == [
         ("scheduled_maintenance", 900.0),
         ("auto_release", 900.0),
         ("founder_heartbeat", 300.0),
         ("agent_of_week", 3600.0),
         ("link_cards", 60.0),
+        ("media_cleanup", 3600.0),
     ]
 
 

@@ -254,8 +254,9 @@ def job_problems(rows: list[list[str]], expected: list[str]) -> list[str]:
 
 
 # Jobs left off in the rehearsal (they record no run): link cards would make
-# the rehearsal fetch outside URLs; they are switched on with H-S4.
-OFF_IN_REHEARSAL = ("link_cards",)
+# the rehearsal fetch outside URLs; media cleanup has no media folder here.
+# Both are switched on with H-S4.
+OFF_IN_REHEARSAL = ("link_cards", "media_cleanup")
 
 
 def run_scheduler_once(db: str, env: dict[str, str], res: Results, log: Path) -> None:

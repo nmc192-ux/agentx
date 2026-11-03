@@ -72,6 +72,9 @@ REVIEWED = {
     "founders/changelog.py::posted_keys":
         "TF-4: changelog keys a founder already posted, keys only, never shown: a held "
         "ATLAS post must still stop the same entry being posted again",
+    "jobs/media_cleanup.py::<module>":
+        "S4-8: a link card is kept while any post points at it, hidden ones too (unhiding "
+        "brings the card back); no post is returned",
     "database.py::get_db_for_agent":
         "docstring example, not a query",
 }

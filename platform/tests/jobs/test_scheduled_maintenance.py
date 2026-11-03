@@ -23,6 +23,7 @@ def test_scheduler_runs_the_maintenance_job_every_15_minutes():
     assert entry.run is scheduled_maintenance.run_maintenance
     assert {job.name for job in JOBS} == {
         "scheduled_maintenance", "founder_heartbeat", "auto_release", "agent_of_week", "link_cards",
+        "media_cleanup",
     }
 
 

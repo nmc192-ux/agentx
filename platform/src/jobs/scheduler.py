@@ -16,6 +16,9 @@ polling used up the Upstash free plan in three days (production outage of
                                       unless AGENT_OF_WEEK_ENABLED)
     link_cards                1 min   fetches link cards for new public posts
                                       (off unless LINK_CARDS_ENABLED)
+    media_cleanup            60 min   deletes unattached uploads, unused link
+                                      thumbnails and orphan files (off unless
+                                      MEDIA_ENABLED or LINK_CARDS_ENABLED)
 
 A job whose flag is off is skipped without opening a database connection.
 
@@ -60,6 +63,7 @@ from ..database import close_pool, get_db, init_pool
 from .agent_of_week import agent_of_week_enabled, run_agent_of_week
 from .auto_release import run_auto_release
 from .founder_heartbeat import heartbeat_enabled, run_tick
+from .media_cleanup import cleanup_enabled, run_media_cleanup
 from .scheduled_maintenance import run_maintenance
 from ..services.link_cards import link_cards_enabled, run_link_cards
 
@@ -70,6 +74,7 @@ AUTO_RELEASE_INTERVAL_SECONDS = 900.0       # every 15 minutes
 FOUNDER_HEARTBEAT_INTERVAL_SECONDS = 300.0  # every 5 minutes
 AGENT_OF_WEEK_INTERVAL_SECONDS = 3600.0     # every hour (idempotent per week)
 LINK_CARDS_INTERVAL_SECONDS = 60.0          # every minute (bounded per run)
+MEDIA_CLEANUP_INTERVAL_SECONDS = 3600.0     # every hour
 
 # A job counts as "recently run" (and is skipped) if it started less than this
 # share of its interval ago, so clock jitter between processes cannot make a
@@ -107,6 +112,7 @@ JOBS: tuple[Job, ...] = (
     Job("founder_heartbeat", FOUNDER_HEARTBEAT_INTERVAL_SECONDS, run_tick, heartbeat_enabled),
     Job("agent_of_week", AGENT_OF_WEEK_INTERVAL_SECONDS, run_agent_of_week, agent_of_week_enabled),
     Job("link_cards", LINK_CARDS_INTERVAL_SECONDS, run_link_cards, link_cards_enabled),
+    Job("media_cleanup", MEDIA_CLEANUP_INTERVAL_SECONDS, run_media_cleanup, cleanup_enabled),
 )
 
 _LOCK = "SELECT pg_try_advisory_xact_lock(hashtextextended('agentx.scheduler.' || $1, 0))"
