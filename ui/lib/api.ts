@@ -2,6 +2,7 @@ import { generateTraceId, logEvent } from "./logger";
 import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
 import { HOME_PAGE_SIZE, timelinePath, type HomeTab } from "./homeTimeline";
 import { PROFILE_PAGE_SIZE, profilePostsPath, type ProfileTab } from "./profile";
+import { parseMediaSettings, type MediaSettings } from "./composerMedia";
 
 export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
@@ -815,6 +816,57 @@ export async function fetchMediaBlob(src: string, token: string): Promise<Blob> 
   });
   if (!res.ok) throw new ApiError(res.status, "Image not available");
   return res.blob();
+}
+
+let mediaSettingsPromise: Promise<MediaSettings | null> | null = null;
+
+/** Layer 1 S4-10a2: are image uploads on? Asked once per page load; any
+ *  failure or odd answer means "off", so the composer simply hides the
+ *  attach button. */
+export function getMediaSettings(): Promise<MediaSettings | null> {
+  if (!mediaSettingsPromise) {
+    mediaSettingsPromise = request<unknown>("GET", "/media/settings")
+      .then(parseMediaSettings)
+      .catch(() => {
+        mediaSettingsPromise = null;
+        return null;
+      });
+  }
+  return mediaSettingsPromise;
+}
+
+/** Layer 1 S4-10a2: upload one image (`POST /media`, multipart). XHR, not
+ *  fetch, so the composer can show upload progress. Rejects with an
+ *  ApiError carrying the status (0 when the request never got an answer). */
+export function uploadMedia(
+  file: File | Blob,
+  altText: string,
+  token: string,
+  onProgress?: (percent: number) => void,
+): Promise<{ media_id: string; url: string | null; status: string }> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("alt_text", altText);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE}/media`);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status === 201 || xhr.status === 200) {
+        resolve(xhr.response);
+      } else {
+        const detail = (xhr.response as { detail?: unknown } | null)?.detail;
+        reject(new ApiError(xhr.status, typeof detail === "string" ? detail : "Upload failed", xhr.response));
+      }
+    };
+    xhr.onerror = () => reject(new ApiError(0, "Upload failed"));
+    xhr.onabort = () => reject(new ApiError(0, "Upload cancelled"));
+    xhr.send(form);
+  });
 }
 
 /** Layer 1 S3-3: undo a repost (idempotent). */

@@ -12,6 +12,8 @@ import { createPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { SocialPost } from "@/types";
 import { QuotedCard } from "./QuotedCard";
+import { hasBody } from "@/lib/composerMedia";
+import { ComposerImageButton, ComposerImageList, useComposerImages } from "./ComposerImages";
 
 /** The original as the quote composer previews it. */
 function preview(post: SocialPost) {
@@ -37,14 +39,26 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Layer 1 S4-10a2: images, shown only while the API has uploads on.
+  const images = useComposerImages();
+  const canSubmit = hasBody(content, images.items) && !loading && !images.altError;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const token = getToken();
-    if (!token || !content.trim()) return;
+    if (!token || !canSubmit) return;
     setLoading(true);
     setError(null);
     try {
+      let mediaIds: string[] = [];
+      if (images.items.length > 0) {
+        const uploaded = await images.upload(token);
+        if (!uploaded) {
+          setError("An image could not be uploaded; see the message under it.");
+          return;
+        }
+        mediaIds = uploaded;
+      }
       const created = await createPost(
         {
           post_type: "UPDATE",
@@ -52,10 +66,12 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
           content: content.trim(),
           visibility: "PUBLIC",
           quote_post_id: post.post_id,
+          ...(mediaIds.length > 0 ? { media_ids: mediaIds } : {}),
         },
         token,
       );
       onPosted?.(created as SocialPost);
+      images.clear();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to post");
@@ -105,15 +121,18 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
                        placeholder:text-slate-600 outline-none resize-none"
           />
 
+          <ComposerImageList images={images} disabled={loading} />
+
           <QuotedCard post={preview(post)} />
 
           {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
 
-          <div className="flex justify-end mt-4">
+          <div className="flex items-center justify-between mt-4">
+            <ComposerImageButton images={images} disabled={loading} />
             <button
               type="submit"
-              disabled={!content.trim() || loading}
-              className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white
+              disabled={!canSubmit}
+              className="ml-auto flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white
                          font-semibold text-sm px-5 py-1.5 rounded-full transition-all
                          active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             >

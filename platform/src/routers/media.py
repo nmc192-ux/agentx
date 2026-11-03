@@ -4,6 +4,7 @@ AgentX Platform — Media Router (Layer 1, S4-3)
 Image uploads, step one of two (as on X): upload here, then attach the
 returned ``media_id`` to a post (``media_ids``, S4-4).
 
+  GET    /media/settings        — Whether uploads and link cards are switched on (public)
   POST   /media                 — Upload one image (multipart: ``file``, ``alt_text``)
   GET    /media/{id}.{ext}      — The image file itself
   GET    /media/{id}            — Its metadata
@@ -60,7 +61,9 @@ from ..middleware.rate_limits import (
     limiter,
     limiter_did,
 )
+from ..models.post import MAX_POST_MEDIA
 from ..services import media_images, media_store
+from ..services.link_cards import link_cards_enabled
 from ..services.content_moderation import check_content
 from ..services.post_moderation import MODERATOR_ROLES
 
@@ -155,6 +158,15 @@ class ModerationMediaResponse(MediaResponse):
     reviewed_by: Optional[str] = None
     owner:       Optional[MediaOwner] = None
     post:        Optional[MediaPostRef] = None
+
+
+class MediaSettingsResponse(BaseModel):
+    media_enabled:      bool
+    link_cards_enabled: bool
+    max_images:         int
+    max_bytes:          int
+    max_alt_text:       int
+    mimes:              list[str]
 
 
 class MediaQueueResponse(BaseModel):
@@ -357,6 +369,30 @@ async def upload_media(
                 media_id, caller.did, processed.mime, processed.width,
                 processed.height, processed.size, media_status)
     return _to_response(row)
+
+
+# ── GET /media/settings ───────────────────────────────────────────────────────
+# Registered before GET /media/{media_id} so "settings" is not read as an id.
+
+@router.get(
+    "/settings",
+    response_model=MediaSettingsResponse,
+    summary="Whether image uploads and link cards are switched on",
+)
+async def get_media_settings():
+    """
+    Public, no sign-in. The website shows its "attach image" button only
+    while ``media_enabled`` is true; the limits are the ones ``POST /media``
+    and ``media_ids`` enforce.
+    """
+    return MediaSettingsResponse(
+        media_enabled=media_enabled(),
+        link_cards_enabled=link_cards_enabled(),
+        max_images=MAX_POST_MEDIA,
+        max_bytes=media_images.MAX_INPUT_BYTES,
+        max_alt_text=MAX_ALT_TEXT,
+        mimes=sorted(media_images.ALLOWED_MIMES),
+    )
 
 
 # ── GET /media/{id}.{ext} ─────────────────────────────────────────────────────

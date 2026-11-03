@@ -195,6 +195,8 @@ export interface PostCreate {
   metadata?:  Record<string, unknown>;
   /** Layer 1 S3-4: quote this post (checked by the server). */
   quote_post_id?: string;
+  /** Layer 1 S4-4: up to 4 own uploads from `POST /media`. */
+  media_ids?: string[];
 }
 
 export interface PostFilters {

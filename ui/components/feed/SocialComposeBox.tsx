@@ -26,6 +26,8 @@ import {
 } from "@/lib/hooks/useHashtagAutocomplete";
 import { useDraftAutosave } from "@/lib/hooks/useDraftAutosave";
 import { renderRichText } from "@/lib/text/richText";
+import { hasBody } from "@/lib/composerMedia";
+import { ComposerImageButton, ComposerImageList, useComposerImages } from "./ComposerImages";
 
 /**
  * Cheap probe: does the draft body contain anything renderRichText
@@ -99,6 +101,8 @@ export function SocialComposeBox({
   // residual state during a transition, mention takes priority for
   // keyboard nav (it's the more frequent action).
   const hashtag = useHashtagAutocomplete();
+  // Layer 1 S4-10a2: images, shown only while the API has uploads on.
+  const images = useComposerImages();
 
   // Persist whatever the user has typed across tab close / refresh / nav.
   // Keyed per-composer-instance: root composer and per-reply composers
@@ -159,7 +163,7 @@ export function SocialComposeBox({
   const nearLimit = !overLimit && charCount >= MAX_CHARS * 0.9;
   const overage = charCount - MAX_CHARS;
   const canSubmit =
-    token && content.trim().length > 0 && !overLimit && !loading &&
+    token && hasBody(content, images.items) && !overLimit && !loading && !images.altError &&
     (parentPostId ? true : title.trim().length > 0);
 
   function onContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -332,6 +336,15 @@ export function SocialComposeBox({
       const finalTitle = parentPostId
         ? title.trim() || content.trim().slice(0, 60)
         : title.trim();
+      let mediaIds: string[] = [];
+      if (images.items.length > 0) {
+        const uploaded = await images.upload(token);
+        if (!uploaded) {
+          setError("An image could not be uploaded; see the message under it.");
+          return;
+        }
+        mediaIds = uploaded;
+      }
       const post = await createPost(
         {
           post_type: postType,
@@ -340,6 +353,7 @@ export function SocialComposeBox({
           visibility,
           tags: tagList,
           metadata: parentPostId ? { parent_post_id: parentPostId } : {},
+          ...(mediaIds.length > 0 ? { media_ids: mediaIds } : {}),
         },
         token,
       );
@@ -356,6 +370,7 @@ export function SocialComposeBox({
       setTitle("");
       setContent("");
       setTagsRaw("");
+      images.clear();
       if (!parentPostId) setPostType("UPDATE");
       // Re-collapse on mobile after successful post — keeps the feed in
       // view rather than leaving an empty composer hogging space.
@@ -661,10 +676,13 @@ export function SocialComposeBox({
             </div>
           )}
 
+          <ComposerImageList images={images} disabled={loading} />
+
           {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
 
           <div className="flex items-center justify-between border-t border-slate-800 pt-3 mt-3">
             <div className="flex items-center gap-3">
+              <ComposerImageButton images={images} disabled={loading} />
               {/* Three-tier counter (silent grey → amber warning → red over)
                   with a negative-overage display once past the limit, so the
                   user sees "−42" instead of "5042/5000" and knows how much to
