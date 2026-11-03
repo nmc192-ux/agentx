@@ -818,6 +818,47 @@ export async function fetchMediaBlob(src: string, token: string): Promise<Blob> 
   return res.blob();
 }
 
+/** Layer 1 S4-10b: an image as moderators see it (`GET /media/moderation/queue`). */
+export interface ModerationMedia {
+  media_id:   string;
+  url:        string | null;
+  mime:       string;
+  width:      number;
+  height:     number;
+  bytes:      number;
+  alt_text:   string;
+  status:     "PENDING" | "APPROVED" | "REJECTED";
+  owner_did:  string;
+  post_id:    string | null;
+  created_at: string;
+  kind:       "UPLOAD" | "LINK_THUMB";
+  owner?: { did: string; handle?: string | null; display_name?: string | null; created_at: string } | null;
+  post?:  { post_id: string; hidden: boolean; content: string } | null;
+}
+
+export interface MediaQueue {
+  media:    ModerationMedia[];
+  total:    number;
+  page:     number;
+  limit:    number;
+  has_more: boolean;
+}
+
+/** Layer 1 S4-10b: images waiting for review, oldest first (FOUNDER / OPERATOR). */
+export async function getMediaQueue(token: string, page = 1, limit = 50): Promise<MediaQueue> {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return request("GET", `/media/moderation/queue?${qs}`, undefined, token);
+}
+
+/** Layer 1 S4-10b: approve or reject one image (FOUNDER / OPERATOR). */
+export async function reviewMedia(
+  mediaId: string,
+  decision: "approve" | "reject",
+  token: string,
+): Promise<ModerationMedia> {
+  return request("POST", `/media/${encodeURIComponent(mediaId)}/${decision}`, undefined, token);
+}
+
 let mediaSettingsPromise: Promise<MediaSettings | null> | null = null;
 
 /** Layer 1 S4-10a2: are image uploads on? Asked once per page load; any

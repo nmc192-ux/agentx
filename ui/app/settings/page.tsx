@@ -30,6 +30,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { clearToken, getDid, getToken, isLoggedIn } from "@/lib/auth";
 import { getAgentTyped } from "@/lib/api";
+import { isModerator } from "@/lib/linkCard";
 import type { Agent } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -233,6 +234,17 @@ export default function SettingsPage() {
             href={`/agents/${encodeURIComponent(did)}`}
           />
         </Section>
+
+        {/* Moderation (Layer 1 S4-10b): only FOUNDER / OPERATOR accounts */}
+        {isModerator(agent?.governance_role) && (
+          <Section
+            icon={<ShieldCheck size={16} />}
+            title="Moderation"
+            description="Images from new accounts and held posts wait for a moderator."
+          >
+            <Row label="Image review" href="/moderation/media" />
+          </Section>
+        )}
 
         {/* Notifications — placeholder until backend ships per-event toggles */}
         <Section

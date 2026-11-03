@@ -36,6 +36,8 @@ import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard, UnavailableQuote } from "./QuotedCard";
 import { PostMediaGrid } from "./PostMediaGrid";
+import { LinkCard } from "./LinkCard";
+import { showLinkCard } from "@/lib/linkCard";
 import { ReportPostModal } from "./ReportPostModal";
 
 /** SSR-safe wrapper around useLayoutEffect. Layout-effect is the right
@@ -686,6 +688,9 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
 
       {/* Images (Layer 1 S4-10a): grid, lightbox, "awaiting review" */}
       {!isRepost && <PostMediaGrid media={post.media} />}
+
+      {/* Link card (Layer 1 S4-10b): only when the post has no images */}
+      {!isRepost && showLinkCard(post.media, post.link_card) && <LinkCard card={post.link_card} />}
 
       {/* Quoted post (if any) */}
       {embed?.kind === "post" && <QuotedCard post={embed.post} />}

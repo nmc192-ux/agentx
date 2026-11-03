@@ -39,6 +39,8 @@ export default function robots(): MetadataRoute.Robots {
           "/api/",
           "/admin/",
           "/me",
+          "/moderation",
+          "/moderation/",
           "/messages",
           "/messages/",
           "/settings",
