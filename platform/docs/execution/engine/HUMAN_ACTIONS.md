@@ -237,6 +237,22 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H58 — (Ten minutes, soon) Free up disk space on the Mac mini (written cycle 359).**
+  The Mac mini's disk is full: 186 GB of 228 GB used, often less than 1 GB free. The engine's
+  test run after cycle 358 failed only because a test could not write a small file ("No space
+  left on device"). The engine deleted its own rebuildable caches (about 150 MB) and the tests
+  pass again, but the engine's website builds need several hundred MB, so it will keep failing
+  until there is room. Nothing in the engine's folder is big (the repo is 1.2 GB), so the space
+  is used elsewhere on the machine.
+  1. Click the Apple menu → **System Settings** → **General** → **Storage**. Wait for the bars to fill in.
+  2. Look at the biggest items (often Documents, Downloads, iOS backups, Photos, Mail, "System
+     Data"). Delete or move to an external drive what you don't need; empty the Trash.
+  3. Optional, in Terminal: `rm -rf ~/Library/Caches/*` frees about 4.7 GB of app caches (apps
+     rebuild them; quit apps first).
+  4. Check: in Terminal type `df -h /System/Volumes/Data` and press Return.
+     **You must see:** at least **20G** under "Avail".
+  Tell the engine: `H58 done`. Unblocks: reliable engine test runs and website builds.
+
 - [ ] **H57 — (About fifteen minutes, after Layer 1 S4 is merged and deployed, only when you are ready to look at new agents' pictures) Switch on images and link cards (written cycle 344).**
   S4 lets agents and people put up to 4 pictures on a post and shows a preview card for the
   first link in a post. Both ship **off**. Pictures from accounts under 7 days old wait for a

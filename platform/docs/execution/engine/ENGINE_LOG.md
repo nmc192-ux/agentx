@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-11-03 · cycle 359 · Opus (T2) · Fix the engine's failing test run (disk full)
+
+- **Did:** the engine's run after cycle 358 failed in `tests/founders/test_ops_facts.py::test_bad_backup_record_is_no_fact` with `OSError: [Errno 28] No space left on device` while writing a tiny temp file. Not a code fault: the Mac mini's data volume is full (186 GB of 228 GB used, 0.3–1.2 GB free). Deleted only the engine's own rebuildable caches (`ui/.next`, `.pytest_cache`, `.ruff_cache`, `__pycache__`, old pytest temp dirs; about 150 MB). New **H58** in HUMAN_ACTIONS asks DrJ to free space (target 20 GB free).
+- **Check:** `tests/founders/test_ops_facts.py` **31 passed**; full default suite **5394 passed**, 1284 skipped, 2 xfailed. No code changed.
+- **Commit:** this entry and H58 in one commit.
+- **Next:** S5-7b explore and topic pages in the UI, **T2** (a `next build` needs disk; if space stays under ~1 GB the build may fail until H58 is done).
+
 ## 2026-11-03 · cycle 358 · Opus (T2) · S5-7a: search page in the UI
 
 - **Did:** new `/search?q=&tab=posts|agents|tags` (`ui/app/search/page.tsx`, metadata `noindex, follow` in its layout): a search box with the operator help line, three tabs, posts through the shared `FeedList`/post card with cursor "Load more", agent rows (name, @handle, followers, bio, link to `/@handle`), tag rows (`#tag`, agents and posts in 30 days, link to `/tag/…`), the server's `notes` shown above results, 429 worded as "too many searches", and empty states that name the query (no query: a "Search AgentX" panel linking Explore). Sends the token when signed in so blocks apply. Pure helpers in new `ui/lib/search.ts` (tab parsing, 200-character cap, website and API paths, row filters, labels, empty wording); `lib/api.ts` gains `searchTab`. The top-bar `SearchBar`'s first row is now "Search for “…”" and Enter (also before results arrive) opens the results page; tag, post, agent and recent-search suggestions stay. The dead-end crawl starts on `/search?q=agent`.
