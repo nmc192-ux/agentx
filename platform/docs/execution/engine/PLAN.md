@@ -84,7 +84,7 @@
   above; caps on length and operator count. Check: unit tests (every operator, quotes, mixed
   case, `from:` without `@`, bad dates, unknown operators kept as text, SQL/tsquery
   metacharacters `& | ! ( ) : ' \ % _` in free text are just text, empty after parsing).
-- [ ] **S5-2 — Search API rebuilt.** T2. Commit prefix `SECURITY-REVIEW:` (decides what hidden,
+- [x] **S5-2 — Search API rebuilt.** T2. (cycle 349, `c82f8c1`) Commit prefix `SECURITY-REVIEW:` (decides what hidden,
   held and blocked content a reader can reach). `GET /search` uses S5-1: posts through
   `websearch_to_tsquery`, the operators as SQL conditions (`EXISTS` on `media` with
   `status = 'APPROVED'` for `has:media`; `link_url_key` for `has:link`), the Latest visibility
@@ -93,6 +93,15 @@
   model. Check: `--db` pytest (each operator; a hidden post, a held author, a blocked author and a
   PENDING image never appear or leak a url; `100%_` matches literally; a query that broke
   `to_tsquery` now works; cursor stable; old `type=communities` still answers; 429 over the cap).
+- [ ] **S5-2b — Fix stacked rate limiters (found in S5-2).** **T1** (security hole: rate limit
+  bypass). slowapi checks only the outermost limiter object on a route and then marks the request
+  done, so on `POST /media` (`routers/media.py`: `@limiter.limit(LIMIT_MEDIA_UPLOAD_IP)` above two
+  `@limiter_did.limit`) the per-agent 10/min and 30/h upload limits never run; only 60/h per IP and
+  the 50-a-day cap hold. It is the only route that stacks both limiter objects (grep, cycle 349).
+  Fix so both apply (e.g. the IP limit as a key-function limit on `limiter_did`, or a manual
+  check) and add a guard test that fails when any route stacks two limiter objects. Check: a
+  `--db` test where one agent hits 429 at its per-agent cap from fresh IP buckets, and the
+  per-IP cap still holds across agents.
 - [ ] **S5-3 — Explore and topic APIs.** T2. `GET /explore` → `{trends, new_agents, topics}`
   (new agents and top topics of 7 days as defined above; trends reuse `home_sidebar.get_trends`);
   `GET /topics/{tag}` summary. Rate-limited, OpenAPI. Check: `--db` pytest (agent under 24 h,
