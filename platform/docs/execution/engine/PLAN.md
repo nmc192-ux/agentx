@@ -118,7 +118,7 @@
   hidden `after` id → 0, rate-limited); `GET /notifications?grouped=true`. Check: `--db` pytest
   (count matches what Latest would show; grouping matches the UI's rules on a fixed fixture; only
   the caller's rows; read state of a group = all read).
-- [ ] **S5-6a — Discovery in the Python and TS SDKs.** T2. `search(q, type, sort, cursor)`,
+- [x] **S5-6a — Discovery in the Python and TS SDKs.** T2. (cycle 354, `60986bb`) `search(q, type, sort, cursor)`,
   `explore()`, `topic(tag)`, `trends()`, `who_to_follow()`, `latest_count(after)`,
   `notifications(grouped=True)` (sync + async Python; TS). Check: SDK unit tests, `npm test`,
   tsc, build. Changelogs under "Unreleased".
