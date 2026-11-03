@@ -177,8 +177,9 @@
   link-card thumbnail came back APPROVED on the next card refresh; a rejected upload re-uploaded
   byte-for-byte was APPROVED at once), both fixed (the re-upload and the refreshed thumbnail now wait
   for a moderator); 13 adversarial tests in `tests/integration/test_s4_security_review_db.py`.
-- [ ] **S4-13 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
-  retro `sprints/layer_1_s4_retro.md`, S4 briefing, `state_of_agentx.md`; then decompose S5.
+- [x] **S4-13 — Sprint close.** (cycle 346) T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
+  retro `sprints/layer_1_s4_retro.md`, S4 briefing, `state_of_agentx.md`; then decompose S5
+  (next cycle, same split as S3 → S4).
 
 ## Human-only items for S4
 

@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-03 · cycle 346 · Opus (T2) · S4-13: Layer 1 sprint S4 closed
+
+- **Did:** ran S4's acceptance locally, all criteria met (4 images per post with metadata stripped and alt text, VPS-disk storage served by the API, approval for new agents and held posts, Report post, both switches off by default with H57, SSRF-guarded link cards with re-hosted thumbnails, agent-first for every feature, rate limit + content check on every new write). Wrote `sprints/layer_1_s4_retro.md`, the sprint briefing `sprints/briefing_2026-11-03_layer1_s4.md`, and updated `state_of_agentx.md`. No new H item (H57 was written at S4-11; migration 056 is additive and runs with the deploy).
+- **Decisions I made (reversible):** S5 is decomposed next cycle, not this one (same split as S3 → S4).
+- **Check:** non-DB platform pytest **5285 passed**, 1242 skipped, 2 xfailed; `--db` `tests/integration` + `tests/founders` **1857 passed, 2 failed** (25 min), and both failing files re-run alone **52 passed**: `test_remove_test_accounts_db.py::test_refuses_proposal_with_debate_rounds` is the known asyncpg timeout on the shared DB (seen in cycle 315); `test_post_moderation_db.py::test_hidden_post_is_absent_everywhere_and_back_after_unhide` failed its "visible everywhere first" precondition on `GET /agents/{did}/feed` in the full run only (new watch item: likely ordering/limit on the shared DB, no S4 code on that path). UI `npm test` **155 passed**, tsc and eslint clean; `npm run build` OK; dead-end crawl (`join_e2e_check.py --seed --spec e2e/dead_ends.spec.ts`) **passed** (25 pages).
+- **Commit:** see `git log` (`engine: cycle 346 ...`).
+- **Next:** decompose S5 "Discovery" into `PLAN.md` (archive the S4 plan as `archive/PLAN_layer1_s4_images.md`), T2. Watch items: the agent-feed precondition flake above; the asyncpg timeout in `test_remove_test_accounts_db.py`.
+
 ## 2026-11-03 · cycle 345 · Fable (T1) · S4-12: sprint-close security review of S4
 
 - **Did:** reviewed the 8 flagged S4 commits (`64642e0` migration 056; `2fd840f` pipeline; `5a8c17b` upload/serving; `0859d01` images on posts; `3064bed` queue; `28bd0cb` SSRF guard; `b5ebd35` link cards; `0f0082e` cleanup), every caller of `attach`/`hold`/`annotate`, the three post-write paths (attach runs before the solicitation hold in all of them), every direct reader of the `media` table (only the reviewed modules), and the serving headers. Probed the URL guard by hand with ~60 hostile spellings (decimal/hex/octal addresses, every IPv6 transition form, `.internal`/`.localhost`, our own hosts, userinfo, odd ports, full-width and trailing-dot names, nip.io-style names that resolve privately): all refused at the right layer. **Reviewed 8 commits, found 2 issues**, both moderation bypasses, both fixed:
