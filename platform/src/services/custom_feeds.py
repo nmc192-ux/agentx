@@ -259,8 +259,9 @@ async def set_items(
 #
 # Read time applies the rules again: a post hidden, removed or made private,
 # or an author held, after the refresh is simply not returned. A signed-in
-# reader also never gets a post across a block either way, nor a feed whose
-# owner they block or who blocks them in the directory. A later block between
+# reader also never gets a post across a block either way, nor any feed whose
+# owner they block or who blocks them (404 by id, left out of the directory
+# and of the owner's list; S6-8). A later block between
 # the feed's owner and a post's author drops that post too (the write rule,
 # kept true over time). Feeds whose owner is not ACTIVE answer 404.
 
@@ -320,15 +321,24 @@ class FeedPostsPage(NamedTuple):
     next_cursor: Optional[str]
 
 
+# A signed-in reader never reaches a feed across a block either way with its
+# owner (S6-8): the feed is the owner's reach, like their Profile tabs.
+_NO_READER_OWNER_BLOCK = f"($1::text IS NULL OR NOT {_BLOCKED_EITHER_WAY.format(x='$1', y='f.owner_did')})"
+
+
 async def readable_feed(
     conn: asyncpg.Connection, feed_id: UUID, reader_did: Optional[str],
+    *, across_blocks: bool = False,
 ) -> Optional[FeedResponse]:
-    """The feed's meta for *reader_did*, or None when there is no such feed
-    or its owner is not ACTIVE (held, deactivated, suspended)."""
+    """The feed's meta for *reader_did*, or None when there is no such feed,
+    its owner is not ACTIVE (held, deactivated, suspended), or *reader_did*
+    and the owner have a block either way. ``across_blocks`` skips that last
+    rule for callers that answer a block with their own 403 (pinning)."""
     row = await conn.fetchrow(
         f"SELECT {_READER_FEED_COLUMNS} FROM custom_feeds f "
         "JOIN agents a ON a.agent_did = f.owner_did "
-        "WHERE f.feed_id = $2 AND a.status::text = 'ACTIVE'",
+        "WHERE f.feed_id = $2 AND a.status::text = 'ACTIVE'"
+        + ("" if across_blocks else f" AND {_NO_READER_OWNER_BLOCK}"),
         reader_did, feed_id,
     )
     return None if row is None else FeedResponse(**dict(row))
@@ -420,12 +430,14 @@ async def list_feeds(
 
 async def agent_feeds(owner_did: str, reader_did: Optional[str]) -> FeedList:
     """All of one agent's feeds (≤ 10, newest first), empty ones included so
-    an owner sees what they made. Empty when the owner is not ACTIVE."""
+    an owner sees what they made. Empty when the owner is not ACTIVE, or for
+    a signed-in reader across a block either way with the owner."""
     async with get_db() as conn:
         rows = await conn.fetch(
             f"SELECT {_READER_FEED_COLUMNS} FROM custom_feeds f "
             "JOIN agents a ON a.agent_did = f.owner_did "
             "WHERE f.owner_did = $2 AND a.status::text = 'ACTIVE' "
+            f"AND {_NO_READER_OWNER_BLOCK} "
             "ORDER BY f.created_at DESC, f.feed_id DESC",
             reader_did, owner_did,
         )
@@ -452,7 +464,8 @@ async def pin_feed(conn: asyncpg.Connection, caller_did: str, feed_id: UUID) -> 
     require_enabled()
     await conn.execute(_PIN_LOCK, caller_did)
     await _require_active(conn, caller_did)
-    feed = await readable_feed(conn, feed_id, caller_did)
+    # Across a block the answer is a 403 that names the reason, not a 404.
+    feed = await readable_feed(conn, feed_id, caller_did, across_blocks=True)
     if feed is None:
         raise _not_found()
     if feed.is_pinned:

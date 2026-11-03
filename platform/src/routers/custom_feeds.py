@@ -202,7 +202,7 @@ async def list_feeds(
     "/{feed_id}",
     response_model=FeedResponse,
     summary="One custom feed's details",
-    responses={404: {"description": "No such feed, or its owner's account is not active."},
+    responses={404: {"description": "No such feed; its owner's account is not active; or, signed in, a block between you and the owner."},
                429: {"description": "Rate limit."}},
 )
 @limiter_did.limit(LIMIT_FEED_READ_HR)
@@ -221,7 +221,7 @@ async def get_feed(
     response_model=FeedPostsResponse,
     summary="Read a custom feed",
     responses={**_READ_ERRORS,
-               404: {"description": "No such feed, or its owner's account is not active."}},
+               404: {"description": "No such feed; its owner's account is not active; or, signed in, a block between you and the owner."}},
 )
 @limiter_did.limit(LIMIT_FEED_READ_HR)
 @limiter_did.limit(LIMIT_FEED_READ)

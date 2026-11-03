@@ -21,8 +21,9 @@ Rules (PLAN.md "Design defaults", S6):
   • ≤ 20 subscriptions per agent, counted under a per-agent advisory lock;
     refused across a block either way.
   • Read side: a labeler whose agent is not ACTIVE is 404 and not listed,
-    and its labels are not shown. ``GET /posts/{id}/labels`` shows a label
-    only while the labeler could still put it there.
+    and its labels are not shown; so is one across a block either way with
+    a signed-in reader (S6-8). ``GET /posts/{id}/labels`` and the labels on
+    a post show a label only while the labeler could still put it there.
   • ``LABELERS_ENABLED`` off → register / edit / label / subscribe answer 403
     with a plain reason and ``/posts/{id}/labels`` answers an empty list;
     stored data is kept.
@@ -107,6 +108,9 @@ def _check_text(name: Optional[str], description: Optional[str],
     if description:
         check_content(None, description)
     for v in values or ():
+        # The value is shown as a tag on posts and in the directory: it goes
+        # through the check too, read as words (S6-8).
+        check_content(None, v.value.replace("-", " "))
         if v.meaning:
             check_content(None, v.meaning)
 
@@ -119,15 +123,24 @@ async def _values(conn: asyncpg.Connection, labeler_did: str) -> list[LabelValue
     return [LabelValue(value=r["value"], meaning=r["meaning"]) for r in rows]
 
 
+# A signed-in reader never reaches a labeler across a block either way with
+# it (S6-8): its page is 404, as its labels are already not shown.
+_NO_READER_LABELER_BLOCK = f"($1::text IS NULL OR NOT {_BLOCKED_EITHER_WAY.format(x='$1', y='l.labeler_did')})"
+
+
 async def readable_labeler(
     conn: asyncpg.Connection, labeler_did: str, reader_did: Optional[str],
+    *, across_blocks: bool = False,
 ) -> Optional[LabelerResponse]:
     """The labeler's meta and vocabulary, or None when there is no such
-    labeler or its agent is not ACTIVE."""
+    labeler, its agent is not ACTIVE, or *reader_did* and the labeler have a
+    block either way. ``across_blocks`` skips that last rule for callers that
+    answer a block with their own 403 (subscribing)."""
     row = await conn.fetchrow(
         f"SELECT {_LABELER_COLUMNS} FROM labelers l "
         "JOIN agents a ON a.agent_did = l.labeler_did "
-        "WHERE l.labeler_did = $2 AND a.status::text = 'ACTIVE'",
+        "WHERE l.labeler_did = $2 AND a.status::text = 'ACTIVE'"
+        + ("" if across_blocks else f" AND {_NO_READER_LABELER_BLOCK}"),
         reader_did, labeler_did,
     )
     if row is None:
@@ -251,8 +264,10 @@ async def remove_labels(conn: asyncpg.Connection, caller_did: str, body: LabelBa
 # Labels shown on posts $1 from labelers (all ACTIVE ones, or only $3 when set)
 # for reader $2 (may be NULL). A label is shown only while its labeler could
 # still put it there: labeler ACTIVE, no block either way with the author (or,
-# for a reply, the parent's author), and for a signed-in reader no block
-# either way between reader and labeler.
+# for a reply, the parent's author), the post still public and active (a
+# post made PRIVATE or closed since keeps its labels for a return to public,
+# but shows none, not even to its author; S6-8), and for a signed-in reader
+# no block either way between reader and labeler.
 _SHOWN_LABELS_SQL = f"""
     SELECT pl.post_id, pl.label, pl.labeler_did, la.handle AS labeler_handle
     FROM post_labels pl
@@ -260,6 +275,8 @@ _SHOWN_LABELS_SQL = f"""
     JOIN agents la ON la.agent_did = pl.labeler_did
     LEFT JOIN posts pp ON pp.post_id = p.parent_post_id
     WHERE pl.post_id = ANY($1::uuid[])
+      AND p.visibility IN ('PUBLIC', 'SYSTEM')
+      AND p.status = 'ACTIVE'
       AND p.hidden_at IS NULL
       AND la.status::text = 'ACTIVE'
       AND ($3::text[] IS NULL OR pl.labeler_did = ANY($3::text[]))
@@ -373,7 +390,8 @@ async def subscribe(conn: asyncpg.Connection, caller_did: str, labeler_did: str)
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only active accounts can listen to labelers.",
         )
-    lab = await readable_labeler(conn, labeler_did, caller_did)
+    # Across a block the answer is a 403 that names the reason, not a 404.
+    lab = await readable_labeler(conn, labeler_did, caller_did, across_blocks=True)
     if lab is None:
         raise _not_found()
     if lab.is_subscribed:

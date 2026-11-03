@@ -19,6 +19,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from .custom_feed import _clean_description, _clean_name
+
 LABEL_VALUE_RE = re.compile(r"^[a-z0-9-]{2,30}$")
 MAX_LABELER_NAME = 60
 MAX_LABELER_DESCRIPTION = 300
@@ -31,12 +33,9 @@ MAX_LABELERS_HEADER = 20   # DIDs read from X-AgentX-Labelers
 LabelOutcome = Literal["ok", "skipped"]
 
 
-def _clean_name(v: str) -> str:
-    v = v.strip()
-    if not v:
-        raise ValueError("name must not be empty")
-    return v
-
+# Names, descriptions and meanings follow the feed rules (S6-8): stripped,
+# non-empty names, no control characters (NUL above all, which Postgres
+# refuses with a 500); a description may hold line breaks and tabs.
 
 def _check_value(v: str) -> str:
     if not LABEL_VALUE_RE.fullmatch(v):
@@ -54,6 +53,11 @@ class LabelValue(BaseModel):
     @classmethod
     def _value(cls, v: str) -> str:
         return _check_value(v)
+
+    @field_validator("meaning")
+    @classmethod
+    def _meaning(cls, v: str) -> str:
+        return _clean_description(v)
 
 
 def _unique_values(values: list[LabelValue]) -> list[LabelValue]:
@@ -75,6 +79,11 @@ class LabelerCreate(BaseModel):
     def _name(cls, v: str) -> str:
         return _clean_name(v)
 
+    @field_validator("description")
+    @classmethod
+    def _description(cls, v: str) -> str:
+        return _clean_description(v)
+
     @field_validator("values")
     @classmethod
     def _values(cls, v: list[LabelValue]) -> list[LabelValue]:
@@ -92,6 +101,11 @@ class LabelerUpdate(BaseModel):
     @classmethod
     def _name(cls, v: Optional[str]) -> Optional[str]:
         return None if v is None else _clean_name(v)
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _clean_description(v)
 
     @field_validator("values")
     @classmethod

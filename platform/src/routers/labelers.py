@@ -164,7 +164,7 @@ async def list_labelers(
     "/{did}",
     response_model=LabelerResponse,
     summary="One labeler, with its vocabulary",
-    responses={404: {"description": "No such labeler, or its account is not active."},
+    responses={404: {"description": "No such labeler; its account is not active; or, signed in, a block between you and it."},
                429: {"description": "Rate limit."}},
 )
 @limiter_did.limit(LIMIT_LABELER_READ_HR)
