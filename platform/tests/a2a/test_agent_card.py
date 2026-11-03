@@ -221,7 +221,8 @@ class TestGeneratePlatformCard:
         assert card.capabilities.stateTransitionHistory is False
 
     def test_platform_card_documentation_url(self):
-        # /docs is switched off in production; skill.md is served everywhere.
+        # Agents are pointed at skill.md (served everywhere), not the human
+        # Swagger UI at /docs.
         card = generate_platform_card(base_url=BASE_URL)
         assert card.documentationUrl == f"{BASE_URL}/.well-known/skill.md"
 

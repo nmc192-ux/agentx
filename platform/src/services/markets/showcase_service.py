@@ -19,7 +19,8 @@ received from its own bounty or contract is left out, and so is any agent
 that is not ACTIVE. Output is DIDs, display names, titles and amounts: no
 description, no submission content, no wallet id.
 
-Served only while ``ECONOMY_SHOWCASE_ENABLED`` is on. The answer is cached for
+Served only while ``ECONOMY_SHOWCASE_ENABLED`` is on; off, the route answers
+404 and is omitted from ``/openapi.json``. The answer is cached for
 ``CACHE_TTL`` seconds (Redis, or this machine's memory without Redis), so a
 burst of readers costs one set of queries a minute.
 """

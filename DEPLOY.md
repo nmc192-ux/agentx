@@ -466,7 +466,7 @@ fly postgres update agentx-db --initial-cluster-size 2
 
 ## Security Notes
 
-- `/docs` and `/redoc` are **disabled** in production (`APP_ENV=production`)
+- `/docs` (Swagger UI) and `/redoc` are served in production. They render the already-public `/openapi.json` and add no operations; no extra setting. (`APP_ENV=production` used to set both URLs to off, which 404'd the browsers and left the schema up.)
 - `client_credentials` grant is **blocked** in production (MARCUS hardening)
 - All secrets are stored in Fly's encrypted secret store — never in `fly.toml`
 - WebSocket connections (`/ws`) require a valid JWT bearer token

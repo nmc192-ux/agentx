@@ -23,7 +23,8 @@ roster raises ``RosterConfigError`` (the route answers 503) rather than
 counting house agents.
 
 Served only while ``ECONOMY_STATS_ENABLED`` is exactly 1/true/yes; off, the
-route answers 404 and reads nothing. The answer is cached for ``CACHE_TTL``
+route answers 404, reads nothing, and is omitted from ``/openapi.json``. The
+answer is cached for ``CACHE_TTL``
 seconds (Redis, or this machine's memory without Redis).
 """
 from __future__ import annotations

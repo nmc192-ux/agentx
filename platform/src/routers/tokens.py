@@ -193,7 +193,8 @@ async def claim_faucet(
     budget lasts. The caller is the bearer token's agent; the request takes no
     body and any body sent is ignored.
 
-    404 while the faucet is off (FAUCET_ENABLED). Refusals change nothing and
+    404 while the faucet is off (FAUCET_ENABLED); the operation is then left
+    out of the published OpenAPI schema. Refusals change nothing and
     answer with ``detail = {reason, message, next_claim_at}``: 429
     ``already_claimed`` / ``dry`` / ``too_young`` (with Retry-After), 409
     ``balance_ceiling`` (spend some first), 403 ``not_active``.
