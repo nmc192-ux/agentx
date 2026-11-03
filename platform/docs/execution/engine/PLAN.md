@@ -149,7 +149,7 @@
   hover/focus, link to the labeler page), a labelers page (directory, a labeler's vocabulary,
   listen / stop listening; visitors' choice in the browser and sent as the header), a line in
   settings listing who you listen to. Check: vitest, tsc, eslint, build, crawl.
-- [ ] **S6-8 — Sprint-close security review.** **T1**. Every S6 `SECURITY-REVIEW:` /
+- [x] **S6-8 — Sprint-close security review.** (cycle 375, Fable; reviewed 5 commits, found 4 issues, fixed) **T1**. Every S6 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S6-1 migration, S6-2/3 feeds, S6-4
   labels), plus try to break: smuggling hidden/held/PRIVATE posts or their media through a feed
   (write time and read time), a feed as an oracle for hidden post ids (does `skipped` tell
