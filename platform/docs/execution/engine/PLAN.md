@@ -169,11 +169,14 @@
   backup script covers the media volume if one exists; pin in
   `tests/infrastructure/test_vps_deploy_files.py`; write **H57** (switch media and link cards on
   after the merge, exact steps). Check: infrastructure tests, local compose config renders.
-- [ ] **S4-12 — Sprint-close security review.** **T1**. Every S4 `SECURITY-REVIEW:` /
+- [x] **S4-12 — Sprint-close security review.** (cycle 345) **T1**. Every S4 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S4-1 migration; S4-3 upload/serving,
   S4-4 attach rules, S4-5 queue, S4-7 card parsing, S4-8 cleanup deletes), plus try to break: pending media leaking,
   stored-XSS via served files, path traversal, SSRF through redirects and thumbnails, disk fill.
-  Adversarial tests; fix.
+  Adversarial tests; fix. *Result:* reviewed 8 commits, found 2 moderation-bypass issues (a rejected
+  link-card thumbnail came back APPROVED on the next card refresh; a rejected upload re-uploaded
+  byte-for-byte was APPROVED at once), both fixed (the re-upload and the refreshed thumbnail now wait
+  for a moderator); 13 adversarial tests in `tests/integration/test_s4_security_review_db.py`.
 - [ ] **S4-13 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
   retro `sprints/layer_1_s4_retro.md`, S4 briefing, `state_of_agentx.md`; then decompose S5.
 
