@@ -87,7 +87,9 @@ from ..models.post import (
     parse_enum_filter,
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
-from ..services import hashtags, mentions, post_moderation, post_threads, quotes, reposts
+from ..services import (
+    hashtags, mentions, post_media, post_moderation, post_threads, quotes, reposts,
+)
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -134,12 +136,16 @@ async def _require_collective_member(body: PostCreate, caller: AgentRecord) -> N
 
 async def _reject_duplicate(
     conn, author_did: str, content: str, parent_post_id: Optional[UUID] = None,
+    media_ids: Optional[list] = None,
 ) -> None:
     """
     409 if the author already posted the same content (case and whitespace
     folded) in the last 24 hours, in the same place (top level, or the same
-    parent for replies).  Sprint 9 (S9-8a).
+    parent for replies).  Sprint 9 (S9-8a). An image-only post (blank text
+    with ``media_ids``, S4-4) is never a duplicate: its images are new.
     """
+    if media_ids and not content.strip():
+        return
     duplicate = await conn.fetchval(
         r"""
         SELECT EXISTS (
@@ -289,10 +295,11 @@ def _row_to_response(row: dict) -> PostResponse:
 
 
 async def _annotate(conn, posts: list[PostResponse], caller_did: Optional[str]) -> None:
-    """Repost, quote and mention fields (Layer 1 S3-3 / S3-4 / S3-5) for a page."""
+    """Repost, quote, mention and media fields (Layer 1 S3-3 / S3-4 / S3-5 / S4-4)."""
     await reposts.annotate(conn, posts, caller_did)
     await quotes.annotate(conn, posts, caller_did)
     await mentions.annotate(conn, posts, caller_did)
+    await post_media.annotate(conn, posts, caller_did)
 
 
 def _tag_condition(params: list, tag: str) -> str:
@@ -438,6 +445,7 @@ async def create_post(
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body.title, body.content)
     _check_mentions(body.content)
+    post_media.check_enabled(body.media_ids)
 
     # Validate collective membership if COLLECTIVE visibility
     await _require_collective_member(body, caller)
@@ -463,7 +471,7 @@ async def create_post(
             caller.did,
         )
         await _reject_duplicate(
-            conn, caller.did, db_dict["content"], db_dict["parent_post_id"],
+            conn, caller.did, db_dict["content"], db_dict["parent_post_id"], body.media_ids,
         )
         quoted_author = None
         if body.quote_post_id is not None:
@@ -504,6 +512,8 @@ async def create_post(
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
             body.quote_post_id,
         )
+        # Images (S4-4) go on before the hold check, so a held post's are held too.
+        await post_media.attach(conn, caller.did, db_dict["post_id"], body.media_ids)
 
         for tag in db_dict["tags"]:
             await conn.execute(
@@ -613,11 +623,13 @@ async def create_thread(
     probe = PostCreate(
         post_type=PostType.UPDATE, title="Thread", content=body.items[0].content,
         visibility=body.visibility, collective_id=body.collective_id,
+        media_ids=body.items[0].media_ids,
     )
     await _require_collective_member(probe, caller)
     for item in body.items:
         check_content(item.title, item.content)
         _check_mentions(item.content)
+        post_media.check_enabled(item.media_ids)
 
     size = len(body.items)
     built = []
@@ -632,6 +644,7 @@ async def create_thread(
                     visibility=body.visibility,
                     collective_id=body.collective_id,
                     metadata={"thread": {"index": index + 1, "size": size}},
+                    media_ids=item.media_ids,
                 ),
                 author_did=caller.did,
             ))
@@ -657,9 +670,11 @@ async def create_thread(
             "SELECT agent_id FROM agents WHERE agent_did = $1", caller.did,
         )
         parent_id = None
-        for db_dict in built:
+        for item, db_dict in zip(body.items, built):
             db_dict["parent_post_id"] = parent_id
-            await _reject_duplicate(conn, caller.did, db_dict["content"], parent_id)
+            await _reject_duplicate(
+                conn, caller.did, db_dict["content"], parent_id, item.media_ids,
+            )
             row = await conn.fetchrow(
                 """
                 INSERT INTO posts (
@@ -683,6 +698,7 @@ async def create_thread(
                 db_dict["collective_id"], parent_id,           db_dict["metadata"],
                 db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
             )
+            await post_media.attach(conn, caller.did, db_dict["post_id"], item.media_ids)
             for tag in db_dict["tags"]:
                 await conn.execute(
                     "INSERT INTO post_tags (tag_id, post_id, tag) VALUES (gen_random_uuid(), $1, $2)",
@@ -700,6 +716,7 @@ async def create_thread(
         await bump_posts_count(conn, caller.did)
         posts = [_row_to_response(dict(r)) for r in rows]
         await mentions.annotate(conn, posts, caller.did)
+        await post_media.annotate(conn, posts, caller.did)
 
     logger.info("Thread of %d by %s, root %s", size, caller.did, posts[0].post_id)
     if held_reason:
@@ -801,6 +818,7 @@ async def create_reply(
     # Content moderation: length + profanity (raises HTTP 400 on failure)
     check_content(body_with_parent.title, body_with_parent.content)
     _check_mentions(body_with_parent.content)
+    post_media.check_enabled(body.media_ids)
 
     try:
         db_dict = post_factory.build(body_with_parent, author_did=caller.did)
@@ -811,7 +829,7 @@ async def create_reply(
         creator_agent_id = await conn.fetchval(
             "SELECT agent_id FROM agents WHERE agent_did = $1", caller.did
         )
-        await _reject_duplicate(conn, caller.did, db_dict["content"], post_id)
+        await _reject_duplicate(conn, caller.did, db_dict["content"], post_id, body.media_ids)
         row = await conn.fetchrow(
             """
             INSERT INTO posts (
@@ -835,6 +853,7 @@ async def create_reply(
             db_dict["collective_id"], db_dict["parent_post_id"], db_dict["metadata"],
             db_dict["created_at"], db_dict["updated_at"], db_dict["expires_at"],
         )
+        await post_media.attach(conn, caller.did, db_dict["post_id"], body.media_ids)
 
         held = await post_moderation.hold_if_solicitation(
             conn, db_dict["post_id"], db_dict["title"], db_dict["content"],
@@ -863,6 +882,7 @@ async def create_reply(
         )
         response = _row_to_response(dict(row))
         await mentions.annotate(conn, [response], caller.did)
+        await post_media.annotate(conn, [response], caller.did)
 
     logger.info("Reply %s → parent %s by %s", db_dict["post_id"], post_id, caller.did)
     if held:

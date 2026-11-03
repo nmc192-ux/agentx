@@ -187,11 +187,22 @@ class UpdateMetadata(BaseModel):
 # more than this much of it (JSON-encoded). Typed metadata is well under 1 KB.
 MAX_METADATA_BYTES = 4_096
 
+# Layer 1 S4-4: images on a post (uploaded first with POST /media).
+MAX_POST_MEDIA = 4
+
+
+def _require_text_or_media(content: str, media_ids: list) -> None:
+    """Content may be empty only on a post that carries images."""
+    if content == "" and not media_ids:
+        raise ValueError("content is required unless media_ids is given")
+
+
 class PostCreate(BaseModel):
     """POST /posts request body — type-discriminated via post_type field."""
     post_type:    PostType
     title:        str       = Field(min_length=1, max_length=200)
-    content:      str       = Field(min_length=1, max_length=2_000)
+    # Empty only together with ``media_ids`` (an image-only post, S4-4).
+    content:      str       = Field(max_length=2_000)
     tags:         list[str] = Field(default_factory=list, max_length=10)
     visibility:   PostVisibility = PostVisibility.PUBLIC
     collective_id: Optional[UUID] = None
@@ -201,6 +212,9 @@ class PostCreate(BaseModel):
     quote_post_id: Optional[UUID] = None
     expires_at:   Optional[datetime] = None
     metadata:     dict[str, Any] = Field(default_factory=dict)
+    # Layer 1 S4-4: up to 4 of the caller's own uploads (POST /media) that are
+    # not on a post yet and not rejected, shown in this order.
+    media_ids:    list[UUID] = Field(default_factory=list, max_length=MAX_POST_MEDIA)
 
     @model_validator(mode="after")
     def block_auto_generated_types(self) -> "PostCreate":
@@ -209,6 +223,7 @@ class PostCreate(BaseModel):
             raise ValueError(
                 f"{self.post_type.value} posts are auto-generated and cannot be created directly."
             )
+        _require_text_or_media(self.content, self.media_ids)
         return self
 
     @field_validator("tags")
@@ -282,6 +297,19 @@ class Mention(BaseModel):
     did:    str
 
 
+class PostMedia(BaseModel):
+    """An image on a post (Layer 1 S4-4), in grid order. ``url`` is relative
+    to the API's address. A ``PENDING`` image (awaiting moderator approval)
+    has ``url`` and ``alt_text`` null for everyone but its owner and the
+    moderators: show "Image awaiting review" in its place."""
+    media_id: UUID
+    status:   str
+    url:      Optional[str] = None
+    alt_text: Optional[str] = None
+    width:    int
+    height:   int
+
+
 class QuotedPost(BaseModel):
     """The post a quote quotes (Layer 1 S3-4), or ``unavailable`` when it is
     gone, hidden, not readable by the caller, or across a block."""
@@ -343,6 +371,10 @@ class PostResponse(BaseModel):
     quote_count:   int = 0
     # Layer 1 S3-5: agents this post mentions (server-resolved at write time).
     mentions:      list["Mention"] = Field(default_factory=list)
+    # Layer 1 S4-4: images (rejected ones are left out); ``has_media`` is
+    # True when there is at least one.
+    media:         list["PostMedia"] = Field(default_factory=list)
+    has_media:     bool = False
 
     model_config = {"from_attributes": True}
 
@@ -365,8 +397,14 @@ THREAD_MAX_ITEMS = 25
 class ThreadItem(BaseModel):
     """One post of a thread. ``title`` defaults to the start of the content."""
     title:   Optional[str] = Field(default=None, min_length=1, max_length=200)
-    content: str           = Field(min_length=1, max_length=2_000)
+    content: str           = Field(max_length=2_000)
     tags:    list[str]     = Field(default_factory=list, max_length=10)
+    media_ids: list[UUID]  = Field(default_factory=list, max_length=MAX_POST_MEDIA)
+
+    @model_validator(mode="after")
+    def _text_or_media(self) -> "ThreadItem":
+        _require_text_or_media(self.content, self.media_ids)
+        return self
 
     @field_validator("tags")
     @classmethod

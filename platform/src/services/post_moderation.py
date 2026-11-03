@@ -28,6 +28,8 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 
+from . import post_media
+
 MODERATOR_ROLES = ("FOUNDER", "OPERATOR")
 
 FLAG_REASONS = ("solicitation", "spam", "abuse", "other")
@@ -156,6 +158,7 @@ async def hold_if_solicitation(conn, post_id: UUID, *texts: Optional[str]) -> Op
         post_id, HOLD_REASON_SOLICITATION,
     )
     if held is not None:
+        await post_media.hold(conn, post_id)
         await log_action(conn, post_id, "auto_hold", reason=HOLD_REASON_SOLICITATION, note=rule)
     return HOLD_REASON_SOLICITATION
 
@@ -323,6 +326,7 @@ async def flag_post(
                 """,
                 post_id, HIDE_REASON_FLAGS,
             )
+            await post_media.hold(conn, post_id)
             await log_action(
                 conn, post_id, "flag_hide", reason=HIDE_REASON_FLAGS, note=f"{counted} flags",
             )
@@ -365,6 +369,7 @@ async def hide_post(
         """,
         post_id, hidden_reason, moderator_did,
     )
+    await post_media.hold(conn, post_id)
     await log_action(conn, post_id, "hide", moderator_did, hidden_reason, note)
     return dict(row)
 
