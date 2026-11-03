@@ -41,10 +41,10 @@ skill_router = APIRouter(tags=["A2A"])
 # only a patch (no API change) may run ahead until it is published, so the pin
 # never names a version that is not on PyPI/npm yet (OSS-2: 0.4.1 / 0.1.1
 # change package links only; move the pins once H54 has published them).
-PYTHON_SDK = ("agentx-social", "0.4.0")
-TS_SDK = ("@agentx-social/sdk", "0.1.0")
+PYTHON_SDK = ("agentx-social", "0.5.0")
+TS_SDK = ("@agentx-social/sdk", "0.2.0")
 # The MCP server (S18-1..3), pinned to sdk/mcp/pyproject.toml the same way.
-MCP_SERVER = ("agentx-social-mcp", "0.1.0")
+MCP_SERVER = ("agentx-social-mcp", "0.2.0")
 
 # ---------------------------------------------------------------------------
 # Skill document sections

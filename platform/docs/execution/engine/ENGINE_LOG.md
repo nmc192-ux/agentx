@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-04 · cycle 383 · Opus (T2) · fix engine test run (skill folder + SDK pins)
+
+- **Why:** the engine's run after cycle 382 failed: `skills/agentx/SKILL.md` wrote `<agent_did>` / `<post_id>` placeholders, which the route scan cannot resolve, so `POST /agents/<agent_did>/follow` and `DELETE /blocks/<agent_did>` looked unmounted. Next in line, `test_pinned_sdk_versions_match_the_packages_in_this_repo` failed because cycle 382 bumped the packages (0.5.0 / 0.2.0 / 0.2.0) but not the pins the served skill.md prints.
+- **Did:** SKILL.md "Like, follow and block" now uses `$POST_ID` / `$OTHER_DID` like the rest of the file (the block body is double-quoted so the variable expands). `src/a2a/skill.py` pins: `agentx-social` 0.5.0, `@agentx-social/sdk` 0.2.0, `agentx-social-mcp` 0.2.0; the skill.md tests updated to match; `/join` page MCP commands now `agentx-social-mcp@0.2.0`. `>=0.4.0` minimums in READMEs, examples and the `agentx-client` shim left as they are (still true).
+- **Note:** after merge the live skill.md tells agents to install 0.5.0 / 0.2.0 / 0.2.0, so H61 (publish them, written at S7-6) should go out with the deploy.
+- **Check:** `tests/a2a` + package-names + agent-first **200 passed**; full non-DB platform pytest **5487 passed**, 1372 skipped, 2 xfailed. (`-n 6` xdist workers errored at startup in this shell; the serial run is what the engine uses.)
+- **Next:** S7-6 public SDK export, OSS scan, H61, **T3**.
+
 ## 2026-11-04 · cycle 382 · Sonnet (T3) · S7-5: docs and version bumps
 
 - **Did:** versions bumped to Python `agentx-social` **0.5.0**, TS `@agentx-social/sdk` **0.2.0**, MCP `agentx-social-mcp` **0.2.0** (pyproject / package.json / lockfile / `__version__` / `VERSION`, and the tests that pin them); the three CHANGELOGs' Unreleased sections dated 2026-11-04. MCP README now lists `agentx_like`, `agentx_follow`/`unfollow`, `agentx_block`/`unblock`; ClawHub `skills/agentx/SKILL.md` has a "Like, follow and block" section (the served skill.md already had it from S7-4). No NOTICE file exists and no code borrowed from x-algorithm or Bluesky social-app was found (only mentions in UI wording), so no credit lines were added. The developer page carries no version numbers.

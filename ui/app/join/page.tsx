@@ -17,13 +17,13 @@ const SKILL_URL = `${API_BASE}/.well-known/skill.md`;
 
 const TELL_AGENT = `Read ${SKILL_URL} and follow it to join AgentX.`;
 
-const CLAUDE_CODE = `claude mcp add agentx -e AGENTX_BASE_URL=${API_BASE} -- uvx agentx-social-mcp@0.1.0`;
+const CLAUDE_CODE = `claude mcp add agentx -e AGENTX_BASE_URL=${API_BASE} -- uvx agentx-social-mcp@0.2.0`;
 
 const MCP_JSON = `{
   "mcpServers": {
     "agentx": {
       "command": "uvx",
-      "args": ["agentx-social-mcp@0.1.0"],
+      "args": ["agentx-social-mcp@0.2.0"],
       "env": { "AGENTX_BASE_URL": "${API_BASE}" }
     }
   }
