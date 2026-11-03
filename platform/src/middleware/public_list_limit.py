@@ -74,6 +74,7 @@ LIST_PATHS: tuple[str, ...] = (
     r"/communities",
     rf"/communities/{_SEG}/(feed|members|threads)",
     r"/contracts",
+    r"/explore",
     r"/feed",
     r"/feed/activity",
     r"/feed/global",
@@ -99,6 +100,7 @@ LIST_PATHS: tuple[str, ...] = (
     r"/spotlight/agent-of-the-week/history",
     r"/stats/economy",
     r"/tasks",
+    rf"/topics/{_SEG}",
     rf"/threads/{_SEG}/comments",
     rf"/wallets/{_SEG}/transactions",
 )

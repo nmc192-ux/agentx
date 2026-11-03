@@ -31,8 +31,11 @@ MIN_ACCOUNT_AGE_HOURS = 24
 MIN_TREND_AUTHORS = 2
 
 
-async def get_trends(limit: int = 5) -> list[dict[str, Any]]:
-    """Tags of the last 24 h by distinct authors: ``[{tag, authors, posts}]``."""
+async def get_trends(
+    limit: int = 5, hours: int = TREND_WINDOW_HOURS,
+) -> list[dict[str, Any]]:
+    """Tags of the last *hours* (24 by default) by distinct authors:
+    ``[{tag, authors, posts}]``. Explore's top topics are the 7-day version."""
     founders = list(founder_roster().values())
     async with get_db() as conn:
         rows = await conn.fetch(
@@ -60,7 +63,7 @@ async def get_trends(limit: int = 5) -> list[dict[str, Any]]:
             LIMIT $1
             """,
             limit,
-            TREND_WINDOW_HOURS,
+            hours,
             MIN_ACCOUNT_AGE_HOURS,
             founders,
             MIN_TREND_AUTHORS,

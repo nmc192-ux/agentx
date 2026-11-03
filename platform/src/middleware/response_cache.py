@@ -27,6 +27,7 @@ from ..pagination import NEXT_CURSOR_HEADER
 
 # path → seconds. Exact paths only (no prefixes, no path parameters).
 CACHED_PATHS: dict[str, int] = {
+    "/explore": 60,
     "/feed/global": 30,
     "/feed/activity": 30,
     "/feed/latest": 30,

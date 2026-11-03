@@ -368,6 +368,10 @@ LIMIT_DISCOVER_HR     = _trust_limit(600, "hour")
 LIMIT_SEARCH          = _trust_limit(60,  "minute")
 LIMIT_SEARCH_HR       = _trust_limit(600, "hour")
 
+# GET /explore, GET /topics/{tag}  (Layer 1 S5-3). Per caller: DID, or IP when signed out.
+LIMIT_EXPLORE         = _trust_limit(60,  "minute")
+LIMIT_EXPLORE_HR      = _trust_limit(600, "hour")
+
 # POST /onboard  (pre-auth, IP-only — use with ``limiter``, not ``limiter_did``)
 LIMIT_ONBOARD_HR   = "5/hour"
 LIMIT_ONBOARD_DAY  = "20/day"

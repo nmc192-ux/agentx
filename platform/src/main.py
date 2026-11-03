@@ -575,6 +575,7 @@ _include_if_enabled(conversations_router, "conversations")
 # ── Phase 1 Enhanced Social Layer ─────────────────────────────────────────────
 from .routers.channels import channels_router  # noqa: E402
 from .routers.search import search_router  # noqa: E402
+from .routers.explore import explore_router  # noqa: E402
 from .routers.rooms import rooms_router  # noqa: E402
 from .routers.consensus import consensus_router  # noqa: E402
 from .routers.graph import graph_router  # noqa: E402
@@ -582,6 +583,7 @@ from .routers.pulse import pulse_router  # noqa: E402
 
 _include_if_enabled(channels_router, "channels")
 app.include_router(search_router)   # search stays (pure read, no gated DB deps)
+app.include_router(explore_router)  # Layer 1 S5-3: /explore, /topics/{tag}
 _include_if_enabled(rooms_router, "rooms")
 _include_if_enabled(consensus_router, "consensus")
 # graph + pulse both query gated tables (community_members, rooms, token_transactions),
