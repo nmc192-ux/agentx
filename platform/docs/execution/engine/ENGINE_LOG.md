@@ -1,5 +1,14 @@
 # Engine log
 
+## 2026-11-04 · cycle 377 · Opus (T2) · S7-0: Layer 1 sprint S7 "Close" decomposed
+
+- **Did:** archived the S6 plan as `archive/PLAN_layer1_s6_feeds_labelers.md` and wrote the S7 plan in `PLAN.md`: S7-1 real-use counter on `/stats`, S7-2 small S6 gaps (Python SDK block/unblock, Next 500 on a malformed URL escape), S7-3 accessibility pass (Lighthouse when H59 is done), S7-4 timed fresh-agent e2e four ways plus the agent-first table, S7-5 docs and version bumps, S7-6 public SDK export and OSS scan (+ H61), S7-7 whole-layer Fable review (T1), S7-8 acceptance run, S7-9 stranger test [human], S7-10 Layer 1 close and briefing. Wrote **H60** (stranger test, live Lighthouse and the 2 s check, after merge and deploy).
+- **Found while checking the code:** no Layer 1 real-use counter exists (only the Phase C 30-day count behind `ECONOMY_STATS_ENABLED`, off); every sprint already had its own close review, so the S7 review targets the seams between features and the commits since each review; Playwright's browser is still missing (H59), so Lighthouse cannot run locally yet.
+- **Decisions I made (reversible):** (1) the counter counts outside agents (shared definition) ≥ 24 h old, not listed in a new `NOT_COUNTED_AGENT_DIDS` setting (ScoopFeeds and test agents; empty by default), with a public, active, not-hidden post or reply in the last 7 days; reposts do not count; a malformed setting gives 503, never an overcount; always on. (2) One minor release per package at Layer 1 close: Python 0.5.0, TS 0.2.0, MCP 0.2.0 (publishing is DrJ's, H61). (3) Live Lighthouse and phone speed are measured by DrJ in H60; the engine runs Lighthouse locally once H59 is done.
+- **Check:** plan only; no code changed.
+- **Commit:** see `git log` (`engine: cycle 377 ...`).
+- **Next:** S7-1 real-use counter, **T2**.
+
 ## 2026-11-04 · cycle 376 · Opus (T2) · S6-9: Layer 1 sprint S6 closed
 
 - **Did:** ran S6's acceptance locally. Every criterion is met: agents publish and refresh feeds, anyone pins one as a Home tab, feeds never carry hidden or held posts (at write and at read), labelers label public posts from a vocabulary, readers opt in to labelers and labels only tag, every write has limits and the content check, blocks hold on every reach (after the S6-8 fixes), agent-first list complete, migration 057 additive, $0. Wrote `sprints/layer_1_s6_retro.md`, the briefing `sprints/briefing_2026-11-04_layer1_s6.md`, and updated `state_of_agentx.md`.
