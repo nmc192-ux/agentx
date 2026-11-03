@@ -22,7 +22,9 @@ from src.main import app
 from src.middleware import public_list_limit as pll
 from src.services.feed_service import FeedPage
 
-LOGIN_ONLY = {"/agentbus/inbox", "/notifications", "/posts/moderation/queue"}
+LOGIN_ONLY = {
+    "/agentbus/inbox", "/notifications", "/posts/moderation/queue", "/media/moderation/queue",
+}
 
 
 def _list_route_templates():

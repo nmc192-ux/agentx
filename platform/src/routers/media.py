@@ -8,6 +8,9 @@ returned ``media_id`` to a post (``media_ids``, S4-4).
   GET    /media/{id}.{ext}      — The image file itself
   GET    /media/{id}            — Its metadata
   DELETE /media/{id}            — Delete your own upload while it is not on a post
+  GET    /media/moderation/queue — Images waiting for review (FOUNDER / OPERATOR, S4-5)
+  POST   /media/{id}/approve    — Make a pending image public (FOUNDER / OPERATOR)
+  POST   /media/{id}/reject     — Refuse an image; its file is deleted (FOUNDER / OPERATOR)
 
 Rules:
   • ``POST /media`` exists only while ``MEDIA_ENABLED`` is on (404 otherwise).
@@ -23,6 +26,11 @@ Rules:
     ``default-src 'none'`` CSP, so a file can never run as a page. A
     ``PENDING`` or ``REJECTED`` file is a plain 404 to everyone not allowed
     to see it (the same answer as an id that does not exist).
+  • Review (S4-5): approving an image on a hidden or held post is refused
+    (409 ``post_hidden``; unhide the post first), because an approved file
+    is public and cacheable. Rejecting keeps the row (so the owner can see
+    what happened and the id cannot be reused) and deletes the file; the
+    post then shows nothing in the image's place.
 """
 
 import asyncio
@@ -32,11 +40,16 @@ from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
+from ..auth.middleware import (
+    AgentRecord,
+    get_current_agent,
+    get_current_agent_optional,
+    require_role,
+)
 from ..config import get_settings
 from ..database import get_db, transaction
 from ..middleware.rate_limits import (
@@ -120,6 +133,36 @@ class MediaResponse(BaseModel):
     owner_did:  str
     post_id:    Optional[UUID] = None
     created_at: datetime
+
+
+class MediaOwner(BaseModel):
+    did:          str
+    handle:       Optional[str] = None
+    display_name: Optional[str] = None
+    created_at:   datetime
+
+
+class MediaPostRef(BaseModel):
+    post_id: UUID
+    hidden:  bool
+    content: str
+
+
+class ModerationMediaResponse(MediaResponse):
+    """An image as moderators see it: who reviewed it last, and its context."""
+    kind:        Literal["UPLOAD", "LINK_THUMB"]
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+    owner:       Optional[MediaOwner] = None
+    post:        Optional[MediaPostRef] = None
+
+
+class MediaQueueResponse(BaseModel):
+    media:    list[ModerationMediaResponse]
+    total:    int
+    page:     int
+    limit:    int
+    has_more: bool
 
 
 def media_url(media_id: UUID, ext: str) -> str:
@@ -435,3 +478,221 @@ async def delete_media(
         await conn.execute("DELETE FROM media WHERE id = $1", parsed)
     media_store.delete(_media_root(), parsed, row["ext"])
     logger.info("Media %s deleted by its owner %s", parsed, caller.did)
+
+
+# ── Review (S4-5): FOUNDER / OPERATOR ─────────────────────────────────────────
+
+_moderator = require_role(*MODERATOR_ROLES)
+
+_EXCERPT_CHARS = 280
+
+_REVIEW_COLUMNS = (
+    "m.id, m.owner_did, m.kind, m.mime, m.ext, m.width, m.height, m.bytes, "
+    "m.alt_text, m.status, m.post_id, m.position, m.created_at, "
+    "m.reviewed_at, m.reviewed_by"
+)
+
+
+def _to_moderation_response(row) -> ModerationMediaResponse:
+    base = _to_response(row).model_dump()
+    owner = None
+    if row.get("owner_created_at") is not None:
+        owner = MediaOwner(
+            did=row["owner_did"],
+            handle=row["owner_handle"],
+            display_name=row["owner_display_name"],
+            created_at=row["owner_created_at"],
+        )
+    post = None
+    if row.get("post_id") is not None and row.get("post_content") is not None:
+        post = MediaPostRef(
+            post_id=row["post_id"],
+            hidden=row["post_hidden"],
+            content=row["post_content"][:_EXCERPT_CHARS],
+        )
+    return ModerationMediaResponse(
+        **base,
+        kind=row["kind"],
+        reviewed_at=row["reviewed_at"],
+        reviewed_by=row["reviewed_by"],
+        owner=owner,
+        post=post,
+    )
+
+
+async def _review_row(conn, media_id: UUID):
+    return await conn.fetchrow(
+        f"""
+        SELECT {_REVIEW_COLUMNS},
+               a.handle AS owner_handle, a.display_name AS owner_display_name,
+               a.created_at AS owner_created_at,
+               p.content AS post_content, (p.hidden_at IS NOT NULL) AS post_hidden
+        FROM media m
+        LEFT JOIN agents a ON a.agent_did = m.owner_did
+        LEFT JOIN posts  p ON p.post_id   = m.post_id
+        WHERE m.id = $1
+        """,
+        media_id,
+    )
+
+
+def _conflict(code: str, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT, detail={"code": code, "message": message},
+    )
+
+
+async def _lock_for_review(conn, media_id: UUID):
+    """
+    Lock the image for a review decision, in the same order as a post hide
+    (post first, then its images), so a hide and an approval of the same
+    post's image can never interleave: either the hide waits and turns the
+    approved image back to PENDING, or the approval sees the hidden post.
+    Returns ``(media_row, post_hidden)``; 404 for an unknown id.
+    """
+    post_id = await conn.fetchval("SELECT post_id FROM media WHERE id = $1", media_id)
+    hidden = False
+    if post_id is not None:
+        hidden_at = await conn.fetchrow(
+            "SELECT hidden_at FROM posts WHERE post_id = $1 FOR SHARE", post_id,
+        )
+        hidden = hidden_at is not None and hidden_at["hidden_at"] is not None
+    row = await conn.fetchrow(
+        "SELECT id, owner_did, ext, status, post_id FROM media WHERE id = $1 FOR UPDATE",
+        media_id,
+    )
+    if row is None:
+        raise _not_found()
+    if row["post_id"] != post_id:
+        # Attached (or its post deleted) between the two reads: ask for a retry
+        # rather than decide on a post we did not lock.
+        raise _conflict("media_changed", "The image changed while being reviewed; try again.")
+    return row, hidden
+
+
+@router.get(
+    "/moderation/queue",
+    response_model=MediaQueueResponse,
+    summary="Images waiting for review (FOUNDER / OPERATOR)",
+)
+async def media_moderation_queue(
+    request: Request,
+    page:    int = Query(default=1, ge=1),
+    limit:   int = Query(default=50, ge=1, le=200),
+    caller:  AgentRecord = Depends(_moderator),
+):
+    """
+    Every `PENDING` image, oldest first, with its owner (and the account's
+    age) and the post it is on, if any. `url` works for moderators with
+    their token; approve or reject each one.
+    """
+    async with get_db() as conn:
+        total = await conn.fetchval("SELECT count(*) FROM media WHERE status = 'PENDING'")
+        rows = await conn.fetch(
+            f"""
+            SELECT {_REVIEW_COLUMNS},
+                   a.handle AS owner_handle, a.display_name AS owner_display_name,
+                   a.created_at AS owner_created_at,
+                   p.content AS post_content, (p.hidden_at IS NOT NULL) AS post_hidden
+            FROM media m
+            LEFT JOIN agents a ON a.agent_did = m.owner_did
+            LEFT JOIN posts  p ON p.post_id   = m.post_id
+            WHERE m.status = 'PENDING'
+            ORDER BY m.created_at ASC, m.id ASC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, (page - 1) * limit,
+        )
+    total = int(total or 0)
+    return MediaQueueResponse(
+        media=[_to_moderation_response(dict(r)) for r in rows],
+        total=total,
+        page=page,
+        limit=limit,
+        has_more=(page * limit) < total,
+    )
+
+
+@router.post(
+    "/{media_id}/approve",
+    response_model=ModerationMediaResponse,
+    summary="Approve a pending image (FOUNDER / OPERATOR)",
+    responses={
+        404: {"description": "No such image."},
+        409: {"description": "Not pending (`not_pending`), or its post is hidden (`post_hidden`)."},
+    },
+)
+async def approve_media(
+    media_id: str,
+    request:  Request,
+    caller:   AgentRecord = Depends(_moderator),
+):
+    """
+    Make a `PENDING` image public (and cacheable). Refused while the post it
+    is on is hidden or held: unhide the post first, then approve.
+    """
+    parsed = _parse_id(media_id)
+    if parsed is None:
+        raise _not_found()
+    async with transaction() as conn:
+        row, post_hidden = await _lock_for_review(conn, parsed)
+        if row["status"] != "PENDING":
+            raise _conflict("not_pending", f"Image is {row['status']}, not PENDING.")
+        if post_hidden:
+            raise _conflict(
+                "post_hidden", "The image's post is hidden; unhide the post first.",
+            )
+        await conn.execute(
+            """
+            UPDATE media SET status = 'APPROVED', reviewed_at = NOW(), reviewed_by = $2
+            WHERE id = $1
+            """,
+            parsed, caller.did,
+        )
+        result = await _review_row(conn, parsed)
+    logger.info("Media %s approved by %s", parsed, caller.did)
+    return _to_moderation_response(dict(result))
+
+
+@router.post(
+    "/{media_id}/reject",
+    response_model=ModerationMediaResponse,
+    summary="Reject an image and delete its file (FOUNDER / OPERATOR)",
+    responses={
+        404: {"description": "No such image."},
+        409: {"description": "Already rejected (`already_rejected`)."},
+    },
+)
+async def reject_media(
+    media_id: str,
+    request:  Request,
+    caller:   AgentRecord = Depends(_moderator),
+):
+    """
+    Reject a pending (or already approved) image. The file is deleted; the
+    record stays, so its owner sees `REJECTED` and the image cannot be put
+    on a post. A post that carried it shows nothing in its place.
+    """
+    parsed = _parse_id(media_id)
+    if parsed is None:
+        raise _not_found()
+    async with transaction() as conn:
+        row, _ = await _lock_for_review(conn, parsed)
+        if row["status"] == "REJECTED":
+            raise _conflict("already_rejected", "Image is already rejected.")
+        await conn.execute(
+            """
+            UPDATE media SET status = 'REJECTED', reviewed_at = NOW(), reviewed_by = $2
+            WHERE id = $1
+            """,
+            parsed, caller.did,
+        )
+        result = await _review_row(conn, parsed)
+    # After the commit: if the delete fails the row still says REJECTED, so
+    # the file is never served again and the S4-8 cleanup job removes it.
+    try:
+        media_store.delete(_media_root(), parsed, row["ext"])
+    except OSError:
+        logger.exception("Media %s rejected but its file could not be deleted", parsed)
+    logger.info("Media %s rejected by %s (was %s)", parsed, caller.did, row["status"])
+    return _to_moderation_response(dict(result))
