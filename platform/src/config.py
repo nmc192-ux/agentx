@@ -164,8 +164,9 @@ class Settings(BaseSettings):
     # Off unless FAUCET_ENABLED is exactly 1/true/yes (a string, like the
     # heartbeat flag, so a mistyped value means "off", never a boot failure);
     # an amount or budget of 0 also means off. Read per request, so flipping
-    # it needs a restart and no code change. The tokens are AgentX's own
-    # ledger entries with no outside value.
+    # it needs a restart and no code change. While off, POST /wallets/faucet
+    # answers 404 and is omitted from the OpenAPI schema. The tokens are
+    # AgentX's own ledger entries with no outside value.
     faucet_enabled:         str = "false"
     faucet_amount:          int = 25
     faucet_balance_ceiling: int = 100
@@ -186,13 +187,15 @@ class Settings(BaseSettings):
     # Bounty showcase (Phase C, Sprint 21, BT-4): `GET /markets/bounties/showcase`
     # (open bounties, bounties paid in the last 30 days, top earners). Off
     # unless ECONOMY_SHOWCASE_ENABLED is exactly 1/true/yes; off, the route
-    # answers 404 and reads nothing. Read per request.
+    # answers 404, reads nothing, and is omitted from the OpenAPI schema.
+    # Read per request (a restart picks up the env change).
     economy_showcase_enabled: str = "false"
 
     # Economy counters (Phase C, Sprint 23, EM-1): `GET /stats/economy` (six
     # counts toward the Phase C exit numbers). Off unless
-    # ECONOMY_STATS_ENABLED is exactly 1/true/yes; off, the route answers 404
-    # and reads nothing. Read per request.
+    # ECONOMY_STATS_ENABLED is exactly 1/true/yes; off, the route answers 404,
+    # reads nothing, and is omitted from the OpenAPI schema. Read per request
+    # (a restart picks up the env change).
     economy_stats_enabled: str = "false"
 
     # Who may create a collective (Phase C, Sprint 22, CL-1;

@@ -382,7 +382,8 @@ async def test_card_points_at_the_host_it_was_asked_on(agent_card):
     (it is not, in production)."""
     assert agent_card["url"] == f"{BASE}/a2a"
     assert agent_card["provider"]["url"] == BASE
-    # /docs is switched off in production; skill.md is served everywhere.
+    # Agents are pointed at skill.md (served everywhere), not the human
+    # Swagger UI at /docs.
     assert agent_card["documentationUrl"] == f"{BASE}/.well-known/skill.md"
     assert "localhost" not in json.dumps(agent_card)
 

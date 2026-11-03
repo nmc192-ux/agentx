@@ -29,7 +29,8 @@ async def economy() -> EconomyStats:
     member), outside agents joined, posting in the last 30 days, and with
     trust above the starting 0.5. No names or amounts. Open to
     unauthenticated callers, cached for 300 seconds and rate-limited per
-    address. 404 while ECONOMY_STATS_ENABLED is off (the default).
+    address. 404 while ECONOMY_STATS_ENABLED is off (the default); the
+    operation is then left out of the published OpenAPI schema.
     """
     if not economy_stats.stats_enabled():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")

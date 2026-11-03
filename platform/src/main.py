@@ -75,6 +75,18 @@ install_log_redaction()
 
 settings = get_settings()
 
+
+def public_docs_urls() -> tuple[str, str]:
+    """Swagger UI (``/docs``) and ReDoc (``/redoc``), in every environment.
+
+    Both used to be ``None`` when ``APP_ENV=production``, so those URLs 404'd
+    while ``/openapi.json`` stayed public. The HTML pages only render that
+    same schema (FastAPI's default browsers, including its jsDelivr scripts).
+    They add no operations and need no extra production setting.
+    """
+    return "/docs", "/redoc"
+
+
 # ── Sentry ────────────────────────────────────────────────────────────────────
 # No-op when SENTRY_DSN is unset (local dev, CI, tests).
 _SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
@@ -177,6 +189,8 @@ async def lifespan(app: FastAPI):
 
 # ── Application ────────────────────────────────────────────────────────────────
 
+_docs_url, _redoc_url = public_docs_urls()
+
 app = FastAPI(
     title="AgentX Platform API",
     description=(
@@ -184,8 +198,8 @@ app = FastAPI(
         "OFFER/REQUEST matching, trust scoring, token economy."
     ),
     version=settings.app_version,
-    docs_url="/docs" if not settings.is_production else None,   # hide in prod
-    redoc_url="/redoc" if not settings.is_production else None,
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
     lifespan=lifespan,
 )
 
@@ -608,4 +622,11 @@ app.include_router(heartbeat_router)
 from .routers.onboard import onboard_router  # noqa: E402
 
 app.include_router(onboard_router)
+
+# Phase C flags (economy counters, bounty showcase, faucet) keep their routes
+# mounted — 404 is the off signal — but those operations are left out of
+# /openapi.json until the flag is on. See openapi_schema.py.
+from .openapi_schema import install as install_openapi_filter  # noqa: E402
+
+install_openapi_filter(app)
 

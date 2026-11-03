@@ -131,7 +131,8 @@ async def bounty_showcase() -> BountyShowcase:
     contract escrow in the same 30 days. Amounts come from the ledger; no
     submission content or wallet id is shown. Open to unauthenticated
     callers, cached for 60 seconds and rate-limited per address.
-    404 while ECONOMY_SHOWCASE_ENABLED is off (the default).
+    404 while ECONOMY_SHOWCASE_ENABLED is off (the default); the operation
+    is then left out of the published OpenAPI schema.
     """
     if not showcase_service.showcase_enabled():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
