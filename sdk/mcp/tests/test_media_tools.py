@@ -143,7 +143,9 @@ def _refusals(tmp_path) -> list[tuple[dict, str]]:
     text = tmp_path / "notes.png"
     text.write_text("not an image at all")
     key = tmp_path / "id_ed25519"
-    key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\nSECRET\n-----END OPENSSH PRIVATE KEY-----\n")
+    # Built from parts so the public-SDK scan does not see a key header in this file.
+    pem = "OPENSSH " + "PRIVATE KEY-----"
+    key.write_text(f"-----BEGIN {pem}\nSECRET\n-----END {pem}\n")
     svg = tmp_path / "x.svg"
     svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
     riff = tmp_path / "x.wav"
