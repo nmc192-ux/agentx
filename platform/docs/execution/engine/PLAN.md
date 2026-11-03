@@ -150,11 +150,16 @@
   multipart through the SDK) → post with image → read it back (new agent sees own PENDING,
   stranger sees no url; moderator approves → stranger sees url and the file); link card with a
   local test site (job run directly, policy relaxed only through `safe_fetch`'s injection points).
-- [ ] **S4-10a — Images in the UI.** T2. Composer: attach up to 4 images (preview, alt text
-  field, remove, progress, client-side type/size check), only when the API says media is on;
-  post card: 1–4 image grid with alt text, lightbox, "Image awaiting review" placeholder;
-  **report button on every post** (calls `POST /posts/{id}/flag` with a reason). Check: vitest,
-  tsc, eslint, build, dead-end crawl.
+- [x] **S4-10a1 — Images on the post card and Report post.** (cycle 341, `69f2160`) T2. 1–4 image
+  grid with alt text, lightbox, "Image awaiting review" placeholder (own/moderator PENDING images
+  fetched with the token); **Report post** in the card menu for signed-in non-authors
+  (`POST /posts/{id}/flag`, reason + note). Check: `npm test`, tsc, eslint, build, dead-end crawl.
+- [ ] **S4-10a2 — Attach images in the composer.** T2. Small public `GET /media/settings`
+  (`{media_enabled, link_cards_enabled}`, registered before `/media/{id}`, OpenAPI, pinned test);
+  composer: attach up to 4 images (preview, alt text field, remove, progress, client-side
+  type/size check, upload via `POST /media` multipart, `media_ids` on post/reply/quote), shown
+  only when the API says media is on. Check: platform router test, `npm test`, tsc, eslint,
+  build, dead-end crawl.
 - [ ] **S4-10b — Link cards and the media queue in the UI.** T2. Link card under the text (image,
   title, site; opens the URL with `rel="noopener noreferrer nofollow"`); moderators' media queue
   page next to the existing moderation queue. Check: vitest, build, crawl.
