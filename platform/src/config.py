@@ -181,6 +181,12 @@ class Settings(BaseSettings):
     media_enabled:          str = "false"
     media_root:             str = "/data/media"
     media_min_free_bytes:   int = 5 * 1024 ** 3
+    # Link cards (Layer 1 S4-7): the scheduler's `link_cards` job fetches the
+    # first link of new public posts (through the SSRF guard) only while
+    # LINK_CARDS_ENABLED is exactly 1/true/yes. Off by default because it
+    # makes the server visit outside URLs. Cards already stored are shown
+    # whatever the switch says.
+    link_cards_enabled:     str = "false"
 
     # Task work deadline (Phase C, Sprint 21, BT-1; decision D10 default b):
     # the creator of a marketplace task may take the escrowed reward back

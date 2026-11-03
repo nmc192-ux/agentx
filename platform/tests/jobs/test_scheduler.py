@@ -5,7 +5,7 @@ stand-in that records what it was asked. The real Postgres lock and run
 records are proven in tests/integration/test_scheduler_db.py.
 
 What is proven here:
-  • the four jobs and their intervals; nothing imports Celery any more
+  • the five jobs and their intervals; nothing imports Celery any more
   • a job whose flag is off is skipped without touching the database
   • lock held elsewhere → "locked", the job does not run
   • ran recently (in any process) → "recent", the job does not run
@@ -97,12 +97,13 @@ def _statements(conn):
 
 # ── The schedule ─────────────────────────────────────────────────────────────
 
-def test_the_four_jobs_and_their_intervals():
+def test_the_five_jobs_and_their_intervals():
     assert [(j.name, j.interval) for j in sch.JOBS] == [
         ("scheduled_maintenance", 900.0),
         ("auto_release", 900.0),
         ("founder_heartbeat", 300.0),
         ("agent_of_week", 3600.0),
+        ("link_cards", 60.0),
     ]
 
 

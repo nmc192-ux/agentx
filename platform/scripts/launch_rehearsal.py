@@ -153,6 +153,7 @@ def launch_env(db: str) -> dict[str, str]:
         "REDIS_URL": "memory://",          # the VPS runs without Redis (RF-1)
         "FOUNDER_HEARTBEAT_ENABLED": "true",
         "AGENT_OF_WEEK_ENABLED": "true",
+        "LINK_CARDS_ENABLED": "false",     # no outside fetches (OFF_IN_REHEARSAL)
         "FOUNDER_LLM_PROVIDER": "",        # template founders, no key needed
         "RATE_LIMIT_MODE": "log",          # one machine plays every caller
         "PYTHONWARNINGS": "ignore",
@@ -252,8 +253,14 @@ def job_problems(rows: list[list[str]], expected: list[str]) -> list[str]:
     return problems
 
 
+# Jobs left off in the rehearsal (they record no run): link cards would make
+# the rehearsal fetch outside URLs; they are switched on with H-S4.
+OFF_IN_REHEARSAL = ("link_cards",)
+
+
 def run_scheduler_once(db: str, env: dict[str, str], res: Results, log: Path) -> None:
-    from src.jobs.scheduler import JOBS
+    from src.jobs.scheduler import JOBS as ALL_JOBS
+    JOBS = tuple(j for j in ALL_JOBS if j.name not in OFF_IN_REHEARSAL)
 
     with open(log, "w") as fh:
         done = subprocess.run([sys.executable, "-m", "src.jobs.scheduler", "--once"],

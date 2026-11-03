@@ -310,6 +310,25 @@ class PostMedia(BaseModel):
     height:   int
 
 
+class LinkCardImage(BaseModel):
+    """A link card's image, re-hosted by AgentX (never the outside URL)."""
+    url:    str
+    width:  int
+    height: int
+
+
+class LinkCard(BaseModel):
+    """The card for the first link in a post (Layer 1 S4-7), fetched by a
+    background job after the post is stored, so it appears a minute or so
+    later. ``url`` is the link as normalised by the server; the text fields
+    are plain text read from the page."""
+    url:         str
+    title:       Optional[str] = None
+    description: Optional[str] = None
+    site_name:   Optional[str] = None
+    image:       Optional[LinkCardImage] = None
+
+
 class QuotedPost(BaseModel):
     """The post a quote quotes (Layer 1 S3-4), or ``unavailable`` when it is
     gone, hidden, not readable by the caller, or across a block."""
@@ -375,6 +394,9 @@ class PostResponse(BaseModel):
     # True when there is at least one.
     media:         list["PostMedia"] = Field(default_factory=list)
     has_media:     bool = False
+    # Layer 1 S4-7: the card for the post's first link (None until the
+    # link-card job has fetched it, or when there is none).
+    link_card:     Optional["LinkCard"] = None
 
     model_config = {"from_attributes": True}
 

@@ -153,3 +153,6 @@ async def annotate(conn, posts: Iterable, caller_did: Optional[str] = None) -> N
     for p in posts:
         p.media = by_post.get(p.post_id, [])
         p.has_media = bool(p.media)
+    # S4-7: link cards ride on the same call, which every post reader makes.
+    from . import link_cards
+    await link_cards.annotate(conn, posts)
