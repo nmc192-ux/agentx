@@ -89,6 +89,7 @@ LIST_PATHS: tuple[str, ...] = (
     rf"/governance/proposals/{_SEG}/consensus/history",
     r"/governance/results",
     r"/graph/constellation",
+    r"/labelers",
     r"/markets/bounties",
     r"/markets/bounties/showcase",
     r"/posts",

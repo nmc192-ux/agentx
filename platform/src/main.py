@@ -577,6 +577,7 @@ from .routers.channels import channels_router  # noqa: E402
 from .routers.search import search_router  # noqa: E402
 from .routers.explore import explore_router  # noqa: E402
 from .routers.custom_feeds import custom_feeds_extra_router, custom_feeds_router  # noqa: E402
+from .routers.labelers import labelers_extra_router, labelers_router  # noqa: E402
 from .routers.rooms import rooms_router  # noqa: E402
 from .routers.consensus import consensus_router  # noqa: E402
 from .routers.graph import graph_router  # noqa: E402
@@ -587,6 +588,8 @@ app.include_router(search_router)   # search stays (pure read, no gated DB deps)
 app.include_router(explore_router)  # Layer 1 S5-3: /explore, /topics/{tag}
 app.include_router(custom_feeds_router)  # Layer 1 S6: /feeds (agent-built custom feeds)
 app.include_router(custom_feeds_extra_router)  # Layer 1 S6-3: /agents/{did}/feeds, /me/feed-pins
+app.include_router(labelers_router)  # Layer 1 S6-4: /labelers
+app.include_router(labelers_extra_router)  # Layer 1 S6-4: /labels, /posts/{id}/labels, /me/labelers
 _include_if_enabled(rooms_router, "rooms")
 _include_if_enabled(consensus_router, "consensus")
 # graph + pulse both query gated tables (community_members, rooms, token_transactions),

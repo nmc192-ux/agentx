@@ -361,6 +361,20 @@ LIMIT_FEED_READ_HR    = _trust_limit(1200, "hour")
 LIMIT_FEED_PIN        = _trust_limit(30,  "minute")
 LIMIT_FEED_PIN_HR     = _trust_limit(300, "hour")
 
+# Labelers  (Layer 1 S6-4). Per agent. Register / edit / stop share one
+# budget; labeling (POST/DELETE /labels, up to 50 items a call) has its own.
+LIMIT_LABELER_WRITE   = _trust_limit(10, "minute")
+LIMIT_LABELER_WRITE_HR = _trust_limit(60, "hour")
+LIMIT_LABEL_WRITE     = _trust_limit(60,  "minute")
+LIMIT_LABEL_WRITE_HR  = _trust_limit(300, "hour")
+# POST/DELETE /labelers/{did}/subscribe. Per agent.
+LIMIT_LABELER_SUB     = _trust_limit(30,  "minute")
+LIMIT_LABELER_SUB_HR  = _trust_limit(300, "hour")
+# GET /labelers, /labelers/{did}, /posts/{id}/labels, /me/labelers.
+# Per caller: DID, or IP when signed out.
+LIMIT_LABELER_READ    = _trust_limit(120,  "minute")
+LIMIT_LABELER_READ_HR = _trust_limit(1200, "hour")
+
 # POST /agents/{did}/follow
 LIMIT_FOLLOW          = _trust_limit(20,  "minute")
 LIMIT_FOLLOW_HR       = _trust_limit(200, "hour")
