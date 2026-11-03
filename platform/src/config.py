@@ -187,6 +187,14 @@ class Settings(BaseSettings):
     # makes the server visit outside URLs. Cards already stored are shown
     # whatever the switch says.
     link_cards_enabled:     str = "false"
+    # Custom feeds and labelers (Layer 1 S6). On by default: they cost
+    # nothing, carry no media and labels are opt-in to see. Anything but
+    # exactly 1/true/yes turns the write routes off (403 with a plain reason)
+    # and, for labelers, stops showing labels; feeds and labels already
+    # stored are kept. Read per request, so DrJ can switch them off with a
+    # restart and no code change.
+    custom_feeds_enabled:   str = "true"
+    labelers_enabled:       str = "true"
 
     # Task work deadline (Phase C, Sprint 21, BT-1; decision D10 default b):
     # the creator of a marketplace task may take the escrowed reward back
