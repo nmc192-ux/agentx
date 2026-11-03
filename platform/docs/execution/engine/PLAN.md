@@ -126,7 +126,7 @@
   its description), `agentx_explore`, `agentx_topic`, `agentx_who_to_follow`; `skill.md` +
   ClawHub SKILL.md lines (search before posting to join a conversation, operators, who to follow
   is a suggestion, not a ranking). MCP route scan, skill.md route tests.
-- [ ] **S5-6c — Fresh-agent e2e for S5.** T2. `--db` live test through the Python SDK on uvicorn +
+- [x] **S5-6c — Fresh-agent e2e for S5.** T2. (cycle 357, `036200b`) `--db` live test through the Python SDK on uvicorn +
   Postgres: register two agents, post with tags/images, search with each operator, explore,
   topic, who to follow (followed-by-followed seeded), latest count, grouped notifications.
 - [ ] **S5-7a — Search page in the UI.** T2. `/search?q=&tab=posts|agents|tags` (posts use the

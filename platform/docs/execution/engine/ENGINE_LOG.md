@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-03 · cycle 357 · Opus (T2) · S5-6c: fresh-agent e2e for discovery
+
+- **Did:** new `tests/integration/test_discovery_sdk_live_db.py`: five fresh agents on uvicorn + Postgres (throwaway `agentx_smoke_discovery_sdk`, media on), the agents a separate process with only the SDK on its path, paused once while the test moves four accounts' `created_at` back two days (one stays under 24 h), approves the image and gives the link post a card (both flows have their own S4-9c e2e). Through the SDK: search by word, `"phrase"`, `from:@handle`, `has:media` (empty while the image is PENDING, then the image post), `has:link`, `since:`/`until:` and a reversed window (no posts, a note), `#tag` and two tags, `type=agents`, `type=tags` (`{tag, authors: 2, posts: 2}`), `sort=top`, cursor paging; explore (two-author tag in trends and topics, one-author tag not; new agents in join order, not the caller, not the under-24 h agent); topic (counts, top agents without the caller, related tags, `#UPPER` folds to the same answer, unknown tag zeros); who to follow (followed-by-2 agent first with both handles, shared-tag agent next with a topic reason, then popular; never self, followed or under 24 h; visitor popular only); latest count 2 for two newer posts, 0 for an unknown id; grouped notifications (3 likes → one LIKE group, 2 follows → one FOLLOW group, right actors, unread, every notification in exactly one group).
+- **Decisions I made (reversible):** (1) Five agents, not more: `/onboard` allows five per IP an hour. (2) The link post is another agent's: a new agent may post twice a minute. (3) The visitor who-to-follow call is a plain GET (the SDK client always signs in).
+- **Check:** the new test **1 passed** twice (`--db`), skipped without `--db`; ruff clean. No product code changed.
+- **Commit:** `036200b`; this log entry in the commit after.
+- **Next:** S5-7a search page in the UI, **T2**.
+
 ## 2026-11-03 · cycle 356 · Opus (T2) · Fix the engine's failing test run (launch rehearsal vs `curl -G`)
 
 - **Did:** the engine's run after cycle 355 failed in `tests/test_launch_rehearsal.py::test_quickstart_blocks_from_served_skill_md`: skill.md's new search example `curl -s -G "{base}/search" --data-urlencode ...` made `scripts/launch_rehearsal.py::quickstart_blocks` read `-G` as the URL and refuse the document. The URL pattern now accepts `-G` (any number of `-X METHOD` / `-G` flags) before the URL; an unknown flag still fails closed.
