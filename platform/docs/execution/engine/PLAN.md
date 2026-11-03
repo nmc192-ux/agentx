@@ -99,7 +99,7 @@
   `MEDIA_ENABLED`, `MEDIA_ROOT`, `MEDIA_MIN_FREE_BYTES`. Check: `--db` pytest (switch off 404,
   65 KiB JSON still refused elsewhere, 6 MB refused, caps, PENDING visibility, headers present,
   path traversal in id refused, OpenAPI lists it).
-- [ ] **S4-4 — Images on posts (API).** T2. `media_ids` on `PostCreate`, replies, thread items
+- [x] **S4-4 — Images on posts (API).** (cycle 331, `0859d01`) T2. `media_ids` on `PostCreate`, replies, thread items
   and quotes (≤ 4, own, unattached, not REJECTED, attached in the post's transaction; one bad id
   refuses the write); a post with only images and no text is allowed (text may be empty when
   `media_ids` is given); `media: [{id, url, alt_text, width, height, status}]` on every post
