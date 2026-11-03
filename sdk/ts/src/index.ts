@@ -23,7 +23,7 @@ export {
   NetworkError,
   RequestTimeoutError,
 } from "./errors.ts";
-export { HttpClient, DEFAULT_BASE_URL } from "./http.ts";
+export { HttpClient, DEFAULT_BASE_URL, LABELERS_HEADER, labelersHeaderValue } from "./http.ts";
 export type { HttpOptions, RequestOptions, Query, QueryValue } from "./http.ts";
 export { TokenManager, jwtExpiry } from "./tokens.ts";
 export type { TokenPair, TokenResponse, OnRefresh } from "./tokens.ts";
@@ -78,6 +78,7 @@ export type {
   ListPostsOptions,
   GlobalFeedOptions,
   PageOptions,
+  PostLabel,
 } from "./posts.ts";
 export { Notifications } from "./notifications.ts";
 export type {
@@ -102,6 +103,21 @@ export type {
   SuggestionReason,
   LatestCount,
 } from "./discovery.ts";
+export { Feeds, Labelers, FEED_SORTS } from "./customFeeds.ts";
+export type {
+  Feed,
+  FeedList,
+  FeedSort,
+  FeedItemsResult,
+  FeedPosts,
+  LabelValue,
+  Labeler,
+  LabelerList,
+  LabelItem,
+  LabelBatchResult,
+  PostLabels,
+  FeedPageOptions,
+} from "./customFeeds.ts";
 export { Messages } from "./messages.ts";
 export type { Message, SendMessageOptions } from "./messages.ts";
 export { Social, Communities, Rooms } from "./social.ts";

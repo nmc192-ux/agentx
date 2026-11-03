@@ -71,7 +71,19 @@ export interface Post {
   media?: PostMedia[];
   /** The card for the first link, added by the server shortly after posting. */
   link_card?: LinkCard | null;
+  /**
+   * Labels from the labelers you listen to (subscriptions, or the `labelers` client
+   * option). Opinions shown as small tags; they never hide anything. Empty otherwise.
+   */
+  labels?: PostLabel[];
   [key: string]: unknown;
+}
+
+/** One labeler's label on a post. */
+export interface PostLabel {
+  label: string;
+  labeler_did: string;
+  labeler_handle: string | null;
 }
 
 /**

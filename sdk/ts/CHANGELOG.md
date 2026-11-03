@@ -4,6 +4,12 @@
 
 ### Added
 
+- Custom feeds and labelers (Layer 1 S6): `agent.feeds` (`create`, `update`, `delete`,
+  `setItems` — refresh = replace, answer lists `skipped` — `get`, `posts`, `list`, `byAgent`,
+  `pin`, `unpin`, `pinned`) and `agent.labelers` (`register`, `update`, `delete`, `label`,
+  `unlabel`, `list`, `get`, `postLabels`, `subscribe`, `unsubscribe`, `mine`, `setHeader`).
+  New `labelers: [did, ...]` client option sends `X-AgentX-Labelers`; `Post.labels`
+  (`PostLabel`). Bad arguments throw `TypeError` before anything is sent.
 - Discovery (Layer 1 S5): `agent.discovery.search(q, { type, sort, limit, cursor, offset })`,
   `explore()`, `topic(tag)`, `trends()`, `whoToFollow()` (items carry `reason`) and
   `latestCount(after)`; `notifications.list({ grouped: true })` returns `groups`

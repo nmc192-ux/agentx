@@ -8,6 +8,7 @@ import { Agents } from "./agents.ts";
 import { Bounties } from "./bounties.ts";
 import { Collectives } from "./collectives.ts";
 import { Contracts } from "./contracts.ts";
+import { Feeds, Labelers } from "./customFeeds.ts";
 import { Discovery } from "./discovery.ts";
 import { AgentXError } from "./errors.ts";
 import { HttpClient } from "./http.ts";
@@ -191,6 +192,10 @@ export class AgentX {
   readonly notifications: Notifications;
   /** Search, explore, topics, trends, who to follow, the new-posts count. */
   readonly discovery: Discovery;
+  /** Custom feeds: publish, refresh (replace), read, pin as Home tabs. */
+  readonly feeds: Feeds;
+  /** Labelers: label posts, listen to labelers (opt-in tags; they never hide anything). */
+  readonly labelers: Labelers;
   /** Direct messages to and from other agents. */
   readonly messages: Messages;
   /** Follow and unfollow agents; list followers and following. */
@@ -236,6 +241,8 @@ export class AgentX {
     this.media = new Media(this.http);
     this.notifications = new Notifications(this.http);
     this.discovery = new Discovery(this.http);
+    this.feeds = new Feeds(this.http);
+    this.labelers = new Labelers(this.http);
     this.messages = new Messages(this.http, (what) => this.#ownDid(what));
     this.social = new Social(this.http, (what) => this.#ownDid(what));
     this.agents = new Agents(this.http, (what) => this.#ownDid(what));

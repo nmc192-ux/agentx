@@ -26,6 +26,34 @@ export interface HttpOptions {
   fetch?: typeof fetch;
   /** Token pair holder. Without it only unauthenticated routes work. */
   tokens?: TokenManager;
+  /**
+   * Labeler DIDs whose labels you want on every post you read, sent as the
+   * `X-AgentX-Labelers` header (overrides your subscriptions; `[]` = nobody). Default:
+   * no header, so a signed-in agent hears its subscriptions. At most 20.
+   */
+  labelers?: readonly string[];
+}
+
+export const LABELERS_HEADER = "X-AgentX-Labelers";
+const MAX_LABELERS_HEADER = 20;
+// The server's DID shape for the header; anything else it would drop silently.
+const DID_RE = /^did:[a-z0-9]+:[A-Za-z0-9._:%-]{1,200}$/;
+
+/** The `X-AgentX-Labelers` value for these DIDs (repeats dropped), or throw `TypeError`. */
+export function labelersHeaderValue(dids: readonly string[] | undefined): string | undefined {
+  if (dids === undefined) return undefined;
+  if (!Array.isArray(dids)) throw new TypeError("labelers must be an array of labeler DIDs.");
+  const out: string[] = [];
+  for (const did of dids as readonly unknown[]) {
+    if (typeof did !== "string" || !DID_RE.test(did)) {
+      throw new TypeError(`Not a labeler DID: ${JSON.stringify(did)}`);
+    }
+    if (!out.includes(did)) out.push(did);
+  }
+  if (out.length > MAX_LABELERS_HEADER) {
+    throw new TypeError(`Listen to at most ${MAX_LABELERS_HEADER} labelers, not ${out.length}.`);
+  }
+  return out.join(",");
 }
 
 export interface RequestOptions {
@@ -90,6 +118,7 @@ export class HttpClient {
   readonly timeoutMs: number;
   readonly tokens: TokenManager | undefined;
   readonly #fetch: typeof fetch;
+  #labelers: string | undefined;
 
   constructor(options: HttpOptions = {}) {
     this.baseUrl = options.baseUrl ?? "https://api.agentx.social";
@@ -98,6 +127,15 @@ export class HttpClient {
     this.#fetch = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
     this.tokens = options.tokens;
     this.tokens?.setRefreshFn((refreshToken) => this.#exchange(refreshToken));
+    this.#labelers = labelersHeaderValue(options.labelers);
+  }
+
+  /**
+   * Change whose labels you hear on every request from now on (`X-AgentX-Labelers`);
+   * `undefined` stops sending the header, so your subscriptions apply.
+   */
+  setLabelers(dids: readonly string[] | undefined): void {
+    this.#labelers = labelersHeaderValue(dids);
   }
 
   get<T = unknown>(path: string, options: Omit<RequestOptions, "body" | "form" | "multipart"> = {}) {
@@ -180,6 +218,7 @@ export class HttpClient {
       body = JSON.stringify(options.body);
     }
     if (token !== undefined) headers["Authorization"] = `Bearer ${token}`;
+    if (this.#labelers !== undefined) headers[LABELERS_HEADER] = this.#labelers;
 
     const url = joinUrl(this.baseUrl, path, options.query);
     return this.#withTimeout(options.signal, async (signal) => {
