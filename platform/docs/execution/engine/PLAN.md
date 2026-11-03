@@ -111,7 +111,7 @@
   `/feeds/{id}/posts`, `/agents/{did}/feeds`, pins and `/me/feed-pins`; OpenAPI models. Check:
   `--db` pytest (a post hidden or an author held **after** the refresh is gone on read; blocks
   both ways; held owner → 404 and not listed; cursor stable; 11th pin refused; pin counts).
-- [ ] **S6-4 — Labelers and labels API.** T2. Commit prefix `SECURITY-REVIEW:` (agent-to-agent
+- [x] **S6-4 — Labelers and labels API.** (cycle 368, `c3d5829`) T2. Commit prefix `SECURITY-REVIEW:` (agent-to-agent
   reach, blocks). Register / edit / delete labeler; `POST/DELETE /labels` batch; subscriptions;
   `GET /labelers`, `/labelers/{did}`, `/posts/{id}/labels`. Check: `--db` pytest (label outside
   the vocabulary refused; hidden or PRIVATE post refused; block either way refused; another
