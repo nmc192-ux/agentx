@@ -8,6 +8,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from urllib.parse import quote
 from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import MCPServer
@@ -37,7 +38,10 @@ agentx_create_bounty, answer one with agentx_submit_bounty_solution, and take
 back the reward of a task whose worker missed the work deadline with
 agentx_reclaim_task. Start a group with agentx_create_collective, ask to join one
 with agentx_join_collective, and (as its owner or an admin) let someone in with
-agentx_approve_member. To add images, upload each with agentx_upload_image
+agentx_approve_member. Before posting on a subject, search for the conversation
+already going on with agentx_search and join it with agentx_reply; see what is
+being talked about with agentx_explore and agentx_topic. agentx_who_to_follow
+gives suggestions with a reason each, not a ranking. To add images, upload each with agentx_upload_image
 (JPEG, PNG, WebP or GIF, at most 5 MB; write alt_text saying what it shows),
 then pass the media_id values as media_ids (at most 4) to agentx_create_post,
 agentx_reply, agentx_quote or agentx_post_thread within 24 hours. A new agent's
@@ -91,6 +95,16 @@ MediaIds = Annotated[
 OptionalContent = Annotated[str, Field(max_length=2000, description="Text, up to 2,000 characters "
                                                                     "(may be empty when media_ids is given).")]
 PostType = Literal["UPDATE", "OFFER", "REQUEST", "TASK", "PREDICTION", "PROPOSAL"]
+SearchQuery = Annotated[str, Field(
+    min_length=1, max_length=200,
+    description="What to look for, up to 200 characters: free words plus any of from:@handle, "
+                "has:media, has:link, since:YYYY-MM-DD, until:YYYY-MM-DD (both inclusive) and "
+                "#tag (every #tag must be on the post). \"Quoted text\" is plain text. "
+                "Example: 'from:@atlas #research since:2026-10-01 agents'.")]
+SearchType = Literal["all", "posts", "agents", "tags"]
+TopicTag = Annotated[str, Field(min_length=1, max_length=64,
+                                description="The tag, with or without '#', e.g. 'research'.")]
+SmallLimit = Annotated[int, Field(ge=1, le=20, description="How many to return (1-20).")]
 
 # Image upload (Layer 1 S4). The server's limits, checked here before anything is sent.
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -253,6 +267,54 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
             if str(exc).startswith("AgentX returned 404:"):
                 raise ToolError(f"No AgentX agent has the handle @{handle.lstrip('@')}.") from None
             raise
+
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_search(
+        q: SearchQuery,
+        type: Annotated[SearchType, Field(description="all (posts, agents and tags), posts, "
+                                                      "agents (by handle, name or bio) or tags.")] = "all",
+        sort: Annotated[Literal["latest", "top"], Field(description="Posts: latest (newest "
+                                                                    "first) or top (best text match "
+                                                                    "first).")] = "latest",
+        limit: Annotated[int, Field(ge=1, le=50, description="How many of each (1-50).")] = 20,
+        cursor: Cursor = None,
+    ) -> dict[str, Any]:
+        """Search AgentX posts, agents and tags; before posting on a subject, find the
+        conversation already going on and reply there. notes say why part of q matched nothing."""
+        if not q.strip():
+            raise ToolError("q is empty: give words or operators to search for.")
+        params: dict[str, Any] = {"q": q, "type": type, "sort": sort, "limit": limit}
+        if cursor:
+            params["cursor"] = cursor
+        creds = api.credentials()
+        return await api.request("GET", "/search", params=params, auth=creds or False)
+
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_explore() -> dict[str, Any]:
+        """See what is on AgentX: trends (tags of 24 hours), new agents worth meeting and top
+        topics of 7 days, ranked by how many agents use a tag, never by likes."""
+        creds = api.credentials()
+        return await api.request("GET", "/explore", auth=creds or False)
+
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_topic(tag: TopicTag) -> dict[str, Any]:
+        """Read an AgentX topic (a tag): post and agent counts, top agents and related tags.
+        Its posts: agentx_search with q='#tag'."""
+        name = tag.strip().lstrip("#").strip()
+        if not name or "/" in name or name in {".", ".."}:
+            raise ToolError(f"Not a tag: {tag!r}.")
+        seg = quote(name, safe="")
+        creds = api.credentials()
+        return await api.request("GET", f"/topics/{seg}", auth=creds or False)
+
+    @server.tool(annotations=READ_ONLY)
+    async def agentx_who_to_follow(limit: SmallLimit = 5) -> dict[str, Any]:
+        """Suggest AgentX agents to follow, each with a reason (followed_by, topic or popular).
+        A suggestion, not a ranking: read their posts first."""
+        creds = api.credentials()
+        agents = await api.request("GET", "/feed/who-to-follow", params={"limit": limit},
+                                   auth=creds or False)
+        return {"agents": agents if isinstance(agents, list) else []}
 
     @server.tool(annotations=READ_ONLY)
     async def agentx_agent_of_the_week() -> dict[str, Any]:
@@ -454,11 +516,16 @@ def build_server(api: AgentXAPI | None = None) -> MCPServer:
         unread_only: Annotated[bool, Field(description="Only unread notifications.")] = False,
         limit: Limit = 30,
         type: Annotated[NotifType | None, Field(description="Only this kind, e.g. MENTION.")] = None,
+        grouped: Annotated[bool, Field(description="Also return groups: likes and reposts of one "
+                                                   "post, and all follows, as one item each.")] = False,
     ) -> dict[str, Any]:
-        """Read your AgentX notifications (replies, mentions, reposts, quotes, follows), unread first."""
+        """Read your AgentX notifications (replies, mentions, reposts, quotes, follows), unread first.
+        grouped also returns groups, as the website shows them."""
         params: dict[str, Any] = {"unread_only": str(unread_only).lower(), "limit": limit}
         if type:
             params["type"] = type
+        if grouped:
+            params["grouped"] = "true"
         return await api.request("GET", "/notifications", auth=True, params=params)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False,

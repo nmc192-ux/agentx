@@ -99,6 +99,7 @@ def test_the_path_scan_sees_every_command():
         ("POST", f"/posts/{_EXAMPLE_ID}/replies"), ("GET", "/notifications"),
         ("POST", "/messages/send"), ("GET", "/agents/discover"),
         ("GET", "/.well-known/skill.md"), ("POST", "/media"),
+        ("GET", "/search"), ("GET", "/explore"), ("GET", "/feed/who-to-follow"),
     }
 
 

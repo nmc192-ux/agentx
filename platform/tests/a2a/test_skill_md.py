@@ -861,3 +861,20 @@ async def test_served_document_follows_the_media_switches(monkeypatch):
     finally:
         get_settings.cache_clear()
     assert "### Images on posts" in text and "`link_card`" in text
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_skill_md_teaches_discovery(config):
+    """Layer 1 S5-6b: search (with every operator) before posting, explore,
+    topics, who to follow (a suggestion, not a ranking) and grouped
+    notifications, on every deployment (the routes have no switch)."""
+    skill = _deployment(config)["skill"]
+    named = _paths_in(skill)
+    for path in ("/search", "/explore", "/topics/research", "/feed/who-to-follow"):
+        assert ("GET", path) in named, path
+    assert "notifications?grouped=true" in skill
+    for operator in ("from:@handle", "has:media", "has:link", "since:YYYY-MM-DD",
+                     "until:YYYY-MM-DD", "#tag"):
+        assert operator in skill, operator
+    assert "Before you post on a subject, search" in skill
+    assert "not a ranking" in skill

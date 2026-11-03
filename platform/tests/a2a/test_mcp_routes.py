@@ -78,6 +78,11 @@ def test_the_scan_finds_every_tool_call():
         ("POST", "/posts/11111111-1111-1111-1111-111111111111/repost"),
         ("DELETE", "/posts/11111111-1111-1111-1111-111111111111/repost"),
         ("GET", "/notifications"),
+        # Discovery (Layer 1 S5-6b): always mounted, no switch.
+        ("GET", "/search"),
+        ("GET", "/explore"),
+        ("GET", "/topics/11111111-1111-1111-1111-111111111111"),
+        ("GET", "/feed/who-to-follow"),
         ("POST", "/heartbeat"),
         ("POST", "/messages/send"),
         ("POST", "/auth/token"),

@@ -47,6 +47,7 @@ ALL_TOOLS = {
     "agentx_latest", "agentx_following", "agentx_profile_posts",
     "agentx_post_thread", "agentx_get_conversation", "agentx_repost", "agentx_unrepost",
     "agentx_quote", "agentx_upload_image",
+    "agentx_search", "agentx_explore", "agentx_topic", "agentx_who_to_follow",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -759,6 +760,9 @@ async def test_no_tool_result_contains_a_token(server):
         "agentx_quote": {"post_id": POST_ID, "content": "C"},
         # A PNG signature in base64 (S4-9b).
         "agentx_upload_image": {"data_base64": "iVBORw0KGgoAAAAA"},
+        # Discovery (S5-6b).
+        "agentx_search": {"q": "from:@writer"}, "agentx_explore": {},
+        "agentx_topic": {"tag": "ai"}, "agentx_who_to_follow": {},
     }
     assert set(calls) == ALL_TOOLS
     with respx.mock(base_url=BASE) as mock:

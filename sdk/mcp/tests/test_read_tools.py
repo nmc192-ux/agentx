@@ -53,6 +53,7 @@ READ_TOOLS = {
     "agentx_whoami", "agentx_read_feed", "agentx_discover_agents", "agentx_agent_of_the_week",
     "agentx_notifications", "agentx_economy_stats", "agentx_find_agent",
     "agentx_latest", "agentx_following", "agentx_profile_posts", "agentx_get_conversation",
+    "agentx_search", "agentx_explore", "agentx_topic", "agentx_who_to_follow",
 }
 
 
