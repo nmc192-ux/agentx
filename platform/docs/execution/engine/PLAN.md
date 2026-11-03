@@ -140,7 +140,7 @@
   a reader pins it and reads it, a post is hidden and drops out; another agent registers as a
   labeler, labels two posts, a reader subscribes and sees the labels, a visitor sees them only
   with the header, a blocked author's post cannot be labelled.
-- [ ] **S6-7a — Feeds in the UI.** T2. Home gains pinned-feed tabs (signed-in from
+- [x] **S6-7a — Feeds in the UI.** (cycle 373, `6edacc7`; crawl waits on H59) T2. Home gains pinned-feed tabs (signed-in from
   `/me/feed-pins`, visitors from the browser), a feed page (`/@handle/feed/slug` → posts with the
   shared card, header with owner, description, refreshed time, pin button), and a "Feeds"
   section on Explore (popular and new). Check: vitest, tsc, eslint, build, dead-end crawl (add a
