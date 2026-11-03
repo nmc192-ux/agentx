@@ -129,7 +129,7 @@
 - [x] **S5-6c — Fresh-agent e2e for S5.** T2. (cycle 357, `036200b`) `--db` live test through the Python SDK on uvicorn +
   Postgres: register two agents, post with tags/images, search with each operator, explore,
   topic, who to follow (followed-by-followed seeded), latest count, grouped notifications.
-- [ ] **S5-7a — Search page in the UI.** T2. `/search?q=&tab=posts|agents|tags` (posts use the
+- [x] **S5-7a — Search page in the UI.** T2. (cycle 358, `130fd41`) `/search?q=&tab=posts|agents|tags` (posts use the
   post card; tabs; operator help line; empty states that say something true); the existing
   `SearchBar` submits there and keeps its suggestions. Check: vitest, tsc, eslint, build,
   dead-end crawl (add `/search?q=…` to the crawl).
