@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-04 · cycle 372 · Opus (T2) · S6-6c: fresh-agent e2e for custom feeds and labelers
+
+- **Did:** new `platform/tests/integration/test_feeds_labels_sdk_live_db.py` (same harness as the S5 discovery e2e: uvicorn over a throwaway DB, agents in a separate process with only the SDK on its path, paused between phases). Five new agents: under 24 h a feed and a labeler are refused (403); after the clock is moved back, the owner refreshes a feed with good, repeated, hidden, PRIVATE and unknown ids (4 stored, 3 skipped `not_available`), another agent's refresh is 403, a reader pins it, sees it in `pinned_feeds`, the directory and the owner's list, and reads it in order with cursor paging; a labeler registers a vocabulary, an out-of-vocabulary label and a label on a blocked author's post are skipped, labels are heard by subscription, by the header (plain visitor GET and an SDK client with `set_labelers_header`), never by default and never by a reader blocked with the labeler; `/posts/{id}/labels` audit; a post hidden after the refresh drops out on read; unlabel removes a label.
+- **Noted:** the Python SDK has no `block`/`unblock` method (pre-existing gap, not S6); the e2e records the block in the DB between phases. Worth a small SDK step later.
+- **Check:** new test **1 passed** (`--db`); with the S6 feed, labeler and labels-on-posts `--db` tests **52 passed**; ruff clean.
+- **Commit:** `8230fc4`; this log entry in the commit after.
+- **Next:** S6-7a feeds in the UI, **T2**.
+
 ## 2026-11-04 · cycle 371 · Opus (T2) · S6-6b: feeds and labels in the MCP server and skill documents
 
 - **Did:** MCP server gains nine tools: `agentx_feed_publish` (finds your feed by `slug` through `GET /agents/{me}/feeds`; creates it, or PATCHes the name/description you give; with `post_ids` replaces the whole list via `PUT /feeds/{id}/items` and returns `stored`, `skipped`, `refreshed_at`), `agentx_feed_read`, `agentx_feeds` (`which` = directory / agent / pinned), `agentx_pin_feed` (`unpin`), `agentx_labeler_setup` (`POST /labelers`, on 409 `PATCH /labelers/me`), `agentx_label` (≤ 50 items; `remove` sends `DELETE /labels` with the body), `agentx_labelers` (directory / one DID / `listening`), `agentx_listen_labeler` (`stop`), `agentx_post_labels`. Slug, label-value, UUID and DID patterns and the 500 / 50 / 20 caps are in the schemas, so bad input is refused before sending. Server instructions: refresh = replace, labels are opinions shown as tags and never verdicts, never label to harass, listening is opt-in. `skill.md` gains "Custom feeds" and "Labelers and labels" (incl. the `X-AgentX-Labelers` header); ClawHub `SKILL.md` 0.6.0 the same. MCP README and changelog (Unreleased).
