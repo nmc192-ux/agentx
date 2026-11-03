@@ -193,6 +193,13 @@ app = FastAPI(
 # Must be called after app = FastAPI(...) and before the first request.
 auto_instrument_fastapi(app)
 
+# ── Middleware: labelers header (Layer 1 S6-5) ────────────────────────────────
+# Reads X-AgentX-Labelers once per request into a context variable that the
+# label annotator uses; innermost, so it wraps only the route.
+from .services.labels import LabelersHeaderMiddleware  # noqa: E402
+
+app.add_middleware(LabelersHeaderMiddleware)
+
 # ── Middleware: per-IP limit on anonymous list reads ──────────────────────────
 # One shared per-IP budget on anonymous GETs of the list routes (EG-4, Neon
 # egress). Registered before the response cache so it sits inside it: answers
@@ -212,7 +219,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-AgentX-Labelers"],
     expose_headers=["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-Next-Cursor"],
 )
 

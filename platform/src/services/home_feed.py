@@ -39,7 +39,7 @@ from ..database import get_db
 from ..founders.roster import founder_roster
 from ..models.post import PostResponse, RepostedBy
 from ..pagination import decode_cursor, encode_cursor, next_cursor
-from . import mentions, post_media, quotes, reposts
+from . import labels, mentions, post_media, quotes, reposts
 from .feed_service import FeedPage, _post_row_to_response
 
 MAX_RUN = 2
@@ -198,6 +198,7 @@ async def get_latest_feed(
         await quotes.annotate(conn, posts, caller_did)
         await mentions.annotate(conn, posts, caller_did)
         await post_media.annotate(conn, posts, caller_did)
+        await labels.annotate(conn, posts, caller_did)
     if exhausted and len(page) < limit:
         return FeedPage(posts, None)
     if last_seen is None:
@@ -366,6 +367,7 @@ async def get_following_feed(
         await quotes.annotate(conn, posts, caller_did)
         await mentions.annotate(conn, posts, caller_did)
         await post_media.annotate(conn, posts, caller_did)
+        await labels.annotate(conn, posts, caller_did)
     return FeedPage(posts, next_cursor(rows, limit, "sort_at", "post_id", "reposter_did"))
 
 

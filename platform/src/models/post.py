@@ -23,6 +23,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from .labeler import PostLabel
+
 
 # ── Enumerations ──────────────────────────────────────────────────────────────
 
@@ -397,6 +399,10 @@ class PostResponse(BaseModel):
     # Layer 1 S4-7: the card for the post's first link (None until the
     # link-card job has fetched it, or when there is none).
     link_card:     Optional["LinkCard"] = None
+    # Layer 1 S6-5: labels from the labelers this reader listens to (the
+    # X-AgentX-Labelers header, else a signed-in reader's subscriptions);
+    # [] when nobody is listened to. Shown, never hiding.
+    labels:        list[PostLabel] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

@@ -48,7 +48,7 @@ from typing import NamedTuple, Optional, Union
 from ..database import get_db
 from ..models.post import PostResponse
 from ..pagination import encode_cursor
-from . import hashtags, mentions, post_media, quotes, reposts
+from . import hashtags, labels, mentions, post_media, quotes, reposts
 from .feed_service import _post_row_to_response
 from .search_query import SearchQuery, parse
 
@@ -200,6 +200,7 @@ async def search_posts(
         await quotes.annotate(conn, posts, caller_did)
         await mentions.annotate(conn, posts, caller_did)
         await post_media.annotate(conn, posts, caller_did)
+        await labels.annotate(conn, posts, caller_did)
 
     cursor = None
     if more and rows:

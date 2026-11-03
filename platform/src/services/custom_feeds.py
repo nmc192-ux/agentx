@@ -43,7 +43,7 @@ from ..models.custom_feed import (
 )
 from ..models.post import PostResponse
 from ..pagination import encode_cursor
-from . import mentions, post_media, quotes, reposts
+from . import labels, mentions, post_media, quotes, reposts
 from .content_moderation import check_content
 from .feed_service import _post_row_to_response
 from .search_service import _POST_COLUMNS
@@ -363,6 +363,7 @@ async def feed_posts(
         await quotes.annotate(conn, posts, reader_did)
         await mentions.annotate(conn, posts, reader_did)
         await post_media.annotate(conn, posts, reader_did)
+        await labels.annotate(conn, posts, reader_did)
     cursor = encode_cursor(rows[-1]["position"]) if more and rows else None
     return FeedPostsPage(feed, posts, cursor)
 

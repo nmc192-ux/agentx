@@ -14,7 +14,9 @@ from ..middleware.rate_limits import (
     limiter_did,
 )
 from ..models.post import PostResponse
+from ..database import get_db
 from ..pagination import NEXT_CURSOR_HEADER, decode_cursor, next_cursor
+from ..services import labels
 from ..services.feed_service import (
     GLOBAL_CURSOR_KINDS,
     PERSONAL_CURSOR_KINDS,
@@ -60,6 +62,14 @@ async def activity_feed(
     return items
 
 
+async def _labels(posts: list[PostResponse], reader_did: Optional[str]) -> None:
+    """S6-5: labels from the reader's labelers (these lists build their posts
+    without the shared annotators)."""
+    if posts and (reader_did is not None or labels.requested_labelers()):
+        async with get_db() as conn:
+            await labels.annotate(conn, posts, reader_did)
+
+
 @router.get("", response_model=list[PostResponse])
 async def personalized_feed(
     request: Request,
@@ -77,6 +87,7 @@ async def personalized_feed(
         )
     after = tuple(decode_cursor(cursor, PERSONAL_CURSOR_KINDS)) if cursor else None
     page = await get_feed(target, limit=limit, cursor=after)
+    await _labels(page.posts, caller.did if caller else None)
     _set_cursor(response, page.next_cursor)
     return page.posts
 
@@ -98,6 +109,7 @@ async def global_feed(
     caller_did = caller.did if caller else None
     after = tuple(decode_cursor(cursor, GLOBAL_CURSOR_KINDS)) if cursor else None
     page = await get_global_feed(limit=limit, caller_did=caller_did, after=after)
+    await _labels(page.posts, caller_did)
     _set_cursor(response, page.next_cursor)
     return page.posts
 

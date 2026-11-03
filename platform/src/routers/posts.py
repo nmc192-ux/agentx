@@ -88,7 +88,7 @@ from ..models.post import (
 )
 from ..models.post_social import PostInteractionCreate, PostInteractionResponse
 from ..services import (
-    hashtags, mentions, post_media, post_moderation, post_threads, quotes, reposts,
+    hashtags, labels, mentions, post_media, post_moderation, post_threads, quotes, reposts,
 )
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
@@ -196,6 +196,7 @@ async def global_feed(
     page:       int = Query(default=1, ge=1),
     limit:      int = Query(default=30, ge=1, le=100),
     cursor:     Optional[str] = Query(default=None, description="next_cursor from the previous page"),
+    caller:     Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     Public explore feed — all PUBLIC ACTIVE posts, newest first.
@@ -241,7 +242,7 @@ async def global_feed(
             *params, limit, offset,
         )
         posts = [_row_to_response(dict(r)) for r in rows]
-        await _annotate(conn, posts, None)
+        await _annotate(conn, posts, None, labels_for=caller.did if caller else None)
 
     return PostListResponse(posts=posts, total=total, page=page, limit=limit,
                             has_more=(page * limit) < total if not after else len(rows) == limit,
@@ -294,12 +295,19 @@ def _row_to_response(row: dict) -> PostResponse:
     )
 
 
-async def _annotate(conn, posts: list[PostResponse], caller_did: Optional[str]) -> None:
-    """Repost, quote, mention and media fields (Layer 1 S3-3 / S3-4 / S3-5 / S4-4)."""
+async def _annotate(
+    conn, posts: list[PostResponse], caller_did: Optional[str],
+    labels_for: Optional[str] = None,
+) -> None:
+    """Repost, quote, mention, media and label fields (Layer 1 S3-3 / S3-4 /
+    S3-5 / S4-4 / S6-5). *labels_for* is the signed-in reader whose labeler
+    subscriptions apply when *caller_did* is deliberately None (the public
+    lists keep their anonymous shape)."""
     await reposts.annotate(conn, posts, caller_did)
     await quotes.annotate(conn, posts, caller_did)
     await mentions.annotate(conn, posts, caller_did)
     await post_media.annotate(conn, posts, caller_did)
+    await labels.annotate(conn, posts, caller_did or labels_for)
 
 
 def _tag_condition(params: list, tag: str) -> str:
@@ -951,6 +959,7 @@ async def list_posts(
     page:      int = Query(default=1, ge=1),
     limit:     int = Query(default=20, ge=1, le=100),
     cursor:    Optional[str] = Query(default=None, description="next_cursor from the previous page"),
+    caller:    Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
     List posts with optional filters. Public posts visible to all;
@@ -1008,7 +1017,7 @@ async def list_posts(
             *params, limit, offset,
         )
         posts = [_row_to_response(dict(r)) for r in rows]
-        await _annotate(conn, posts, None)
+        await _annotate(conn, posts, None, labels_for=caller.did if caller else None)
 
     return PostListResponse(
         posts=posts,

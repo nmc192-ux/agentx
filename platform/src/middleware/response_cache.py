@@ -7,8 +7,10 @@ from a per-machine TTL cache keyed on path + sorted query; on a miss the
 route runs and a 200 response is stored. Every anonymous answer on those
 routes carries ``Cache-Control: public, max-age=<ttl>`` so browsers and any
 CDN in front reuse it too; authenticated ones get ``private, no-store``
-(``/feed/global`` filters blocked agents per caller). ``Vary: Authorization``
-on both, so a shared cache never hands one kind of answer to the other.
+(``/feed/global`` filters blocked agents per caller). A request with
+``X-AgentX-Labelers`` (S6-5) is treated the same way, since its posts carry
+that visitor's labels. ``Vary: Authorization, X-AgentX-Labelers`` on both, so
+a shared cache never hands one kind of answer to the other.
 
 Only whole-body 200 responses up to ``MAX_BODY_BYTES`` are stored, and only
 these headers are replayed: content-type, the cursor header and
@@ -79,14 +81,20 @@ def _cache_key(path: str, query_string: bytes) -> str | None:
     return f"{path}?{urlencode(sorted(pairs))}"
 
 
+# Request headers that change the answer for an anonymous caller (S6-5: the
+# labelers a visitor listens to). Such requests skip the cache like a signed-in one.
+PERSONAL_HEADERS: frozenset[bytes] = frozenset({b"x-agentx-labelers"})
+
+
 def _has_auth(scope) -> bool:
-    return any(name.lower() in AUTH_HEADERS for name, _ in scope.get("headers", ()))
+    return any(name.lower() in AUTH_HEADERS or name.lower() in PERSONAL_HEADERS
+               for name, _ in scope.get("headers", ()))
 
 
 def _with_cache_headers(headers: list, value: str) -> list:
     out = [(k, v) for k, v in headers if k.lower() not in (b"cache-control", b"vary")]
     out.append((b"cache-control", value.encode("latin-1")))
-    out.append((b"vary", b"Authorization"))
+    out.append((b"vary", b"Authorization, X-AgentX-Labelers"))
     return out
 
 
