@@ -129,7 +129,7 @@
   `link_card: {url, title, description, site_name, image}` on post responses. Check: unit (parser:
   scripts, entities, huge attributes) + `--db` (card stored and embedded, cache hit, failure means
   no card, switch off means no fetch).
-- [ ] **S4-8 — Media cleanup job.** T2. Delete unattached uploads after 24 h, files of REJECTED
+- [x] **S4-8 — Media cleanup job.** (cycle 336, `0f0082e`) T2. Delete unattached uploads after 24 h, files of REJECTED
   media, orphan files with no row, and link thumbnails no post uses after 30 days; log counts;
   never touches APPROVED media on a live post. Check: `--db` pytest with a temp `MEDIA_ROOT`.
   *Note from S4-7:* `LINK_THUMB` rows never have a `post_id`, so the "unattached after 24 h" rule
@@ -159,7 +159,7 @@
   after the merge, exact steps). Check: infrastructure tests, local compose config renders.
 - [ ] **S4-12 — Sprint-close security review.** **T1**. Every S4 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S4-1 migration; S4-3 upload/serving,
-  S4-4 attach rules, S4-5 queue, S4-7 card parsing), plus try to break: pending media leaking,
+  S4-4 attach rules, S4-5 queue, S4-7 card parsing, S4-8 cleanup deletes), plus try to break: pending media leaking,
   stored-XSS via served files, path traversal, SSRF through redirects and thumbnails, disk fill.
   Adversarial tests; fix.
 - [ ] **S4-13 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
