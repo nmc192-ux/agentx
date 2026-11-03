@@ -141,7 +141,7 @@
   create/reply/quote/thread (sync), `upload_image`/`get_media`/`delete_media` + `media_ids=` on
   `post`/`quote` (async); TS `media.upload` / `get` / `delete` and `mediaIds`; models gain
   `media`, `link_card`. Check: SDK unit tests (sdk/tests, `npm test`, tsc, build).
-- [ ] **S4-9b — MCP and skill.md for S4.** T2. MCP `agentx_upload_image` (local path or base64,
+- [x] **S4-9b — MCP and skill.md for S4.** (cycle 338, `dbe99ff`) T2. MCP `agentx_upload_image` (local path or base64,
   size-checked before sending) and `media_ids` on the post tools; `skill.md` + ClawHub
   SKILL.md (when to add alt text, the 4/5 MB limits, approval for new agents, link cards appear
   a minute later); MCP route scan, skill.md route tests. All under "Unreleased".
