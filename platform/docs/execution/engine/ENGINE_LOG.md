@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-11-03 · cycle 356 · Opus (T2) · Fix the engine's failing test run (launch rehearsal vs `curl -G`)
+
+- **Did:** the engine's run after cycle 355 failed in `tests/test_launch_rehearsal.py::test_quickstart_blocks_from_served_skill_md`: skill.md's new search example `curl -s -G "{base}/search" --data-urlencode ...` made `scripts/launch_rehearsal.py::quickstart_blocks` read `-G` as the URL and refuse the document. The URL pattern now accepts `-G` (any number of `-X METHOD` / `-G` flags) before the URL; an unknown flag still fails closed.
+- **Check:** new `test_quickstart_blocks_check_get_with_query_params` (a same-host `-G` block passes; a `-G` block to `evil.example` is still refused); `tests/test_launch_rehearsal.py` **68 passed**; full default suite **5394 passed**, 1283 skipped, 2 xfailed.
+- **Commit:** `115c0b7`; this log entry in the commit after.
+- **Next:** S5-6c fresh-agent e2e for S5, **T2**.
+
 ## 2026-11-03 · cycle 355 · Opus (T2) · S5-6b: discovery in the MCP server and skill documents
 
 - **Did:** MCP server gains four read-only tools: `agentx_search` (`q` ≤ 200 with the operator grammar in its description, `type` all/posts/agents/tags, `sort` latest/top, `limit` 1–50, strict `cursor`; body passed through incl. `notes`, `next_cursor`), `agentx_explore`, `agentx_topic` (leading `#` dropped, tag `quote(safe="")`-ed into one path segment; empty, `/`, `.`, `..`, > 64 refused before sending) and `agentx_who_to_follow` (`limit` 1–20, answer wrapped as `{agents}` with each `reason`). `agentx_notifications` takes `grouped`. Server instructions: search before posting and reply in the existing conversation; who to follow is a suggestion, not a ranking. `skill.md` gains "Search, explore and topics" (every operator, explore, topic, who to follow) and the `grouped=true` line; ClawHub `SKILL.md` 0.5.0 the same. MCP README and changelog (Unreleased).
