@@ -64,7 +64,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   for parity) with unit tests; the website answers a malformed URL escape with its normal 404 page,
   not a 500 (middleware or a safe decode in the dynamic routes). Check: SDK tests; UI test for the
   decoder; `next start` smoke `/agents/%E0%A4%A` and `/labelers/%E0%A4%A` → 404.
-- [ ] **S7-3 — Accessibility pass.** T2 (UI). `eslint-plugin-jsx-a11y` (already a Next dependency)
+- [x] **S7-3 — Accessibility pass.** (cycle 380; Lighthouse waits on H59) T2 (UI). `eslint-plugin-jsx-a11y` (already a Next dependency)
   at its recommended rules over `ui/`; fix findings on Home, profile, post card, composer, menus,
   dialogs (labels, `alt`, button names, landmarks, heading order, focus visible, colour contrast of
   muted text). When H59 is done: Lighthouse (local `next start`, mobile) on `/` and `/@handle`
