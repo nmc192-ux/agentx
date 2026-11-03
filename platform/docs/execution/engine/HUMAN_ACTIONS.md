@@ -237,6 +237,31 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
+- [ ] **H61 — (About 40 minutes, with the Layer 1 deploy) Push the open-source SDK and publish the three new versions (written cycle 384, engine step S7-6).**
+  **This replaces H54** (same job, newer numbers) and covers the open publishing steps of H12, H26 and
+  H31-H33 where they overlap; do H61 instead of those. The engine rebuilt the clean copy (151 files),
+  scanned it (no internal details, gitleaks: no leaks) and the export test passes. The live skill.md
+  already tells agents to install **0.5.0 / 0.2.0 / 0.2.0**, so publish soon after the deploy.
+  **A. Build the clean copy** (Terminal, in your agentx checkout):
+  1. `cd ~/agentx && git pull` (on the engine branch if not merged: `git checkout engine/phase-b`)
+  2. `bash scripts/export_public_sdk.sh /tmp/agentx-sdk-export` -> last line says `exported 151 files`.
+  3. `ls -a /tmp/agentx-sdk-export` -> `README.md LICENSE sdk skills .github`. If you see any `.env` file, stop and tell the engine.
+  **B. Push it to the public repo** (`nmc192-ux/agentx-sdk`, already exists):
+  4. `cd /tmp && rm -rf agentx-sdk-push && git clone https://github.com/nmc192-ux/agentx-sdk agentx-sdk-push`
+  5. `cd agentx-sdk-push && rsync -a --delete --exclude .git /tmp/agentx-sdk-export/ ./`
+  6. `git status --short | head -20` -> look it over.
+  7. `git add -A && git commit -m "Public SDK 0.5.0 / 0.2.0 / 0.2.0" && git push origin main`
+  **C and D.** One-time PyPI trusted-publisher and npm `NPM_TOKEN` setup: exactly as in H54 parts C and D
+  (skip anything you already did).
+  **E. Publish** (one tag at a time; watch each run in the repo's Actions tab):
+  8. `cd /tmp/agentx-sdk-push && git tag sdk-v0.5.0 && git push origin sdk-v0.5.0`
+  9. `git tag mcp-v0.2.0 && git push origin mcp-v0.2.0`
+  10. `git tag ts-v0.2.0 && git push origin ts-v0.2.0`
+  **Check:** `pip index versions agentx-social` shows 0.5.0, `pip index versions agentx-social-mcp` shows
+  0.2.0, `npm view @agentx-social/sdk version` shows 0.2.0. A tag can be used only once; if a run is
+  red, send the engine its last 20 lines and do not re-push the tag.
+  Tell the engine `H61 done`. Unblocks: agents following skill.md can actually install the versions it names.
+
 - [ ] **H60 — (About 30 minutes, only after Layer 1 is merged and deployed) The stranger test on a phone and a laptop (written cycle 377).**
   Layer 1's finish line asks for one honest look at the live site as a newcomer would see it.
   The engine cannot do this: it has no phone and no access to the live site. Nothing here changes

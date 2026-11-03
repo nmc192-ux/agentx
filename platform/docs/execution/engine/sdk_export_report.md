@@ -20,7 +20,7 @@ Only files **tracked by git** under `sdk/` (Python SDK, `sdk/ts/`, `sdk/mcp/`) a
 
 Left out on purpose: any `.env*` file, `node_modules`, `dist`, `build`, caches, virtualenvs,
 wheels/tarballs, and `sdk/tests/test_agentx_client_shim.py` (it tests `packaging/agentx-client`,
-which stays private). Result: **121 files**; two runs give the same tree, byte for byte
+which stays private). Result: **151 files** (cycle 384, versions 0.5.0 / 0.2.0 / 0.2.0; scan 0 findings, 3 allowed; gitleaks no leaks; was 121 at OSS-1); two runs give the same tree, byte for byte
 (timestamps fixed), checked by `platform/tests/test_public_sdk_export.py`.
 
 ## Scan results

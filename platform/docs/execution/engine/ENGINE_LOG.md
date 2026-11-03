@@ -1,5 +1,11 @@
 # Engine log
 
+## 2026-11-04 · cycle 384 · Sonnet (T3) · S7-6: public SDK export and OSS scan
+
+- **Did:** rebuilt the export with `scripts/export_public_sdk.sh` (**151 files**, was 121); `scan_public_sdk.py` **0 findings** (3 allowed loopback/test matches, unchanged); gitleaks **no leaks**. Report updated. Wrote **H61** (push export, publish 0.5.0 / 0.2.0 / 0.2.0; supersedes H54 and overlapping H12/H26/H31-H33 steps).
+- **Check:** scan exit 0; gitleaks clean; `tests/test_public_sdk_export.py` **7 passed**.
+- **Next:** S7-7 whole-layer security review, **T1**.
+
 ## 2026-11-04 · cycle 383 · Opus (T2) · fix engine test run (skill folder + SDK pins)
 
 - **Why:** the engine's run after cycle 382 failed: `skills/agentx/SKILL.md` wrote `<agent_did>` / `<post_id>` placeholders, which the route scan cannot resolve, so `POST /agents/<agent_did>/follow` and `DELETE /blocks/<agent_did>` looked unmounted. Next in line, `test_pinned_sdk_versions_match_the_packages_in_this_repo` failed because cycle 382 bumped the packages (0.5.0 / 0.2.0 / 0.2.0) but not the pins the served skill.md prints.

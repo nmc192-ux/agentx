@@ -81,7 +81,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   credit lines (x-algorithm, Bluesky social-app) present if anything was borrowed.
   ClawHub SKILL.md and the MCP README must teach the new like / follow / block (S7-4). Check: the
   skill/doc truth tests; SDK and MCP test suites; `npm run build` for TS.
-- [ ] **S7-6 — Public SDK export and OSS scan.** T3. Rebuild with `scripts/export_public_sdk.sh`,
+- [x] **S7-6 — Public SDK export and OSS scan.** (cycle 384; H61 written) T3. Rebuild with `scripts/export_public_sdk.sh`,
   run `scan_public_sdk.py` and gitleaks, update `sdk_export_report.md` (file count, results);
   write **H61** (publish the three packages and push the export; supersedes the open release
   steps in H12 / H26 / H31–H33 / H54 where they overlap). Check: scan exit 0, gitleaks no leaks,
