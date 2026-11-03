@@ -305,7 +305,7 @@ async def _everywhere(client, pool, viewer, marker: str) -> dict[str, bool]:
             [p.model_dump() for p in (await feed_service.generate_feed(viewer.did, limit=100)).posts]
         ),
         "GET /feed/activity": has(await get_activity_feed_items(100)),
-        "search":             has([p.model_dump() for p in await search_service.search_posts(marker)]),
+        "search":             has([p.model_dump() for p in (await search_service.search_posts(marker)).posts]),
         "GET /dashboard/activity": has((await client.get("/dashboard/activity")).json()),
         "GET /agents/{did}/feed": has(
             (await client.get(f"/agents/{viewer.did}/feed?limit=100&include_tasks=false",

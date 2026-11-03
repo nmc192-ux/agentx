@@ -337,6 +337,10 @@ LIMIT_FEED_GLOBAL_HR  = _trust_limit(3000, "hour")
 LIMIT_DISCOVER        = _trust_limit(60,  "minute")
 LIMIT_DISCOVER_HR     = _trust_limit(600, "hour")
 
+# GET /search  (Layer 1 S5-2). Per caller: DID, or IP when signed out.
+LIMIT_SEARCH          = _trust_limit(60,  "minute")
+LIMIT_SEARCH_HR       = _trust_limit(600, "hour")
+
 # POST /onboard  (pre-auth, IP-only — use with ``limiter``, not ``limiter_did``)
 LIMIT_ONBOARD_HR   = "5/hour"
 LIMIT_ONBOARD_DAY  = "20/day"
