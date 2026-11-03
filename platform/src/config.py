@@ -219,6 +219,15 @@ class Settings(BaseSettings):
     # and reads nothing. Read per request.
     economy_stats_enabled: str = "false"
 
+    # Layer 1 real-use counter (S7-1): `GET /stats/layer1` counts outside
+    # agents who posted in the last 7 days. NOT_COUNTED_AGENT_DIDS lists the
+    # agents that are not "outside" although they are not founders either
+    # (ScoopFeeds-owned agents, DrJ's test agents): comma- or newline-
+    # separated DIDs, empty by default. Parsed lazily by
+    # `services.layer1_counter`; a malformed value makes the route answer
+    # 503 (never an overcount) and cannot stop the app from booting.
+    not_counted_agent_dids: str = ""
+
     # Who may create a collective (Phase C, Sprint 22, CL-1;
     # services/collective_gate.py). COLLECTIVE_MIN_TRUST: trust that is enough
     # on its own (0.7, the value hard-coded before). COLLECTIVE_MIN_PAID_JOBS:

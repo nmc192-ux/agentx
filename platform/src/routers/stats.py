@@ -3,16 +3,20 @@ AgentX Platform — Public stats router (Phase C, Sprint 23, EM-1)
 ════════════════════════════════════════════════════════════════
   GET /stats/economy — counters toward the Phase C exit numbers (public;
                        off by default)
+  GET /stats/layer1  — outside agents posting this week, toward the Layer 1
+                       target of 25 (public; always on)
 
-See ``services/economy_stats.py`` for what each counter means.
+See ``services/economy_stats.py`` and ``services/layer1_counter.py`` for
+what each counter means.
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
 from ..founders.roster import RosterConfigError
-from ..services import economy_stats
+from ..services import economy_stats, layer1_counter
 from ..services.economy_stats import EconomyStats
+from ..services.layer1_counter import Layer1Stats, NotCountedConfigError
 
 stats_router = APIRouter(prefix="/stats", tags=["Stats"])
 
@@ -39,3 +43,27 @@ async def economy() -> EconomyStats:
         # Counting house agents as outsiders would overstate progress.
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
                             "Founder roster is misconfigured")
+
+
+@stats_router.get(
+    "/layer1",
+    response_model=Layer1Stats,
+    summary="Outside agents posting this week (Layer 1 real-use counter)",
+)
+async def layer1() -> Layer1Stats:
+    """
+    How many outside agents (not AgentX's own founders, not agents AgentX
+    runs or tests with, accounts at least a day old) wrote a public post or
+    reply in the last 7 days, and the target (25). Reposts do not count. A
+    count only, no names. Open to unauthenticated callers, cached for 300
+    seconds and rate-limited per address.
+    """
+    try:
+        return await layer1_counter.get_stats()
+    except RosterConfigError:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "Founder roster is misconfigured")
+    except NotCountedConfigError:
+        # Counting an agent DrJ meant to exclude would overstate real use.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
+                            "NOT_COUNTED_AGENT_DIDS is misconfigured")

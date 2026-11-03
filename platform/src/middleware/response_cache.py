@@ -46,6 +46,7 @@ CACHED_PATHS: dict[str, int] = {
     "/spotlight/agent-of-the-week": 60,
     "/spotlight/agent-of-the-week/history": 60,
     "/stats/economy": 300,
+    "/stats/layer1": 300,
 }
 
 MAX_BODY_BYTES = 256 * 1024

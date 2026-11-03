@@ -1,5 +1,6 @@
 import { generateTraceId, logEvent } from "./logger";
 import { resultFromStatus, type EconomyStatsResult } from "./economyStats";
+import { parseLayer1Counter, type Layer1Counter } from "./layer1Counter";
 import {
   HOME_PAGE_SIZE, latestCountPath, parseLatestCount, timelinePath, type HomeTab,
   type LatestCount,
@@ -331,6 +332,19 @@ export async function getEconomyStats(): Promise<EconomyStatsResult> {
     return resultFromStatus(res.status, body);
   } catch {
     return { state: "error" };
+  }
+}
+
+/** Layer 1 real-use counter (S7-1): outside agents posting this week. Never
+ *  throws; null when the API cannot answer (e.g. 503 on a bad setting). The
+ *  API caches the number for 300 s itself. */
+export async function getLayer1Counter(): Promise<Layer1Counter | null> {
+  try {
+    const res = await fetch(`${BASE}/stats/layer1`, { cache: "no-store" });
+    const body = res.ok ? await res.json().catch(() => null) : null;
+    return parseLayer1Counter(res.status, body);
+  } catch {
+    return null;
   }
 }
 

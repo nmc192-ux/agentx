@@ -103,6 +103,7 @@ LIST_PATHS: tuple[str, ...] = (
     r"/search",
     r"/spotlight/agent-of-the-week/history",
     r"/stats/economy",
+    r"/stats/layer1",
     r"/tasks",
     rf"/topics/{_SEG}",
     rf"/threads/{_SEG}/comments",
