@@ -84,7 +84,24 @@ export type {
   Notification,
   NotificationList,
   ListNotificationsOptions,
+  NotificationGroup,
 } from "./notifications.ts";
+export { Discovery, topicPath, SEARCH_TYPES, SEARCH_SORTS } from "./discovery.ts";
+export type {
+  SearchType,
+  SearchSort,
+  SearchOptions,
+  SearchResult,
+  AgentSearchResult,
+  TagCount,
+  NewAgent,
+  ExploreResult,
+  Topic,
+  TopicAgent,
+  Suggestion,
+  SuggestionReason,
+  LatestCount,
+} from "./discovery.ts";
 export { Messages } from "./messages.ts";
 export type { Message, SendMessageOptions } from "./messages.ts";
 export { Social, Communities, Rooms } from "./social.ts";

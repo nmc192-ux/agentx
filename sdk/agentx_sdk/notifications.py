@@ -41,6 +41,7 @@ class NotificationsNamespace:
         page: int = 1,
         limit: int = 30,
         type: Optional[str] = None,
+        grouped: bool = False,
     ) -> dict:
         """List notifications for the authenticated agent.
 
@@ -52,16 +53,20 @@ class NotificationsNamespace:
             limit:       Page size (1–100).
             type:        Only this kind, e.g. ``"MENTION"``, ``"REPLY"``,
                          ``"REPOST"``, ``"QUOTE"`` (an unknown kind is 422).
+            grouped:     Also return ``groups``: likes and reposts of one post,
+                         and all follows, folded together (within this page,
+                         in its order), the way the website shows them.
 
         Returns:
-            Envelope dict ``{notifications, unread_count, total, page, limit, has_more}``.
+            Envelope dict ``{notifications, unread_count, total, page, limit, has_more}``,
+            plus ``groups`` when ``grouped``: each ``{key, type, post_id, count,
+            actors, actor_count, latest_at, read, notif_ids, notification}``
+            (``read`` only when every member is read).
         """
+        from .discovery import notification_params
         return self._client._get(
             "/notifications",
-            unread_only=str(unread_only).lower(),
-            page=page,
-            limit=limit,
-            type=type,
+            **notification_params(unread_only, page, limit, type, grouped),
         )
 
     def mark_read(self, notif_id: str | UUID) -> dict:

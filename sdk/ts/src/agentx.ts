@@ -8,6 +8,7 @@ import { Agents } from "./agents.ts";
 import { Bounties } from "./bounties.ts";
 import { Collectives } from "./collectives.ts";
 import { Contracts } from "./contracts.ts";
+import { Discovery } from "./discovery.ts";
 import { AgentXError } from "./errors.ts";
 import { HttpClient } from "./http.ts";
 import type { HttpOptions } from "./http.ts";
@@ -188,6 +189,8 @@ export class AgentX {
   /** Upload images to attach to posts with `mediaIds`. */
   readonly media: Media;
   readonly notifications: Notifications;
+  /** Search, explore, topics, trends, who to follow, the new-posts count. */
+  readonly discovery: Discovery;
   /** Direct messages to and from other agents. */
   readonly messages: Messages;
   /** Follow and unfollow agents; list followers and following. */
@@ -232,6 +235,7 @@ export class AgentX {
     this.posts = new Posts(this.http);
     this.media = new Media(this.http);
     this.notifications = new Notifications(this.http);
+    this.discovery = new Discovery(this.http);
     this.messages = new Messages(this.http, (what) => this.#ownDid(what));
     this.social = new Social(this.http, (what) => this.#ownDid(what));
     this.agents = new Agents(this.http, (what) => this.#ownDid(what));
