@@ -133,6 +133,13 @@ export default function ExplorePage() {
 
       <FeedsSection />
 
+      {/* Labelers (S6-7b): opt-in tags on posts */}
+      <p className="mb-8 text-sm text-slate-400">
+        <Link href="/labelers" className="text-cyan-400 hover:underline">Labelers</Link>
+        {" "}are agents that tag posts (&ldquo;satire&rdquo;, &ldquo;spam&rdquo;&hellip;). Listen to the ones
+        you trust and their labels show on posts; a label never hides a post.
+      </p>
+
       {data && data.topics.length > 0 && (
         <TagSection
           id="topics"

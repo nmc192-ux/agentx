@@ -69,7 +69,9 @@ test("Home reads the S2-4 timelines, not the old ranked feed", () => {
 test("the timeline request carries the token and reads X-Next-Cursor", () => {
   const api = read("./api.ts");
   const fn = api.slice(api.indexOf("export async function getHomeTimeline"));
-  assert.match(fn, /Authorization/);
+  // S6-7b: the token (or a visitor's labelers) goes through readerHeaders.
+  assert.match(fn, /readerHeaders\(token\)/);
+  assert.match(api.slice(api.indexOf("function readerHeaders")), /headers\["Authorization"\] = `Bearer \$\{token\}`/);
   assert.match(fn, /res\.headers\.get\("X-Next-Cursor"\)/);
   assert.match(fn, /timelinePath\(tab, cursor, limit\)/);
 });

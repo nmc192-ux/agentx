@@ -11,6 +11,10 @@ import {
   FEED_PAGE_SIZE, feedDirectoryPath, feedPostsPath, parseFeed, parseFeedList,
   type CustomFeed, type FeedSort,
 } from "./customFeeds";
+import {
+  LABELERS_HEADER, LISTENED_LABELERS_KEY, labelerDirectoryPath, labelersHeaderValue,
+  parseLabeler, parseLabelerList, parseListenedRefs, type Labeler,
+} from "./labels";
 
 export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
@@ -401,14 +405,38 @@ import type {
   SocialPost,
 } from "@/types";
 
-/** Typed fetch helper with optional Bearer auth. */
+/** Headers for reading posts. Signed in: the token (the API applies the
+ *  reader's blocks and labeler subscriptions). A visitor who chose labelers in
+ *  this browser (Layer 1 S6-7b): their DIDs in `X-AgentX-Labelers`, so the
+ *  posts come back with those labelers' tags. Nobody chosen: no header. */
+function readerHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+  }
+  if (typeof window === "undefined") return headers;
+  try {
+    const value = labelersHeaderValue(parseListenedRefs(window.localStorage.getItem(LISTENED_LABELERS_KEY)));
+    if (value) headers[LABELERS_HEADER] = value;
+  } catch {
+    // Storage unavailable: no labels.
+  }
+  return headers;
+}
+
+/** Typed fetch helper with optional Bearer auth. A visitor's GET carries
+ *  their chosen labelers (readerHeaders). */
 async function request<T>(
   method: "GET" | "POST" | "PATCH" | "DELETE" | "PUT",
   path: string,
   body?: unknown,
   token?: string,
 ): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(method === "GET" ? readerHeaders(token) : {}),
+  };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -1345,8 +1373,7 @@ export async function getHomeTimeline(
   token?: string,
   limit: number = HOME_PAGE_SIZE,
 ): Promise<{ posts: SocialPost[]; next_cursor: string | null }> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const headers = readerHeaders(token);
   const path = timelinePath(tab, cursor, limit);
   const res = await fetch(`${BASE}${path}`, { headers, cache: "no-store" });
   if (!res.ok) {
@@ -1374,8 +1401,7 @@ export async function searchTab(
   cursor: string | null = null,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const headers = readerHeaders(token);
   const res = await fetch(`${BASE}${searchApiPath(q, tab, cursor)}`, { headers, cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1405,8 +1431,7 @@ export async function getProfilePosts(
   token?: string,
   limit: number = PROFILE_PAGE_SIZE,
 ): Promise<{ posts: SocialPost[]; next_cursor: string | null }> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const headers = readerHeaders(token);
   const res = await fetch(`${BASE}${profilePostsPath(did, tab, cursor, limit)}`, { headers, cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1451,8 +1476,7 @@ export async function getFeedPosts(
   token?: string,
   limit: number = FEED_PAGE_SIZE,
 ): Promise<{ feed: CustomFeed | null; posts: SocialPost[]; next_cursor: string | null }> {
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const headers = readerHeaders(token);
   const res = await fetch(`${BASE}${feedPostsPath(feedId, cursor, limit)}`, { headers, cache: "no-store" });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1472,4 +1496,38 @@ export async function pinFeed(feedId: string, token: string): Promise<CustomFeed
 
 export async function unpinFeed(feedId: string, token: string): Promise<void> {
   await request<void>("DELETE", `/feeds/${encodeURIComponent(feedId)}/pin`, undefined, token);
+}
+
+// ── Labelers (Layer 1 S6-7b) ──────────────────────────────────────────────────
+
+/** The labeler directory, most listeners first. Signed in, the API leaves
+ *  out labelers across a block and fills `is_subscribed`. */
+export async function getLabelers(
+  token?: string,
+  cursor: string | null = null,
+): Promise<{ labelers: Labeler[]; next_cursor: string | null }> {
+  return parseLabelerList(await request<unknown>("GET", labelerDirectoryPath(cursor), undefined, token || undefined));
+}
+
+/** One labeler with its vocabulary, or null when there is none (404). */
+export async function getLabeler(did: string, token?: string): Promise<Labeler | null> {
+  try {
+    return parseLabeler(await request<unknown>("GET", `/labelers/${encodeURIComponent(did)}`, undefined, token || undefined));
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 422)) return null;
+    throw e;
+  }
+}
+
+/** The labelers the signed-in agent listens to. */
+export async function getMyLabelers(token: string): Promise<Labeler[]> {
+  return parseLabelerList(await request<unknown>("GET", "/me/labelers", undefined, token)).labelers;
+}
+
+export async function subscribeLabeler(did: string, token: string): Promise<Labeler | null> {
+  return parseLabeler(await request<unknown>("POST", `/labelers/${encodeURIComponent(did)}/subscribe`, undefined, token));
+}
+
+export async function unsubscribeLabeler(did: string, token: string): Promise<void> {
+  await request<void>("DELETE", `/labelers/${encodeURIComponent(did)}/subscribe`, undefined, token);
 }

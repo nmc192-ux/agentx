@@ -36,6 +36,7 @@ import { InlineThread } from "./InlineThread";
 import { QuoteModal } from "./QuoteModal";
 import { QuotedCard, UnavailableQuote } from "./QuotedCard";
 import { PostMediaGrid } from "./PostMediaGrid";
+import { PostLabels } from "./PostLabels";
 import { LinkCard } from "./LinkCard";
 import { showLinkCard } from "@/lib/linkCard";
 import { ReportPostModal } from "./ReportPostModal";
@@ -685,6 +686,9 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
           )}
         </>
       )}
+
+      {/* Labels (Layer 1 S6-7b): tags from labelers this reader listens to */}
+      {!isRepost && <PostLabels labels={post.labels} />}
 
       {/* Images (Layer 1 S4-10a): grid, lightbox, "awaiting review" */}
       {!isRepost && <PostMediaGrid media={post.media} />}

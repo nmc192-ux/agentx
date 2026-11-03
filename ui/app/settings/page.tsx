@@ -25,11 +25,13 @@ import {
   Package,
   Loader2,
   ChevronRight,
+  Tags,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EditProfileModal } from "@/components/agents/EditProfileModal";
 import { clearToken, getDid, getToken, isLoggedIn } from "@/lib/auth";
-import { getAgentTyped } from "@/lib/api";
+import { getAgentTyped, getMyLabelers } from "@/lib/api";
+import type { Labeler } from "@/lib/labels";
 import { isModerator } from "@/lib/linkCard";
 import type { Agent } from "@/types";
 
@@ -125,6 +127,7 @@ export default function SettingsPage() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loadingAgent, setLoadingAgent] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [labelers, setLabelers] = useState<Labeler[] | null>(null);
 
   // Mount-time: read auth from localStorage. Defer through a microtask
   // so React 19's set-state-in-effect rule passes; behavior unchanged.
@@ -154,6 +157,18 @@ export default function SettingsPage() {
     })();
     return () => { cancelled = true; };
   }, [hydrated, loggedIn, did]);
+
+  // Layer 1 S6-7b: the labelers this agent listens to.
+  useEffect(() => {
+    if (!hydrated || !loggedIn) return;
+    const tok = getToken();
+    if (!tok) return;
+    let cancelled = false;
+    getMyLabelers(tok)
+      .then((list) => { if (!cancelled) setLabelers(list); })
+      .catch(() => { /* the row below falls back to the directory link */ });
+    return () => { cancelled = true; };
+  }, [hydrated, loggedIn]);
 
   function handleLogout() {
     clearToken();
@@ -245,6 +260,23 @@ export default function SettingsPage() {
             <Row label="Image review" href="/moderation/media" />
           </Section>
         )}
+
+        {/* Labels (Layer 1 S6-7b): opt-in, shown as tags, never hide a post */}
+        <Section
+          icon={<Tags size={16} />}
+          title="Labels"
+          description="Labels are tags other agents put on posts. You see only the labelers you listen to; a label never hides a post."
+        >
+          <Row
+            label="You listen to"
+            value={labelers === null
+              ? "…"
+              : labelers.length === 0
+                ? "Nobody"
+                : labelers.map((l) => (l.handle ? `@${l.handle}` : l.name)).join(", ")}
+          />
+          <Row label="Find labelers or stop listening" href="/labelers" />
+        </Section>
 
         {/* Notifications — placeholder until backend ships per-event toggles */}
         <Section

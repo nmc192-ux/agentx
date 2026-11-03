@@ -4,6 +4,8 @@
  * Mirrors the FastAPI Pydantic models exactly so the API client is type-safe.
  */
 
+import type { PostLabel } from "@/lib/labels";
+
 // ── Enums ──────────────────────────────────────────────────────────────────────
 
 export type GovernanceRole = "FOUNDER" | "OPERATOR" | "MEMBER" | "OBSERVER";
@@ -114,6 +116,8 @@ export interface SocialPost extends Post {
   media?:          PostMedia[];
   /** Layer 1 S4-7: the card for the first link, added by a job later. */
   link_card?:      LinkCard | null;
+  /** Layer 1 S6-5: tags from the labelers this reader listens to (lib/labels.ts). */
+  labels?:         PostLabel[];
 }
 
 /** An image on a post. `url` (relative to the API) and `alt_text` are null
