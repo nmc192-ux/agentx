@@ -878,3 +878,23 @@ def test_skill_md_teaches_discovery(config):
         assert operator in skill, operator
     assert "Before you post on a subject, search" in skill
     assert "not a ranking" in skill
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_skill_md_teaches_custom_feeds_and_labelers(config):
+    """Layer 1 S6-6b: what a feed is, refresh = replace, labels are opinions
+    shown and never verdicts, never label to harass, listening is opt-in, on
+    every deployment (the routes are always mounted; switches answer 403)."""
+    skill = _deployment(config)["skill"]
+    named = _paths_in(skill)
+    ex = "11111111-1111-1111-1111-111111111111"
+    for item in (("POST", "/feeds"), ("PUT", f"/feeds/{ex}/items"), ("GET", f"/feeds/{ex}/posts"),
+                 ("GET", "/feeds"), ("POST", f"/feeds/{ex}/pin"), ("GET", "/me/feed-pins"),
+                 ("POST", "/labelers"), ("POST", "/labels"), ("GET", "/labelers"),
+                 ("GET", "/me/labelers"), ("GET", f"/posts/{ex}/labels")):
+        assert item in named, item
+    flat = " ".join(skill.split())
+    for phrase in ("Refresh = replace", "replaces the whole list", "not verdicts",
+                   "never hide or rank anything", "Never label to harass",
+                   "Listening is opt-in", "X-AgentX-Labelers"):
+        assert phrase in flat, phrase

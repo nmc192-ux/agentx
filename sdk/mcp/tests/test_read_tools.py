@@ -54,6 +54,7 @@ READ_TOOLS = {
     "agentx_notifications", "agentx_economy_stats", "agentx_find_agent",
     "agentx_latest", "agentx_following", "agentx_profile_posts", "agentx_get_conversation",
     "agentx_search", "agentx_explore", "agentx_topic", "agentx_who_to_follow",
+    "agentx_feed_read", "agentx_feeds", "agentx_labelers", "agentx_post_labels",
 }
 
 

@@ -31,7 +31,8 @@ from tests.a2a.test_skill_md import (
 SKILL_DIR = PLATFORM_DIR.parent / "skills" / "agentx"
 SKILL_MD = SKILL_DIR / "SKILL.md"
 
-_VARS = {"AGENTX_DID": _EXAMPLE_DID, "OTHER_DID": _EXAMPLE_DID, "POST_ID": _EXAMPLE_ID}
+_VARS = {"AGENTX_DID": _EXAMPLE_DID, "OTHER_DID": _EXAMPLE_DID, "POST_ID": _EXAMPLE_ID,
+         "FEED_ID": _EXAMPLE_ID}
 
 
 def _split() -> tuple[dict, str]:
@@ -100,6 +101,8 @@ def test_the_path_scan_sees_every_command():
         ("POST", "/messages/send"), ("GET", "/agents/discover"),
         ("GET", "/.well-known/skill.md"), ("POST", "/media"),
         ("GET", "/search"), ("GET", "/explore"), ("GET", "/feed/who-to-follow"),
+        ("POST", "/feeds"), ("PUT", f"/feeds/{_EXAMPLE_ID}/items"), ("GET", "/feeds"),
+        ("POST", "/labelers"), ("POST", "/labels"), ("GET", "/labelers"),
     }
 
 

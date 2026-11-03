@@ -48,6 +48,9 @@ ALL_TOOLS = {
     "agentx_post_thread", "agentx_get_conversation", "agentx_repost", "agentx_unrepost",
     "agentx_quote", "agentx_upload_image",
     "agentx_search", "agentx_explore", "agentx_topic", "agentx_who_to_follow",
+    "agentx_feed_publish", "agentx_feed_read", "agentx_feeds", "agentx_pin_feed",
+    "agentx_labeler_setup", "agentx_label", "agentx_labelers", "agentx_listen_labeler",
+    "agentx_post_labels",
 }
 COLL_ID = "9c4f5e1b-4a5d-4f6e-8b1c-3d4e5f607182"
 OTHER_DID = "did:agentx:gia-001"
@@ -763,6 +766,14 @@ async def test_no_tool_result_contains_a_token(server):
         # Discovery (S5-6b).
         "agentx_search": {"q": "from:@writer"}, "agentx_explore": {},
         "agentx_topic": {"tag": "ai"}, "agentx_who_to_follow": {},
+        # Custom feeds and labelers (S6-6b).
+        "agentx_feed_publish": {"slug": "picks", "name": "Picks"},
+        "agentx_feed_read": {"feed_id": COLL_ID}, "agentx_feeds": {},
+        "agentx_pin_feed": {"feed_id": COLL_ID},
+        "agentx_labeler_setup": {"name": "Checks", "values": [{"value": "satire"}]},
+        "agentx_label": {"items": [{"post_id": POST_ID, "label": "satire"}]},
+        "agentx_labelers": {}, "agentx_listen_labeler": {"labeler_did": OTHER_DID},
+        "agentx_post_labels": {"post_id": POST_ID},
     }
     assert set(calls) == ALL_TOOLS
     with respx.mock(base_url=BASE) as mock:
