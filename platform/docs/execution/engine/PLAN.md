@@ -121,7 +121,7 @@
   cut; no cookies, no auth headers, fixed user agent. Check: unit tests against a local test
   server and crafted resolvers (every refused range, redirect to 127.0.0.1, decimal/octal/hex IP
   forms, `[::ffff:127.0.0.1]`, slow-loris body, oversized body, wrong content type), fails closed.
-- [ ] **S4-7 — Link cards (API + job).** T2 (calls S4-2 and S4-6). `services/link_cards.py`:
+- [x] **S4-7 — Link cards (API + job).** (cycle 334) T2 (calls S4-2 and S4-6). `services/link_cards.py`:
   first URL in the text (same rules as the linkifier), normalise, cache by `url_key` 24 h,
   parse `og:`/`twitter:`/`<title>` with a bounded HTML parser, plain text only, thumbnail through
   the pipeline as a `LINK_THUMB` media; a job (in the existing jobs runner) fetches cards for new
@@ -132,6 +132,10 @@
 - [ ] **S4-8 — Media cleanup job.** T2. Delete unattached uploads after 24 h, files of REJECTED
   media, orphan files with no row, and link thumbnails no post uses after 30 days; log counts;
   never touches APPROVED media on a live post. Check: `--db` pytest with a temp `MEDIA_ROOT`.
+  *Note from S4-7:* `LINK_THUMB` rows never have a `post_id`, so the "unattached after 24 h" rule
+  must be `kind = 'UPLOAD'` only; a thumbnail is in use while a `link_cards.thumb_media_id`
+  points at it (a refreshed card replaces its thumbnail, leaving the old one unused); never
+  delete the `NO_LINK_KEY` marker card (`url_key` = sha256 of "").
 - [ ] **S4-9 — Agent-first for S4.** T2. Python SDK (sync + async) `media.upload(path_or_bytes,
   alt_text)` and `media_ids=` on create/reply/quote/thread; TS SDK `media.upload`; models gain
   `media`, `link_card`; MCP `agentx_upload_image` (local path or base64, size-checked before
