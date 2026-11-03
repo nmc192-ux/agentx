@@ -22,8 +22,10 @@ Where the work happens:
 * **Never the outside URL for an image.** The card image is fetched through
   the guard, rebuilt by the image pipeline (S4-2) and stored as a
   ``LINK_THUMB`` media row owned by the post's author. It is ``PENDING``
-  when that author's own uploads would be (account under 7 days old) and is
-  shown only once ``APPROVED``.
+  when that author's own uploads would be (account under 7 days old), when
+  the card's previous thumbnail was ``REJECTED`` by a moderator, or when a
+  moderator rejected the same bytes from that author before (S4-12: a
+  refresh never undoes a rejection); it is shown only once ``APPROVED``.
 * **Not for held, hidden or non-public posts.** The job skips them (the
   server must not visit a link only a collective may see), and
   :func:`annotate` leaves the card off a hidden post.
@@ -51,6 +53,7 @@ from uuid import UUID, uuid4
 from ..config import get_settings
 from ..database import transaction
 from . import media_images, media_store, safe_fetch
+from .post_media import rejected_before
 
 logger = logging.getLogger("agentx.link_cards")
 
@@ -317,6 +320,10 @@ _NO_LINK_ROW = """
     INSERT INTO link_cards (url_key, url, status) VALUES ($1, '', 'FAILED')
     ON CONFLICT (url_key) DO NOTHING
 """
+_PREVIOUS_THUMB_REJECTED = """
+    SELECT 1 FROM link_cards c JOIN media m ON m.id = c.thumb_media_id
+     WHERE c.url_key = $1 AND m.status = 'REJECTED'
+"""
 
 
 @dataclass
@@ -327,7 +334,7 @@ class _Group:
     owner_is_new: bool
 
 
-async def _make_thumb(fetcher: Fetcher, src: str, group: _Group) -> Optional[tuple[UUID, str]]:
+async def _make_thumb(fetcher: Fetcher, src: str, group: _Group, key: str) -> Optional[tuple[UUID, str]]:
     """Fetch, rebuild and store the card image; (media_id, ext) or None."""
     try:
         got = await fetcher(src, "image")
@@ -350,9 +357,16 @@ async def _make_thumb(fetcher: Fetcher, src: str, group: _Group) -> Optional[tup
     except OSError:
         logger.exception("link_cards: could not store the image")
         return None
-    status = "PENDING" if group.owner_is_new else "APPROVED"
     try:
         async with transaction() as conn:
+            # A refreshed card never republishes what a moderator took down:
+            # the new thumbnail waits for review if the card's last one was
+            # rejected, or if these bytes were rejected from this owner.
+            status = "PENDING" if (
+                group.owner_is_new
+                or await conn.fetchval(_PREVIOUS_THUMB_REJECTED, key)
+                or await rejected_before(conn, group.owner_did, processed.sha256)
+            ) else "APPROVED"
             await conn.execute(
                 """
                 INSERT INTO media (id, owner_did, kind, mime, ext, width, height,
@@ -378,7 +392,7 @@ async def _fetch_card(fetcher: Fetcher, key: str, group: _Group) -> str:
         if meta.empty:
             meta = None
         elif meta.image_url:
-            thumb = await _make_thumb(fetcher, meta.image_url, group)
+            thumb = await _make_thumb(fetcher, meta.image_url, group, key)
     except safe_fetch.FetchRefused as exc:
         logger.info("link_cards: no card (%s)", exc.code)
     try:

@@ -38,7 +38,7 @@ from fastapi import HTTPException, status
 
 from ..models.post import MAX_POST_MEDIA, PostMedia
 
-__all__ = ["MAX_POST_MEDIA", "attach", "hold", "annotate", "media_url"]
+__all__ = ["MAX_POST_MEDIA", "attach", "hold", "annotate", "media_url", "rejected_before"]
 
 
 def media_url(media_id: UUID, ext: str) -> str:
@@ -95,6 +95,18 @@ async def attach(conn, author_did: str, post_id: UUID, media_ids: list[UUID]) ->
             "UPDATE media SET post_id = $2, position = $3 WHERE id = $1",
             media_id, post_id, position,
         )
+
+
+async def rejected_before(conn, owner_did: str, sha256: str) -> bool:
+    """True when a moderator has already rejected these exact bytes from this
+    owner (S4-12 review). A re-upload of a rejected image then waits for a
+    moderator again instead of going public at once; it is never refused
+    outright, so a wrong rejection costs the owner one more review, not the
+    image. Owner-scoped so the lookup rides on ``idx_media_owner_created``."""
+    return bool(await conn.fetchval(
+        "SELECT 1 FROM media WHERE owner_did = $1 AND sha256 = $2 AND status = 'REJECTED' LIMIT 1",
+        owner_did, sha256,
+    ))
 
 
 async def hold(conn, post_id: UUID) -> None:

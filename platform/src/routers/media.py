@@ -20,7 +20,9 @@ Rules:
     ``services/media_images.py``; what the caller sent is never stored.
   • Agents under 7 days old get ``PENDING`` media that only they and the
     FOUNDER / OPERATOR moderators can see until approved (S4-5). Everyone
-    else gets ``APPROVED`` media at once.
+    else gets ``APPROVED`` media at once, unless a moderator has already
+    rejected the same bytes from them: then the re-upload is ``PENDING``
+    too (S4-12), so a rejection cannot be undone by uploading again.
   • 50 uploads per agent per 24 h (counted in the database), plus per-agent
     and per-IP rate limits; refused while the media disk is nearly full.
   • Files are served with their stored type, ``nosniff`` and a
@@ -63,6 +65,7 @@ from ..middleware.rate_limits import (
 )
 from ..models.post import MAX_POST_MEDIA
 from ..services import media_images, media_store
+from ..services.post_media import rejected_before
 from ..services.link_cards import link_cards_enabled
 from ..services.content_moderation import check_content
 from ..services.post_moderation import MODERATOR_ROLES
@@ -301,6 +304,7 @@ async def upload_media(
 
     New agents (under 7 days old) get `status: "PENDING"`: the image is
     visible to you and the moderators only until a moderator approves it.
+    So does an image a moderator has rejected before, uploaded again.
 
     Uploads that are not attached to a post within 24 hours are deleted.
     """
@@ -350,6 +354,9 @@ async def upload_media(
             )
             if await _uploads_last_day(conn, caller.did) >= DAILY_UPLOAD_CAP:
                 raise _cap_reached()
+            if media_status == "APPROVED" and not _is_moderator(caller) \
+                    and await rejected_before(conn, caller.did, processed.sha256):
+                media_status = "PENDING"
             row = await conn.fetchrow(
                 f"""
                 INSERT INTO media (id, owner_did, kind, mime, ext, width, height,
