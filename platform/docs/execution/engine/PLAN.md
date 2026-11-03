@@ -137,7 +137,7 @@
   worth meeting (follow buttons), top topics; the Work-layer post-type chips go. `/tag/[name]`
   gains the topic header (counts, top agents, related tags). Who to follow shows its `reason`
   line. Check: vitest, build, crawl.
-- [ ] **S5-7c — Live for visitors and grouped notifications in the UI.** T2. Latest polls
+- [x] **S5-7c — Live for visitors and grouped notifications in the UI.** T2. (cycle 361, `b4916da`) Latest polls
   `/feed/latest/count` every 60 s for visitors while visible (pill reuses the signed-in one);
   notifications page reads `grouped=true` (client-side grouping removed). Check: vitest, build,
   crawl.
