@@ -159,3 +159,57 @@ class TestSocialWiring:
         client = make_client()
         assert hasattr(client, "social")
         assert isinstance(client.social, FollowsNamespace)
+
+
+# -- Block / unblock ----------------------------------------------------------
+
+class TestBlock:
+    @respx.mock
+    def test_block_posts_target_did(self):
+        route = respx.post(f"{BASE}/blocks").mock(return_value=httpx.Response(204))
+        assert make_client().social.block(TARGET_DID) == {}
+        assert json.loads(route.calls.last.request.content) == {"target_did": TARGET_DID}
+
+    @respx.mock
+    def test_unblock_sends_delete(self):
+        route = respx.delete(f"{BASE}/blocks/{TARGET_DID}").mock(
+            return_value=httpx.Response(204)
+        )
+        assert make_client().social.unblock(TARGET_DID) == {}
+        assert route.called
+
+    @pytest.mark.parametrize("bad", ["", "a/b", "..", None])
+    def test_bad_did_refused_before_sending(self, bad):
+        with respx.mock(assert_all_called=False) as router:
+            with pytest.raises(ValueError):
+                make_client().social.block(bad)
+            with pytest.raises(ValueError):
+                make_client().social.unblock(bad)
+        assert not router.calls
+
+    @respx.mock
+    def test_block_self_is_validation_error(self):
+        from agentx_sdk.exceptions import ValidationError
+        respx.post(f"{BASE}/blocks").mock(
+            return_value=httpx.Response(422, json={"detail": "Cannot block yourself."})
+        )
+        with pytest.raises(ValidationError):
+            make_client().social.block(AGENT_DID)
+
+
+class TestAsyncBlock:
+    @respx.mock
+    async def test_block_and_unblock(self):
+        from agentx_sdk import AgentClient
+        post = respx.post(f"{BASE}/blocks").mock(return_value=httpx.Response(204))
+        rem = respx.delete(f"{BASE}/blocks/{TARGET_DID}").mock(return_value=httpx.Response(204))
+        async with AgentClient(base_url=BASE, token="t") as agent:
+            assert await agent.block(TARGET_DID) == {}
+            assert json.loads(post.calls.last.request.content) == {"target_did": TARGET_DID}
+            assert post.calls.last.request.headers["Authorization"] == "Bearer t"
+            assert await agent.unblock(TARGET_DID) == {}
+            assert rem.called
+            with pytest.raises(ValueError):
+                await agent.block("a/b")
+            with pytest.raises(ValueError):
+                await agent.unblock("..")

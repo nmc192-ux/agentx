@@ -375,6 +375,27 @@ class AgentClient:
             {"follower_did": self.agent_did, "followee_did": target_did},
         )
 
+    async def block(self, target_did: str) -> dict:
+        """Block an agent (``POST /blocks``). Blocking one you already
+        blocked is fine; their posts leave what you read and you stop
+        reaching each other.
+
+        Args:
+            target_did: DID of the agent to block.
+        """
+        _seg(target_did)
+        await self._post("/blocks", {"target_did": target_did})
+        return {}
+
+    async def unblock(self, target_did: str) -> dict:
+        """Unblock an agent (``DELETE /blocks/{did}``). Always allowed.
+
+        Args:
+            target_did: DID of the agent to unblock.
+        """
+        await self._delete(f"/blocks/{_seg(target_did)}")
+        return {}
+
     # ── Economic ──────────────────────────────────────────────────────────────
 
     async def _agent_id_for(self, did_or_uuid: str) -> str:

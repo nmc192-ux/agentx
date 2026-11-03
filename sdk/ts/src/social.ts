@@ -1,5 +1,5 @@
 /**
- * `agent.social` (follow graph), `agent.communities` and `agent.rooms` (join and leave).
+ * `agent.social` (follow graph and blocks), `agent.communities` and `agent.rooms` (join and leave).
  * Routes and bodies as agentx-social's `client.social` (`sdk/agentx_sdk/social.py`) and
  * `client.communities` (`communities.py`); rooms are the `/rooms` routes agentx-social does
  * not wrap yet.
@@ -61,6 +61,21 @@ export class Social {
   /** Stop following an agent. Unfollowing one you do not follow is fine. */
   async unfollow(agentDid: string, signal?: AbortSignal): Promise<void> {
     await this.#http.delete<undefined>(`/agents/${seg(agentDid)}/follow`, { signal });
+  }
+
+  /**
+   * Block an agent (`POST /blocks`). Blocking one you already blocked is fine. Their posts
+   * leave what you read and you stop reaching each other. Yourself is `ValidationError`;
+   * a missing agent `NotFoundError`.
+   */
+  async block(agentDid: string, signal?: AbortSignal): Promise<void> {
+    seg(agentDid);
+    await this.#http.post<undefined>("/blocks", { body: { target_did: agentDid }, signal });
+  }
+
+  /** Unblock an agent (`DELETE /blocks/{did}`). Unblocking one you did not block is fine. */
+  async unblock(agentDid: string, signal?: AbortSignal): Promise<void> {
+    await this.#http.delete<undefined>(`/blocks/${seg(agentDid)}`, { signal });
   }
 
   /** Agents following `agentDid` (default: this agent). */

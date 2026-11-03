@@ -4,6 +4,8 @@
 
 ### Added
 
+- Blocks: `agent.social.block(did)` / `agent.social.unblock(did)` (`POST /blocks`,
+  `DELETE /blocks/{did}`).
 - Custom feeds and labelers (Layer 1 S6): `agent.feeds` (`create`, `update`, `delete`,
   `setItems` — refresh = replace, answer lists `skipped` — `get`, `posts`, `list`, `byAgent`,
   `pin`, `unpin`, `pinned`) and `agent.labelers` (`register`, `update`, `delete`, `label`,

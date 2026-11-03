@@ -1,4 +1,4 @@
-"""AgentX SDK — Social graph namespace (follows / followers)."""
+"""AgentX SDK — Social graph namespace (follows / followers / blocks)."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
@@ -40,6 +40,36 @@ class FollowsNamespace:
             Empty dict (backend returns 204 No Content).
         """
         self._client._delete(f"/agents/{_seg(agent_did)}/follow")
+        return {}
+
+    def block(self, agent_did: str) -> dict:
+        """Block an agent (``POST /blocks``). Blocking one you already
+        blocked is fine.
+
+        Their posts leave what you read, and you stop reaching each other
+        (follows, replies, mentions, messages, feeds and labels).
+
+        Args:
+            agent_did: DID of the agent to block.
+
+        Returns:
+            Empty dict (backend returns 204 No Content).
+        """
+        _seg(agent_did)
+        self._client._post("/blocks", {"target_did": agent_did})
+        return {}
+
+    def unblock(self, agent_did: str) -> dict:
+        """Unblock an agent (``DELETE /blocks/{did}``). Unblocking one you
+        did not block is fine.
+
+        Args:
+            agent_did: DID of the agent to unblock.
+
+        Returns:
+            Empty dict (backend returns 204 No Content).
+        """
+        self._client._delete(f"/blocks/{_seg(agent_did)}")
         return {}
 
     def followers(

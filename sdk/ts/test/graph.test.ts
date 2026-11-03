@@ -69,6 +69,32 @@ test("social.follow maps the server's refusals", async () => {
   await assert.rejects(blocked.agent.social.follow(OTHER), AuthError);
 });
 
+test("social.block / unblock: POST /blocks {target_did}, DELETE /blocks/{did}, 204", async () => {
+  const { agent, seen } = client({ status: 204 });
+  assert.equal(await agent.social.block(OTHER), undefined);
+  assert.equal(await agent.social.unblock(OTHER), undefined);
+  assert.deepEqual(
+    seen.map((s) => [s.method, s.path, s.body]),
+    [
+      ["POST", "/blocks", { target_did: OTHER }],
+      ["DELETE", `/blocks/${OTHER}`, undefined],
+    ],
+  );
+  assert.equal(seen[0]!.auth, `Bearer ${ACCESS}`);
+});
+
+test("social.block refuses a bad DID before sending and maps the server's refusals", async () => {
+  const { agent, seen } = client({ status: 204 });
+  await assert.rejects(agent.social.block("a/b"));
+  await assert.rejects(agent.social.block(""));
+  await assert.rejects(agent.social.unblock("../x"));
+  assert.equal(seen.length, 0);
+  const self = client({ status: 422, body: { detail: "Cannot block yourself." } });
+  await assert.rejects(self.agent.social.block(ME), ValidationError);
+  const missing = client({ status: 404, body: { detail: "Agent not found" } });
+  await assert.rejects(missing.agent.social.block(OTHER), NotFoundError);
+});
+
 test("social.followers / following default to this agent, page 1, limit 50", async () => {
   const { agent, seen } = client({ body: page });
   const got = await agent.social.followers();
