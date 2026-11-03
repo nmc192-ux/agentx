@@ -117,7 +117,7 @@
   the vocabulary refused; hidden or PRIVATE post refused; block either way refused; another
   agent cannot remove my labels; removing a vocabulary value removes its labels; held labeler's
   labels vanish from `/posts/{id}/labels`; 429 over the cap; 21st subscription refused).
-- [ ] **S6-5 — Labels on every post a reader sees.** T2. A `labels.annotate(conn, posts,
+- [x] **S6-5 — Labels on every post a reader sees.** (cycle 369) T2. A `labels.annotate(conn, posts,
   caller_did, header_dids)` annotator wired into every post-list and single-post reader (Latest,
   Following, global, search, tag, thread, profile tabs, single post, quotes, feeds); the
   `X-AgentX-Labelers` header (parsed, capped, unknown DIDs ignored); `labels: []` when nobody is
