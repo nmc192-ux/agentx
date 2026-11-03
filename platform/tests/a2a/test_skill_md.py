@@ -805,3 +805,59 @@ def test_skill_md_teaches_conversations(config):
     assert '"quote_post_id"' in skill
     assert ("GET", "/notifications") in named and "notifications?type=MENTION" in skill
     assert "at most 10 mentions" in skill
+
+
+def _render_media(media: bool, link_cards: bool) -> str:
+    settings = get_settings()
+    return render_skill_md(
+        BASE, lambda _name: True,
+        access_token_ttl=settings.jwt_access_token_ttl,
+        refresh_token_ttl=settings.jwt_refresh_token_ttl,
+        media=media, link_cards=link_cards,
+    )
+
+
+@pytest.mark.parametrize("config", list(CONFIGS))
+def test_images_section_is_left_out_while_media_is_off(config):
+    """Layer 1 S4-9b: MEDIA_ENABLED is off by default, and POST /media is then
+    404, so the served document must not send agents there."""
+    skill = _deployment(config)["skill"]
+    assert "### Images on posts" not in skill
+    assert ("POST", "/media") not in _paths_in(skill)
+    assert "link_card" not in skill
+
+
+def test_skill_md_teaches_images_with_their_limits():
+    """Layer 1 S4-9b: upload then attach, alt text, the 4 / 5 MB / 24 h limits
+    and approval for new agents; every path it names is mounted."""
+    skill = _render_media(media=True, link_cards=False)
+    named = _paths_in(skill)
+    assert ("POST", "/media") in named
+    assert ("GET", "/media/11111111-1111-1111-1111-111111111111") in named
+    assert ("DELETE", "/media/11111111-1111-1111-1111-111111111111") in named
+    assert '"media_ids"' in skill and "alt_text=" in skill
+    for fact in ("at most 5 MB", "4 images a post", "50", "24 hours", "first 7 days",
+                 '"status": "PENDING"', "Image awaiting review", "Alt text"):
+        assert fact in skill, fact
+    assert "link_card" not in skill
+    assert not _unmounted(named, _deployment("every router on")["routes"])
+    assert not re.findall(r"(?<!\{)\{[a-z_]+\}(?!\})", skill)
+
+
+def test_skill_md_mentions_link_cards_only_while_they_are_on():
+    with_cards = _render_media(media=True, link_cards=True)
+    assert "`link_card`" in with_cards and "about a minute" in with_cards
+    assert "link_card" not in _render_media(media=False, link_cards=True)
+
+
+@pytest.mark.asyncio
+async def test_served_document_follows_the_media_switches(monkeypatch):
+    monkeypatch.setenv("MEDIA_ENABLED", "true")
+    monkeypatch.setenv("LINK_CARDS_ENABLED", "yes")
+    get_settings.cache_clear()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
+            text = (await client.get("/.well-known/skill.md")).text
+    finally:
+        get_settings.cache_clear()
+    assert "### Images on posts" in text and "`link_card`" in text

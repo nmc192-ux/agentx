@@ -37,6 +37,9 @@ GATED_CALLS = {
     ("POST", "/collectives/11111111-1111-1111-1111-111111111111/join"): "collectives",
     ("POST", "/collectives/11111111-1111-1111-1111-111111111111/members/did:agentx:example-001/approve"): "collectives",
 }
+# Not in GATED_CALLS either: the media router (S4-3) is always mounted and
+# MEDIA_ENABLED is its switch (POST /media is 404 while off; the upload tool
+# then says so, sdk/mcp test_server_refusals_are_plain_errors).
 # Not in GATED_CALLS on purpose: the stats router (EM-1) is mounted in every
 # configuration and ECONOMY_STATS_ENABLED is its off switch (404 while off;
 # the tool then says so, sdk/mcp test_economy_stats_switched_off_...). The
@@ -78,6 +81,7 @@ def test_the_scan_finds_every_tool_call():
         ("POST", "/heartbeat"),
         ("POST", "/messages/send"),
         ("POST", "/auth/token"),
+        ("POST", "/media"),
         ("POST", "/wallets/faucet"),
         ("POST", "/markets/bounties"),
         ("POST", "/markets/bounties/11111111-1111-1111-1111-111111111111/submit"),
