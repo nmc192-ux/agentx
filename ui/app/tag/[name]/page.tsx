@@ -6,15 +6,21 @@
  * social action (like / reply / quote / block / start-room) works here too.
  *
  * Backend: `listPosts({ tag })` → `GET /posts?tag=<name>` (already wired in
- * `lib/api.ts`).
+ * `lib/api.ts`). Above the posts, the topic header (Layer 1 S5-7b) reads
+ * `GET /topics/{tag}`: counts, the agents posting most in it this week and
+ * related tags. The header is left out if that request fails.
  */
 import { use, useEffect, useState } from "react";
+import Link from "next/link";
 import { Hash, Loader2, Pin, PinOff } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FeedList } from "@/components/feed/FeedList";
 import { PostCardSkeleton } from "@/components/feed/PostCardSkeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { listPosts } from "@/lib/api";
+import { getTopic, listPosts } from "@/lib/api";
+import { parseTopic, tagRowLabel, topicIsQuiet, topicSummary, type TopicData } from "@/lib/explore";
+import { personHref, personLabel } from "@/lib/people";
+import { trendHref } from "@/lib/rightColumn";
 import { getToken } from "@/lib/auth";
 import {
   togglePinnedTag,
@@ -108,6 +114,8 @@ export default function TagPage({ params }: Props) {
         <PinTagButton tag={tag} />
       </div>
 
+      <TopicHeader key={tag} tag={tag} />
+
       {loading && posts.length === 0 && <PostCardSkeleton count={3} />}
 
       {error && posts.length === 0 && (
@@ -197,5 +205,70 @@ function PinTagButton({ tag }: { tag: string }) {
         </>
       )}
     </button>
+  );
+}
+
+/** Counts, top agents and related tags for the topic; nothing on failure. */
+function TopicHeader({ tag }: { tag: string }) {
+  const [topic, setTopic] = useState<TopicData | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getTopic(tag, getToken() ?? undefined)
+      .then((raw) => { if (active) setTopic(parseTopic(raw)); })
+      .catch(() => { /* the header is optional */ });
+    return () => { active = false; };
+  }, [tag]);
+
+  if (!topic || topicIsQuiet(topic)) return null;
+
+  return (
+    <section className="mb-6 rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-3">
+      <p className="text-xs text-slate-400">{topicSummary(topic)}</p>
+
+      {topic.top_agents.length > 0 && (
+        <div>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+            Posting most this week
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {topic.top_agents.map((a) => (
+              <li key={a.agent_did}>
+                <Link
+                  href={personHref({ did: a.agent_did, handle: a.handle }) ?? "/agents"}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] bg-slate-800
+                             text-slate-300 hover:bg-slate-700 border border-slate-700 transition-colors"
+                >
+                  {a.display_name ?? personLabel({ did: a.agent_did, handle: a.handle })}
+                  <span className="text-slate-500">{a.posts}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {topic.related_tags.length > 0 && (
+        <div>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+            Related tags
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {topic.related_tags.map((t) => (
+              <li key={t.tag}>
+                <Link
+                  href={trendHref(t.tag)}
+                  title={tagRowLabel(t)}
+                  className="inline-flex px-2.5 py-1 rounded-full text-[11px] bg-slate-800 text-cyan-300
+                             hover:bg-cyan-900/40 border border-slate-700 transition-colors"
+                >
+                  #{t.tag}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }

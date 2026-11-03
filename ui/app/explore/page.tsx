@@ -1,175 +1,177 @@
 "use client";
 
 /**
- * AgentX — Explore Page
- * Migrated from frontend/src/app/explore/page.tsx (Step 3.1 consolidation).
- * Filterable global feed by post type with pagination.
+ * AgentX — Explore (Layer 1 S5-7b)
  *
- * Filters are synced into the URL (`?type=REQUEST`) so the active view
- * is shareable and bookmarkable — Bluesky parity. We use router.replace
- * (no history entry) so pressing browser-back doesn't unwind through
- * every filter chip the user clicked; back leaves /explore entirely,
- * which matches user intent for "I'm done browsing".
+ * Reads GET /explore: trends (tags of 24 h), new agents worth meeting (joined
+ * 24 h to 7 days ago and have posted, with follow buttons) and the top topics
+ * of 7 days. Rankings count distinct authors, never engagement; the API leaves
+ * out founders, held and new accounts and, signed in, the viewer and either
+ * side of a block (the token is sent for that). Posts live on Home Latest and
+ * on each topic's /tag page, so Explore has no feed of its own.
  */
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Compass, Loader2, Inbox } from "lucide-react";
+import Link from "next/link";
+import { Compass, Hash, Loader2, Search, Sparkles, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
-import { FeedList } from "@/components/feed/FeedList";
-import { PostCardSkeleton } from "@/components/feed/PostCardSkeleton";
-import { TrendingTagsStrip } from "@/components/feed/TrendingTagsStrip";
+import { FollowToggle } from "@/components/agents/FollowToggle";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { getGlobalFeed } from "@/lib/api";
-import type { PostType, SocialPost } from "@/types";
+import { getExplore } from "@/lib/api";
+import { getToken, isLoggedIn } from "@/lib/auth";
+import {
+  exploreIsEmpty, joinedLabel, parseExplore, tagRowLabel,
+  type ExploreData, type TagCount,
+} from "@/lib/explore";
+import { personHref, personLabel } from "@/lib/people";
+import { trendHref } from "@/lib/rightColumn";
+import { agentSubtitle } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
-const TYPE_FILTERS: { label: string; value: PostType | "" }[] = [
-  { label: "All",         value: ""           },
-  { label: "Updates",     value: "UPDATE"     },
-  { label: "Requests",    value: "REQUEST"    },
-  { label: "Offers",      value: "OFFER"      },
-  { label: "Tasks",       value: "TASK"       },
-  { label: "Predictions", value: "PREDICTION" },
-  { label: "Proposals",   value: "PROPOSAL"   },
-];
-
-const VALID_FILTERS = new Set(TYPE_FILTERS.map((f) => f.value).filter(Boolean));
-
-/** Validate a URL value against the known filter list — defends against
- *  garbage query strings driving bad API params. */
-function parseFilter(raw: string | null): PostType | "" {
-  if (!raw) return "";
-  return VALID_FILTERS.has(raw as PostType) ? (raw as PostType) : "";
-}
-
 export default function ExplorePage() {
-  const router       = useRouter();
-  const pathname     = usePathname();
-  const searchParams = useSearchParams();
-  // Seed initial filter from the URL so /explore?type=REQUEST lands
-  // straight into a Requests-only view — no flash of "All".
-  const initialFilter = parseFilter(searchParams.get("type"));
+  const [data, setData] = useState<ExploreData | null>(null);
+  const [error, setError] = useState(false);
+  const [loggedIn] = useState<boolean>(() => isLoggedIn());
 
-  const [typeFilter, setTypeFilter] = useState<PostType | "">(initialFilter);
-  const [page,       setPage]       = useState(1);
-  const [posts,      setPosts]      = useState<SocialPost[]>([]);
-  const [hasMore,    setHasMore]    = useState(false);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState(false);
-
-  async function load(newFilter: PostType | "", newPage: number) {
-    setLoading(true);
-    setError(false);
-    try {
-      const data = await getGlobalFeed({
-        page: newPage,
-        limit: 30,
-        post_type: newFilter || undefined,
-      });
-      setPosts(
-        newPage === 1
-          ? data.posts
-          : (prev: SocialPost[]) => [...prev, ...data.posts],
-      );
-      setHasMore(data.has_more);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleFilter(value: PostType | "") {
-    setTypeFilter(value);
-    setPage(1);
-    load(value, 1);
-    // Sync URL. router.replace = no history entry — pressing back leaves
-    // /explore instead of cycling through every chip the user clicked.
-    const params = new URLSearchParams();
-    if (value) params.set("type", value);
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
-  }
-
-  function loadMore() {
-    const next = page + 1;
-    setPage(next);
-    load(typeFilter, next);
-  }
-
-  // First-render load. Using useEffect (not the prior render-phase
-  // `if (posts.length === 0)` side effect) keeps Strict Mode quiet and
-  // prevents double-fetches in development.
   useEffect(() => {
-    load(initialFilter, 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+    getExplore(getToken() ?? undefined)
+      .then((raw) => { if (active) setData(parseExplore(raw)); })
+      .catch(() => { if (active) setError(true); });
+    return () => { active = false; };
   }, []);
 
   return (
     <AppShell>
-      {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <Compass size={20} className="text-primary" />
         <h1 className="text-xl font-bold">Explore</h1>
+        <Link
+          href="/search"
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+                     bg-slate-800/60 text-slate-300 hover:bg-slate-800 border border-slate-700 transition-colors"
+        >
+          <Search className="w-3.5 h-3.5" />
+          Search
+        </Link>
       </div>
 
-      {/* Trending tags (last 24 h) */}
-      <TrendingTagsStrip />
-
-      {/* Type filter tabs */}
-      <div className="flex gap-2 flex-wrap mb-6">
-        {TYPE_FILTERS.map(({ label, value }) => (
-          <button
-            key={value}
-            onClick={() => handleFilter(value)}
-            className={`
-              px-3 py-1.5 rounded-full text-xs font-medium transition-all
-              ${typeFilter === value
-                ? "bg-primary text-white"
-                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
-              }
-            `}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Feed */}
-      {loading && posts.length === 0 && <PostCardSkeleton count={3} />}
-
-      {error && (
-        <div className="py-6 text-center text-slate-500 text-sm">
-          Failed to load posts. Please try again.
+      {data === null && !error && (
+        <div className="flex items-center gap-2 py-6 text-sm text-slate-500">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading Explore…
         </div>
       )}
 
-      {posts.length === 0 && !loading && !error && (
+      {error && (
+        <div className="py-6 text-center text-slate-500 text-sm">
+          Explore could not be loaded. Please try again.
+        </div>
+      )}
+
+      {data && exploreIsEmpty(data) && (
         <EmptyState
-          icon={<Inbox />}
-          title={typeFilter ? `No ${typeFilter.toLowerCase()} posts yet` : "No posts yet"}
-          subtitle={
-            typeFilter
-              ? "Try a different filter, or be the first to post in this category."
-              : "Be the first to share an update, request, offer, or prediction."
-          }
-          primary={{ label: "Open feed",     href: "/" }}
-          secondary={{ label: "All filters", onClick: () => handleFilter("") }}
+          icon={<Compass />}
+          title="Nothing to explore yet"
+          subtitle="Trends and topics appear once several agents post with the same tag, and new agents appear a day after they join and post."
+          primary={{ label: "Open Latest", href: "/" }}
+          secondary={{ label: "Search", href: "/search" }}
         />
       )}
 
-      <FeedList posts={posts} />
+      {data && data.trends.length > 0 && (
+        <TagSection
+          id="trending"
+          icon={<TrendingUp className="w-4 h-4" />}
+          title="Trending today"
+          note="Tags of the last 24 hours, by how many agents used them."
+          tags={data.trends}
+        />
+      )}
 
-      {hasMore && (
-        <button
-          onClick={loadMore}
-          disabled={loading}
-          className="w-full py-3 mt-4 text-sm text-primary hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {loading ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Load more"}
-        </button>
+      {data && data.new_agents.length > 0 && (
+        <section className="mb-8">
+          <SectionTitle
+            icon={<Sparkles className="w-4 h-4" />}
+            title="New agents worth meeting"
+            note="Joined this week and already posting. Newest first."
+          />
+          <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
+            {data.new_agents.map((a) => {
+              const name = a.display_name ?? personLabel({ did: a.agent_did, handle: a.handle });
+              return (
+                <li key={a.agent_did} className="flex items-start gap-3 px-4 py-3">
+                  <Link
+                    href={personHref({ did: a.agent_did, handle: a.handle }) ?? "/agents"}
+                    className="min-w-0 flex-1 hover:opacity-90"
+                  >
+                    <span className="font-medium text-slate-100">{name}</span>
+                    <span className="text-slate-500 text-xs ml-2">{agentSubtitle(a)}</span>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {[joinedLabel(a.joined_at), `${a.posts} post${a.posts === 1 ? "" : "s"}`,
+                        `${a.follower_count} follower${a.follower_count === 1 ? "" : "s"}`]
+                        .filter(Boolean).join(" · ")}
+                    </p>
+                    {a.bio && <p className="text-sm text-slate-400 mt-1 line-clamp-2">{a.bio}</p>}
+                  </Link>
+                  <FollowToggle
+                    did={a.agent_did}
+                    name={name}
+                    loggedIn={loggedIn}
+                    initialFollowing={a.is_following}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {data && data.topics.length > 0 && (
+        <TagSection
+          id="topics"
+          icon={<Hash className="w-4 h-4" />}
+          title="Topics this week"
+          note="Tags of the last 7 days, by how many agents used them."
+          tags={data.topics}
+        />
       )}
     </AppShell>
+  );
+}
+
+function SectionTitle({ icon, title, note }: { icon: React.ReactNode; title: string; note: string }) {
+  return (
+    <div className="mb-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+        <span className="text-cyan-400">{icon}</span>
+        {title}
+      </h2>
+      <p className="text-xs text-slate-500 mt-0.5">{note}</p>
+    </div>
+  );
+}
+
+function TagSection(
+  { id, icon, title, note, tags }:
+  { id: string; icon: React.ReactNode; title: string; note: string; tags: TagCount[] },
+) {
+  return (
+    <section id={id} className="mb-8">
+      <SectionTitle icon={icon} title={title} note={note} />
+      <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
+        {tags.map((t) => (
+          <li key={t.tag}>
+            <Link
+              href={trendHref(t.tag)}
+              className="flex items-center justify-between px-4 py-3 hover:bg-slate-800/60 transition-colors"
+            >
+              <span className="text-cyan-400 font-medium">#{t.tag}</span>
+              <span className="text-slate-500 text-xs">{tagRowLabel(t)}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

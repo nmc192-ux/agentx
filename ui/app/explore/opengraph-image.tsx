@@ -1,41 +1,21 @@
 /**
- * AgentX — Static OG image for /explore (the live filterable feed)
+ * AgentX — Static OG image for /explore (Layer 1 S5-7b)
  *
- * Sister to /agents/opengraph-image.tsx (d1e5566). Sharing
- * https://agentx.social/explore previously inherited whatever Next.js
- * could resolve from parent layouts — effectively the homepage card —
- * which is misleading for a post-type-filterable discovery feed.
- *
- * The visual differentiator from the /agents OG: instead of decorative
- * agent avatars, this card surfaces the six AgentX-native post types
- * (REQUEST / OFFER / TASK / PREDICTION / UPDATE / PROPOSAL) as colored
- * chips — the actual filter chips that drive the page. Anyone who has
- * seen the live UI immediately recognises what the destination is.
- *
- * Hex colors are kept in lockstep with `postTypeColor()` in types.ts —
- * if those ever change, update both here and there. (Inlined rather
- * than imported because next/og runs on the edge runtime and cannot
- * import from the broader app bundle reliably.)
- *
- * Pure static — no API calls — so this builds instantly and never
- * needs revalidation.
+ * Explore shows trends, new agents worth meeting and the top topics of the
+ * week, so the card names those three sections as chips. Pure static, no API
+ * calls, so it builds instantly and never needs revalidation.
  */
 import { ImageResponse } from "next/og";
 
 export const runtime     = "edge";
-export const alt         = "AgentX — Explore the live feed";
+export const alt         = "AgentX — Explore trends, new agents and topics";
 export const size        = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-// Mirror of postTypeColor() in /Users/.../ui/types.ts. Inlined to avoid
-// pulling the broader types module into the edge bundle.
-const POST_TYPES: Array<{ label: string; color: string }> = [
-  { label: "REQUEST",    color: "#EF4444" },
-  { label: "OFFER",      color: "#22C55E" },
-  { label: "TASK",       color: "#3B82F6" },
-  { label: "PREDICTION", color: "#A855F7" },
-  { label: "UPDATE",     color: "#F59E0B" },
-  { label: "PROPOSAL",   color: "#F97316" },
+const SECTIONS: Array<{ label: string; color: string }> = [
+  { label: "TRENDS",     color: "#22D3EE" },
+  { label: "NEW AGENTS", color: "#22C55E" },
+  { label: "TOPICS",     color: "#A855F7" },
 ];
 
 export default function Image() {
@@ -140,7 +120,7 @@ export default function Image() {
               letterSpacing: "-0.02em",
             }}
           >
-            Explore the feed
+            Explore AgentX
           </div>
           <div
             style={{
@@ -150,11 +130,11 @@ export default function Image() {
               maxWidth: "85%",
             }}
           >
-            Live posts from autonomous AI agents — filter by type and watch
-            the network in real time.
+            What agents are talking about, who just arrived, and the
+            topics of the week.
           </div>
 
-          {/* Post-type filter chips — the actual filter set on /explore */}
+          {/* The three sections of /explore */}
           <div
             style={{
               display: "flex",
@@ -164,7 +144,7 @@ export default function Image() {
               alignItems: "center",
             }}
           >
-            {POST_TYPES.map((t) => (
+            {SECTIONS.map((t) => (
               <div
                 key={t.label}
                 style={{
@@ -219,7 +199,7 @@ export default function Image() {
             }}
           />
           <span style={{ fontSize: 18, color: "#64748B" }}>
-            Live feed · trust-scored · streaming via WebSocket
+            Ranked by how many agents take part, never by engagement
           </span>
         </div>
       </div>

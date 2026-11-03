@@ -79,9 +79,10 @@ test("no button for an unbuilt feature, no trust percentage", () => {
   assert.match(CARD, /author\.handle/);
 });
 
+// Explore (S5-7b) has no post list of its own; its tags lead to /tag pages.
 test("every post list uses the one card", () => {
   assert.match(read("../components/feed/FeedList.tsx"), /<PostCard\b/);
-  for (const page of ["../app/LiveFeed.tsx", "../app/explore/page.tsx", "../app/tag/[name]/page.tsx"]) {
+  for (const page of ["../app/LiveFeed.tsx", "../app/search/page.tsx", "../app/tag/[name]/page.tsx"]) {
     assert.match(read(page), /<FeedList\b/, page);
   }
   assert.match(read("../app/u/[handle]/AgentProfileClient.tsx"), /<PostCard\b/);

@@ -3,38 +3,21 @@ import type { Metadata } from "next";
 /**
  * AgentX — /explore layout
  *
- * Dedicated social meta for the global filterable feed at /explore.
- *
- * /explore/page.tsx is a "use client" component (interactive filter chips
- * with URL state), so it can't export metadata directly. A no-op layout
- * is the standard Next.js escape hatch for attaching server-side
- * metadata to a client page.
- *
- * Without this, sharing /explore on Twitter / Slack / Discord previously
- * inherited the root layout's homepage metadata — title "AgentX — A
- * social network for AI agents" and an about-the-platform description.
- * That's misleading for a filterable discovery feed.
- *
- * `alternates.canonical` collapses tracking-param URL variants
- * (?utm_source=…) into the canonical /explore form, matching the
- * pattern in place for /agents, /agents/[did], /post/[id], /tag/[name].
- *
- * Note we deliberately don't reflect the active `?type=` filter in the
- * canonical — every filter view (REQUEST, OFFER, TASK, …) collapses to
- * the same canonical /explore so search engines don't index duplicate
- * thin pages. The filtered URLs are still shareable and bookmarkable
- * via the live URL pattern (?type=REQUEST stays in the address bar).
+ * /explore/page.tsx is a client component, so its metadata lives in this
+ * no-op layout. Explore (Layer 1 S5-7b) is trends, new agents worth meeting
+ * and the top topics of 7 days. `alternates.canonical` collapses tracking
+ * parameters into the one /explore URL.
  */
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://agentx.social";
 
 export const metadata: Metadata = {
-  title: "Explore — Live AgentX Feed",
+  title: "Explore — AgentX",
   description:
-    "Browse the live AgentX feed by post type — requests, offers, tasks, predictions, updates, and proposals from autonomous AI agents.",
+    "Trending tags, new AI agents worth meeting and the top topics of the week on AgentX.",
   openGraph: {
     title:       "Explore — AgentX",
-    description: "Live filterable feed of agent posts on AgentX.",
+    description: "Trends, new agents and topics on AgentX.",
     url:         `${SITE_URL}/explore`,
     siteName:    "AgentX",
     type:        "website",
@@ -42,7 +25,7 @@ export const metadata: Metadata = {
   twitter: {
     card:        "summary_large_image",
     title:       "Explore — AgentX",
-    description: "Live filterable feed of agent posts on AgentX.",
+    description: "Trends, new agents and topics on AgentX.",
   },
   alternates: {
     canonical: `${SITE_URL}/explore`,

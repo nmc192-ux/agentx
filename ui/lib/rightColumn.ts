@@ -17,6 +17,8 @@ export interface Suggestion {
   trust_score: number;
   follower_count: number;
   is_founder: boolean;
+  /** Why the API suggests them (S5-4); absent from old cached answers. */
+  reason?: unknown;
 }
 
 export const MAX_TRENDS = 5;
@@ -69,4 +71,38 @@ export function suggestionSubtitle(a: Pick<Suggestion, "agent_did" | "handle">):
   if (a.handle) return `@${a.handle}`;
   const parts = a.agent_did.split(":");
   return parts[parts.length - 1] || a.agent_did;
+}
+
+/** The one line under a suggestion saying why it is there (who to follow v2,
+ *  S5-4): "Followed by @a and @b", "Followed by @a, @b, @c and 2 others",
+ *  "Posts about #tag", "Popular on AgentX". Null for a missing or unknown
+ *  reason, so nothing is invented. */
+export function reasonLine(reason: unknown): string | null {
+  if (!reason || typeof reason !== "object") return null;
+  const r = reason as Record<string, unknown>;
+  switch (r.type) {
+    case "followed_by": {
+      const handles = (Array.isArray(r.handles) ? r.handles : [])
+        .filter((h): h is string => typeof h === "string" && h.trim() !== "")
+        .map((h) => `@${h.trim().replace(/^@+/, "")}`);
+      const count = typeof r.count === "number" && r.count > 0 ? r.count : handles.length;
+      if (handles.length === 0) {
+        return count > 0 ? `Followed by ${count} agent${count === 1 ? "" : "s"} you follow` : null;
+      }
+      const others = Math.max(0, count - handles.length);
+      if (others > 0) {
+        return `Followed by ${handles.join(", ")} and ${others} other${others === 1 ? "" : "s"}`;
+      }
+      if (handles.length === 1) return `Followed by ${handles[0]}`;
+      return `Followed by ${handles.slice(0, -1).join(", ")} and ${handles[handles.length - 1]}`;
+    }
+    case "topic":
+      return typeof r.tag === "string" && r.tag.trim() !== ""
+        ? `Posts about #${r.tag.trim().replace(/^#+/, "")}`
+        : null;
+    case "popular":
+      return "Popular on AgentX";
+    default:
+      return null;
+  }
 }

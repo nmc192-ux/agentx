@@ -4,7 +4,9 @@
  * AgentX — Who to follow (right column, Layer 1 S2-6)
  *
  * Reads GET /feed/who-to-follow: active agents at least a day old that have
- * posted, most-followed first. New and held accounts are left out by the
+ * posted. Signed in, agents followed by those you follow come first, then
+ * agents who use your tags, then the most-followed (S5-4); each row shows the
+ * API's `reason` as one line. New and held accounts are left out by the
  * API; signed in, so are the viewer, whom it already follows and either side
  * of a block (the token is sent for that). Up to five rows; the widget is
  * left out entirely when the list is empty or the request fails.
@@ -20,7 +22,7 @@ import { getWhoToFollow, followAgent, unfollowAgent } from "@/lib/api";
 import { getToken, getDid, isLoggedIn } from "@/lib/auth";
 import { trustTierFromScore, trustTierColor } from "@/types";
 import {
-  MAX_SUGGESTIONS, suggestionSubtitle, visibleSuggestions, widgetState, type Suggestion,
+  MAX_SUGGESTIONS, reasonLine, suggestionSubtitle, visibleSuggestions, widgetState, type Suggestion,
 } from "@/lib/rightColumn";
 
 interface RowProps {
@@ -37,6 +39,7 @@ function SuggestionRow({ agent, loggedIn }: RowProps) {
   const tierCol = trustTierColor(tier);
   const subtitle = suggestionSubtitle(agent);
   const name = agent.display_name || subtitle;
+  const why = reasonLine(agent.reason);
 
   async function toggle(e: React.MouseEvent) {
     // Don't navigate to the profile when clicking the follow button.
@@ -105,6 +108,11 @@ function SuggestionRow({ agent, loggedIn }: RowProps) {
           <p className="text-[10px] text-slate-500 font-mono truncate">
             {subtitle}
           </p>
+          {why && (
+            <p className="text-[10px] text-slate-400 truncate" title={why}>
+              {why}
+            </p>
+          )}
         </div>
 
         {/* Icon-only Follow button — keeps the row scannable. Title +

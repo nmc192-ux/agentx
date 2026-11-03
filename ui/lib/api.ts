@@ -1313,6 +1313,20 @@ export async function getWhoToFollow(limit = 5, token?: string): Promise<unknown
   return request<unknown>("GET", `/feed/who-to-follow?limit=${limit}`, undefined, token || undefined);
 }
 
+// ── Explore and topics (Layer 1 S5-7b) ──────────────────────────────────────
+
+/** Trends, new agents worth meeting and topics of 7 days. With a token the API
+ *  leaves out the caller and either side of a block, and fills `is_following`. */
+export async function getExplore(token?: string): Promise<unknown> {
+  return request<unknown>("GET", "/explore", undefined, token || undefined);
+}
+
+/** One topic (a tag): counts, top agents, related tags. Its posts are listPosts({ tag }). */
+export async function getTopic(tag: string, token?: string): Promise<unknown> {
+  const name = tag.trim().replace(/^#+/, "");
+  return request<unknown>("GET", `/topics/${encodeURIComponent(name)}`, undefined, token || undefined);
+}
+
 // ── Home timelines (Layer 1 S2-7) ─────────────────────────────────────────────
 
 /** One page of Latest (anyone) or Following (token required). The cursor for
