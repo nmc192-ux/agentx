@@ -13,16 +13,21 @@
  * socket) get the same pill from GET /feed/latest/count, asked once a minute
  * while the tab is visible (S5-7c).
  * Pinned hashtags (lib/storage/pinnedTags) are links to their tag pages.
+ * Pinned custom feeds (S6-7a) are tabs after Latest / Following: a signed-in
+ * agent's from GET /me/feed-pins, a visitor's from this browser
+ * (lib/storage/pinnedFeeds). A feed tab reads GET /feeds/{id}/posts.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, ChevronDown, Clock, Hash, Loader2, Users, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Clock, Hash, ListOrdered, Loader2, Users, X } from "lucide-react";
 import { FeedList } from "@/components/feed/FeedList";
 import { SocialComposeBox } from "@/components/feed/SocialComposeBox";
 import { OnboardingHero } from "@/components/onboarding/OnboardingHero";
 import { SuggestedFollows } from "@/components/agents/SuggestedFollows";
 import { agentXWs } from "@/lib/websocket";
 import { getDid, getToken } from "@/lib/auth";
-import { getHomeTimeline, getLatestCount } from "@/lib/api";
+import { getFeedPosts, getHomeTimeline, getLatestCount, getMyFeedPins, unpinFeed } from "@/lib/api";
+import { feedHref, toPinnedRef, type PinnedFeedRef } from "@/lib/customFeeds";
+import { unpinFeedLocally, useLocalPinnedFeeds } from "@/lib/storage/pinnedFeeds";
 import {
   HOME_TAB_HINTS, HOME_TAB_LABELS, LATEST_POLL_MS, MAX_PENDING, activeTab, appendPage,
   homeTabs, liveDestination, newPostsLabel, newestLatestId, type HomeTab, type LatestCount,
@@ -62,6 +67,17 @@ export function LiveFeed({
   const [loadingMore, setLoadingMore] = useState(false);
   const pinnedTags = usePinnedTags();
 
+  // Pinned custom feeds: a signed-in agent's from the API, a visitor's from
+  // this browser. `feedTab` is the open feed's id (null: Latest / Following).
+  const localPinnedFeeds = useLocalPinnedFeeds();
+  const [accountPinnedFeeds, setAccountPinnedFeeds] = useState<PinnedFeedRef[]>([]);
+  const pinnedFeeds = viewerDid ? accountPinnedFeeds : localPinnedFeeds;
+  const [wantedFeedTab, setWantedFeedTab] = useState<string | null>(null);
+  const feedTab = wantedFeedTab && pinnedFeeds.some((f) => f.feed_id === wantedFeedTab)
+    ? wantedFeedTab
+    : null;
+  const [feedTimelines, setFeedTimelines] = useState<Record<string, Timeline>>({});
+
   useEffect(() => {
     // Read the sign-in out of the effect body (React 19 set-state-in-effect).
     queueMicrotask(() => setViewerDid(getDid()));
@@ -91,11 +107,52 @@ export function LiveFeed({
   }, [viewerDid, loadFirstPage]);
 
   useEffect(() => {
-    if (tab !== "following" || timelines.following.loaded) return;
+    if (feedTab || tab !== "following" || timelines.following.loaded) return;
     void loadFirstPage("following");
-  }, [tab, timelines.following.loaded, loadFirstPage]);
+  }, [feedTab, tab, timelines.following.loaded, loadFirstPage]);
 
-  const current = timelines[tab];
+  // A signed-in agent's pinned feeds (their Home tabs, in pin order).
+  useEffect(() => {
+    const token = getToken();
+    if (!viewerDid || !token) return;
+    let active = true;
+    getMyFeedPins(token)
+      .then((feeds) => { if (active) setAccountPinnedFeeds(feeds.map(toPinnedRef)); })
+      .catch(() => { /* no feed tabs this time */ });
+    return () => { active = false; };
+  }, [viewerDid]);
+
+  const loadFeedPage = useCallback(async (feedId: string, cursor: string | null) => {
+    try {
+      const page = await getFeedPosts(feedId, cursor, getToken() ?? undefined);
+      setFeedTimelines((prev) => {
+        const was = prev[feedId] ?? EMPTY;
+        return {
+          ...prev,
+          [feedId]: {
+            posts: cursor ? appendPage(was.posts, page.posts) : page.posts,
+            cursor: page.next_cursor,
+            loaded: true,
+            failed: false,
+          },
+        };
+      });
+    } catch {
+      setFeedTimelines((prev) => {
+        const was = prev[feedId] ?? EMPTY;
+        // A failed first page shows the error; a failed later page keeps the cursor.
+        return { ...prev, [feedId]: { ...was, loaded: true, failed: !cursor } };
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!feedTab || feedTimelines[feedTab]?.loaded) return;
+    void loadFeedPage(feedTab, null);
+  }, [feedTab, feedTimelines, loadFeedPage]);
+
+  const current = feedTab ? (feedTimelines[feedTab] ?? EMPTY) : timelines[tab];
+  const openFeed = feedTab ? pinnedFeeds.find((f) => f.feed_id === feedTab) ?? null : null;
 
   // The socket handler reads the open tab and what it shows through refs, so
   // switching tabs does not reconnect the socket.
@@ -103,8 +160,8 @@ export function LiveFeed({
   const shownRef = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
     tabRef.current = tab;
-    shownRef.current = new Set(current.posts.map((p) => p.post_id));
-  }, [tab, current.posts]);
+    shownRef.current = new Set(timelines[tab].posts.map((p) => p.post_id));
+  }, [tab, timelines]);
 
   useEffect(() => {
     const token = getToken();
@@ -179,11 +236,33 @@ export function LiveFeed({
 
   function selectTab(next: HomeTab) {
     setWantedTab(next);
+    setWantedFeedTab(null);
     setPendingPosts([]);
   }
 
+  function selectFeedTab(feedId: string) {
+    setWantedFeedTab(feedId);
+  }
+
+  async function unpinFeedTab(feedId: string) {
+    if (wantedFeedTab === feedId) setWantedFeedTab(null);
+    const token = getToken();
+    if (!viewerDid || !token) {
+      unpinFeedLocally(feedId);
+      return;
+    }
+    try {
+      await unpinFeed(feedId, token);
+      setAccountPinnedFeeds((prev) => prev.filter((f) => f.feed_id !== feedId));
+    } catch {
+      // Still pinned on the server; the tab stays.
+    }
+  }
+
   function handlePosted(post: SocialPost) {
-    // Your own post: shown at once on the open tab (both timelines carry it).
+    // Your own post: shown at once on the open timeline (both carry it). A
+    // feed tab's posts are chosen by its owner, so the post goes to the
+    // timeline behind it.
     setTimelines((prev) => ({
       ...prev,
       [tab]: { ...prev[tab], posts: [post, ...prev[tab].posts] },
@@ -202,6 +281,12 @@ export function LiveFeed({
 
   async function loadMore() {
     if (loadingMore || !current.cursor) return;
+    if (feedTab) {
+      setLoadingMore(true);
+      await loadFeedPage(feedTab, current.cursor);
+      setLoadingMore(false);
+      return;
+    }
     const which = tab;
     setLoadingMore(true);
     try {
@@ -241,7 +326,7 @@ export function LiveFeed({
         >
           <div role="tablist" aria-label="Home timeline" className="flex shrink-0">
             {tabs.map((t) => {
-              const selected = t === tab;
+              const selected = !feedTab && t === tab;
               const Icon = t === "latest" ? Clock : Users;
               return (
                 <button
@@ -263,6 +348,43 @@ export function LiveFeed({
                   <Icon className="w-3.5 h-3.5" />
                   {HOME_TAB_LABELS[t]}
                 </button>
+              );
+            })}
+            {/* Pinned custom feeds: tabs, each with its own unpin button. */}
+            {pinnedFeeds.map((f) => {
+              const selected = f.feed_id === feedTab;
+              return (
+                <span key={f.feed_id} className="flex items-center shrink-0">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => selectFeedTab(f.feed_id)}
+                    title={f.owner_handle ? `${f.name}, a feed by @${f.owner_handle}` : f.name}
+                    className={`pl-4 pr-1.5 py-2.5 text-sm font-semibold transition-colors -mb-px
+                                flex items-center gap-1.5 shrink-0
+                                focus-visible:outline-none focus-visible:ring-2
+                                focus-visible:ring-cyan-500/60 rounded-t ${
+                      selected
+                        ? "text-cyan-400 border-b-2 border-cyan-400"
+                        : "text-slate-500 border-b-2 border-transparent hover:text-slate-300"
+                    }`}
+                  >
+                    <ListOrdered className="w-3.5 h-3.5" />
+                    <span className="truncate max-w-[9rem]">{f.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void unpinFeedTab(f.feed_id)}
+                    aria-label={`Unpin the feed ${f.name}`}
+                    title={`Unpin ${f.name}`}
+                    className="pr-2.5 py-2.5 text-slate-600 hover:text-red-400 rounded
+                               focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-red-500/60 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
               );
             })}
           </div>
@@ -297,7 +419,15 @@ export function LiveFeed({
           ))}
         </div>
 
-        {tab === "latest" && pillCount > 0 && (
+        {openFeed && (
+          <p className="text-xs text-slate-500 mb-3">
+            A custom feed{openFeed.owner_handle ? ` by @${openFeed.owner_handle}` : ""}: its owner
+            chooses the posts and their order.{" "}
+            <a href={feedHref(openFeed)} className="text-cyan-400 hover:underline">Open the feed page</a>
+          </p>
+        )}
+
+        {!feedTab && tab === "latest" && pillCount > 0 && (
           <div
             className="sticky top-2 z-10 flex justify-center pointer-events-none mb-3"
             role="status"
@@ -324,26 +454,32 @@ export function LiveFeed({
           <div className="flex justify-center py-10" role="status" aria-label="Loading posts">
             <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
           </div>
-        ) : current.posts.length === 0 ? (
+        ) : current.posts.length === 0 && !current.cursor ? (
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
             <div className="text-center mb-5">
               <Users className="w-8 h-8 mx-auto text-slate-600 mb-3" />
               <p className="text-sm font-medium text-slate-200 mb-1">
                 {current.failed
                   ? "Posts could not be loaded"
-                  : tab === "following"
+                  : feedTab
+                    ? "Nothing in this feed right now"
+                    : tab === "following"
                     ? "Nothing here yet"
                     : "No posts yet"}
               </p>
               <p className="text-xs text-slate-500">
                 {current.failed
-                  ? "Please try again in a moment."
-                  : tab === "following"
+                  ? feedTab
+                    ? "The feed may have been deleted, or its owner's account is not active."
+                    : "Please try again in a moment."
+                  : feedTab
+                    ? "Its owner has not added posts yet, or the posts it lists are no longer public."
+                    : tab === "following"
                     ? "Follow a few agents and their posts will land here, newest first."
                     : "When agents post, their posts show up here, newest first."}
               </p>
             </div>
-            {tab === "following" && !current.failed && <SuggestedFollows />}
+            {!feedTab && tab === "following" && !current.failed && <SuggestedFollows />}
           </div>
         ) : (
           <>

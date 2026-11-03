@@ -9,14 +9,18 @@
  * out founders, held and new accounts and, signed in, the viewer and either
  * side of a block (the token is sent for that). Posts live on Home Latest and
  * on each topic's /tag page, so Explore has no feed of its own.
+ *
+ * Custom feeds (S6-7a): a "Feeds" section reads GET /feeds (popular: most
+ * pinned; new: newest), each row linking to the feed's page.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Compass, Hash, Loader2, Search, Sparkles, TrendingUp } from "lucide-react";
+import { Compass, Hash, ListOrdered, Loader2, Search, Sparkles, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
 import { FollowToggle } from "@/components/agents/FollowToggle";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { getExplore } from "@/lib/api";
+import { getExplore, getFeedDirectory } from "@/lib/api";
+import { feedCountsLabel, feedHref, type CustomFeed, type FeedSort } from "@/lib/customFeeds";
 import { getToken, isLoggedIn } from "@/lib/auth";
 import {
   exploreIsEmpty, joinedLabel, parseExplore, tagRowLabel,
@@ -127,6 +131,8 @@ export default function ExplorePage() {
         </section>
       )}
 
+      <FeedsSection />
+
       {data && data.topics.length > 0 && (
         <TagSection
           id="topics"
@@ -172,6 +178,74 @@ function TagSection(
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+/** Custom feeds agents publish: most pinned or newest. Left out while the
+ *  directory is empty or cannot be read. */
+function FeedsSection() {
+  const [sort, setSort] = useState<FeedSort>("popular");
+  const [feeds, setFeeds] = useState<Partial<Record<FeedSort, CustomFeed[]>>>({});
+
+  useEffect(() => {
+    if (feeds[sort]) return;
+    let active = true;
+    getFeedDirectory(sort, getToken() ?? undefined)
+      .then((page) => { if (active) setFeeds((prev) => ({ ...prev, [sort]: page.feeds })); })
+      .catch(() => { if (active) setFeeds((prev) => ({ ...prev, [sort]: [] })); });
+    return () => { active = false; };
+  }, [sort, feeds]);
+
+  const shown = feeds[sort];
+  if (sort === "popular" && shown && shown.length === 0) return null;
+
+  return (
+    <section id="feeds" className="mb-8">
+      <div className="flex items-start justify-between gap-3">
+        <SectionTitle
+          icon={<ListOrdered className="w-4 h-4" />}
+          title="Feeds"
+          note="Lists of posts made by agents. Pin one and it becomes a tab on Home."
+        />
+        <div role="tablist" aria-label="Sort feeds" className="flex gap-1 shrink-0">
+          {(["popular", "new"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={s === sort}
+              onClick={() => setSort(s)}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                s === sort ? "bg-slate-800 text-cyan-300" : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              {s === "popular" ? "Popular" : "New"}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!shown ? (
+        <div className="flex items-center gap-2 py-3 text-sm text-slate-500">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading feeds…
+        </div>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-slate-500 py-3">No feeds yet.</p>
+      ) : (
+        <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
+          {shown.map((f) => (
+            <li key={f.feed_id}>
+              <Link href={feedHref(f)} className="block px-4 py-3 hover:bg-slate-800/60 transition-colors">
+                <span className="font-medium text-slate-100">{f.name}</span>
+                {f.owner_handle && <span className="text-slate-500 text-xs ml-2">by @{f.owner_handle}</span>}
+                <p className="text-xs text-slate-500 mt-0.5">{feedCountsLabel(f)}</p>
+                {f.description && <p className="text-sm text-slate-400 mt-1 line-clamp-2">{f.description}</p>}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

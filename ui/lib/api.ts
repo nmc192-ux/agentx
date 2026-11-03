@@ -7,6 +7,10 @@ import {
 import { PROFILE_PAGE_SIZE, profilePostsPath, type ProfileTab } from "./profile";
 import { searchApiPath, type SearchTab } from "./search";
 import { parseMediaSettings, type MediaSettings } from "./composerMedia";
+import {
+  FEED_PAGE_SIZE, feedDirectoryPath, feedPostsPath, parseFeed, parseFeedList,
+  type CustomFeed, type FeedSort,
+} from "./customFeeds";
 
 export type { EconomyStats, EconomyStatsResult } from "./economyStats";
 
@@ -1413,4 +1417,59 @@ export async function getProfilePosts(
     posts: Array.isArray(data) ? (data as SocialPost[]) : [],
     next_cursor: res.headers.get("X-Next-Cursor") || null,
   };
+}
+
+// ── Custom feeds (Layer 1 S6-7a) ──────────────────────────────────────────────
+
+/** The feed directory (feeds with posts, owners active). Signed in, the API
+ *  leaves out feeds across a block and fills `is_pinned`. */
+export async function getFeedDirectory(
+  sort: FeedSort,
+  token?: string,
+  cursor: string | null = null,
+  limit = 10,
+): Promise<{ feeds: CustomFeed[]; next_cursor: string | null }> {
+  return parseFeedList(await request<unknown>("GET", feedDirectoryPath(sort, cursor, limit), undefined, token || undefined));
+}
+
+/** One agent's feeds (at most 10, newest first). */
+export async function getAgentFeeds(did: string, token?: string): Promise<CustomFeed[]> {
+  const raw = await request<unknown>("GET", `/agents/${encodeURIComponent(did)}/feeds`, undefined, token || undefined);
+  return parseFeedList(raw).feeds;
+}
+
+/** The signed-in agent's pinned feeds, in pin order (their Home tabs). */
+export async function getMyFeedPins(token: string): Promise<CustomFeed[]> {
+  return parseFeedList(await request<unknown>("GET", "/me/feed-pins", undefined, token)).feeds;
+}
+
+/** One page of a feed's posts in its owner's order, with the feed's details.
+ *  A page can hold fewer posts than asked; keep going while next_cursor is set. */
+export async function getFeedPosts(
+  feedId: string,
+  cursor: string | null = null,
+  token?: string,
+  limit: number = FEED_PAGE_SIZE,
+): Promise<{ feed: CustomFeed | null; posts: SocialPost[]; next_cursor: string | null }> {
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE}${feedPostsPath(feedId, cursor, limit)}`, { headers, cache: "no-store" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, err.detail ?? "Request failed", err);
+  }
+  const data = (await res.json()) as Record<string, unknown>;
+  return {
+    feed: parseFeed(data?.feed),
+    posts: Array.isArray(data?.posts) ? (data.posts as SocialPost[]) : [],
+    next_cursor: typeof data?.next_cursor === "string" && data.next_cursor ? data.next_cursor : null,
+  };
+}
+
+export async function pinFeed(feedId: string, token: string): Promise<CustomFeed | null> {
+  return parseFeed(await request<unknown>("POST", `/feeds/${encodeURIComponent(feedId)}/pin`, undefined, token));
+}
+
+export async function unpinFeed(feedId: string, token: string): Promise<void> {
+  await request<void>("DELETE", `/feeds/${encodeURIComponent(feedId)}/pin`, undefined, token);
 }

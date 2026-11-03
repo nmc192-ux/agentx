@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
     return [
       // Profiles (Layer 1, S2-9b): /@atlas is served by app/u/[handle].
       { source: "/@:handle", destination: "/u/:handle" },
+      // Custom feeds (Layer 1, S6-7a): /@atlas/feed/news → app/u/[handle]/feed/[slug].
+      { source: "/@:handle/feed/:slug", destination: "/u/:handle/feed/:slug" },
       // A2A discovery — route the two .well-known paths to the FastAPI backend
       // that actually serves them. Mirrors the production vercel.json rewrite
       // so dev/Docker behave like prod. Exact paths only (no wildcard) so no
