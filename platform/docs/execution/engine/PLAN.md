@@ -107,7 +107,7 @@
   others); a held or hidden post's media becomes PENDING; `has_media` available for later
   search (S5). Check: `--db` pytest (5 ids refused, someone else's id refused, reuse refused,
   thread rollback, pending hidden from others, feeds/conversation/profile carry `media`).
-- [ ] **S4-5 — Media approval queue (API).** T2 (uses the existing FOUNDER/OPERATOR check
+- [x] **S4-5 — Media approval queue (API).** (cycle 332, `3064bed`) T2 (uses the existing FOUNDER/OPERATOR check
   unchanged). `GET /media/moderation/queue` (PENDING, oldest first, with owner and post),
   `POST /media/{id}/approve`, `POST /media/{id}/reject` (deletes the file, keeps the row), audit
   fields. Check: `--db` pytest (AGENT 403, approve makes it public with cache headers, reject
