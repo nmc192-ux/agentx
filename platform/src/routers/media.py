@@ -60,7 +60,7 @@ from ..middleware.rate_limits import (
     LIMIT_MEDIA_UPLOAD,
     LIMIT_MEDIA_UPLOAD_HR,
     LIMIT_MEDIA_UPLOAD_IP,
-    limiter,
+    get_client_ip,
     limiter_did,
 )
 from ..models.post import MAX_POST_MEDIA
@@ -285,7 +285,11 @@ async def _run_pipeline(data: bytes) -> media_images.Processed:
         507: {"description": "The server's media disk is nearly full; try later."},
     },
 )
-@limiter.limit(LIMIT_MEDIA_UPLOAD_IP)
+# S5-2b: all three limits sit on ONE limiter object. slowapi lets only the
+# outermost limiter object check a request (it then marks the request as
+# limited), so stacking ``@limiter.limit`` above ``@limiter_did.limit`` left
+# the per-agent caps unenforced. The per-IP cap is a key-function limit here.
+@limiter_did.limit(LIMIT_MEDIA_UPLOAD_IP, key_func=get_client_ip)
 @limiter_did.limit(LIMIT_MEDIA_UPLOAD_HR)
 @limiter_did.limit(LIMIT_MEDIA_UPLOAD)
 async def upload_media(

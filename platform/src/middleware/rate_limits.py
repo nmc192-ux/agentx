@@ -40,6 +40,14 @@ Key functions:
   - Caveat: slowapi calls the limit provider without the request, so in the
     running app every caller gets the base limit (trust does not raise it yet).
 
+One limiter object per route (S5-2b):
+  slowapi lets only the OUTERMOST limiter object check a request; it then sets
+  request.state._rate_limiting_complete and every inner limiter object skips.
+  So ``@limiter.limit`` stacked on ``@limiter_did.limit`` silently drops the
+  per-DID limits. A route that needs a per-IP cap as well as per-DID caps puts
+  the IP cap on ``limiter_did`` with ``key_func=get_client_ip``. Guard test:
+  tests/middleware/test_rate_limits.py::TestNoStackedLimiterObjects.
+
 Burn-in mode (RATE_LIMIT_MODE=log):
   - Counter increments normally, but 429s are swapped for 200 log responses
   - NOT a pass-through: the handler never runs, so an over-limit request
@@ -230,6 +238,19 @@ limiter_did = Limiter(
 
 # ── Custom 429 / burn-in handler ──────────────────────────────────────────────
 
+def limit_scope(request: Request, exc: RateLimitExceeded) -> str:
+    """``per-ip`` or ``per-did`` for the limit that actually fired.
+
+    A per-IP key-function limit on ``limiter_did`` (S5-2b, POST /media) is
+    per-ip even when the caller is signed in; a DID-keyed limit is per-did
+    unless the caller was anonymous (then its key was the IP fallback).
+    """
+    key_func = getattr(exc.limit, "key_func", None)
+    if key_func is get_client_ip:
+        return "per-ip"
+    return "per-did" if get_agent_did(request).startswith("did:") else "per-ip"
+
+
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """
     Unified RateLimitExceeded handler for both ``limiter`` and ``limiter_did``.
@@ -243,7 +264,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONRe
         Flip RATE_LIMIT_MODE to "enforce" on day 3.
     """
     limit_str = str(exc.limit.limit)
-    scope = "per-did" if get_agent_did(request).startswith("did:") else "per-ip"
+    scope = limit_scope(request, exc)
     retry_after = int(getattr(exc.limit, "reset_time", 60) or 60)
 
     logger.warning(
@@ -315,6 +336,12 @@ LIMIT_POST_FLAG_HR    = _trust_limit(50, "hour")
 # POST /media  (Layer 1 S4-3): image uploads are CPU and disk heavy. Per
 # agent here, per IP below; the 50-a-day cap per agent is counted in the
 # database by the router (it must hold even when Redis is down).
+# S5-2b: the per-IP cap is applied as ``limiter_did.limit(..., key_func=
+# get_client_ip)`` on the same limiter object as the per-agent caps. Never
+# stack ``limiter`` and ``limiter_did`` on one route: slowapi lets only the
+# outermost limiter object check the request and then marks it as done, so
+# the inner object's limits never run (guard test in
+# tests/middleware/test_rate_limits.py::TestNoStackedLimiterObjects).
 LIMIT_MEDIA_UPLOAD    = _trust_limit(10, "minute")
 LIMIT_MEDIA_UPLOAD_HR = _trust_limit(30, "hour")
 LIMIT_MEDIA_UPLOAD_IP = "60/hour"

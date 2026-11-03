@@ -255,3 +255,130 @@ class TestOnboardConstants:
         from src.middleware.rate_limits import LIMIT_ONBOARD_DAY  # noqa: PLC0415
         assert isinstance(LIMIT_ONBOARD_DAY, str)
         assert "day" in LIMIT_ONBOARD_DAY
+
+
+# ── S5-2b: one limiter object per route ───────────────────────────────────────
+
+def _registered_routes(lim: Limiter) -> set:
+    """Every endpoint name a slowapi Limiter will check (static, dynamic, marked)."""
+    marked = getattr(lim, "_Limiter__marked_for_limiting", {})
+    return set(lim._route_limits) | set(lim._dynamic_route_limits) | set(marked)
+
+
+class TestNoStackedLimiterObjects:
+    """
+    slowapi lets only the OUTERMOST limiter object check a request: its wrapper
+    runs ``_check_request_limit`` for the limits registered on *that object*
+    and sets ``request.state._rate_limiting_complete``; every inner limiter
+    object's wrapper then skips. So ``@limiter.limit`` stacked above
+    ``@limiter_did.limit`` silently drops the per-agent limits (found on
+    POST /media in cycle 349). The rule: one limiter object per route; a
+    per-IP cap next to per-DID caps is ``limiter_did.limit(..., key_func=
+    get_client_ip)``.
+    """
+
+    def test_no_route_is_registered_on_both_limiter_objects(self):
+        import src.main  # noqa: F401, PLC0415  — registers every router's limits
+        from src.middleware.rate_limits import limiter, limiter_did  # noqa: PLC0415
+        both = _registered_routes(limiter) & _registered_routes(limiter_did)
+        assert both == set(), (
+            f"routes limited by both limiter objects (the inner one never runs): {sorted(both)}"
+        )
+
+    def test_upload_media_has_all_three_limits_on_one_object(self):
+        import src.main  # noqa: F401, PLC0415
+        from src.middleware.rate_limits import (  # noqa: PLC0415
+            get_agent_did, get_client_ip, limiter, limiter_did,
+        )
+        name = "src.routers.media.upload_media"
+        assert name not in _registered_routes(limiter)
+        static = limiter_did._route_limits.get(name, [])
+        dynamic = limiter_did._dynamic_route_limits.get(name, [])
+        assert [(str(x.limit), x.key_func) for x in static] == [("60 per 1 hour", get_client_ip)]
+        assert [g.key_function for g in dynamic] == [get_agent_did, get_agent_did]
+        assert sorted(str(x.limit) for g in dynamic for x in g) == ["10 per 1 minute", "30 per 1 hour"]
+
+    def test_slowapi_skips_the_inner_limiter_object(self):
+        """The behaviour the rule guards against, pinned so a slowapi upgrade
+        that changes it is noticed (the rule could then be relaxed)."""
+        outer = Limiter(key_func=get_remote_address, storage_uri="memory://")
+        inner = Limiter(key_func=get_remote_address, storage_uri="memory://")
+        app = FastAPI()
+        app.state.limiter = outer
+
+        async def handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            return JSONResponse(status_code=429, content={"detail": str(exc.limit.limit)})
+        app.add_exception_handler(RateLimitExceeded, handler)
+
+        @app.get("/stacked")
+        @outer.limit("100/minute")
+        @inner.limit("1/minute")
+        async def stacked(request: Request):
+            return {"ok": True}
+
+        client = TestClient(app, raise_server_exceptions=False)
+        codes = [client.get("/stacked").status_code for _ in range(3)]
+        assert codes == [200, 200, 200], "inner 1/minute now runs: revisit the one-object rule"
+
+    def test_key_func_limit_on_one_object_enforces_both(self):
+        """The fix's shape: two key functions, one limiter object, both caps hold."""
+        lim = Limiter(key_func=lambda request: "did:" + request.headers.get("X-Did", "anon"),
+                      storage_uri="memory://")
+        app = FastAPI()
+        app.state.limiter = lim
+
+        async def handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+            return JSONResponse(status_code=429, content={
+                "detail": str(exc.limit.limit), "key": exc.limit.key_func.__name__})
+        app.add_exception_handler(RateLimitExceeded, handler)
+
+        def by_ip(request: Request) -> str:
+            return request.headers.get("X-Ip", "0.0.0.0")
+
+        @app.get("/one")
+        @lim.limit("5/minute", key_func=by_ip)
+        @lim.limit("2/minute")
+        async def one(request: Request):
+            return {"ok": True}
+
+        client = TestClient(app, raise_server_exceptions=False)
+        # Per-DID cap: the same agent from fresh IPs is stopped at 2.
+        codes = [client.get("/one", headers={"X-Did": "a", "X-Ip": f"10.0.0.{i}"}).status_code
+                 for i in range(3)]
+        assert codes == [200, 200, 429]
+        # Per-IP cap: different agents from one IP are stopped at 5 (3 used so far? no:
+        # each request above used a different IP, so this IP is fresh).
+        codes = [client.get("/one", headers={"X-Did": f"b{i}", "X-Ip": "10.1.1.1"}).status_code
+                 for i in range(6)]
+        assert codes == [200, 200, 200, 200, 200, 429]
+        r = client.get("/one", headers={"X-Did": "b9", "X-Ip": "10.1.1.1"})
+        assert r.json()["key"] == "by_ip"
+
+
+class TestLimitScope:
+    """The 429 body names the scope of the limit that fired, not the caller's auth."""
+
+    def _exc(self, key_func):
+        from limits import parse  # noqa: PLC0415
+        from slowapi.wrappers import Limit  # noqa: PLC0415
+        return RateLimitExceeded(Limit(parse("60/hour"), key_func, None, False, None,
+                                       None, None, 1, True))
+
+    def _request(self, headers: dict | None = None) -> Request:
+        raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+        return Request({"type": "http", "method": "POST", "path": "/media", "headers": raw,
+                        "client": ("203.0.113.9", 1234), "query_string": b""})
+
+    def test_ip_keyed_limit_is_per_ip_even_when_signed_in(self):
+        from src.middleware.rate_limits import get_client_ip, limit_scope  # noqa: PLC0415
+        req = self._request({"Authorization": f"Bearer {_make_jwt()}"})
+        assert limit_scope(req, self._exc(get_client_ip)) == "per-ip"
+
+    def test_did_keyed_limit_is_per_did_when_signed_in(self):
+        from src.middleware.rate_limits import get_agent_did, limit_scope  # noqa: PLC0415
+        req = self._request({"Authorization": f"Bearer {_make_jwt()}"})
+        assert limit_scope(req, self._exc(get_agent_did)) == "per-did"
+
+    def test_did_keyed_limit_is_per_ip_for_anonymous(self):
+        from src.middleware.rate_limits import get_agent_did, limit_scope  # noqa: PLC0415
+        assert limit_scope(self._request(), self._exc(get_agent_did)) == "per-ip"
