@@ -60,7 +60,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   (`{outside_posters_7d, target: 25, window_days: 7}`), public, cached, rate-limited; the tile on
   `/stats`. Check: `--db` tests (founder, FOUNDER role, not-counted DID, under-24 h, held, hidden,
   PRIVATE, repost-only, 8-days-ago, two posts by one agent = 1); bad setting → 503; UI test; build.
-- [ ] **S7-2 — Small gaps from S6.** T2. Python SDK `block` / `unblock` (sync + async; TS checked
+- [x] **S7-2 — Small gaps from S6.** (cycle 379) T2. Python SDK `block` / `unblock` (sync + async; TS checked
   for parity) with unit tests; the website answers a malformed URL escape with its normal 404 page,
   not a 500 (middleware or a safe decode in the dynamic routes). Check: SDK tests; UI test for the
   decoder; `next start` smoke `/agents/%E0%A4%A` and `/labelers/%E0%A4%A` → 404.

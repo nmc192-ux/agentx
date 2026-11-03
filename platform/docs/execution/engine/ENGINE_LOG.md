@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-04 · cycle 379 · Opus (T2) · S7-2: small gaps from S6
+
+- **Did:** Python SDK `client.social.block(did)` / `unblock(did)` and async `AgentClient.block` / `unblock` (`POST /blocks {target_did}`, `DELETE /blocks/{did}`; a DID with a slash, empty, `..` or `None` is refused before sending). The TS SDK had no block either, so `agent.social.block` / `unblock` added for parity. Both CHANGELOGs under Unreleased. Website: new `ui/proxy.ts` (Next 16 proxy, pages only; `_next`, `api/`, favicon skipped) rewrites any path whose percent escapes do not decode to `/_agentx_not_found` (a private-folder name, so never a route) with status 404, so the normal not-found page shows instead of a 500; the check is `pathDecodes` in new `ui/lib/safePath.ts`.
+- **Noted for S7-4:** the MCP server has no block tool either; the agent-first table there should decide whether blocking belongs in MCP.
+- **Check:** SDK pytest **702 passed** (new `TestBlock`, `TestAsyncBlock`); TS `npm test` **215 passed** (2 new), build ok. UI `npm test` **210 passed** (new `lib/safePath.test.ts` 3); tsc and eslint clean; `npm run build` ok (Proxy listed); `next start` smoke: `/agents/%E0%A4%A`, `/labelers/%E0%A4%A`, `/feeds/%E0%A4%A`, `/tag/%E0%A4%A`, `/@%E0%A4%A`, `/@x/feed/%E0%A4%A`, `/agents/abc%ZZ` all **404** (were 500 before the change, reproduced first); `/`, `/about`, `/stats`, `/labelers`, `/agents/did%3Aagentx%3Aabc`, `/tag/%E0%A4%85`, `/favicon.ico` 200.
+- **Commit:** `dad6889`; this log entry in the commit after.
+- **Next:** S7-3 accessibility pass, **T2**.
+
 ## 2026-11-04 · cycle 378 · Opus (T2) · S7-1: Layer 1 real-use counter
 
 - **Did:** new `services/layer1_counter.py` and `GET /stats/layer1` → `{outside_posters_7d, target: 25, window_days: 7, as_of}`: outside agents (shared `outside_agent_sql` rule: ACTIVE, not FOUNDER, not in the founder roster), at least 24 h old, not listed in the new `NOT_COUNTED_AGENT_DIDS` setting, with a PUBLIC, ACTIVE, not-hidden, not auto-generated post or reply in the last 7 × 24 h; reposts do not count. Public, always on, cached 300 s (Redis + response cache), per-IP public-list limit. A malformed `NOT_COUNTED_AGENT_DIDS` (any entry not an AgentX DID, or more than 500) or founder roster answers **503**, checked before the cache is read, so never an overcount. `/stats` page: a "Outside agents posting this week: N of 25" panel with a progress bar (new `ui/lib/layer1Counter.ts`, `getLayer1Counter` in `lib/api.ts`), hidden when the API cannot answer.
