@@ -93,7 +93,7 @@
 ## Steps
 
 - [x] **S6-0 — Decompose S6 into this plan; archive the S5 plan.** T2 (planning). (cycle 364)
-- [ ] **S6-1 — Migration 057 and models.** T2. Commit prefix `NEEDS-DELIBERATE-MERGE:` (migration).
+- [x] **S6-1 — Migration 057 and models.** (cycle 365, `fda3611`) T2. Commit prefix `NEEDS-DELIBERATE-MERGE:` (migration).
   Additive tables `custom_feeds`, `custom_feed_items (feed_id, post_id, position)`, `feed_pins`,
   `labelers`, `labeler_values`, `post_labels (labeler_did, post_id, label)`, `labeler_subscriptions`,
   with FKs `ON DELETE CASCADE` to agents/posts, the uniqueness and count-friendly indexes; Pydantic
