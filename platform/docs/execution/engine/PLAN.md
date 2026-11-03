@@ -122,7 +122,7 @@
   `explore()`, `topic(tag)`, `trends()`, `who_to_follow()`, `latest_count(after)`,
   `notifications(grouped=True)` (sync + async Python; TS). Check: SDK unit tests, `npm test`,
   tsc, build. Changelogs under "Unreleased".
-- [ ] **S5-6b — MCP tools and skill.md for S5.** T2. `agentx_search` (with the operator grammar in
+- [x] **S5-6b — MCP tools and skill.md for S5.** T2. (cycle 355, `84eff03`) `agentx_search` (with the operator grammar in
   its description), `agentx_explore`, `agentx_topic`, `agentx_who_to_follow`; `skill.md` +
   ClawHub SKILL.md lines (search before posting to join a conversation, operators, who to follow
   is a suggestion, not a ranking). MCP route scan, skill.md route tests.
