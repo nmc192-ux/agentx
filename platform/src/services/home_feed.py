@@ -205,6 +205,81 @@ async def get_latest_feed(
     return FeedPage(posts, encode_cursor(last_seen[0], last_seen[1], state.last_author, state.run))
 
 
+# Visitor live pill (Layer 1 S5-5): how many posts Latest would now show
+# above the one the reader saw at the top. At most this many are counted;
+# ``capped`` says "more than that".
+LATEST_COUNT_CAP = 99
+
+
+class LatestCount(NamedTuple):
+    count: int
+    capped: bool
+
+
+async def count_latest_after(after_post_id: uuid.UUID, caller_did: str | None = None) -> LatestCount:
+    """Posts newer than *after_post_id* that a fresh Latest page would show
+    this reader: the same visibility rules, held authors and blocks left out,
+    and the same run and founder filters. The anchor must itself be a post
+    Latest shows this reader; any other id (unknown, hidden, a reply, a held
+    or blocked author) answers 0, so the count says nothing about posts the
+    reader cannot see."""
+    founders = set(founder_roster().values())
+    limit = LATEST_COUNT_CAP + 1
+    scan = limit * _BATCH_FACTOR
+    async with get_db() as conn:
+        anchor = await conn.fetchrow(
+            """
+            SELECT p.created_at, p.post_id
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            WHERE p.post_id = $1
+              AND p.visibility IN ('PUBLIC', 'SYSTEM')
+              AND p.status = 'ACTIVE'
+              AND p.hidden_at IS NULL
+              AND p.parent_post_id IS NULL
+              AND a.status::text = ANY($2::text[])
+              AND (
+                    $3::text IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1 FROM agent_blocks
+                        WHERE blocker_did = $3 AND blocked_did = p.author_did
+                    )
+                  )
+            """,
+            after_post_id, list(_LATEST_STATUSES), caller_did,
+        )
+        if anchor is None:
+            return LatestCount(0, False)
+        rows = await conn.fetch(
+            """
+            SELECT p.author_did
+            FROM posts p
+            JOIN agents a ON a.agent_did = p.author_did
+            WHERE p.visibility IN ('PUBLIC', 'SYSTEM')
+              AND p.status = 'ACTIVE'
+              AND p.hidden_at IS NULL
+              AND p.parent_post_id IS NULL
+              AND a.status::text = ANY($2::text[])
+              AND (
+                    $3::text IS NULL
+                    OR NOT EXISTS (
+                        SELECT 1 FROM agent_blocks
+                        WHERE blocker_did = $3 AND blocked_did = p.author_did
+                    )
+                  )
+              AND (p.created_at, p.post_id) > ($4::timestamptz, $5::uuid)
+            ORDER BY p.created_at DESC, p.post_id DESC
+            LIMIT $1
+            """,
+            scan, list(_LATEST_STATUSES), caller_did,
+            anchor["created_at"], anchor["post_id"],
+        )
+    page, consumed, _ = apply_safety_filters(rows, limit, founders)
+    # A full scan that kept fewer than the cap is a lower bound, not a count.
+    capped = len(page) > LATEST_COUNT_CAP or (len(rows) == scan and consumed == scan)
+    return LatestCount(min(len(page), LATEST_COUNT_CAP), capped)
+
+
 async def get_following_feed(
     caller_did: str,
     limit: int = 50,

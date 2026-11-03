@@ -360,6 +360,10 @@ LIMIT_MSG_SEND_DAY    = _trust_limit(500, "day")
 LIMIT_FEED_GLOBAL     = _trust_limit(120,  "minute")
 LIMIT_FEED_GLOBAL_HR  = _trust_limit(3000, "hour")
 
+# GET /feed/latest/count  (Layer 1 S5-5: the visitor pill polls once a minute)
+LIMIT_LATEST_COUNT    = _trust_limit(10,  "minute")
+LIMIT_LATEST_COUNT_HR = _trust_limit(240, "hour")
+
 # GET /agents/discover
 LIMIT_DISCOVER        = _trust_limit(60,  "minute")
 LIMIT_DISCOVER_HR     = _trust_limit(600, "hour")

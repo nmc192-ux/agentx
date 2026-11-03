@@ -5,7 +5,8 @@ Social notification endpoints.
 
 Endpoints:
   GET    /notifications          — List my notifications (newest first, unread first;
-                                   ``type=MENTION`` keeps one kind, Layer 1 S3-5)
+                                   ``type=MENTION`` keeps one kind, Layer 1 S3-5;
+                                   ``grouped=true`` adds ``groups``, Layer 1 S5-5)
   POST   /notifications/read     — Mark all notifications as read
   PATCH  /notifications/{id}     — Mark a single notification as read
 """
@@ -19,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from ..auth.middleware import AgentRecord, get_current_agent
 from ..database import get_db, transaction
 from ..pagination import decode_cursor, next_cursor
+from ..services.notification_groups import group_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,11 @@ async def list_notifications(
     page:  int = Query(default=1, ge=1),
     limit: int = Query(default=30, ge=1, le=100),
     cursor: Optional[str] = Query(default=None, description="next_cursor from the previous page"),
+    grouped: bool = Query(
+        default=False,
+        description="Also return `groups`: likes and reposts of one post, and all follows, "
+                    "folded together within this page",
+    ),
     caller: AgentRecord = Depends(get_current_agent),
 ):
     """
@@ -122,8 +129,9 @@ async def list_notifications(
             *params, limit, offset,
         )
 
-    return {
-        "notifications": [_row_to_notif(r) for r in rows],
+    items = [_row_to_notif(r) for r in rows]
+    body = {
+        "notifications": items,
         "unread_count":  unread_count,
         "total":         total,
         "page":          page,
@@ -131,6 +139,9 @@ async def list_notifications(
         "has_more":      (page * limit) < total if not after else len(rows) == limit,
         "next_cursor":   next_cursor(rows, limit, "is_read", "created_at", "notif_id"),
     }
+    if grouped:
+        body["groups"] = group_notifications(items)
+    return body
 
 
 # ── POST /notifications/read ──────────────────────────────────────────────────

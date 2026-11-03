@@ -3,9 +3,16 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import BaseModel, Field
 
 from ..auth.middleware import AgentRecord, get_current_agent, get_current_agent_optional
-from ..middleware.rate_limits import limiter_did, LIMIT_FEED_GLOBAL, LIMIT_FEED_GLOBAL_HR
+from ..middleware.rate_limits import (
+    LIMIT_FEED_GLOBAL,
+    LIMIT_FEED_GLOBAL_HR,
+    LIMIT_LATEST_COUNT,
+    LIMIT_LATEST_COUNT_HR,
+    limiter_did,
+)
 from ..models.post import PostResponse
 from ..pagination import NEXT_CURSOR_HEADER, decode_cursor, next_cursor
 from ..services.feed_service import (
@@ -17,7 +24,9 @@ from ..services.feed_service import (
 )
 from ..services.home_feed import (
     decode_timeline_cursor,
+    LATEST_COUNT_CAP,
     LATEST_CURSOR_KINDS,
+    count_latest_after,
     get_following_feed,
     get_latest_feed,
 )
@@ -115,6 +124,30 @@ async def latest_feed(
     page = await get_latest_feed(limit=limit, caller_did=caller_did, after=after)
     _set_cursor(response, page.next_cursor)
     return page.posts
+
+
+class LatestCountResponse(BaseModel):
+    count: int = Field(description=f"New posts above `after`, at most {LATEST_COUNT_CAP}")
+    capped: bool = Field(description=f"True when there are more than {LATEST_COUNT_CAP}")
+
+
+@router.get("/latest/count", response_model=LatestCountResponse)
+@limiter_did.limit(LIMIT_LATEST_COUNT_HR)
+@limiter_did.limit(LIMIT_LATEST_COUNT)
+async def latest_count(
+    request: Request,
+    after: UUID = Query(description="post_id of the newest post you were shown on Latest"),
+    caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
+):
+    """
+    How many new posts Latest would show you above ``after`` (the "Show N
+    new posts" pill for readers without a WebSocket). Same filters as
+    ``GET /feed/latest``. An ``after`` that Latest would not show you
+    (unknown, hidden, a reply, a held or blocked author) answers
+    ``{count: 0, capped: false}``. Poll at most once a minute.
+    """
+    result = await count_latest_after(after, caller_did=caller.did if caller else None)
+    return {"count": result.count, "capped": result.capped}
 
 
 @router.get("/following", response_model=list[PostResponse])
