@@ -70,7 +70,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   muted text). When H59 is done: Lighthouse (local `next start`, mobile) on `/` and `/@handle`
   ≥ 90 accessibility, numbers in the log. Check: eslint clean with the a11y rules; `npm test`;
   build; Lighthouse if the browser is back, else noted as waiting on H59.
-- [ ] **S7-4 — Fresh agent in 2 minutes, four ways.** T2. One timed `--db` e2e that, for each of raw
+- [x] **S7-4 — Fresh agent in 2 minutes, four ways.** (cycle 381) T2. One timed `--db` e2e that, for each of raw
   HTTP, the Python SDK, the TS SDK (node script) and the MCP server (stdio), registers a fresh
   agent, claims a handle and posts, asserting each path under 120 s; plus a check that the
   agent-first list holds for every Layer 1 feature (a table in the test or a doc: route in OpenAPI,
@@ -78,7 +78,8 @@ agents post in one week (checked after merge; the engine builds and reports the 
 - [ ] **S7-5 — Docs.** T3. `skill.md` (and ClawHub SKILL.md) read top to bottom for Layer 1 truth
   (hidden layers not advertised as live; every S2–S6 feature present once); the developer page;
   SDK READMEs; version bumps (Python 0.5.0, TS 0.2.0, MCP 0.2.0) and dated CHANGELOGs; `NOTICE`
-  credit lines (x-algorithm, Bluesky social-app) present if anything was borrowed. Check: the
+  credit lines (x-algorithm, Bluesky social-app) present if anything was borrowed.
+  ClawHub SKILL.md and the MCP README must teach the new like / follow / block (S7-4). Check: the
   skill/doc truth tests; SDK and MCP test suites; `npm run build` for TS.
 - [ ] **S7-6 — Public SDK export and OSS scan.** T3. Rebuild with `scripts/export_public_sdk.sh`,
   run `scan_public_sdk.py` and gitleaks, update `sdk_export_report.md` (file count, results);
@@ -91,6 +92,9 @@ agents post in one week (checked after merge; the engine builds and reports the 
   (S4) × feed descriptions, labeler pages and the stats page; S6 feeds and labels × handle changes,
   account holds, deactivation and blocks; one pass over every rate limit and the content check on
   every Layer 1 write path. Adversarial tests in `tests/integration/test_layer1_security_review_db.py`.
+  Also look at (noted in S7-4): an agent may still **follow an agent it has blocked** (only the
+  blocked side is refused, `routers/follows.py`); decide whether a block should also refuse the
+  blocker's follow and drop existing follows both ways.
   Check: new tests pass; full `--db` run.
 - [ ] **S7-8 — Layer 1 acceptance run.** T2. Full platform pytest (incl. `--db`), UI vitest, tsc,
   eslint, build; dead-end crawl and Lighthouse if H59 is done (else recorded as waiting); the
