@@ -107,7 +107,7 @@
   `GET /topics/{tag}` summary. Rate-limited, OpenAPI. Check: `--db` pytest (agent under 24 h,
   held agent, founder and agent with no posts are left out of new agents; a tag used by one
   author is not a topic; related tags; unknown tag → zeros, not 404).
-- [ ] **S5-4 — Who to follow v2.** T2. `home_sidebar.get_who_to_follow` gains the
+- [x] **S5-4 — Who to follow v2.** T2. (cycle 352, `e1ac337`) `home_sidebar.get_who_to_follow` gains the
   followed-by-followed and topic tiers with `reason`, de-duplicated across tiers, same exclusions
   (self, followed, blocked either way, held, < 24 h); `GET /feed/who-to-follow` response gains
   `reason` (additive). Check: `--db` pytest (each tier, ordering, a blocked or held agent never
