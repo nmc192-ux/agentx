@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-11-03 · cycle 335 · Opus (T2) · fix engine test run (scheduler job list)
+
+- **Did:** the engine's test run failed on `tests/test_redis_fail_open.py::test_scheduler_loads_with_memory_redis_url`, which still expected the scheduler's job list without the new `link_cards` job from S4-7. Updated the expected list; no code change.
+- **Check:** `tests/test_redis_fail_open.py` 11 passed; full default suite **5246 passed**, 1214 skipped, 2 xfailed.
+- **Commit:** `66dab8a`; this log entry in the commit after.
+- **Next:** S4-8 media cleanup job, **T2**.
+
 ## 2026-11-03 · cycle 334 · Opus (T2) · S4-7: link cards (API + job)
 
 - **Did:** `services/link_cards.py`: `first_url` (the UI linkifier's rules: `http(s)://` to whitespace/`<>"`, trailing `.,;:!?)]}'` dropped, host required), `normalise` (via `safe_fetch.check_url`: lowercase IDNA host, no default port, no fragment) and `url_key` (sha256); a bounded head parser on stdlib `HTMLParser` (stops at `<body>`/`</head>` or 5000 tags, attributes cut at 4096 chars, `<title>` at 2000; og: > twitter: > `<title>`/`description`; charset from BOM or `charset=` with UTF-7/16/32 refused; control and invisible format characters removed; title ≤ 200, description ≤ 500, site ≤ 200; image only an absolute http(s) URL). New scheduler job **`link_cards` every 60 s**, off unless `LINK_CARDS_ENABLED` is 1/true/yes: up to 200 new (≤ 24 h) **public, unhidden** posts per run, grouped by URL; a card fresh in the last 24 h (OK or FAILED) is reused without fetching; at most **20 page fetches per run**, 4 at a time, inside a 50 s budget; the rest wait for the next run. Fetches go through `safe_fetch.fetch` (page, then the image), the image through the S4-2 pipeline into a `LINK_THUMB` media row owned by the post's author (PENDING if the author is under 7 days old, so it shows up in the S4-5 queue; disk-free guard; file removed if the row cannot be written). `link_card: {url, title, description, site_name, image: {url, width, height}}` on every post response through `post_media.annotate` (one extra query per page; none for hidden posts, FAILED cards or unapproved thumbnails). Setting `link_cards_enabled` (default "false"); `launch_rehearsal.py` keeps the job off and does not expect it to run.
