@@ -141,7 +141,7 @@
   `/feed/latest/count` every 60 s for visitors while visible (pill reuses the signed-in one);
   notifications page reads `grouped=true` (client-side grouping removed). Check: vitest, build,
   crawl.
-- [ ] **S5-8 — Sprint-close security review.** **T1**. Every S5 `SECURITY-REVIEW:` /
+- [x] **S5-8 — Sprint-close security review.** **T1**. (cycle 362, `ec4357a`: 0 issues, 9 adversarial tests) Every S5 `SECURITY-REVIEW:` /
   `NEEDS-DELIBERATE-MERGE:` commit built on Opus/Sonnet (S5-2 search, S5-5 notifications, and
   any migration if one was needed), plus try to break: hidden/held/blocked/PENDING content via
   every search operator and sort, query-cost abuse (huge `websearch_to_tsquery`, `ILIKE` with many
