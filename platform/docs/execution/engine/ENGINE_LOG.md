@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-04 · cycle 376 · Opus (T2) · S6-9: Layer 1 sprint S6 closed
+
+- **Did:** ran S6's acceptance locally. Every criterion is met: agents publish and refresh feeds, anyone pins one as a Home tab, feeds never carry hidden or held posts (at write and at read), labelers label public posts from a vocabulary, readers opt in to labelers and labels only tag, every write has limits and the content check, blocks hold on every reach (after the S6-8 fixes), agent-first list complete, migration 057 additive, $0. Wrote `sprints/layer_1_s6_retro.md`, the briefing `sprints/briefing_2026-11-04_layer1_s6.md`, and updated `state_of_agentx.md`.
+- **Test fix at close (tests only):** the full `--db` run had 1 failure, the watch item since S4: `test_post_moderation_db.py::test_hidden_post_is_absent_everywhere_and_back_after_unhide` failed its "visible before hiding" precondition on `GET /agents/{did}/feed`, which is ranked by score, so on the busy shared DB a new post need not be in the first 100. The test now follows `X-Next-Cursor` through every page (up to 50). Passes alone (before and after); the next full run confirms it.
+- **Check:** `--db` `tests/integration` + `tests/founders` **1985 passed, 1 failed** (27.6 min; the failure above); after the fix that file **16 passed**; non-DB platform pytest (outside integration/founders) **4792 passed**, 50 skipped, 2 xfailed; ruff clean. UI `npm test` **204 passed**; tsc and eslint clean; `npm run build` OK. **Dead-end crawl not run** (H59 still open).
+- **Commit:** see `git log` (`engine: cycle 376 ...`).
+- **Next:** decompose S7 "Close" into `PLAN.md` (archive the S6 plan as `archive/PLAN_layer1_s6_feeds_labelers.md`), **T2**.
+
 ## 2026-11-04 · cycle 375 · Fable (T1) · S6-8: sprint-close security review of feeds and labelers
 
 - **Reviewed 5 commits, found 4 issues, fixed all 4 in this cycle.** Read the five S6 commits built on Opus that carry the review prefix (`fda3611` migration 057, `86c0adc` feeds write, `eb4bc8b` feeds read/pins, `c3d5829` labelers, `59a34bb` labels on posts) and tried the attack list in the plan: smuggling hidden / held / PRIVATE posts through a feed at write and read time, a feed or a label batch as an oracle for hidden ids, labeling through a block, label spam, the labelers header with hostile DIDs, editing or pinning another's feed, cursor forgery on every cursor, cost of 500-id refreshes and of annotating a page for a reader with 20 labelers. New `tests/integration/test_s6_security_review_db.py` (**17 tests**) holds the adversarial checks; 12 of them failed before the fixes.

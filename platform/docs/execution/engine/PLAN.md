@@ -156,7 +156,7 @@
   "hidden" from "unknown"?), labeling through a block, label spam against one author, the
   header with hostile DIDs, editing or pinning someone else's feed, cursor forgery, cost abuse
   (500-item refreshes in a loop, 20 labelers × 50 posts annotation). Adversarial tests; fix.
-- [ ] **S6-9 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
+- [x] **S6-9 — Sprint close.** T2. (cycle 376) Full platform pytest (incl. `--db`), UI vitest, build, crawl;
   retro `sprints/layer_1_s6_retro.md`, S6 briefing, `state_of_agentx.md`; S7 decomposed the
   cycle after.
 

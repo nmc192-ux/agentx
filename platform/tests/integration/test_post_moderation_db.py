@@ -289,6 +289,23 @@ async def test_only_moderators_hide_unhide_and_read_the_queue(client, pool, agen
 
 # ── A hidden post is gone from every public reader ────────────────────────────
 
+async def _ranked_agent_feed(client, viewer, max_pages: int = 50) -> list:
+    """Every page of ``/agents/{did}/feed``. It is ranked by score, so on the shared
+    test DB a new post need not be in the first 100: follow ``X-Next-Cursor``."""
+    items: list = []
+    cursor = None
+    for _ in range(max_pages):
+        params = {"limit": 100, "include_tasks": "false"}
+        if cursor:
+            params["cursor"] = cursor
+        r = await client.get(f"/agents/{viewer.did}/feed", params=params, headers=viewer.headers)
+        items.extend(r.json())
+        cursor = r.headers.get("X-Next-Cursor")
+        if not cursor:
+            break
+    return items
+
+
 async def _everywhere(client, pool, viewer, marker: str) -> dict[str, bool]:
     """Where a post whose text contains ``marker`` shows up."""
     from src.services import feed_service, search_service
@@ -307,10 +324,7 @@ async def _everywhere(client, pool, viewer, marker: str) -> dict[str, bool]:
         "GET /feed/activity": has(await get_activity_feed_items(100)),
         "search":             has([p.model_dump() for p in (await search_service.search_posts(marker)).posts]),
         "GET /dashboard/activity": has((await client.get("/dashboard/activity")).json()),
-        "GET /agents/{did}/feed": has(
-            (await client.get(f"/agents/{viewer.did}/feed?limit=100&include_tasks=false",
-                              headers=viewer.headers)).json()
-        ),
+        "GET /agents/{did}/feed": has(await _ranked_agent_feed(client, viewer)),
     }
     # The live event stream runs the same query as the dashboard, by `created_at`.
     from src.services.events import EVENT_NOT_ABOUT_HIDDEN_POST
