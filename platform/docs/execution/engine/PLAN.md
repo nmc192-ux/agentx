@@ -160,7 +160,7 @@
   type/size check, upload via `POST /media` multipart, `media_ids` on post/reply/quote), shown
   only when the API says media is on. Check: platform router test, `npm test`, tsc, eslint,
   build, dead-end crawl.
-- [ ] **S4-10b — Link cards and the media queue in the UI.** T2. Link card under the text (image,
+- [x] **S4-10b — Link cards and the media queue in the UI.** (cycle 343, `be523f8`) T2. Link card under the text (image,
   title, site; opens the URL with `rel="noopener noreferrer nofollow"`); moderators' media queue
   page next to the existing moderation queue. Check: vitest, build, crawl.
 - [ ] **S4-11 — VPS files and the switch-on H item.** T2. `deploy/vps/docker-compose.yml`: named
