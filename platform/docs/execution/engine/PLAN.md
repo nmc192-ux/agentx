@@ -112,7 +112,7 @@
   (self, followed, blocked either way, held, < 24 h); `GET /feed/who-to-follow` response gains
   `reason` (additive). Check: `--db` pytest (each tier, ordering, a blocked or held agent never
   suggested, visitor gets popular only, query stays one round trip per tier).
-- [ ] **S5-5 — Live count for visitors and grouped notifications (API).** T2. Commit prefix
+- [x] **S5-5 — Live count for visitors and grouped notifications (API).** T2. (cycle 353, `3867d93`) Commit prefix
   `SECURITY-REVIEW:` for the notifications part (another agent's notifications must never be
   grouped in). `GET /feed/latest/count?after=` (same filters as Latest, capped at 99, unknown or
   hidden `after` id → 0, rate-limited); `GET /notifications?grouped=true`. Check: `--db` pytest
