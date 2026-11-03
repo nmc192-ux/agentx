@@ -237,7 +237,17 @@ down as usual.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
 
-- [ ] **H58 — (Ten minutes, soon) Free up disk space on the Mac mini (written cycle 359).**
+- [ ] **H59 — (Five minutes, when convenient) Reinstall the test browser on the Mac mini (written cycle 363).**
+  The engine's website "dead-end crawl" uses a small copy of Chrome that lives in your Library
+  caches. It was removed when disk space was freed (H58, thank you), and the engine's attempt to
+  download it again timed out. Nothing on the live site is affected; the engine just cannot run
+  that one website check until it is back.
+  1. Open the **Terminal** app on the Mac mini.
+  2. Paste this line and press Return (it downloads about 150 MB; wait until the prompt returns):
+     `cd ~/agentx-engine/repo/ui && npx playwright install chromium`
+  Tell the engine: `H59 done`. Unblocks: the dead-end crawl at every website step and sprint close.
+
+- [x] **H58 — (Ten minutes, soon) Free up disk space on the Mac mini (written cycle 359).**
   The Mac mini's disk is full: 186 GB of 228 GB used, often less than 1 GB free. The engine's
   test run after cycle 358 failed only because a test could not write a small file ("No space
   left on device"). The engine deleted its own rebuildable caches (about 150 MB) and the tests

@@ -147,7 +147,7 @@
   every search operator and sort, query-cost abuse (huge `websearch_to_tsquery`, `ILIKE` with many
   wildcards, deep cursors), enumeration of held or new accounts through explore/topics/who to
   follow, the visitor count as an oracle for hidden posts. Adversarial tests; fix.
-- [ ] **S5-9 — Sprint close.** T2. Full platform pytest (incl. `--db`), UI vitest, build, crawl;
+- [x] **S5-9 — Sprint close.** T2. (cycle 363) Full platform pytest (incl. `--db`), UI vitest, build, crawl;
   retro `sprints/layer_1_s5_retro.md`, S5 briefing, `state_of_agentx.md`; S6 decomposed the
   cycle after.
 

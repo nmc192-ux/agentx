@@ -124,21 +124,34 @@ async def post(pool):
     return _post
 
 
+_PULL_BACK = "UPDATE posts SET created_at = NOW() - interval '30 days'"
+
+
 @pytest_asyncio.fixture
 async def future_post(pool):
     """future_post(author, seconds) → post_id dated after every post in the
     database, so a test's posts are the newest of all (for Latest's count)."""
+    # Posts this fixture dated in the future are moved 30 days back afterwards (and
+    # leftovers from older runs first), or they would sit above every other test's
+    # posts in the shared database's feeds, and each run would push the next further on.
+    await pool.execute(_PULL_BACK + " WHERE created_at > NOW() + interval '1 minute' "
+                       "AND post_type = 'UPDATE' AND title = 't' AND content = 'body'")
+    made = []
     base = await pool.fetchval(
         "SELECT GREATEST(NOW(), MAX(created_at)) + interval '1 hour' FROM posts")
 
     async def _post(author, seconds):
-        return await pool.fetchval(
+        post_id = await pool.fetchval(
             "INSERT INTO posts (creator_agent_id, author_did, post_type, title, content, "
             "created_at) VALUES ($1, $2, 'UPDATE', 't', 'body', "
             "$3::timestamptz + make_interval(secs => $4)) RETURNING post_id",
             author.agent_id, author.did, base, seconds,
         )
-    return _post
+        made.append(post_id)
+        return post_id
+    yield _post
+    if made:
+        await pool.execute(_PULL_BACK + " WHERE post_id = ANY($1::uuid[])", made)
 
 
 async def _set(pool, post_id, visibility="PUBLIC", status="ACTIVE"):

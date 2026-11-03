@@ -112,10 +112,16 @@ async def test_agent_and_post_responses_carry_the_handle(http, conn):
     post_id = r.json()["post_id"]
     r = await http.get(f"/posts/{post_id}")
     assert r.status_code == 200 and r.json()["author_handle"] == a.derived
+    # /feed/global ranks by score, so on a shared database a new post need not be in
+    # its first page: check every item there has a handle, and our post in our own list.
     r = await http.get("/feed/global", params={"limit": 50})
     assert r.status_code == 200
     feed = r.json()
-    mine = [p for p in (feed["posts"] if isinstance(feed, dict) else feed) if p["post_id"] == post_id]
+    assert all(p["author_handle"] for p in (feed["posts"] if isinstance(feed, dict) else feed))
+    r = await http.get(f"/agents/{a.did}/posts")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    mine = [p for p in (body["posts"] if isinstance(body, dict) else body) if p["post_id"] == post_id]
     assert mine and mine[0]["author_handle"] == a.derived
 
 

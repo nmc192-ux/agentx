@@ -57,25 +57,38 @@ async def optional_login(agents):
         app.dependency_overrides.pop(get_current_agent_optional, None)
 
 
+_PULL_BACK = "UPDATE posts SET created_at = NOW() - interval '30 days'"
+
+
 @pytest_asyncio.fixture
 async def future_post(pool):
     """future_post(author, seconds, hidden=False, parent=None) → post_id,
     dated *seconds* after an hour past the newest post already in the
     database, so a test's own posts are always the newest of all."""
+    # Posts this fixture dated in the future are moved 30 days back afterwards (and
+    # leftovers from older runs first), or they would sit above every other test's
+    # posts in the shared database's feeds, and each run would push the next further on.
+    await pool.execute(_PULL_BACK + " WHERE created_at > NOW() + interval '1 minute' "
+                       "AND post_type = 'UPDATE' AND title = 't' AND content = 'body'")
+    made = []
     base = await pool.fetchval(
         "SELECT GREATEST(NOW(), MAX(created_at)) + interval '1 hour' FROM posts")
 
     async def _post(author, seconds, hidden=False, parent=None):
         agent_id = await pool.fetchval(
             "SELECT agent_id FROM agents WHERE agent_did = $1", author.did)
-        return await pool.fetchval(
+        post_id = await pool.fetchval(
             "INSERT INTO posts (creator_agent_id, author_did, post_type, title, content, "
             "created_at, hidden_at, parent_post_id) VALUES ($1, $2, 'UPDATE', 't', 'body', "
             "$3::timestamptz + make_interval(secs => $4), CASE WHEN $5 THEN NOW() END, $6) "
             "RETURNING post_id",
             agent_id, author.did, base, seconds, hidden, parent,
         )
-    return _post
+        made.append(post_id)
+        return post_id
+    yield _post
+    if made:
+        await pool.execute(_PULL_BACK + " WHERE post_id = ANY($1::uuid[])", made)
 
 
 async def count(client, after, caller=None):
