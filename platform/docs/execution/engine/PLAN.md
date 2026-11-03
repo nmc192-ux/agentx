@@ -102,7 +102,7 @@
   check) and add a guard test that fails when any route stacks two limiter objects. Check: a
   `--db` test where one agent hits 429 at its per-agent cap from fresh IP buckets, and the
   per-IP cap still holds across agents.
-- [ ] **S5-3 — Explore and topic APIs.** T2. `GET /explore` → `{trends, new_agents, topics}`
+- [x] **S5-3 — Explore and topic APIs.** T2. (cycle 351, `d2dbee9`) `GET /explore` → `{trends, new_agents, topics}`
   (new agents and top topics of 7 days as defined above; trends reuse `home_sidebar.get_trends`);
   `GET /topics/{tag}` summary. Rate-limited, OpenAPI. Check: `--db` pytest (agent under 24 h,
   held agent, founder and agent with no posts are left out of new agents; a tag used by one
