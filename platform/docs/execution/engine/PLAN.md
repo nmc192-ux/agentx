@@ -145,7 +145,7 @@
   shared card, header with owner, description, refreshed time, pin button), and a "Feeds"
   section on Explore (popular and new). Check: vitest, tsc, eslint, build, dead-end crawl (add a
   feed page) when H59 is done.
-- [ ] **S6-7b — Labels in the UI.** T2. Small label tags on the post card (labeler handle on
+- [x] **S6-7b — Labels in the UI.** (cycle 374, `87588bf`; crawl waits on H59) T2. Small label tags on the post card (labeler handle on
   hover/focus, link to the labeler page), a labelers page (directory, a labeler's vocabulary,
   listen / stop listening; visitors' choice in the browser and sent as the header), a line in
   settings listing who you listen to. Check: vitest, tsc, eslint, build, crawl.
