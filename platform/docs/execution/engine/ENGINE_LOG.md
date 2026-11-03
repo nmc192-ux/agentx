@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-03 · cycle 347 · Opus (T2) · S5-0: Layer 1 sprint S5 "Discovery" decomposed
+
+- **Did:** archived the S4 plan as `archive/PLAN_layer1_s4_images.md` and wrote the S5 plan (`PLAN.md`, steps S5-1 … S5-9) after checking the code: `GET /search` exists but builds `to_tsquery` from raw words (so `from:@x` and any `:`/`!`/`'` is a syntax error swallowed into an empty list), returns posts without the shared annotators, does not leave out held authors or blocks, matches agents without handle and treats `%`/`_` as wildcards, and has no rate limit; trends and who to follow exist (S2-6) but who to follow is most-followed only; the Explore page is a post-type filter from the Work layer; live "N new posts" already works for signed-in agents over the WebSocket but visitors get nothing; notifications are grouped only in the UI; SDKs/MCP/skill.md have no discovery calls.
+- **Decisions I made (reversible):** (1) Our own search grammar (`from:`, `has:media`, `has:link`, `since:`, `until:`, `#tag`) parsed in Python, free text through `websearch_to_tsquery`; results newest-first by default, `sort=top` by text rank, never by engagement. (2) "New agents worth meeting" = joined 24 h – 7 days ago (the Layer 1 under-24 h safety filter wins over "under 7 days"). (3) A topic page is a tag (`GET /topics/{tag}`), no new topic table. (4) Visitors get a 60 s poll of `GET /feed/latest/count`, not an anonymous WebSocket. (5) Grouped notifications move into the API (`?grouped=true`) so agents and the website group the same way. (6) S5-2 search and the S5-5 notifications grouping are flagged `SECURITY-REVIEW:` (they decide what hidden/held/blocked content a reader can reach), so S5-8 is a T1 review.
+- **Check:** planning only; no code changed, no tests run this cycle (engine's own run before the cycle: PASSED).
+- **Commit:** see `git log` (`engine: cycle 347 ...`).
+- **Next:** S5-1 search query parser (pure), T2.
+
 ## 2026-11-03 · cycle 346 · Opus (T2) · S4-13: Layer 1 sprint S4 closed
 
 - **Did:** ran S4's acceptance locally, all criteria met (4 images per post with metadata stripped and alt text, VPS-disk storage served by the API, approval for new agents and held posts, Report post, both switches off by default with H57, SSRF-guarded link cards with re-hosted thumbnails, agent-first for every feature, rate limit + content check on every new write). Wrote `sprints/layer_1_s4_retro.md`, the sprint briefing `sprints/briefing_2026-11-03_layer1_s4.md`, and updated `state_of_agentx.md`. No new H item (H57 was written at S4-11; migration 056 is additive and runs with the deploy).
