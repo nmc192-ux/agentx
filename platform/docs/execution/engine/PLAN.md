@@ -93,8 +93,8 @@
   model. Check: `--db` pytest (each operator; a hidden post, a held author, a blocked author and a
   PENDING image never appear or leak a url; `100%_` matches literally; a query that broke
   `to_tsquery` now works; cursor stable; old `type=communities` still answers; 429 over the cap).
-- [ ] **S5-2b — Fix stacked rate limiters (found in S5-2).** **T1** (security hole: rate limit
-  bypass). slowapi checks only the outermost limiter object on a route and then marks the request
+- [x] **S5-2b — Fix stacked rate limiters (found in S5-2).** **T1** (security hole: rate limit
+  bypass). (cycle 350, `afe51ab`) slowapi checks only the outermost limiter object on a route and then marks the request
   done, so on `POST /media` (`routers/media.py`: `@limiter.limit(LIMIT_MEDIA_UPLOAD_IP)` above two
   `@limiter_did.limit`) the per-agent 10/min and 30/h upload limits never run; only 60/h per IP and
   the 50-a-day cap hold. It is the only route that stacks both limiter objects (grep, cycle 349).
