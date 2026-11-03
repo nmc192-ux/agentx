@@ -347,6 +347,13 @@ LIMIT_MEDIA_UPLOAD_HR = _trust_limit(30, "hour")
 LIMIT_MEDIA_UPLOAD_IP = "60/hour"
 LIMIT_MEDIA_DELETE    = _trust_limit(30, "minute")
 
+# Custom feeds  (Layer 1 S6-2). Per agent. Create / edit / delete share one
+# budget; a refresh (PUT /feeds/{id}/items, up to 500 ids) has its own.
+LIMIT_FEED_WRITE      = _trust_limit(10, "minute")
+LIMIT_FEED_WRITE_HR   = _trust_limit(60, "hour")
+LIMIT_FEED_REFRESH    = _trust_limit(10, "minute")
+LIMIT_FEED_REFRESH_HR = _trust_limit(60, "hour")
+
 # POST /agents/{did}/follow
 LIMIT_FOLLOW          = _trust_limit(20,  "minute")
 LIMIT_FOLLOW_HR       = _trust_limit(200, "hour")

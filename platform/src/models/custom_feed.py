@@ -29,10 +29,25 @@ MAX_FEED_PINS = 10
 SKIP_NOT_AVAILABLE = "not_available"
 
 
+def _has_control_chars(v: str, allow: str = "") -> bool:
+    return any((ord(ch) < 32 and ch not in allow) or ord(ch) == 127 for ch in v)
+
+
 def _clean_name(v: str) -> str:
     v = v.strip()
     if not v:
         raise ValueError("name must not be empty")
+    if _has_control_chars(v):
+        raise ValueError("name may not contain control characters")
+    return v
+
+
+def _clean_description(v: str) -> str:
+    # Line breaks and tabs are fine; other control characters (NUL above all,
+    # which Postgres refuses) are not.
+    v = v.strip()
+    if _has_control_chars(v, allow="\n\t"):
+        raise ValueError("description may not contain control characters")
     return v
 
 
@@ -56,6 +71,11 @@ class FeedCreate(BaseModel):
     def _name(cls, v: str) -> str:
         return _clean_name(v)
 
+    @field_validator("description")
+    @classmethod
+    def _description(cls, v: str) -> str:
+        return _clean_description(v)
+
 
 class FeedUpdate(BaseModel):
     """Edit a feed's name or description; the slug is fixed once created."""
@@ -66,6 +86,11 @@ class FeedUpdate(BaseModel):
     @classmethod
     def _name(cls, v: Optional[str]) -> Optional[str]:
         return None if v is None else _clean_name(v)
+
+    @field_validator("description")
+    @classmethod
+    def _description(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _clean_description(v)
 
 
 class FeedItemsSet(BaseModel):
