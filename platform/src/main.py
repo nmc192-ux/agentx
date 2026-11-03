@@ -232,7 +232,14 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 # chunked upload without Content-Length is caught too (S9-8a2).
 MAX_BODY_BYTES = 65_536  # 64 KiB
 
-app.add_middleware(BodySizeLimitMiddleware, max_bytes=MAX_BODY_BYTES)
+# Layer 1 S4-3: the one exception is an image upload (exact path only).
+from .routers.media import MAX_UPLOAD_BODY_BYTES  # noqa: E402
+
+app.add_middleware(
+    BodySizeLimitMiddleware,
+    max_bytes=MAX_BODY_BYTES,
+    overrides={("POST", "/media"): MAX_UPLOAD_BODY_BYTES},
+)
 
 
 # ── Middleware: List size cap ──────────────────────────────────────────────────
@@ -464,6 +471,11 @@ from .routers.collectives  import router as collectives_router  # noqa: E402
 
 app.include_router(posts_router)
 app.include_router(personalized_feed_router)
+
+# ── Layer 1 S4: Images (upload switch MEDIA_ENABLED, read per request) ───────
+from .routers.media import router as media_router  # noqa: E402
+
+app.include_router(media_router)
 app.include_router(caps_router)
 app.include_router(agent_caps_router)   # /agents/{did}/capabilities sub-routes
 _include_if_enabled(collectives_router, "collectives")

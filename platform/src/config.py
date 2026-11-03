@@ -172,6 +172,16 @@ class Settings(BaseSettings):
     faucet_min_age_minutes: int = 60
     faucet_daily_budget:    int = 2000
 
+    # Image uploads (Layer 1 S4-3). `POST /media` and `media_ids` on posts
+    # exist only while MEDIA_ENABLED is exactly 1/true/yes (a string, like the
+    # faucet flag: a mistyped value means "off"). Read per request. Media
+    # already stored is served whatever the switch says. Files live under
+    # MEDIA_ROOT (one docker volume shared by both API copies, S4-11);
+    # uploads are refused while that disk has under MEDIA_MIN_FREE_BYTES free.
+    media_enabled:          str = "false"
+    media_root:             str = "/data/media"
+    media_min_free_bytes:   int = 5 * 1024 ** 3
+
     # Task work deadline (Phase C, Sprint 21, BT-1; decision D10 default b):
     # the creator of a marketplace task may take the escrowed reward back
     # with `POST /tasks/{id}/reclaim` once the task has been assigned for

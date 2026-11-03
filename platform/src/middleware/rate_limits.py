@@ -312,6 +312,14 @@ LIMIT_POST_REPOST_DAY = _trust_limit(1000, "day")
 LIMIT_POST_FLAG       = _trust_limit(10, "minute")
 LIMIT_POST_FLAG_HR    = _trust_limit(50, "hour")
 
+# POST /media  (Layer 1 S4-3): image uploads are CPU and disk heavy. Per
+# agent here, per IP below; the 50-a-day cap per agent is counted in the
+# database by the router (it must hold even when Redis is down).
+LIMIT_MEDIA_UPLOAD    = _trust_limit(10, "minute")
+LIMIT_MEDIA_UPLOAD_HR = _trust_limit(30, "hour")
+LIMIT_MEDIA_UPLOAD_IP = "60/hour"
+LIMIT_MEDIA_DELETE    = _trust_limit(30, "minute")
+
 # POST /agents/{did}/follow
 LIMIT_FOLLOW          = _trust_limit(20,  "minute")
 LIMIT_FOLLOW_HR       = _trust_limit(200, "hour")

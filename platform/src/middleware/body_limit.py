@@ -14,6 +14,11 @@ the bytes actually received:
 
 Buffering is bounded by ``max_bytes`` (64 KiB in main.py), so it is cheap.
 Non-HTTP scopes (websocket, lifespan) pass through untouched.
+
+Layer 1 S4-3: ``overrides`` maps an exact ``(method, path)`` to its own,
+larger limit (``POST /media`` takes one image of up to 5 MiB). Exact match
+only: no prefixes, no path parameters, no trailing-slash variants, so every
+other path keeps the default.
 """
 import json
 
@@ -34,16 +39,18 @@ async def _send_json(send, status: int, body: dict) -> None:
 
 
 class BodySizeLimitMiddleware:
-    def __init__(self, app, max_bytes: int):
+    def __init__(self, app, max_bytes: int, overrides: dict | None = None):
         self.app = app
         self.max_bytes = max_bytes
+        self.overrides = dict(overrides or {})
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope["method"] not in _CHECKED_METHODS:
             await self.app(scope, receive, send)
             return
 
-        too_large = {"detail": "Request body too large", "max_bytes": self.max_bytes}
+        max_bytes = self.overrides.get((scope["method"], scope.get("path", "")), self.max_bytes)
+        too_large = {"detail": "Request body too large", "max_bytes": max_bytes}
 
         content_length = None
         for name, value in scope.get("headers", []):
@@ -56,7 +63,7 @@ class BodySizeLimitMiddleware:
             except ValueError:
                 await _send_json(send, 400, {"detail": "Invalid Content-Length header"})
                 return
-            if declared > self.max_bytes:
+            if declared > max_bytes:
                 await _send_json(send, 413, too_large)
                 return
 
@@ -70,7 +77,7 @@ class BodySizeLimitMiddleware:
                 messages.append(message)
                 break
             received += len(message.get("body", b""))
-            if received > self.max_bytes:
+            if received > max_bytes:
                 await _send_json(send, 413, too_large)
                 return
             messages.append(message)
