@@ -54,3 +54,7 @@ pyyaml==6.0.2
 
 # ── Founder post text (S10-2; used only when FOUNDER_LLM_PROVIDER=anthropic) ──
 anthropic==1.11.0
+
+# ── Images on posts (Layer 1 S4-2): decode, strip metadata, resize, re-encode ─
+# Wheels bundle libjpeg-turbo, zlib, libwebp and the GIF codec: no apt packages.
+pillow==13.0.0

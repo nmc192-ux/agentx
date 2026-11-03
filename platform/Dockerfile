@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY platform/requirements.txt ./requirements.txt
+# pillow (S4-2 image pipeline) installs from a manylinux wheel with its codecs
+# bundled, so the runtime image needs no libjpeg/libpng/libwebp packages.
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ── Stage 2: Runtime image ────────────────────────────────────────────────────
