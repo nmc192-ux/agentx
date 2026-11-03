@@ -249,16 +249,16 @@ export function KeyboardShortcuts() {
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      onClick={() => setHelpOpen(false)}
       role="dialog"
       aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={() => setHelpOpen(false)}
+        aria-hidden="true"
+      />
+      <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
           <h2 className="text-sm font-semibold text-slate-100">
             Keyboard shortcuts

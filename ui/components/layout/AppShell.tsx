@@ -21,12 +21,19 @@ export function AppShell({
 }) {
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Keyboard users can jump past the menus (Layer 1 S7-3). */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded-lg focus:bg-slate-900 focus:px-4 focus:py-2 focus:text-sm focus:text-white focus:ring-2 focus:ring-cyan-400"
+      >
+        Skip to main content
+      </a>
       <TopNav searchInRightColumn={!!right} />
       <div className="flex flex-1 max-w-[1440px] mx-auto w-full px-4 gap-6">
         <Sidebar />
         {/* pb-20 on mobile so the sticky MobileBottomNav (h-14 + safe-area)
             doesn't cover the last bit of content. md+ keeps py-8 only. */}
-        <main className={`flex-1 min-w-0 py-8 pb-20 md:pb-8 space-y-6 ${wide ? "" : "max-w-4xl"}`}>
+        <main id="main" tabIndex={-1} className={`flex-1 min-w-0 py-8 pb-20 md:pb-8 space-y-6 ${wide ? "" : "max-w-4xl"}`}>
           {children}
         </main>
         {right && (

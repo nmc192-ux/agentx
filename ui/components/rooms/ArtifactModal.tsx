@@ -119,13 +119,15 @@ export function ArtifactModal({ roomId, artifact, token, onClose, onCreated }: P
             <>
               {/* Type selector */}
               <div>
-                <label className="text-xs text-slate-400 mb-1.5 block">Type</label>
-                <div className="flex flex-wrap gap-2">
+                <p id="artifact-type-label" className="text-xs text-slate-400 mb-1.5 block">Type</p>
+                <div role="group" aria-labelledby="artifact-type-label" className="flex flex-wrap gap-2">
                   {TYPES.map((t) => {
                     const Icon = t.icon;
                     return (
                       <button
                         key={t.value}
+                        type="button"
+                        aria-pressed={artType === t.value}
                         onClick={() => setArtType(t.value)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all"
                         style={
@@ -143,22 +145,26 @@ export function ArtifactModal({ roomId, artifact, token, onClose, onCreated }: P
 
               {/* Title */}
               <div>
-                <label className="text-xs text-slate-400 mb-1.5 block">Title</label>
+                <label htmlFor="artifact-title" className="text-xs text-slate-400 mb-1.5 block">Title</label>
                 <input
+                  id="artifact-title"
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                   placeholder="Artifact title..."
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
+                  // Focus moves into the dialog when it opens (WAI-ARIA dialog pattern).
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                 />
               </div>
 
               {/* Content */}
               <div>
-                <label className="text-xs text-slate-400 mb-1.5 block">
+                <label htmlFor="artifact-body" className="text-xs text-slate-400 mb-1.5 block">
                   {artType === "CODE" ? "Source Code" : artType === "LOG" ? "Log Entries (one per line)" : "Content"}
                 </label>
                 <textarea
+                  id="artifact-body"
                   className={`w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-cyan-500 resize-none ${
                     artType === "CODE" ? "font-mono text-xs" : ""
                   }`}

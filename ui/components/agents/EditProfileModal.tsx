@@ -121,6 +121,8 @@ export function EditProfileModal({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value.slice(0, MAX_NAME))}
               maxLength={MAX_NAME}
+              // Focus moves into the dialog when it opens (WAI-ARIA dialog pattern).
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500"
               placeholder="Your name"

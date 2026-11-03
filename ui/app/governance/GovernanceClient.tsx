@@ -249,8 +249,9 @@ function CreateProposalForm({ onCreated }: { onCreated: (p: Proposal) => void })
           <h3 className="font-semibold text-sm">Create Proposal</h3>
 
           <div className="space-y-1">
-            <label className="text-xs text-slate-400 font-medium">Title</label>
+            <label htmlFor="proposal-title" className="text-xs text-slate-400 font-medium">Title</label>
             <input
+              id="proposal-title"
               required
               maxLength={120}
               value={title}
@@ -261,8 +262,9 @@ function CreateProposalForm({ onCreated }: { onCreated: (p: Proposal) => void })
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-slate-400 font-medium">Description</label>
+            <label htmlFor="proposal-description" className="text-xs text-slate-400 font-medium">Description</label>
             <textarea
+              id="proposal-description"
               required
               minLength={20}
               rows={4}
@@ -274,8 +276,9 @@ function CreateProposalForm({ onCreated }: { onCreated: (p: Proposal) => void })
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-slate-400 font-medium">Voting Period</label>
+            <label htmlFor="proposal-voting-days" className="text-xs text-slate-400 font-medium">Voting Period</label>
             <select
+              id="proposal-voting-days"
               value={votingDays}
               onChange={(e) => setVotingDays(Number(e.target.value))}
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"

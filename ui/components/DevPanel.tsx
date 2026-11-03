@@ -111,7 +111,7 @@ function TraceBlock({
   const borderColor = TRACE_BORDER[status];
   const duration    = traceDuration(events);
 
-  function handleCopyId(e: React.MouseEvent) {
+  function handleCopyId(e: React.SyntheticEvent) {
     // Copy traceId without toggling the block
     e.stopPropagation();
     navigator.clipboard.writeText(traceId).then(() => {
@@ -130,7 +130,14 @@ function TraceBlock({
     >
       {/* ── trace header ────────────────────────────────────────────────── */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
         onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
+        }}
         style={{
           display:      "flex",
           alignItems:   "center",
@@ -151,7 +158,12 @@ function TraceBlock({
 
         {/* traceId — click-to-copy, stops propagation so header doesn't toggle */}
         <span
+          role="button"
+          tabIndex={0}
           onClick={handleCopyId}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleCopyId(e); }
+          }}
           title="Click to copy trace ID"
           style={{
             color:        copied ? "#3fb950" : "#555",

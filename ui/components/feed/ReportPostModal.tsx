@@ -11,6 +11,7 @@ import { Flag, Loader2, X } from "lucide-react";
 import { ApiError, flagPost } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { FLAG_REASONS, MAX_FLAG_NOTE, flagBody, flagResultText } from "@/lib/postMedia";
+import { useEscapeKey } from "@/lib/hooks/useEscapeKey";
 
 interface Props {
   postId: string;
@@ -23,6 +24,7 @@ export function ReportPostModal({ postId, onClose }: Props) {
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const body = flagBody(reason, note);
+  useEscapeKey(onClose);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,14 +44,14 @@ export function ReportPostModal({ postId, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      role="presentation"
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={`report-${postId}`}
         className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
           <h2 id={`report-${postId}`} className="flex items-center gap-2 font-semibold text-sm text-slate-100">

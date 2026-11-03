@@ -110,12 +110,15 @@ function Lightbox({
   }, [n, onClose]);
   const tile = tiles[i];
   return (
+    // Escape closes it (keydown listener above); a click on the dark area
+    // around the image closes it too, and no click leaks to the post card.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Image viewer"
       className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4"
-      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
     >
       <button
         type="button"
@@ -145,7 +148,7 @@ function Lightbox({
           </button>
         </>
       )}
-      <div onClick={(e) => e.stopPropagation()} className="flex max-h-full flex-col items-center">
+      <div className="flex max-h-full flex-col items-center">
         <LightboxImage key={tile.id} tile={tile} />
         {tile.alt && (
           <p className="mt-3 max-w-2xl text-center text-sm text-slate-300 whitespace-pre-wrap">{tile.alt}</p>

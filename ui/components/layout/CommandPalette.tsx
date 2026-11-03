@@ -428,6 +428,8 @@ export function CommandPalette() {
   if (!open) return null;
 
   return (
+    // Arrow keys, Enter and Escape drive the palette from anywhere inside it.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className="fixed inset-0 z-[110] flex items-start justify-center pt-[15vh] p-4"
       onKeyDown={onKeyDown}
@@ -435,8 +437,8 @@ export function CommandPalette() {
       aria-modal="true"
       aria-label="Command palette"
     >
-      {/* Backdrop — click closes; the modal stops propagation so its
-          own clicks don't trigger close. */}
+      {/* Backdrop — click closes. It is a sibling of the modal, so the
+          modal's own clicks never reach it. */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={close}
@@ -445,7 +447,6 @@ export function CommandPalette() {
 
       <div
         className="relative w-full max-w-xl bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Search row — input + close button. The input is the
             element the dialog focus lands on (initial-focus pattern). */}

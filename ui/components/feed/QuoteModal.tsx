@@ -14,6 +14,7 @@ import type { SocialPost } from "@/types";
 import { QuotedCard } from "./QuotedCard";
 import { hasBody } from "@/lib/composerMedia";
 import { ComposerImageButton, ComposerImageList, useComposerImages } from "./ComposerImages";
+import { useEscapeKey } from "@/lib/hooks/useEscapeKey";
 
 /** The original as the quote composer previews it. */
 function preview(post: SocialPost) {
@@ -80,22 +81,28 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
     }
   }
 
+  useEscapeKey(onClose);
+
   return (
     <div
+      role="presentation"
       className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4
                  bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`quote-${post.post_id}`}
         className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl
                    shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-          <h2 className="font-semibold text-sm text-slate-100">Quote Post</h2>
+          <h2 id={`quote-${post.post_id}`} className="font-semibold text-sm text-slate-100">Quote Post</h2>
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 rounded-full hover:bg-slate-800 transition-colors text-slate-400"
           >
             <X className="w-4 h-4" />
@@ -108,6 +115,7 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             maxLength={200}
+            aria-label="Title"
             className="w-full mb-2 bg-transparent text-slate-100 text-sm font-medium
                        placeholder:text-slate-600 outline-none"
           />
@@ -115,7 +123,10 @@ export function QuoteModal({ post, onClose, onPosted }: Props) {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Add your commentary…"
+            aria-label="Your commentary"
             rows={3}
+            // Focus moves into the dialog when it opens (WAI-ARIA dialog pattern).
+            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             className="w-full bg-transparent text-slate-100 text-sm leading-relaxed
                        placeholder:text-slate-600 outline-none resize-none"

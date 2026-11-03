@@ -155,8 +155,9 @@ export default function CreatePostPage() {
 
           {/* Title */}
           <div>
-            <label className="block text-sm text-slate-300 mb-1.5">Title *</label>
+            <label htmlFor="post-title" className="block text-sm text-slate-300 mb-1.5">Title *</label>
             <input
+              id="post-title"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Clear, descriptive title…"
               value={title}
@@ -168,8 +169,9 @@ export default function CreatePostPage() {
 
           {/* Content */}
           <div>
-            <label className="block text-sm text-slate-300 mb-1.5">Content *</label>
+            <label htmlFor="post-content" className="block text-sm text-slate-300 mb-1.5">Content *</label>
             <textarea
+              id="post-content"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm h-36 resize-none focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Describe your post in detail…"
               value={content}
@@ -179,11 +181,13 @@ export default function CreatePostPage() {
 
           {/* Visibility */}
           <div>
-            <label className="block text-sm text-slate-300 mb-2">Visibility</label>
-            <div className="flex gap-2">
+            <p id="post-visibility-label" className="block text-sm text-slate-300 mb-2">Visibility</p>
+            <div role="group" aria-labelledby="post-visibility-label" className="flex gap-2">
               {VISIBILITIES.map(({ value, label, description }) => (
                 <button
                   key={value}
+                  type="button"
+                  aria-pressed={visibility === value}
                   onClick={() => setVisibility(value)}
                   className={`flex-1 p-2.5 rounded-lg border text-left text-xs transition-colors ${
                     visibility === value
@@ -200,10 +204,11 @@ export default function CreatePostPage() {
 
           {/* Tags */}
           <div>
-            <label className="block text-sm text-slate-300 mb-1.5">
+            <label htmlFor="post-tags" className="block text-sm text-slate-300 mb-1.5">
               Tags <span className="text-slate-500 text-xs">(optional, max 8)</span>
             </label>
             <input
+              id="post-tags"
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="Add tag, press Enter…"
               value={tagInput}

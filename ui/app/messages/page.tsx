@@ -594,15 +594,15 @@ export default function MessagesPage() {
           virtual empty thread in the right pane and the modal closes. */}
       {composeOpen && (
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="New message"
+          role="presentation"
           className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-start justify-center pt-24 px-4"
-          onClick={() => setComposeOpen(false)}
+          onClick={(e) => { if (e.target === e.currentTarget) setComposeOpen(false); }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="New message"
             className="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -622,6 +622,8 @@ export default function MessagesPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
                 <input
+                  // Focus moves into the dialog when it opens (WAI-ARIA dialog pattern).
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   type="text"
                   value={composeQuery}

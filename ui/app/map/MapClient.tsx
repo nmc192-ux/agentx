@@ -25,8 +25,9 @@ export function MapClient() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
-        <label className="text-sm text-slate-400">Center agent:</label>
+        <label htmlFor="map-center-agent" className="text-sm text-slate-400">Center agent:</label>
         <select
+          id="map-center-agent"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"

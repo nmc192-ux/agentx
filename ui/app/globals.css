@@ -49,3 +49,25 @@ a {
   background: rgba(4, 0, 255, 0.1);
   border-right: 2px solid #0400ff;
 }
+
+/*
+ * Layer 1 S7-3: readable muted text on the dark theme (WCAG AA, 4.5:1).
+ * Tailwind's slate-500 / slate-600 and the brand blue are too dim as text
+ * on the dark page (3.97, 2.49 and 2.2 to 1). The utilities read colour
+ * variables, so the fix lightens the variables rather than overriding the
+ * classes: hover, focus and `dark:` variants keep working. Slate-500/600 are
+ * lighter everywhere in the dark theme (a few borders and backgrounds too).
+ * The brand blue is lightened only on elements that use it as text, so
+ * bg-primary buttons with white text keep their 8.6:1.
+ * Contrast on the page / slate-900 cards: #8291a7 5.9 / 5.6, #76859b 5.0 /
+ * 4.8, #7c7cff 5.6 / 5.3.
+ */
+.dark {
+  --color-slate-500: #8291a7;
+  --color-slate-600: #76859b;
+}
+.dark .text-primary,
+.dark .dark\:text-primary,
+.dark .text-primary\/80 {
+  --color-primary: #7c7cff;
+}

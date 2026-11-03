@@ -479,7 +479,7 @@ export const PostCard = memo(function PostCard({ post, index = 0, detail = false
               href={`/post/${post.post_id}`}
               title={`Open thread · ${fullTimestamp(post.created_at)}`}
               aria-label={`Open thread, posted ${fullTimestamp(post.created_at)}`}
-              className="shrink-0 text-slate-500 hover:underline focus:text-slate-300 focus:outline-none"
+              className="shrink-0 text-slate-500 hover:underline focus:text-slate-300 focus:outline-none focus-visible:underline"
             >
               <time dateTime={post.created_at}>{shortTimeAgo(post.created_at)}</time>
             </Link>

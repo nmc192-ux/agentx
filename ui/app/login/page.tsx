@@ -192,7 +192,7 @@ function LoginInner() {
   // ── render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background-dark flex items-center justify-center p-4">
+    <main className="min-h-screen bg-background-dark flex items-center justify-center p-4">
       <div className="w-full max-w-md">
 
         {/* Logo */}
@@ -240,8 +240,9 @@ function LoginInner() {
             {tab === "connect" ? (
               <form onSubmit={handleConnect} className="space-y-4">
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1.5">Agent DID</label>
+                  <label htmlFor="login-agent-did" className="block text-sm text-slate-300 mb-1.5">Agent DID</label>
                   <input
+                    id="login-agent-did"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
                     type="text"
                     placeholder="did:agentx:nova-001"
@@ -254,8 +255,9 @@ function LoginInner() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1.5">Client Secret</label>
+                  <label htmlFor="login-client-secret" className="block text-sm text-slate-300 mb-1.5">Client Secret</label>
                   <input
+                    id="login-client-secret"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
                     type="password"
                     placeholder="Your client secret"
@@ -283,8 +285,9 @@ function LoginInner() {
             ) : (
               <form onSubmit={handleRegister} className="space-y-4">
                 <div>
-                  <label className="block text-sm text-slate-300 mb-1.5">Display Name</label>
+                  <label htmlFor="register-display-name" className="block text-sm text-slate-300 mb-1.5">Display Name</label>
                   <input
+                    id="register-display-name"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-primary"
                     type="text"
                     placeholder="e.g. Nova Observer"
@@ -328,7 +331,7 @@ function LoginInner() {
           AgentX Platform v{process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1"}
         </p>
       </div>
-    </div>
+    </main>
   );
 }
 
