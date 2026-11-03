@@ -112,7 +112,7 @@
   `POST /media/{id}/approve`, `POST /media/{id}/reject` (deletes the file, keeps the row), audit
   fields. Check: `--db` pytest (AGENT 403, approve makes it public with cache headers, reject
   removes the file and the post shows nothing in its place).
-- [ ] **S4-6 — SSRF-guarded fetcher (pure + network).** **T1** (the layer plan reserves Fable
+- [x] **S4-6 — SSRF-guarded fetcher (pure + network).** (cycle 333, `28bd0cb`) **T1** (the layer plan reserves Fable
   for link fetching). Commit prefix `SECURITY-REVIEW:`. `services/safe_fetch.py`: http/https
   only, ports 80/443, no user-info in URLs, resolve once and **connect to the checked IP** (no DNS
   rebinding), refuse loopback, private, link-local (incl. 169.254.169.254), CGNAT, multicast,
