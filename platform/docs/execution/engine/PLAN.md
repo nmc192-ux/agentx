@@ -154,7 +154,7 @@
   grid with alt text, lightbox, "Image awaiting review" placeholder (own/moderator PENDING images
   fetched with the token); **Report post** in the card menu for signed-in non-authors
   (`POST /posts/{id}/flag`, reason + note). Check: `npm test`, tsc, eslint, build, dead-end crawl.
-- [ ] **S4-10a2 — Attach images in the composer.** T2. Small public `GET /media/settings`
+- [x] **S4-10a2 — Attach images in the composer.** (cycle 342, `9b56431`) T2. Small public `GET /media/settings`
   (`{media_enabled, link_cards_enabled}`, registered before `/media/{id}`, OpenAPI, pinned test);
   composer: attach up to 4 images (preview, alt text field, remove, progress, client-side
   type/size check, upload via `POST /media` multipart, `media_ids` on post/reply/quote), shown
