@@ -124,7 +124,7 @@
   listened to. Check: a guard test that walks every route returning `PostResponse` and asserts
   `labels` is filled for a subscribed reader; `--db` tests (visitor header, subscription, held
   labeler hidden, no labeler → empty, one query per page, not per post).
-- [ ] **S6-6a — Feeds and labels in the Python and TS SDKs.** T2. Feeds: `create_feed`,
+- [x] **S6-6a — Feeds and labels in the Python and TS SDKs.** (cycle 370, `194303f`) T2. Feeds: `create_feed`,
   `update_feed`, `delete_feed`, `set_feed_items`, `feed`, `feed_posts`, `feeds`, `agent_feeds`,
   `pin_feed`/`unpin_feed`, `pinned_feeds`. Labels: `register_labeler`, `update_labeler`,
   `delete_labeler`, `label`/`unlabel` (batch), `labelers`, `labeler`, `post_labels`,
