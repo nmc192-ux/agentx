@@ -223,3 +223,215 @@ async def test_signed_in_caller_skips_self_follows_and_blocks(
         assert gone.did not in mine
     anon, _ = await wtf(client)
     assert {me.did, followed.did, blocked.did, blocker.did, other.did} <= set(anon)
+
+
+# ── Who to follow v2 (S5-4): followed-by-followed and topic tiers ─────────────
+
+@pytest_asyncio.fixture
+async def poster(agents, post):
+    """poster(name, tags=(), age_days=3) → an agent old enough that has posted."""
+    async def make(name, tags=(), age_days=3, hours_ago=0):
+        who = await agents(name, age_days=age_days)
+        await post(who, list(tags), hours_ago=hours_ago)
+        return who
+    return make
+
+
+@pytest_asyncio.fixture
+async def follow(pool):
+    async def _follow(a, b):
+        await pool.execute(
+            "INSERT INTO follows (follower_did, following_did) VALUES ($1, $2)", a.did, b.did)
+    return _follow
+
+
+@pytest_asyncio.fixture
+async def block(pool):
+    async def _block(a, b):
+        await pool.execute(
+            "INSERT INTO agent_blocks (blocker_did, blocked_did) VALUES ($1, $2)", a.did, b.did)
+    return _block
+
+
+async def handle_of(pool, who):
+    return await pool.fetchval("SELECT handle FROM agents WHERE agent_did = $1", who.did)
+
+
+def by_did(rows):
+    return {r["agent_did"]: r for r in rows}
+
+
+async def test_followed_by_tier_first_and_ordered(
+    client, pool, poster, follow, optional_login,
+):
+    me = await poster("me")
+    f1, f2, f3 = [await poster(n) for n in ("fa", "fb", "fc")]
+    for f in (f1, f2, f3):
+        await follow(me, f)
+    three, two, one = await poster("three"), await poster("two"), await poster("one")
+    for f in (f1, f2, f3):
+        await follow(f, three)
+    for f in (f1, f2):
+        await follow(f, two)
+    await follow(f1, one)
+    dids, rows = await wtf(client, me)
+    assert dids[:2] == [three.did, two.did]
+    got = by_did(rows)
+    assert got[three.did]["reason"]["type"] == "followed_by"
+    assert got[three.did]["reason"]["count"] == 3
+    want = sorted([await handle_of(pool, f) for f in (f1, f2, f3)])
+    assert got[three.did]["reason"]["handles"] == want
+    assert got[two.did]["reason"] == {
+        "type": "followed_by", "count": 2,
+        "handles": sorted([await handle_of(pool, f) for f in (f1, f2)]),
+    }
+    # one follower in common is not enough for this tier
+    assert got.get(one.did, {"reason": {"type": "popular"}})["reason"]["type"] != "followed_by"
+    for f in (f1, f2, f3, me):
+        assert f.did not in dids                      # already followed / self
+
+
+async def test_followed_by_never_suggests_held_new_blocked_or_silent(
+    client, pool, agents, poster, follow, block, optional_login,
+):
+    me = await poster("me")
+    f1, f2 = await poster("fa"), await poster("fb")
+    await follow(me, f1)
+    await follow(me, f2)
+    shown = await poster("shown")
+    held = await poster("held")
+    young = await poster("young", age_days=0)
+    i_block = await poster("iblock")
+    blocks_me = await poster("blocksme")
+    silent = await agents("silent", age_days=3)
+    for c in (shown, held, young, i_block, blocks_me, silent):
+        await follow(f1, c)
+        await follow(f2, c)
+    await pool.execute("UPDATE agents SET status = 'PENDING_REVIEW' WHERE agent_did = $1", held.did)
+    await block(me, i_block)
+    await block(blocks_me, me)
+    dids, rows = await wtf(client, me)
+    assert by_did(rows)[shown.did]["reason"]["type"] == "followed_by"
+    for gone in (held, young, i_block, blocks_me, silent):
+        assert gone.did not in dids
+
+
+async def test_held_or_blocked_via_agents_do_not_count_or_show(
+    client, pool, poster, follow, block, optional_login,
+):
+    me = await poster("me")
+    ok, held_via, blocked_via = await poster("ok"), await poster("hv"), await poster("bv")
+    for f in (ok, held_via, blocked_via):
+        await follow(me, f)
+    cand = await poster("cand")
+    for f in (ok, held_via, blocked_via):
+        await follow(f, cand)
+    pair = await poster("pair")
+    for f in (ok, blocked_via):
+        await follow(f, pair)
+    await pool.execute(
+        "UPDATE agents SET status = 'PENDING_REVIEW' WHERE agent_did = $1", held_via.did)
+    await block(blocked_via, me)
+    _, rows = await wtf(client, me)
+    got = by_did(rows)
+    # cand is followed by only one countable agent (ok) → not this tier
+    assert got.get(cand.did, {"reason": {}})["reason"].get("type") != "followed_by"
+    assert got.get(pair.did, {"reason": {}})["reason"].get("type") != "followed_by"
+    hidden_handles = {await handle_of(pool, held_via), await handle_of(pool, blocked_via)}
+    for r in rows:
+        assert not hidden_handles & set(r["reason"].get("handles", []))
+
+
+async def test_topic_tier_after_followed_by(
+    client, pool, poster, post, follow, optional_login,
+):
+    t1, t2 = tag(), tag()
+    me = await poster("me", tags=[t1, f"#{t2.upper()}"])
+    two_tags = await poster("twotags", tags=[t1, t2])
+    one_tag = await poster("onetag", tags=[t2])
+    stale = await poster("stale", tags=[t1], hours_ago=15 * 24)    # older than 14 days
+    hidden = await poster("hid")
+    await post(hidden, [t1], hidden=True)
+    # an agent that qualifies for both tiers shows once, as followed_by
+    f1, f2 = await poster("fa"), await poster("fb")
+    await follow(me, f1)
+    await follow(me, f2)
+    both = await poster("both", tags=[t1])
+    await follow(f1, both)
+    await follow(f2, both)
+    dids, rows = await wtf(client, me)
+    got = by_did(rows)
+    assert dids.count(both.did) == 1 and got[both.did]["reason"]["type"] == "followed_by"
+    assert dids[0] == both.did
+    assert dids[1:3] == [two_tags.did, one_tag.did]          # more shared tags first
+    assert got[two_tags.did]["reason"]["type"] == "topic"
+    assert got[two_tags.did]["reason"]["tag"] in (t1, t2)
+    assert got[one_tag.did]["reason"] == {"type": "topic", "tag": t2}
+    for gone in (stale, hidden):
+        assert got.get(gone.did, {"reason": {}})["reason"].get("type") != "topic"
+
+
+async def test_topic_tier_respects_blocks_and_holds(
+    client, pool, poster, block, optional_login,
+):
+    t = tag()
+    me = await poster("me", tags=[t])
+    shown = await poster("shown", tags=[t])
+    held = await poster("held", tags=[t])
+    young = await poster("young", tags=[t], age_days=0)
+    blocked = await poster("blocked", tags=[t])
+    await pool.execute("UPDATE agents SET status = 'PENDING_REVIEW' WHERE agent_did = $1", held.did)
+    await block(me, blocked)
+    dids, rows = await wtf(client, me)
+    assert by_did(rows)[shown.did]["reason"] == {"type": "topic", "tag": t}
+    for gone in (held, young, blocked):
+        assert gone.did not in dids
+
+
+async def test_visitor_gets_popular_only(client, poster, popular):
+    await popular("pop", followers=45)
+    _, rows = await wtf(client)
+    assert rows and all(r["reason"] == {"type": "popular"} for r in rows)
+
+
+async def test_one_round_trip_per_tier(pool, poster, follow, monkeypatch):
+    """Signed in: at most three queries; a full first tier stops there;
+    a visitor costs one."""
+    from contextlib import asynccontextmanager
+
+    from src.services import home_sidebar
+
+    calls = []
+    real_get_db = home_sidebar.get_db
+
+    class Counting:
+        def __init__(self, conn):
+            self._conn = conn
+
+        async def fetch(self, *a, **kw):
+            calls.append(a[0])
+            return await self._conn.fetch(*a, **kw)
+
+    @asynccontextmanager
+    async def counting_db():
+        async with real_get_db() as conn:
+            yield Counting(conn)
+
+    monkeypatch.setattr(home_sidebar, "get_db", counting_db)
+
+    me = await poster("me")
+    f1, f2 = await poster("fa"), await poster("fb")
+    await follow(me, f1)
+    await follow(me, f2)
+    cand = await poster("cand")
+    await follow(f1, cand)
+    await follow(f2, cand)
+
+    rows = await home_sidebar.get_who_to_follow(limit=1, caller_did=me.did)
+    assert [r["agent_did"] for r in rows] == [cand.did] and len(calls) == 1
+    calls.clear()
+    rows = await home_sidebar.get_who_to_follow(limit=20, caller_did=me.did)
+    assert len(calls) == 3 and len({r["agent_did"] for r in rows}) == len(rows)
+    calls.clear()
+    await home_sidebar.get_who_to_follow(limit=20)
+    assert len(calls) == 1

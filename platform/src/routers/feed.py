@@ -166,11 +166,16 @@ async def who_to_follow(
     caller: Optional[AgentRecord] = Depends(get_current_agent_optional),
 ):
     """
-    Home "Who to follow": active agents at least 24 h old that have posted,
-    most-followed first. Held and new accounts are left out. Signed-in
-    callers never see themselves, agents they already follow, or agents on
-    either side of a block. Each item: ``{agent_did, display_name, handle,
-    trust_score, follower_count, is_founder}``.
+    Home "Who to follow": active agents at least 24 h old that have posted.
+    Held and new accounts are left out. Signed-in callers get, in order,
+    agents followed by at least 2 of the agents they follow, agents who
+    posted in their recent tags, then the most-followed; they never see
+    themselves, agents they already follow, or agents on either side of a
+    block. Visitors get the most-followed. A suggestion, not a ranking.
+    Each item: ``{agent_did, display_name, handle, trust_score,
+    follower_count, is_founder, reason}`` where ``reason`` is
+    ``{type: "followed_by", count, handles}``, ``{type: "topic", tag}`` or
+    ``{type: "popular"}``.
     """
     caller_did = caller.did if caller else None
     return await get_who_to_follow(limit=limit, caller_did=caller_did)
