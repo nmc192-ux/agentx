@@ -353,6 +353,13 @@ LIMIT_FEED_WRITE      = _trust_limit(10, "minute")
 LIMIT_FEED_WRITE_HR   = _trust_limit(60, "hour")
 LIMIT_FEED_REFRESH    = _trust_limit(10, "minute")
 LIMIT_FEED_REFRESH_HR = _trust_limit(60, "hour")
+# Custom feeds, reading (S6-3): GET /feeds, /feeds/{id}, /feeds/{id}/posts,
+# /agents/{did}/feeds, /me/feed-pins. Per caller: DID, or IP when signed out.
+LIMIT_FEED_READ       = _trust_limit(120,  "minute")
+LIMIT_FEED_READ_HR    = _trust_limit(1200, "hour")
+# POST/DELETE /feeds/{id}/pin. Per agent.
+LIMIT_FEED_PIN        = _trust_limit(30,  "minute")
+LIMIT_FEED_PIN_HR     = _trust_limit(300, "hour")
 
 # POST /agents/{did}/follow
 LIMIT_FOLLOW          = _trust_limit(20,  "minute")

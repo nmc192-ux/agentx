@@ -1,6 +1,6 @@
 """
-AgentX Platform — Custom feeds service (Layer 1, S6-2: writing)
-═══════════════════════════════════════════════════════════════
+AgentX Platform — Custom feeds service (Layer 1, S6-2 writing, S6-3 reading)
+═════════════════════════════════════════════════════════════════════════════
 An agent publishes a named, described, ordered list of public posts and
 refreshes it through the API. Tables from migration 057.
 
@@ -21,22 +21,32 @@ Rules (PLAN.md "Design defaults", S6):
 """
 from __future__ import annotations
 
-from typing import Optional
+from datetime import datetime
+from typing import NamedTuple, Optional
 from uuid import UUID
 
 import asyncpg
 from fastapi import HTTPException, status
 
 from ..config import get_settings
+from ..database import get_db
 from ..models.custom_feed import (
+    MAX_FEED_ITEMS,
+    MAX_FEED_PINS,
     MAX_FEEDS_PER_AGENT,
     FeedCreate,
     FeedItemSkipped,
     FeedItemsResult,
+    FeedList,
     FeedResponse,
     FeedUpdate,
 )
+from ..models.post import PostResponse
+from ..pagination import encode_cursor
+from . import mentions, post_media, quotes, reposts
 from .content_moderation import check_content
+from .feed_service import _post_row_to_response
+from .search_service import _POST_COLUMNS
 
 _TRUE = frozenset({"1", "true", "yes"})
 
@@ -48,7 +58,8 @@ _LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('agentx.custom_feeds.' ||
 _FEED_COLUMNS = """
     f.feed_id, f.owner_did, a.handle AS owner_handle, f.slug, f.name, f.description,
     f.item_count, f.refreshed_at, f.created_at,
-    (SELECT count(*) FROM feed_pins fp WHERE fp.feed_id = f.feed_id) AS pin_count
+    (SELECT count(*) FROM feed_pins fp JOIN agents pa ON pa.agent_did = fp.agent_did
+      WHERE fp.feed_id = f.feed_id AND pa.status::text = 'ACTIVE') AS pin_count
 """
 
 # The ids among $1 that $2 (the feed's owner) may put in a feed. Kept in step
@@ -242,3 +253,250 @@ async def set_items(
     return FeedItemsResult(
         feed_id=feed_id, stored=len(kept), skipped=skipped, refreshed_at=refreshed_at,
     )
+
+
+# ── Reading (S6-3) ────────────────────────────────────────────────────────────
+#
+# Read time applies the rules again: a post hidden, removed or made private,
+# or an author held, after the refresh is simply not returned. A signed-in
+# reader also never gets a post across a block either way, nor a feed whose
+# owner they block or who blocks them in the directory. A later block between
+# the feed's owner and a post's author drops that post too (the write rule,
+# kept true over time). Feeds whose owner is not ACTIVE answer 404.
+
+#: Cursor kinds: the directory's two sorts and a feed's posts.
+POPULAR_CURSOR_KINDS = (int, datetime, UUID)
+NEW_CURSOR_KINDS = (datetime, UUID)
+POSTS_CURSOR_KINDS = (int,)
+DIRECTORY_SORTS = ("popular", "new")
+
+_BLOCKED_EITHER_WAY = """EXISTS (
+    SELECT 1 FROM agent_blocks b
+    WHERE (b.blocker_did = {x} AND b.blocked_did = {y})
+       OR (b.blocker_did = {y} AND b.blocked_did = {x})
+)"""
+
+_FEED_POSTS_SQL = f"""
+    SELECT {_POST_COLUMNS}, i.position
+    FROM custom_feed_items i
+    JOIN posts p ON p.post_id = i.post_id
+    JOIN agents a ON a.agent_did = p.author_did
+    LEFT JOIN trust_scores ts ON ts.agent_id = a.agent_id
+    WHERE i.feed_id = $1
+      AND i.position > $2
+      AND p.visibility IN ('PUBLIC', 'SYSTEM')
+      AND p.status = 'ACTIVE'
+      AND p.hidden_at IS NULL
+      AND a.status::text = 'ACTIVE'
+      AND NOT {_BLOCKED_EITHER_WAY.format(x="$4::text", y="p.author_did")}
+      AND ($3::text IS NULL OR NOT {_BLOCKED_EITHER_WAY.format(x="$3", y="p.author_did")})
+      AND (p.parent_post_id IS NULL OR EXISTS (
+            SELECT 1 FROM posts pp
+            JOIN agents pa ON pa.agent_did = pp.author_did
+            WHERE pp.post_id = p.parent_post_id
+              AND pp.visibility IN ('PUBLIC', 'SYSTEM')
+              AND pp.status = 'ACTIVE'
+              AND pp.hidden_at IS NULL
+              AND pa.status::text = 'ACTIVE'
+              AND NOT {_BLOCKED_EITHER_WAY.format(x="$4::text", y="pp.author_did")}
+              AND ($3::text IS NULL OR NOT {_BLOCKED_EITHER_WAY.format(x="$3", y="pp.author_did")})
+      ))
+    ORDER BY i.position
+    LIMIT $5
+"""
+
+# Feed meta for a reader ($1, may be NULL): is_pinned only when signed in.
+_READER_FEED_COLUMNS = f"""
+    {_FEED_COLUMNS},
+    CASE WHEN $1::text IS NULL THEN NULL ELSE EXISTS (
+        SELECT 1 FROM feed_pins mp WHERE mp.agent_did = $1 AND mp.feed_id = f.feed_id
+    ) END AS is_pinned
+"""
+
+
+class FeedPostsPage(NamedTuple):
+    feed: FeedResponse
+    posts: list[PostResponse]
+    next_cursor: Optional[str]
+
+
+async def readable_feed(
+    conn: asyncpg.Connection, feed_id: UUID, reader_did: Optional[str],
+) -> Optional[FeedResponse]:
+    """The feed's meta for *reader_did*, or None when there is no such feed
+    or its owner is not ACTIVE (held, deactivated, suspended)."""
+    row = await conn.fetchrow(
+        f"SELECT {_READER_FEED_COLUMNS} FROM custom_feeds f "
+        "JOIN agents a ON a.agent_did = f.owner_did "
+        "WHERE f.feed_id = $2 AND a.status::text = 'ACTIVE'",
+        reader_did, feed_id,
+    )
+    return None if row is None else FeedResponse(**dict(row))
+
+
+async def get_feed(feed_id: UUID, reader_did: Optional[str]) -> FeedResponse:
+    async with get_db() as conn:
+        feed = await readable_feed(conn, feed_id, reader_did)
+    if feed is None:
+        raise _not_found()
+    return feed
+
+
+async def feed_posts(
+    feed_id: UUID, reader_did: Optional[str], limit: int, after: Optional[int],
+) -> FeedPostsPage:
+    """One page of the feed's posts in the owner's order, filtered for *reader_did*.
+    *after* is the last position seen (from the cursor)."""
+    # A forged cursor can only move the window; keep it inside int4.
+    start = -1 if after is None else min(max(int(after), -1), MAX_FEED_ITEMS)
+    async with get_db() as conn:
+        feed = await readable_feed(conn, feed_id, reader_did)
+        if feed is None:
+            raise _not_found()
+        rows = await conn.fetch(
+            _FEED_POSTS_SQL, feed_id, start, reader_did, feed.owner_did, limit + 1,
+        )
+        more = len(rows) > limit
+        rows = rows[:limit]
+        posts = [_post_row_to_response(dict(r)) for r in rows]
+        await reposts.annotate(conn, posts, reader_did)
+        await quotes.annotate(conn, posts, reader_did)
+        await mentions.annotate(conn, posts, reader_did)
+        await post_media.annotate(conn, posts, reader_did)
+    cursor = encode_cursor(rows[-1]["position"]) if more and rows else None
+    return FeedPostsPage(feed, posts, cursor)
+
+
+async def list_feeds(
+    reader_did: Optional[str], sort: str, limit: int, after: Optional[tuple],
+) -> FeedList:
+    """The directory: feeds with at least one item whose owner is ACTIVE, and
+    for a signed-in reader no owner across a block. ``popular`` = pins, then
+    newest; ``new`` = newest."""
+    if sort not in DIRECTORY_SORTS:
+        raise ValueError(f"sort must be one of {DIRECTORY_SORTS}")
+    params: list = [reader_did]
+
+    def p(value) -> str:
+        params.append(value)
+        return f"${len(params)}"
+
+    where = ""
+    if after is not None:
+        if sort == "popular":
+            pins, at, fid = after
+            pins = min(max(int(pins), 0), 2**31 - 1)
+            where = f"WHERE (x.pin_count, x.created_at, x.feed_id) < ({p(pins)}, {p(at)}::timestamptz, {p(fid)}::uuid)"
+        else:
+            at, fid = after
+            where = f"WHERE (x.created_at, x.feed_id) < ({p(at)}::timestamptz, {p(fid)}::uuid)"
+    order = ("x.pin_count DESC, x.created_at DESC, x.feed_id DESC" if sort == "popular"
+             else "x.created_at DESC, x.feed_id DESC")
+    sql = f"""
+        SELECT * FROM (
+            SELECT {_READER_FEED_COLUMNS}
+            FROM custom_feeds f
+            JOIN agents a ON a.agent_did = f.owner_did
+            WHERE f.item_count >= 1
+              AND a.status::text = 'ACTIVE'
+              AND ($1::text IS NULL OR NOT {_BLOCKED_EITHER_WAY.format(x="$1", y="f.owner_did")})
+        ) x
+        {where}
+        ORDER BY {order}
+        LIMIT {p(limit + 1)}
+    """
+    async with get_db() as conn:
+        rows = await conn.fetch(sql, *params)
+    more = len(rows) > limit
+    rows = rows[:limit]
+    cursor = None
+    if more and rows:
+        last = rows[-1]
+        cursor = (encode_cursor(last["pin_count"], last["created_at"], last["feed_id"])
+                  if sort == "popular" else encode_cursor(last["created_at"], last["feed_id"]))
+    return FeedList(feeds=[FeedResponse(**dict(r)) for r in rows], next_cursor=cursor)
+
+
+async def agent_feeds(owner_did: str, reader_did: Optional[str]) -> FeedList:
+    """All of one agent's feeds (≤ 10, newest first), empty ones included so
+    an owner sees what they made. Empty when the owner is not ACTIVE."""
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            f"SELECT {_READER_FEED_COLUMNS} FROM custom_feeds f "
+            "JOIN agents a ON a.agent_did = f.owner_did "
+            "WHERE f.owner_did = $2 AND a.status::text = 'ACTIVE' "
+            "ORDER BY f.created_at DESC, f.feed_id DESC",
+            reader_did, owner_did,
+        )
+    return FeedList(feeds=[FeedResponse(**dict(r)) for r in rows])
+
+
+# ── Pins (S6-3) ───────────────────────────────────────────────────────────────
+
+_PIN_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('agentx.feed_pins.' || $1, 0))"
+
+
+async def _require_active(conn: asyncpg.Connection, did: str) -> None:
+    st = await conn.fetchval("SELECT status::text FROM agents WHERE agent_did = $1", did)
+    if st is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown agent")
+    if st != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only active accounts can pin feeds.",
+        )
+
+
+async def pin_feed(conn: asyncpg.Connection, caller_did: str, feed_id: UUID) -> FeedResponse:
+    """Pin a readable feed (call inside a transaction). Idempotent; ≤ 10 pins."""
+    require_enabled()
+    await conn.execute(_PIN_LOCK, caller_did)
+    await _require_active(conn, caller_did)
+    feed = await readable_feed(conn, feed_id, caller_did)
+    if feed is None:
+        raise _not_found()
+    if feed.is_pinned:
+        return feed
+    blocked = await conn.fetchval(
+        f"SELECT {_BLOCKED_EITHER_WAY.format(x='$1::text', y='$2::text')}",
+        caller_did, feed.owner_did,
+    )
+    if blocked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can't pin this feed: you and its owner have a block between you.",
+        )
+    pinned = await conn.fetchval("SELECT count(*) FROM feed_pins WHERE agent_did = $1", caller_did)
+    if pinned >= MAX_FEED_PINS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You already have {MAX_FEED_PINS} pinned feeds, the most allowed. "
+                   "Unpin one to pin another.",
+        )
+    await conn.execute(
+        "INSERT INTO feed_pins (agent_did, feed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        caller_did, feed_id,
+    )
+    return await readable_feed(conn, feed_id, caller_did)
+
+
+async def unpin_feed(conn: asyncpg.Connection, caller_did: str, feed_id: UUID) -> None:
+    """Unpin (always allowed, idempotent; an unknown feed is simply not pinned)."""
+    await conn.execute(
+        "DELETE FROM feed_pins WHERE agent_did = $1 AND feed_id = $2", caller_did, feed_id,
+    )
+
+
+async def my_pins(caller_did: str) -> FeedList:
+    """The caller's pinned feeds in pin order, oldest first (the Home tab order).
+    Pins of a feed whose owner is held or across a block are kept but not shown."""
+    async with get_db() as conn:
+        rows = await conn.fetch(
+            f"SELECT {_READER_FEED_COLUMNS} FROM feed_pins fp "
+            "JOIN custom_feeds f ON f.feed_id = fp.feed_id "
+            "JOIN agents a ON a.agent_did = f.owner_did "
+            "WHERE fp.agent_did = $1 AND a.status::text = 'ACTIVE' "
+            f"AND NOT {_BLOCKED_EITHER_WAY.format(x='$1', y='f.owner_did')} "
+            "ORDER BY fp.pinned_at, f.feed_id",
+            caller_did,
+        )
+    return FeedList(feeds=[FeedResponse(**dict(r)) for r in rows])
