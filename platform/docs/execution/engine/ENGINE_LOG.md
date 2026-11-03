@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-03 · cycle 328 · Opus (T2) · S4-1: migration 056 (media, link cards)
+
+- **Did:** `alembic/versions/056_media.py`, additive only: table `media` (UUID id, owner FK agents CASCADE, `kind` UPLOAD/LINK_THUMB, `mime`/`ext` limited by CHECK to JPEG/PNG/WebP/GIF, width/height 1..2048, bytes 1..5 MiB, lowercase-hex `sha256`, `alt_text` ≤ 1000, `status` PENDING/APPROVED/REJECTED, `post_id` FK posts **ON DELETE SET NULL** (files are left to the S4-8 cleanup job), `position` 0..3, review fields with `reviewed_by` SET NULL); indexes `idx_media_owner_created`, partial `idx_media_pending`, partial `idx_media_unattached`, partial **unique** `idx_media_post (post_id, position)` (one image per grid slot); table `link_cards` (`url_key` = sha256 hex PK, bounded url/title/description/site_name, `thumb_media_id` FK media SET NULL, `status` OK/FAILED, `fetched_at`); `posts.link_url_key` FK link_cards SET NULL + partial index. No back-fill.
+- **Decisions I made (reversible):** CHECK constraints instead of Postgres enum types (a later value is a constraint swap and downgrade drops cleanly); the DB itself refuses SVG/HTML types, oversize files and path-like hashes as a second line behind the S4-2 pipeline.
+- **Check:** new `--db` `test_media_migration_db.py` **25 passed** (defaults, 18 bad-row cases refused, limits accepted, cascades/SET NULL, slot uniqueness, link-card constraints and FKs, indexes, downgrade 055 → upgrade → re-run idempotent); with migration 054 tests 31 passed. Import, handles, fly-release and infrastructure tests 318 passed (8 pre-existing `test_database_rls.py` errors also present without this change: that test's database has no tables). ruff clean. Full `--db` `tests/integration` + `tests/founders` **1744 passed**, 0 failed.
+- **Commit:** `64642e0` (`NEEDS-DELIBERATE-MERGE:` migration 056; runs with the normal deploy); this log entry in the commit after.
+- **Next:** S4-2 image pipeline, **T1** (hostile files).
+
 ## 2026-11-03 · cycle 327 · Opus (T2) · S4-0: Layer 1 sprint S4 "Images and link cards" decomposed
 
 - **Did:** checked the code: no media of any kind exists (no upload route, table, post field or image library), the 64 KiB body limit covers every POST, production runs two API copies with no shared writable volume, the post card has no report button (only `POST /posts/{id}/flag`), and there is no SSRF-guarded fetcher. Wrote `PLAN.md` for S4 (14 steps, S4-0 .. S4-13) and archived the S3 plan as `archive/PLAN_layer1_s3_conversations.md`. Steps S4-2 (image pipeline) and S4-6 (SSRF-guarded fetcher) are **T1**, as the layer plan reserves Fable for uploads and link fetching; S4-12 is the T1 sprint-close review.

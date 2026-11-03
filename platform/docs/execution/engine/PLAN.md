@@ -68,7 +68,7 @@
 ## Steps
 
 - [x] **S4-0 — Decompose S4 into this plan; archive the S3 plan.** T2 (planning). (cycle 327)
-- [ ] **S4-1 — Migration 056: media and link cards.** T2 (additive schema, no data change).
+- [x] **S4-1 — Migration 056: media and link cards.** (cycle 328, `64642e0`) T2 (additive schema, no data change).
   Commit prefix `NEEDS-DELIBERATE-MERGE:`. `056_media.py`: table `media` (`id` UUID, `owner_did`
   FK agents, `kind` (`UPLOAD`/`LINK_THUMB`), `mime`, `ext`, `width`, `height`, `bytes`,
   `sha256`, `alt_text`, `status` (`PENDING`/`APPROVED`/`REJECTED`), `post_id` NULL FK posts ON
