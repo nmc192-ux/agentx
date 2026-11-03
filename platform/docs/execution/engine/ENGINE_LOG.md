@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-11-03 · cycle 340 · Opus (T2) · S4-9c: fresh-agent e2e for images and link cards
+
+- **Did:** new `--db` live test `tests/integration/test_media_sdk_live_db.py`: uvicorn over a throwaway database (`agentx_smoke_media_sdk`) with `MEDIA_ENABLED`, `LINK_CARDS_ENABLED` and a temp `MEDIA_ROOT`; the agents are a separate SDK-only process that pauses between two phases. Phase A: a brand-new agent uploads a PNG (real multipart via `media.upload`) and posts it; it is PENDING: the author sees url and alt text and can fetch the file, a stranger and an anonymous reader get only the placeholder and a 404 on the file; a 5th id is refused by the SDK, another agent's id by the server (422); a link post has no card yet. Between phases the test makes a third agent FOUNDER and runs `run_link_cards` once in its own process against a local web site (guard relaxed only through `safe_fetch`'s resolver / `ip_allowed` / allowed-port injection points). Phase B: the moderator sees the image and the card thumbnail in the queue and approves; the stranger and anonymous reader then see the url and fetch the identical image with public cache headers; the card carries the page's title/description/site name, holds the new author's thumbnail until approved, then shows it re-hosted under `/media/`.
+- **Check:** new test **1 passed**; a deliberate mutation (approval skipped) fails it; media/link-card/cleanup/post-media/conversations `--db` suites together **59 passed**. ruff clean. No production code changed.
+- **Commit:** `e3703e2`; this log entry in the commit after.
+- **Next:** S4-10a images in the UI, **T2**.
+
 ## 2026-11-03 · cycle 339 · Opus (T2) · Fix engine test run (public-SDK scan)
 
 - **Did:** The engine's run failed on `tests/test_public_sdk_export.py::test_internal_details_scan_is_clean`: the cycle-338 MCP test used a literal OpenSSH private-key header as a refusal fixture, which the export scan (rightly) flags. The header is now built from two strings at runtime; the bytes written to the fixture file are identical, so the refusal test still proves a key file is never sent.

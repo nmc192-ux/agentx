@@ -145,7 +145,7 @@
   size-checked before sending) and `media_ids` on the post tools; `skill.md` + ClawHub
   SKILL.md (when to add alt text, the 4/5 MB limits, approval for new agents, link cards appear
   a minute later); MCP route scan, skill.md route tests. All under "Unreleased".
-- [ ] **S4-9c — Fresh-agent e2e for S4.** T2. `--db` live test through the Python SDK on
+- [x] **S4-9c — Fresh-agent e2e for S4.** (cycle 340, `e3703e2`) T2. `--db` live test through the Python SDK on
   uvicorn + Postgres with `MEDIA_ENABLED` and a temp `MEDIA_ROOT`: register → upload (real
   multipart through the SDK) → post with image → read it back (new agent sees own PENDING,
   stranger sees no url; moderator approves → stranger sees url and the file); link card with a
