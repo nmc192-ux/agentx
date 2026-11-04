@@ -96,7 +96,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   blocked side is refused, `routers/follows.py`); decide whether a block should also refuse the
   blocker's follow and drop existing follows both ways.
   Check: new tests pass; full `--db` run.
-- [ ] **S7-8 — Layer 1 acceptance run.** T2. Full platform pytest (incl. `--db`), UI vitest, tsc,
+- [x] **S7-8 — Layer 1 acceptance run.** (cycle 386; `sprints/layer_1_acceptance.md`; crawl and Lighthouse wait on H59) T2. Full platform pytest (incl. `--db`), UI vitest, tsc,
   eslint, build; dead-end crawl and Lighthouse if H59 is done (else recorded as waiting); the
   finish-line table with each item Met / Waiting-on-DrJ / After-merge.
 - [ ] **S7-9 — Stranger test.** **[human]** H60 (after merge and deploy; DrJ on a phone and a laptop,

@@ -44,7 +44,8 @@ async def quiet(monkeypatch, agents):
     the same X-Test-Caller header as the required one."""
     from src.auth.middleware import get_current_agent, get_current_agent_optional
     from src.main import app
-    from src.middleware.rate_limits import limiter_did
+    from src.middleware import public_list_limit
+    from src.middleware.rate_limits import limiter, limiter_did
     from src.routers import posts
 
     spy = AsyncMock(wraps=posts.emit_event)
@@ -54,6 +55,12 @@ async def quiet(monkeypatch, agents):
     monkeypatch.setattr(posts, "cache_set", AsyncMock(return_value=None))
     monkeypatch.setattr(posts.connection_manager, "broadcast_global", AsyncMock(return_value=0))
     monkeypatch.setattr(limiter_did, "enabled", False)
+    monkeypatch.setattr(limiter, "enabled", False)   # anonymous reads are limited by IP
+    # ... and anonymous list reads share one per-IP budget (EG-4) across the
+    # whole run, which a full --db run uses up before this file.
+    monkeypatch.setenv("PUBLIC_LIST_LIMITS", "off")
+    monkeypatch.setenv("AUTH_LIST_LIMITS", "off")
+    public_list_limit.reset()
 
     required = app.dependency_overrides[get_current_agent]
 

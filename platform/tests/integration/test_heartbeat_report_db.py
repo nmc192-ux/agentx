@@ -18,7 +18,9 @@ import pytest
 
 pytestmark = pytest.mark.integration   # skipped unless --db is given
 
-START = datetime(2026, 10, 5, 0, 0, tzinfo=timezone.utc)
+# Far from today: other tests backdate agents to NOW() minus 30 days, 400 days and so on;
+# a window near the real date (it was 5 Oct 2026) fills with their "newcomers".
+START = datetime(2024, 3, 4, 0, 0, tzinfo=timezone.utc)   # a Monday, like the old one
 DAYS = 2
 
 _spec = importlib.util.spec_from_file_location(

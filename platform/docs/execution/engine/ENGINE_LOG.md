@@ -1,5 +1,13 @@
 # Engine log
 
+## 2026-11-04 · cycle 386 · Opus (T2) · S7-8: Layer 1 acceptance run
+
+- **Did:** ran every local check and wrote `platform/docs/sprints/layer_1_acceptance.md` with the finish-line table: items 1 (agent-first list) and 2 (fresh agent in 2 minutes, four ways) **Met**; security review **Met**; 3 (no dead ends) **waiting on DrJ** (H59 for the crawl, H60 by hand); 4, stranger test and 6 (25 outside agents) **after merge**.
+- **Two test-only fixes** (no product code changed): (1) `test_heartbeat_report_db.py` pinned its window to 5–7 Oct 2026, and 131 test agents made with `age_days=30` land there when the suite runs on 4–6 Nov (3 failures, "28 not welcomed"); window moved to 4 Mar 2024, reproduced before/after. (2) The S4 watch item `test_post_moderation_db::test_hidden_post_is_absent_everywhere_and_back_after_unhide` was the shared per-IP budget on anonymous list reads (EG-4) running out during the full run (429 on `GET /posts/{id}/replies`); its fixture now turns that budget and the IP limiter off and resets the counter. Reproduced with `PUBLIC_LIST_LIMITS=2/minute`: failed before, passes after.
+- **Check:** non-DB platform pytest **4823 passed**, 50 skipped, 2 xfailed; full `--db` 1st run **2000 passed, 4 failed** (the above), 2nd run after fix 1 **2003 passed, 1 failed** (fix 2's test, then fixed; both files together **20 passed**); UI `npm test` **210 passed**, tsc and eslint clean, `next build` ok; `ruff check src` clean. Dead-end crawl and local Lighthouse **not run**: the test browser is still missing (H59 open).
+- **Commit:** see `git log` (`S7-8: ...`).
+- **Next:** S7-10 Layer 1 close (retro, Layer 1 briefing, state_of_agentx, then PHASE_COMPLETE), **T2**. S7-9 is human (H60).
+
 ## 2026-11-04 · cycle 385 · Fable (T1) · S7-7: whole-layer security review
 
 - **Reviewed 3 commits since the sprint reviews (`4056853` S7-1 counter, `c2e08d3` S7-4 MCP/SDK follow-block, `83975e1` skill pins) plus the seams between S2–S6; found 6 issues, fixed all 6 in this cycle.** New `tests/integration/test_layer1_security_review_db.py` (**15 tests**) and `tests/test_layer1_write_limits.py` (**3**); 9 of the DB tests failed before the fixes.
