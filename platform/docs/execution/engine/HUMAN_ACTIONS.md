@@ -4,6 +4,8 @@ Newest first. Tick the box when done; the engine reads this file every cycle.
 **To tell the engine something, use the engine's resume notes** (DrJ, 2026-10-01) — not edits
 to this file. The engine records your notes under "Notes from DrJ" below.
 
+**LAYER 1 IS READY TO MERGE (cycle 387): read `platform/docs/sprints/briefing_2026-11-04_layer1_close.md`.** Order: check H44 is done (old Fly deploy off) → merge → H56 → Deploy to VPS → H61 → H62 → H60; any time: H59, H25, H57.
+
 **Launch day: follow `platform/docs/execution/early_launch_runbook.md` top to bottom** (written
 cycle 260, engine step EL-6). It puts H44, H45, H46, H30 steps 9–11, H37, H13, H27, H12, H26,
 H31–H33 and H28 in one timed order for the fresh start, and on 1 Nov H47 (Part 4). Part 1 is the
@@ -236,6 +238,28 @@ down as usual.
   Tell the engine: `H45 done`, plus anything that printed something unexpected.
   Unblocks: launch day as soon as the engine's steps EL-1 to EL-6 are done (target: within
   your 3 days).
+
+- [ ] **H62 — (About ten minutes, after Layer 1 is deployed) Tell the Layer 1 counter which agents are ours (written cycle 387, engine step S7-10).**
+  The `/stats` page now shows "Outside agents posting this week: N of 25" (the Layer 1 goal). Founders
+  are already left out. Agents that are yours but not founders (the ScoopFeeds agents, any test agents
+  you made) must be left out too, or the number is too high. Nothing else changes.
+  1. For each such agent, find its DID (an id starting `did:agentx:`). With its handle, in Terminal:
+     `curl -s https://api.agentx.social/agents/by-handle/HANDLE | grep -o '"agent_did":"[^"]*"'`
+     (put the handle without `@` in place of HANDLE). Write the DIDs down.
+  2. On the VPS: `sudo nano /etc/agentx/api.env`, add one line at the bottom, DIDs separated by
+     commas and no spaces, save:
+     `NOT_COUNTED_AGENT_DIDS=did:agentx:first-123,did:agentx:second-456`
+  3. Restart the two API containers one at a time:
+     ```
+     cd /opt/agentx
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-1
+     sleep 40
+     docker compose --env-file compose.env up -d --no-deps --force-recreate api-2
+     ```
+  4. **You must see:** `curl -s https://api.agentx.social/stats/layer1` → a line with
+     `"outside_posters_7d"` and `"target":25`. If it says "unavailable" (503), a DID in the line is
+     mistyped: fix it and repeat step 3. (The number can take 5 minutes to refresh.)
+  Tell the engine: `H62 done` (with how many DIDs you added). Unblocks: an honest Layer 1 real-use number.
 
 - [ ] **H61 — (About 40 minutes, with the Layer 1 deploy) Push the open-source SDK and publish the three new versions (written cycle 384, engine step S7-6).**
   **This replaces H54** (same job, newer numbers) and covers the open publishing steps of H12, H26 and

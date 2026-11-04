@@ -99,9 +99,9 @@ agents post in one week (checked after merge; the engine builds and reports the 
 - [x] **S7-8 — Layer 1 acceptance run.** (cycle 386; `sprints/layer_1_acceptance.md`; crawl and Lighthouse wait on H59) T2. Full platform pytest (incl. `--db`), UI vitest, tsc,
   eslint, build; dead-end crawl and Lighthouse if H59 is done (else recorded as waiting); the
   finish-line table with each item Met / Waiting-on-DrJ / After-merge.
-- [ ] **S7-9 — Stranger test.** **[human]** H60 (after merge and deploy; DrJ on a phone and a laptop,
+- [human] **S7-9 — Stranger test.** **[human]** H60 (after merge and deploy; DrJ on a phone and a laptop,
   with the live Lighthouse and the < 2 s check). The engine writes the script in H60 (done this cycle).
-- [ ] **S7-10 — Layer 1 close.** T2. `sprints/layer_1_s7_retro.md`; the Layer 1 briefing
+- [x] **S7-10 — Layer 1 close.** (cycle 387; retro, briefing `briefing_2026-11-04_layer1_close.md`, H62, state) T2. `sprints/layer_1_s7_retro.md`; the Layer 1 briefing
   `sprints/briefing_<date>_layer1_close.md` (what shipped S1–S7, merge order and what merging will
   do (incl. migration 058: follows across existing blocks are deleted once), every open H item in order, the real-use counter and how DrJ reads it, live-test checklist);
   `state_of_agentx.md`. Then report `PHASE_COMPLETE` (Layer 1 is the engine's current phase).
@@ -112,5 +112,4 @@ agents post in one week (checked after merge; the engine builds and reports the 
 - **H60** (new, after merge and deploy): stranger test on a phone and a laptop, live Lighthouse ≥ 90
   on Home and a profile, Home and a profile load in under 2 s on the phone.
 - **H61** (written at S7-6): publish Python 0.5.0, TS 0.2.0, MCP 0.2.0 and push the public SDK export.
-- After merge: set `NOT_COUNTED_AGENT_DIDS` to the ScoopFeeds agents' and test agents' DIDs (in H61
-  or the Layer 1 briefing, once S7-1 exists).
+- **H62** (written at S7-10, after deploy): set `NOT_COUNTED_AGENT_DIDS` to the ScoopFeeds agents' and test agents' DIDs.

@@ -1,5 +1,12 @@
 # Engine log
 
+## 2026-11-04 · cycle 387 · Opus (T2) · S7-10: Layer 1 close — PHASE_COMPLETE
+
+- **Did:** wrote `sprints/layer_1_s7_retro.md` and the Layer 1 briefing `sprints/briefing_2026-11-04_layer1_close.md` (what shipped S1–S7, what merging will do incl. migration 058 deleting follows across blocks once and the H44 Fly check, the H order, how to read the real-use number, live-test checklist); new **H62** (put ScoopFeeds and test agents on `NOT_COUNTED_AGENT_DIDS` after deploy) and a "Layer 1 is ready to merge" pointer at the top of `HUMAN_ACTIONS.md`; `state_of_agentx.md` updated; S7-9 marked `[human]` (H60), S7-10 ticked.
+- **Checked facts for the briefing:** 175 commits ahead of `main`, migrations 053–058 the only new ones; `deploy.yml` (Fly) still fires on green CI on `main` (H44 must be done); Deploy to VPS is hand-started with approval; Vercel deploys the website from `main` by itself.
+- **Check:** docs only, no code changed; engine test run before this cycle passed.
+- **Status:** `PHASE_COMPLETE`. Layer 1 used 104 of 250 cycles. Everything left is DrJ's: H44 check → merge → H56 → Deploy to VPS → H61 → H62 → H60; any time H59, H25, H57.
+
 ## 2026-11-04 · cycle 386 · Opus (T2) · S7-8: Layer 1 acceptance run
 
 - **Did:** ran every local check and wrote `platform/docs/sprints/layer_1_acceptance.md` with the finish-line table: items 1 (agent-first list) and 2 (fresh agent in 2 minutes, four ways) **Met**; security review **Met**; 3 (no dead ends) **waiting on DrJ** (H59 for the crawl, H60 by hand); 4, stranger test and 6 (25 outside agents) **after merge**.
