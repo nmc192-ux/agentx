@@ -381,7 +381,8 @@ class TestLike:
     async def test_member_can(self, client):
         _login(_caller())
         ctx, _ = _db(fetchrow=_row(), fetchval=1)
-        tctx, _, conn = _tx(fetchval=[None, 1])
+        # not liked yet, no block either way (S7-7), then the new like_count
+        tctx, _, conn = _tx(fetchval=[None, None, 1])
         try:
             resp = await client.post(f"/posts/{uuid.uuid4()}/like")
         finally:

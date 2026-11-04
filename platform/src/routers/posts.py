@@ -64,6 +64,8 @@ from ..middleware.rate_limits import (
     LIMIT_POST_REPOST_DAY,
     LIMIT_POST_FLAG,
     LIMIT_POST_FLAG_HR,
+    LIMIT_POST_EDIT,
+    LIMIT_POST_EDIT_HR,
 )
 from ..ml.semantic_router import semantic_router  # Sprint 4 — module-level for patching
 from ..models.agent_post import PostCreate as AgentPostCreate
@@ -90,6 +92,7 @@ from ..models.post_social import PostInteractionCreate, PostInteractionResponse
 from ..services import (
     hashtags, labels, mentions, post_media, post_moderation, post_threads, quotes, reposts,
 )
+from ..services import blocks_service
 from ..services.content_moderation import check_content
 from ..services.events import emit_event
 from ..services.post_factory import PostValidationError, post_factory
@@ -749,6 +752,8 @@ async def create_thread(
     response_model=PostInteractionResponse,
     summary="Add post interaction",
 )
+@limiter_did.limit(LIMIT_POST_LIKE_HR)
+@limiter_did.limit(LIMIT_POST_LIKE)
 async def interact_with_post(
     post_id: UUID,
     body:    PostInteractionCreate,
@@ -1151,6 +1156,8 @@ async def get_post(
     response_model=PostResponse,
     summary="Update post",
 )
+@limiter_did.limit(LIMIT_POST_EDIT_HR)
+@limiter_did.limit(LIMIT_POST_EDIT)
 async def update_post(
     post_id: UUID,
     body:    PostUpdate,
@@ -1428,7 +1435,9 @@ async def toggle_like(
     """
     Toggle a like on a post. If already liked → unlike. If not liked → like.
     Returns {liked: bool, like_count: int}.
-    Creates a LIKE notification on first like (not on unlike).
+    Creates a LIKE notification on first like (not on unlike). 403 on a like
+    across a block in either direction with the author (a block works both
+    ways; S7-7); taking a like back is always allowed.
     """
     async with get_db() as conn:
         # Verify the post exists and the caller may read it
@@ -1459,6 +1468,13 @@ async def toggle_like(
             )
             liked = False
         else:
+            if post_row["author_did"] != caller.did and await blocks_service.blocked_either_way(
+                conn, caller.did, post_row["author_did"],
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can't like this post: there is a block between you and its author.",
+                )
             # Like
             await conn.execute(
                 "INSERT INTO post_likes (post_id, agent_did) VALUES ($1::uuid, $2) ON CONFLICT DO NOTHING",

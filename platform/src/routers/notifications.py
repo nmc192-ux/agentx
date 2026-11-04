@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
+# No row from an agent across a block (either way) with the reader (S7-7).
+_NOT_ACROSS_A_BLOCK = """NOT EXISTS (
+    SELECT 1 FROM agent_blocks b
+    WHERE (b.blocker_did = n.to_did AND b.blocked_did = n.from_did)
+       OR (b.blocker_did = n.from_did AND b.blocked_did = n.to_did)
+)"""
+
 # Every value of the ``notif_type`` enum (migrations 003, 030, 031, 032, 035,
 # 054). The ``type`` filter is checked against this list before it reaches
 # SQL, so an unknown word is a 422 and never a database error.
@@ -72,7 +79,10 @@ async def list_notifications(
     """
     after = decode_cursor(cursor, (bool, datetime, UUID)) if cursor else None
     offset = 0 if after else (page - 1) * limit
-    conditions = ["n.to_did = $1"]
+    # A block works both ways: nothing from an agent across a block with the
+    # reader is shown, whichever side made the block and whenever the row
+    # was written (a follow or like from before the block; S7-7).
+    conditions = ["n.to_did = $1", _NOT_ACROSS_A_BLOCK]
     params: list = [caller.did]
 
     if unread_only:
@@ -107,7 +117,8 @@ async def list_notifications(
             *count_params,
         )
         unread_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM notifications WHERE to_did = $1 AND is_read = false",
+            "SELECT COUNT(*) FROM notifications n "
+            f"WHERE n.to_did = $1 AND n.is_read = false AND {_NOT_ACROSS_A_BLOCK}",
             caller.did,
         )
         rows = await conn.fetch(

@@ -66,6 +66,30 @@ class TrustScoreBreakdown(BaseModel):
 
 # ── API Schemas ───────────────────────────────────────────────────────────────
 
+def _has_control_chars(v: str, allow: str = "") -> bool:
+    return any((ord(ch) < 32 and ch not in allow) or ord(ch) == 127 for ch in v)
+
+
+def clean_display_name(v: str) -> str:
+    """A display name is one line of visible text: no control characters
+    (NUL above all, which Postgres refuses with a 500), not blank (S7-7)."""
+    v = v.strip()
+    if not v:
+        raise ValueError("display_name must not be empty")
+    if _has_control_chars(v):
+        raise ValueError("display_name may not contain control characters")
+    return v
+
+
+def clean_bio(v: Optional[str]) -> Optional[str]:
+    """Line breaks and tabs are fine in a bio; other control characters are not."""
+    if v is None:
+        return None
+    if _has_control_chars(v, allow="\n\t"):
+        raise ValueError("bio may not contain control characters")
+    return v
+
+
 class AgentCreate(BaseModel):
     """POST /agents request body."""
     agent_did:    str = Field(description="W3C DID in did:agentx:<name>-<seq> format")
@@ -74,6 +98,16 @@ class AgentCreate(BaseModel):
     governance_role: GovernanceRole = GovernanceRole.MEMBER
     bio:          Optional[str] = Field(default=None, max_length=512)
     specialization: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("display_name")
+    @classmethod
+    def _clean_display_name(cls, v: str) -> str:
+        return clean_display_name(v)
+
+    @field_validator("bio")
+    @classmethod
+    def _clean_bio(cls, v: Optional[str]) -> Optional[str]:
+        return clean_bio(v)
 
     @field_validator("agent_did")
     @classmethod
@@ -92,6 +126,16 @@ class AgentUpdate(BaseModel):
     bio:            Optional[str] = Field(default=None, max_length=512)
     specialization: Optional[str] = Field(default=None, max_length=128)
     status:         Optional[AgentStatus] = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _clean_display_name(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else clean_display_name(v)
+
+    @field_validator("bio")
+    @classmethod
+    def _clean_bio(cls, v: Optional[str]) -> Optional[str]:
+        return clean_bio(v)
 
 
 class AgentResponse(BaseModel):

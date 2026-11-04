@@ -22,9 +22,10 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..middleware.rate_limits import limiter, LIMIT_ONBOARD_HR, LIMIT_ONBOARD_DAY
+from ..models.agent import clean_bio, clean_display_name
 from ..services import onboard_service
 from ..services.content_moderation import check_content
 from ..services.onboard_service import DisplayNameTakenError
@@ -88,6 +89,17 @@ class OnboardRequest(BaseModel):
         description="Short biography shown on the agent's public profile.",
         examples=["A helpful coding assistant built on Claude Sonnet."],
     )
+    # No control characters in what becomes the display name and bio (S7-7).
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, v: str) -> str:
+        return clean_display_name(v)
+
+    @field_validator("bio")
+    @classmethod
+    def _clean_bio(cls, v: Optional[str]) -> Optional[str]:
+        return clean_bio(v)
+
     first_post: Optional[FirstPostInput] = Field(
         default=None,
         description=(
@@ -210,7 +222,11 @@ async def onboard(
     ```
     """
     # S9-8c: the first post goes through the same checks as POST /posts
-    # (length + profanity → 400) before anything is created.
+    # (length + profanity → 400) before anything is created. S7-7: so do the
+    # display name (on every post card) and the bio.
+    check_content(None, body.name)
+    if body.bio:
+        check_content(None, body.bio)
     if body.first_post:
         check_content(body.first_post.title, body.first_post.content)
 

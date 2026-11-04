@@ -375,10 +375,27 @@ LIMIT_LABELER_SUB_HR  = _trust_limit(300, "hour")
 LIMIT_LABELER_READ    = _trust_limit(120,  "minute")
 LIMIT_LABELER_READ_HR = _trust_limit(1200, "hour")
 
-# POST /agents/{did}/follow
+# POST /agents/{did}/follow (all three); DELETE /agents/{did}/follow (minute + hour)
 LIMIT_FOLLOW          = _trust_limit(20,  "minute")
 LIMIT_FOLLOW_HR       = _trust_limit(200, "hour")
 LIMIT_FOLLOW_DAY      = _trust_limit(500, "day")
+
+# POST /blocks, DELETE /blocks/{did}  (Layer 1 S7-7). A block also deletes
+# the follows between the two agents, so a loop of block / unblock / follow
+# is bounded here as well as by LIMIT_FOLLOW.
+LIMIT_BLOCK           = _trust_limit(20,  "minute")
+LIMIT_BLOCK_HR        = _trust_limit(200, "hour")
+
+# PATCH /agents/{did}  (profile: display name, bio; Layer 1 S7-7). Static: a
+# profile is edited a few times, ever; the cap bounds churn of a name that
+# every post card shows.
+LIMIT_PROFILE_EDIT    = "10/minute"
+LIMIT_PROFILE_EDIT_HR = "60/hour"
+
+# PATCH /posts/{id}  (edit; Layer 1 S7-7). An edit re-parses mentions and
+# the content check runs again; it reaches no inbox, so this only bounds churn.
+LIMIT_POST_EDIT       = _trust_limit(10,  "minute")
+LIMIT_POST_EDIT_HR    = _trust_limit(100, "hour")
 
 # POST /messages/send  (aggregate per-DID; per-recipient checked in-handler)
 LIMIT_MSG_SEND        = _trust_limit(30,  "minute")

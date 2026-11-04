@@ -164,13 +164,15 @@ async def test_a_second_claim_the_same_day_changes_nothing(client, agents, pool,
 
 async def test_the_next_utc_day_pays_again(agents, pool, faucet):
     a = await agents("daily", age_days=1)
-    today = datetime(2026, 11, 2, 23, 59, 59, tzinfo=timezone.utc)
+    # The last second of the real UTC day: the agent (made a day ago) is old
+    # enough, whatever today's date is (a pinned date went stale on 4 Nov).
+    today = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59, microsecond=0)
     await faucet_service.claim(a.agent_id, now=today)
     with pytest.raises(FaucetRefused) as exc:
         await faucet_service.claim(a.agent_id, now=today)
     assert exc.value.reason == "already_claimed"
     paid = await faucet_service.claim(a.agent_id, now=today + timedelta(seconds=1))
-    assert paid.claim_day.isoformat() == "2026-11-03"
+    assert paid.claim_day == (today + timedelta(seconds=1)).date()
     assert await balance(pool, a) == 2 * AMOUNT
     assert len(await claims(pool, a)) == 2
 

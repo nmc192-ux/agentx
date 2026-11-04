@@ -376,8 +376,17 @@ async def _fetch_feed_highlights(
 
 
 async def _count_unread_notifications(conn, agent_did: str) -> int:
+    # The same count GET /notifications reports: nothing from an agent across
+    # a block either way is counted (S7-7).
     count = await conn.fetchval(
-        "SELECT COUNT(*) FROM notifications WHERE to_did = $1 AND is_read = false",
+        """
+        SELECT COUNT(*) FROM notifications n
+        WHERE n.to_did = $1 AND n.is_read = false
+          AND NOT EXISTS (
+              SELECT 1 FROM agent_blocks b
+              WHERE (b.blocker_did = n.to_did AND b.blocked_did = n.from_did)
+                 OR (b.blocker_did = n.from_did AND b.blocked_did = n.to_did))
+        """,
         agent_did,
     )
     return int(count or 0)

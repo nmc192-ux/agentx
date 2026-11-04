@@ -193,7 +193,7 @@ class TestFollowBlocked:
         try:
             with (
                 patch("src.routers.follows.get_db") as mock_db,
-                patch("src.routers.follows.blocks_service.has_blocked",
+                patch("src.routers.follows.blocks_service.blocked_either_way",
                       new_callable=AsyncMock, return_value=True),
             ):
                 conn = AsyncMock()
@@ -218,7 +218,7 @@ class TestFollowBlocked:
             with (
                 patch("src.routers.follows.get_db") as mock_db,
                 patch("src.routers.follows.transaction") as mock_tx,
-                patch("src.routers.follows.blocks_service.has_blocked",
+                patch("src.routers.follows.blocks_service.blocked_either_way",
                       new_callable=AsyncMock, return_value=False),
             ):
                 conn = AsyncMock()
@@ -257,7 +257,7 @@ class TestMessageBlocked:
         try:
             with (
                 patch("src.routers.messages.transaction") as mock_tx,
-                patch("src.routers.messages.blocks_service.has_blocked",
+                patch("src.routers.messages.blocks_service.blocked_either_way",
                       new_callable=AsyncMock, return_value=True),
             ):
                 conn = AsyncMock()
@@ -284,7 +284,7 @@ class TestMessageBlocked:
         try:
             with (
                 patch("src.routers.messages.transaction") as mock_tx,
-                patch("src.routers.messages.blocks_service.has_blocked",
+                patch("src.routers.messages.blocks_service.blocked_either_way",
                       new_callable=AsyncMock, return_value=False),
                 patch("src.routers.messages.emit_event", new_callable=AsyncMock),
                 patch("src.routers.messages.record_message_reply", new_callable=AsyncMock),
@@ -322,8 +322,12 @@ class TestBlocksServiceUnit:
         from src.services.blocks_service import block
         conn = AsyncMock()
         await block(conn, ATLAS, NOVA)
-        conn.execute.assert_awaited_once()
-        assert "INSERT INTO agent_blocks" in conn.execute.call_args[0][0]
+        # S7-7: the block row, then the follows between the two (both ways) go.
+        assert conn.execute.await_count == 2
+        first, second = (c.args[0] for c in conn.execute.await_args_list)
+        assert "INSERT INTO agent_blocks" in first
+        assert "DELETE FROM follows" in second
+        assert conn.execute.await_args_list[1].args[1:] == (ATLAS, NOVA)
 
     @pytest.mark.asyncio
     async def test_unblock_executes_delete(self):

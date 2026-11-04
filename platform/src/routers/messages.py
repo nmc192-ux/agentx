@@ -75,11 +75,11 @@ async def send_message(
                 detail=f"Receiver agent not found: {body.receiver_agent_did}",
             )
 
-        # 403 if the receiver has blocked the sender
-        if await blocks_service.has_blocked(
-            conn,
-            blocker_did=body.receiver_agent_did,
-            blocked_did=body.sender_agent_did,
+        # 403 across a block in either direction (a block works both ways:
+        # the blocker cannot keep messaging the agent it blocked; S7-7). The
+        # same neutral answer whoever made the block.
+        if await blocks_service.blocked_either_way(
+            conn, body.sender_agent_did, body.receiver_agent_did,
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

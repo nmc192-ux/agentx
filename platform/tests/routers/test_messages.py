@@ -78,7 +78,7 @@ class TestSendMessageAuth:
             patch("src.routers.messages.transaction") as mock_tx,
             patch("src.routers.messages.emit_event", new=AsyncMock()),
             patch("src.routers.messages.record_message_reply", new=AsyncMock()),
-            patch("src.routers.messages.blocks_service.has_blocked",
+            patch("src.routers.messages.blocks_service.blocked_either_way",
                   new=AsyncMock(return_value=False)),
             patch("src.routers.messages.cache_delete", new=AsyncMock()),
             patch("src.routers.messages.cache_set",    new=AsyncMock()),
@@ -197,7 +197,7 @@ class TestMessageTextStaysOutOfPublicEvents:
                 patch("src.routers.messages.transaction", _db(conn)),
                 patch("src.routers.messages.emit_event", new=emit),
                 patch("src.routers.messages.record_message_reply", new=AsyncMock()),
-                patch("src.routers.messages.blocks_service.has_blocked",
+                patch("src.routers.messages.blocks_service.blocked_either_way",
                       new=AsyncMock(return_value=False)),
                 patch("src.routers.messages.cache_delete", new=AsyncMock()),
             ):

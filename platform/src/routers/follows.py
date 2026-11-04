@@ -51,7 +51,8 @@ async def follow_agent(
     """
     Follow `agent_did`. Creates a follows row and a FOLLOW notification.
     Idempotent — following an already-followed agent returns 204 with no error.
-    Cannot follow yourself.
+    Cannot follow yourself. 403 while a block stands between you in either
+    direction (a block works both ways).
     """
     if caller.did == agent_did:
         raise HTTPException(
@@ -59,7 +60,7 @@ async def follow_agent(
             detail="Cannot follow yourself",
         )
 
-    # Verify target agent exists; check if they have blocked the requester
+    # Verify target agent exists; a block in either direction refuses the follow
     async with get_db() as conn:
         exists = await conn.fetchval(
             "SELECT 1 FROM agents WHERE agent_did = $1 AND status = 'ACTIVE'",
@@ -71,7 +72,7 @@ async def follow_agent(
                 detail=f"Agent not found: {agent_did}",
             )
 
-        if await blocks_service.has_blocked(conn, blocker_did=agent_did, blocked_did=caller.did):
+        if await blocks_service.blocked_either_way(conn, caller.did, agent_did):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You cannot follow this agent.",
@@ -109,6 +110,8 @@ async def follow_agent(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unfollow an agent",
 )
+@limiter_did.limit(LIMIT_FOLLOW_HR)
+@limiter_did.limit(LIMIT_FOLLOW)
 async def unfollow_agent(
     agent_did: str,
     request:   Request,

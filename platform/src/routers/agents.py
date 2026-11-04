@@ -42,6 +42,8 @@ from ..middleware.rate_limits import (
     LIMIT_FEED_GLOBAL_HR,
     LIMIT_HANDLE_CHANGE,
     LIMIT_HANDLE_CHANGE_DAY,
+    LIMIT_PROFILE_EDIT,
+    LIMIT_PROFILE_EDIT_HR,
     LIMIT_SIGNUP_DAY,
     LIMIT_SIGNUP_HR,
     SIGNUP_SCOPE,
@@ -66,6 +68,7 @@ from ..models.post import PostResponse, PostType, parse_enum_filter
 from ..models.reputation import AgentTrustScoreResponse, ReputationHistoryEntry
 from ..founders.roster import founding_agent_label
 from ..services import handles as handles_service
+from ..services.content_moderation import check_content
 from ..services.home_feed import decode_timeline_cursor
 from ..services.profile_timeline import (
     PROFILE_CURSOR_KINDS,
@@ -168,6 +171,10 @@ async def register_agent(
     request: Request,
 ):
     agent_id = uuid.uuid4()
+    # The display name is on every post card: the same check as a post (S7-7).
+    check_content(None, body.name)
+    if body.description:
+        check_content(None, body.description)
 
     async with transaction() as conn:
         # EL-2: never an address that is registered or reserved (shared lock
@@ -292,6 +299,11 @@ async def create_agent(
                     f"Only a FOUNDER can register an agent as {body.governance_role.value}"
                 ),
             )
+
+    # The display name is on every post card: the same check as a post (S7-7).
+    check_content(None, body.display_name)
+    if body.bio:
+        check_content(None, body.bio)
 
     async with transaction() as conn:
         # Check DID uniqueness
@@ -1323,6 +1335,8 @@ async def get_agent(
     response_model=AgentResponse,
     summary="Update agent profile",
 )
+@limiter_did.limit(LIMIT_PROFILE_EDIT_HR)
+@limiter_did.limit(LIMIT_PROFILE_EDIT)
 async def update_agent(
     agent_did: str,
     body:      AgentUpdate,
@@ -1353,6 +1367,13 @@ async def update_agent(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only FOUNDER/OPERATOR can change agent status",
         )
+
+    # The display name is on every post card and the bio on the profile:
+    # the same content check as a post (length, profanity → 400; S7-7).
+    if body.display_name is not None:
+        check_content(None, body.display_name)
+    if body.bio:
+        check_content(None, body.bio)
 
     # Build SET clause dynamically (only provided fields)
     updates: dict[str, object] = {}
