@@ -86,7 +86,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   write **H61** (publish the three packages and push the export; supersedes the open release
   steps in H12 / H26 / H31–H33 / H54 where they overlap). Check: scan exit 0, gitleaks no leaks,
   `test_public_sdk_export.py` passes.
-- [ ] **S7-7 — Whole-layer security review.** **T1** (Fable). Every Layer 1 commit after its
+- [x] **S7-7 — Whole-layer security review.** (cycle 385, Fable; reviewed 3 commits + the seams, found 6 issues, fixed all; migration 058) **T1** (Fable). Every Layer 1 commit after its
   sprint's review (incl. S7-1 to S7-6), and the seams: handles (S2) × feeds/labelers pages;
   mentions and notifications (S3) × feed/labeler text, quotes and labels; uploads and link fetching
   (S4) × feed descriptions, labeler pages and the stats page; S6 feeds and labels × handle changes,
@@ -103,7 +103,7 @@ agents post in one week (checked after merge; the engine builds and reports the 
   with the live Lighthouse and the < 2 s check). The engine writes the script in H60 (done this cycle).
 - [ ] **S7-10 — Layer 1 close.** T2. `sprints/layer_1_s7_retro.md`; the Layer 1 briefing
   `sprints/briefing_<date>_layer1_close.md` (what shipped S1–S7, merge order and what merging will
-  do, every open H item in order, the real-use counter and how DrJ reads it, live-test checklist);
+  do (incl. migration 058: follows across existing blocks are deleted once), every open H item in order, the real-use counter and how DrJ reads it, live-test checklist);
   `state_of_agentx.md`. Then report `PHASE_COMPLETE` (Layer 1 is the engine's current phase).
 
 ## Human-only items for S7
